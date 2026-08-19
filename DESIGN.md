@@ -4,10 +4,10 @@ The design contract for `apps/control-plane`. Every story that touches UI, UX, o
 
 ## Changelog
 
-| Version | Date       | Summary                                              | Author           |
-| ------- | ---------- | ---------------------------------------------------- | ---------------- |
+| Version | Date       | Summary                                                          | Author           |
+| ------- | ---------- | ---------------------------------------------------------------- | ---------------- |
 | 1.1     | 2026-08-19 | `stale` renamed to `incomplete`; added partial-cost display rule | product-engineer |
-| 1.0     | 2026-08-19 | Baseline, derived from PRD v1.0 §11                   | product-engineer |
+| 1.0     | 2026-08-19 | Baseline, derived from PRD v1.0 §11                              | product-engineer |
 
 ---
 
@@ -40,12 +40,12 @@ Both light and dark schemes are supported from the start, driven by `prefers-col
 
 Four run states, each with a reserved token pair. These are the only status colours in the interface, and they must not be reused for anything else.
 
-| Status       | Token                 | Hue family | Meaning                                                        |
-| ------------ | --------------------- | ---------- | -------------------------------------------------------------- |
-| `running`    | `--status-running`     | Blue       | In progress, invoked and not yet closed out                     |
-| `success`    | `--status-success`     | Green      | Completed successfully                                          |
-| `failed`     | `--status-failed`      | Red        | Completed with a reported failure                               |
-| `incomplete` | `--status-incomplete`  | Amber      | Derived: ran past the agent's `maxLifetime`. Cut off, no output. |
+| Status       | Token                 | Hue family | Meaning                                                          |
+| ------------ | --------------------- | ---------- | ---------------------------------------------------------------- |
+| `running`    | `--status-running`    | Blue       | In progress, invoked and not yet closed out                      |
+| `success`    | `--status-success`    | Green      | Completed successfully                                           |
+| `failed`     | `--status-failed`     | Red        | Completed with a reported failure                                |
+| `incomplete` | `--status-incomplete` | Amber      | Derived: ran past the agent's `maxLifetime`. Cut off, no output. |
 
 `incomplete` is amber rather than red because it is a different fact, not a lesser one. `failed` means the agent ran and reported that it could not do the job. `incomplete` means the runtime terminated the instance before anything was reported — there is no outcome to show, and no failure was diagnosed. Presenting both in red would merge "this went wrong" with "we never found out", and the second needs a different response from the operator.
 
@@ -71,18 +71,18 @@ Spacing follows Tailwind's 4px-based scale; no arbitrary values. Radius comes fr
 
 Prefer a shadcn/ui primitive over a custom component. Where a primitive needs project-specific behaviour, wrap it rather than forking it.
 
-| Component        | Built on                    | Notes                                                                        |
-| ---------------- | --------------------------- | ---------------------------------------------------------------------------- |
-| `DataTable`      | TanStack Table + shadcn `Table` | One shared implementation for all four tables. Sorting, filtering, row click, and the loading/empty/error states live here, not in each view. |
-| `StatusBadge`    | shadcn `Badge`              | Colour plus label, always both. The single place status maps to visuals.       |
-| `RunPanel`       | shadcn `Sheet`              | Right-side overlay. Metadata, span timeline, logs.                            |
-| `EnabledToggle`  | shadcn `Switch`             | Optimistic, with rollback and a visible error on failure.                     |
-| `ParamsEditor`   | shadcn `Textarea` + `Dialog` | JSON, validated before save. Inline error naming the problem.                 |
-| `AddRepoForm`    | shadcn `Input` + `Button`   | Single field, validated repository name.                                      |
-| `SpanTimeline`   | Custom                      | Horizontal bars per model/tool call, with latency and tokens.                 |
-| `LogViewer`      | Custom                      | Monospace, scrollable, JSON lines from `FilterLogEvents`.                     |
-| `CostEstimate`   | Custom                      | Formatted value, always labelled as an estimate.                              |
-| `RelativeTime`   | Custom                      | Relative text, absolute UTC timestamp in the title attribute.                 |
+| Component       | Built on                        | Notes                                                                                                                                         |
+| --------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DataTable`     | TanStack Table + shadcn `Table` | One shared implementation for all four tables. Sorting, filtering, row click, and the loading/empty/error states live here, not in each view. |
+| `StatusBadge`   | shadcn `Badge`                  | Colour plus label, always both. The single place status maps to visuals.                                                                      |
+| `RunPanel`      | shadcn `Sheet`                  | Right-side overlay. Metadata, span timeline, logs.                                                                                            |
+| `EnabledToggle` | shadcn `Switch`                 | Optimistic, with rollback and a visible error on failure.                                                                                     |
+| `ParamsEditor`  | shadcn `Textarea` + `Dialog`    | JSON, validated before save. Inline error naming the problem.                                                                                 |
+| `AddRepoForm`   | shadcn `Input` + `Button`       | Single field, validated repository name.                                                                                                      |
+| `SpanTimeline`  | Custom                          | Horizontal bars per model/tool call, with latency and tokens.                                                                                 |
+| `LogViewer`     | Custom                          | Monospace, scrollable, JSON lines from `FilterLogEvents`.                                                                                     |
+| `CostEstimate`  | Custom                          | Formatted value, always labelled as an estimate.                                                                                              |
+| `RelativeTime`  | Custom                          | Relative text, absolute UTC timestamp in the title attribute.                                                                                 |
 
 ---
 
@@ -118,17 +118,17 @@ Three distinct states, never conflated:
 
 ## 5. Data display conventions
 
-| Value            | Presentation                                                                       |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| Dates            | Relative in tables ("4h ago"), absolute UTC on hover. Absolute in the run panel.     |
-| `session_id`     | Monospace, truncated with a copy affordance. Full value on hover.                    |
-| Duration         | Human units — `1.4s`, `2m 13s`. Never raw milliseconds.                             |
-| Tokens           | Thousands-separated. `in / out` shown as a pair, labelled.                           |
-| Estimated cost   | Currency-formatted with an explicit estimate marker, and the word "estimated" in the column header. It excludes runtime compute; the label is what keeps it honest. |
-| Unknown cost     | When `model_id` is missing from the pricing table, show "unknown", **never `$0.00`**. A zero reads as free rather than unmeasured. |
-| Outcome          | A link labelled by type (PR, report). `outcome.type = "none"` renders as a dash, not an empty cell. |
-| Repository       | Short name in agent-scoped views, `org/repo` where ambiguity is possible.             |
-| Tabular numbers  | Numeric columns use tabular figures and right alignment so digits line up down the column. |
+| Value           | Presentation                                                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dates           | Relative in tables ("4h ago"), absolute UTC on hover. Absolute in the run panel.                                                                                    |
+| `session_id`    | Monospace, truncated with a copy affordance. Full value on hover.                                                                                                   |
+| Duration        | Human units — `1.4s`, `2m 13s`. Never raw milliseconds.                                                                                                             |
+| Tokens          | Thousands-separated. `in / out` shown as a pair, labelled.                                                                                                          |
+| Estimated cost  | Currency-formatted with an explicit estimate marker, and the word "estimated" in the column header. It excludes runtime compute; the label is what keeps it honest. |
+| Unknown cost    | When `model_id` is missing from the pricing table, show "unknown", **never `$0.00`**. A zero reads as free rather than unmeasured.                                  |
+| Outcome         | A link labelled by type (PR, report). `outcome.type = "none"` renders as a dash, not an empty cell.                                                                 |
+| Repository      | Short name in agent-scoped views, `org/repo` where ambiguity is possible.                                                                                           |
+| Tabular numbers | Numeric columns use tabular figures and right alignment so digits line up down the column.                                                                          |
 
 ---
 

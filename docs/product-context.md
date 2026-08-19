@@ -2,10 +2,10 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                    | Author           |
-| ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| Version | Date       | Summary                                                                                                                     | Author           |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.1     | 2026-08-19 | `incomplete` replaces the fixed-threshold `stale` assumption. `dep-updater` base repo identified, closing an open question. | product-engineer |
-| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)      | product-engineer |
+| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)                                                                       | product-engineer |
 
 ---
 
@@ -23,7 +23,7 @@ Operating agents on AgentCore today means using the AWS console, which is organi
 
 **Changing an agent's scope requires a deploy.** Adding a repository to the dependency-update agent's list is a code change, a commit, and a deploy — for what is fundamentally a configuration decision.
 
-**There is no per-repository view.** AWS has no concept of "the repository an agent acted on." The question *"what did all agents do to `fintrack-home` this month"* is not expressible against any AWS API. The repository axis has to be manufactured, which is what the emission contract exists to do.
+**There is no per-repository view.** AWS has no concept of "the repository an agent acted on." The question _"what did all agents do to `fintrack-home` this month"_ is not expressible against any AWS API. The repository axis has to be manufactured, which is what the emission contract exists to do.
 
 A third, quieter problem: there is no cheap signal for an agent that died mid-run. A run that never closed out looks identical to a run still in progress.
 
@@ -60,17 +60,17 @@ The implications are load-bearing rather than incidental:
 
 State of the surrounding world:
 
-| Item                                        | Status                                                     |
-| ------------------------------------------- | ---------------------------------------------------------- |
-| `dev-tasks-agent-fleet` repo scaffolding    | Not started — layout defined in PRD §16                    |
-| CloudWatch Transaction Search               | Not enabled (prerequisite)                                 |
-| Unified span destination                    | Not decided (per-runtime log group vs shared `aws/spans`)   |
-| Discovery tags on existing agents           | Not applied                                                |
-| Emission contract in agents                 | Not implemented                                            |
-| DynamoDB table + GSI1                       | Not created                                                |
-| Orchestrator Lambda                         | Not written                                                |
-| Control plane front end                     | Not started                                                |
-| `dep-updater` agent                         | Exists outside this repo; will be **rebuilt** here, not migrated |
+| Item                                     | Status                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| `dev-tasks-agent-fleet` repo scaffolding | Not started — layout defined in PRD §16                          |
+| CloudWatch Transaction Search            | Not enabled (prerequisite)                                       |
+| Unified span destination                 | Not decided (per-runtime log group vs shared `aws/spans`)        |
+| Discovery tags on existing agents        | Not applied                                                      |
+| Emission contract in agents              | Not implemented                                                  |
+| DynamoDB table + GSI1                    | Not created                                                      |
+| Orchestrator Lambda                      | Not written                                                      |
+| Control plane front end                  | Not started                                                      |
+| `dep-updater` agent                      | Exists outside this repo; will be **rebuilt** here, not migrated |
 
 The `dep-updater` rebuild is a deliberate choice. The existing implementation is available for reference and its behavioural details will be supplied when that work is scheduled; no migration path is assumed or documented.
 
@@ -98,12 +98,12 @@ The build order matters and is not negotiable: the data has to exist before the 
 
 ## 7. Success Metrics
 
-| Metric                                                       | Target                  |
-| ------------------------------------------------------------ | ----------------------- |
-| Time to add a repository to an agent's scope                 | Under 30 seconds, zero deploys |
-| Clicks from the run list to the logs of a failed run         | Under 3                 |
-| AWS console visits to check on agents, in steady state       | Zero                    |
-| Monthly infrastructure cost of the control plane             | Under USD 10            |
+| Metric                                                 | Target                         |
+| ------------------------------------------------------ | ------------------------------ |
+| Time to add a repository to an agent's scope           | Under 30 seconds, zero deploys |
+| Clicks from the run list to the logs of a failed run   | Under 3                        |
+| AWS console visits to check on agents, in steady state | Zero                           |
+| Monthly infrastructure cost of the control plane       | Under USD 10                   |
 
 These are operator-experience metrics, measured by the operator. There is no analytics instrumentation in v1 and none is planned — adding telemetry to a single-user tool to measure the single user would cost more than asking him.
 
@@ -141,9 +141,9 @@ These are operator-experience metrics, measured by the operator. There is no ana
 
 ## 10. Key Stakeholders
 
-| Stakeholder | Role                                                          |
-| ----------- | ------------------------------------------------------------- |
-| @llipe      | Owner, sole operator, sole decision-maker, PRD author         |
+| Stakeholder | Role                                                  |
+| ----------- | ----------------------------------------------------- |
+| @llipe      | Owner, sole operator, sole decision-maker, PRD author |
 
 No approval chain, no external stakeholders. Scope decisions are made by one person and recorded in the PRD.
 
@@ -164,14 +164,14 @@ No approval chain, no external stakeholders. Scope decisions are made by one per
 
 ## 12. Open Questions
 
-| # | Question                                                                                                              | Owner   | Blocks                        |
-| - | --------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------- |
-| 1 | Span destination: per-runtime log group or shared `aws/spans`? Picking one is a prerequisite, and the choice shapes the query layer. | @llipe  | Phase 1, and the run read path |
-| 2 | Does Fly Machines OIDC → AWS `AssumeRoleWithWebIdentity` work without friction, or is the static-key fallback needed?   | @llipe  | Phase 1 IAM                   |
-| 3 | Origin lockdown mechanism: Cloudflare Tunnel or Cloudflare IP allowlist?                                              | @llipe  | Phase 5 deployment            |
-| 4 | `dep-updater` rebuild: behavioural scope, current parameter shape, and prompt content — to be supplied from the existing repo when scheduled. | @llipe  | Phase 3                       |
-| 5 | Pricing-table update cadence and who notices when a model's price changes.                                            | @llipe  | Cost accuracy, not delivery   |
-| 6 | Log retention period on the span destination — this sets the real limit on how far back any view can look.            | @llipe  | Phase 1, and metric framing   |
+| #   | Question                                                                                                                                      | Owner  | Blocks                         |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------ |
+| 1   | Span destination: per-runtime log group or shared `aws/spans`? Picking one is a prerequisite, and the choice shapes the query layer.          | @llipe | Phase 1, and the run read path |
+| 2   | Does Fly Machines OIDC → AWS `AssumeRoleWithWebIdentity` work without friction, or is the static-key fallback needed?                         | @llipe | Phase 1 IAM                    |
+| 3   | Origin lockdown mechanism: Cloudflare Tunnel or Cloudflare IP allowlist?                                                                      | @llipe | Phase 5 deployment             |
+| 4   | `dep-updater` rebuild: behavioural scope, current parameter shape, and prompt content — to be supplied from the existing repo when scheduled. | @llipe | Phase 3                        |
+| 5   | Pricing-table update cadence and who notices when a model's price changes.                                                                    | @llipe | Cost accuracy, not delivery    |
+| 6   | Log retention period on the span destination — this sets the real limit on how far back any view can look.                                    | @llipe | Phase 1, and metric framing    |
 
 ---
 

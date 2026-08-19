@@ -2,11 +2,11 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                          | Author           |
-| ------- | ---------- | ------------------------------------------------ | ---------------- |
-| 1.2     | 2026-08-19 | CDK approved and recorded. S11 resolved: blocking entrypoint blocks `/ping` and the session is reclaimed — added §2.4 and migration change C16 (async-task pattern). Migration tasks re-ordered. | product-engineer |
+| Version | Date       | Summary                                                                                                                                                                                                 | Author           |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.2     | 2026-08-19 | CDK approved and recorded. S11 resolved: blocking entrypoint blocks `/ping` and the session is reclaimed — added §2.4 and migration change C16 (async-task pattern). Migration tasks re-ordered.        | product-engineer |
 | 1.1     | 2026-08-19 | F1/F2/F3 resolved. `incomplete` replaces `stale`, bounded by per-agent `maxLifetime`. Cost estimate simplified. IaC switched to CDK. New §19 agent migration analysis against `llipe/dep-update-agent`. | product-engineer |
-| 1.0     | 2026-08-19 | Initial specification, derived from PRD v1.1      | product-engineer |
+| 1.0     | 2026-08-19 | Initial specification, derived from PRD v1.1                                                                                                                                                            | product-engineer |
 
 ---
 
@@ -20,12 +20,12 @@ Three findings emerged while deriving this design from the PRD, each requiring a
 
 ## 2. Reference Documents
 
-| Document | Path | Relevant sections |
-| --- | --- | --- |
-| PRD | [`docs/requirements/PRD-agent-control-plane-v1-en.md`](../docs/requirements/PRD-agent-control-plane-v1-en.md) v1.1 | All |
-| Product context | [`docs/product-context.md`](../docs/product-context.md) | §9 constraints, §11 assumptions |
-| Technical guidelines | [`docs/technical-guidelines.md`](../docs/technical-guidelines.md) | §2 stack, §3 architecture, §5 auth, §6 security, §7 data, §11 testing |
-| Design contract | [`DESIGN.md`](../DESIGN.md) | §2 tokens, §4 interaction, §5 data display |
+| Document             | Path                                                                                                               | Relevant sections                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| PRD                  | [`docs/requirements/PRD-agent-control-plane-v1-en.md`](../docs/requirements/PRD-agent-control-plane-v1-en.md) v1.1 | All                                                                   |
+| Product context      | [`docs/product-context.md`](../docs/product-context.md)                                                            | §9 constraints, §11 assumptions                                       |
+| Technical guidelines | [`docs/technical-guidelines.md`](../docs/technical-guidelines.md)                                                  | §2 stack, §3 architecture, §5 auth, §6 security, §7 data, §11 testing |
+| Design contract      | [`DESIGN.md`](../DESIGN.md)                                                                                        | §2 tokens, §4 interaction, §5 data display                            |
 
 ### 2.1 Findings that change the PRD
 
@@ -47,12 +47,12 @@ The reference agent already satisfies the precondition: it runs Strands under `o
 
 ### 2.2 Decisions taken under open questions
 
-| PRD open question | Decision for this spec | Reversibility |
-| --- | --- | --- |
-| #1 span destination | Shared `aws/spans` log group | Single env var `SPANS_LOG_GROUP`. All queries read it from config; no code change to switch. |
-| #2 Fly OIDC | Design for OIDC; credential acquisition isolated behind one provider module | Static-key fallback is a change in that one module. |
-| #3 origin lockdown | Cloudflare Tunnel | Deployment-time, no application code. |
-| #4 agent base | [`llipe/dep-update-agent`](https://github.com/llipe/dep-update-agent) as the starting point, not a rewrite | §19 enumerates the gaps |
+| PRD open question   | Decision for this spec                                                                                     | Reversibility                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| #1 span destination | Shared `aws/spans` log group                                                                               | Single env var `SPANS_LOG_GROUP`. All queries read it from config; no code change to switch. |
+| #2 Fly OIDC         | Design for OIDC; credential acquisition isolated behind one provider module                                | Static-key fallback is a change in that one module.                                          |
+| #3 origin lockdown  | Cloudflare Tunnel                                                                                          | Deployment-time, no application code.                                                        |
+| #4 agent base       | [`llipe/dep-update-agent`](https://github.com/llipe/dep-update-agent) as the starting point, not a rewrite | §19 enumerates the gaps                                                                      |
 
 ### 2.3 Decided: IaC is AWS CDK, not Terraform
 
@@ -78,8 +78,8 @@ One caveat carried into the guidelines: do not set `time_of_last_update` manuall
 
 ## 3. Affected Repositories
 
-| Repository | Role | Scope of Changes |
-| --- | --- | --- |
+| Repository                    | Role                  | Scope of Changes                                                                                                                                                                                                  |
+| ----------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `llipe/dev-tasks-agent-fleet` | Monorepo — everything | New: `apps/control-plane` (Next.js), `packages/shared` (contracts + codegen), `agents/dep-updater` (Python 3.13, ported from the reference agent), `infra/` (CDK + orchestrator Lambda), path-gated CI workflows. |
 
 Single `primary` component, so no cross-repo partitioning applies.
@@ -153,13 +153,13 @@ The dotted contract edges are the reason this is a monorepo. The red-outlined `A
 
 ### 4.2 Read paths and their cost
 
-| View | Reads | Latency class |
-| --- | --- | --- |
-| Agents list | tags (cached) + `GetAgentRuntime` per agent (cached) + 30d cost aggregate (cached) + DynamoDB last-run rows | Fast on cache hit, seconds cold |
-| Agent → Runs | Logs Insights window query (cached) + DynamoDB in-flight rows | Seconds cold |
-| Agent → Repos | DynamoDB `Query GSI1 PK=AGENT#x` | Milliseconds, uncached |
-| Repos list | DynamoDB, N agent queries + subject META query | Milliseconds, uncached |
-| Run panel | Logs Insights trace query + `FilterLogEvents` | Seconds, uncached |
+| View          | Reads                                                                                                       | Latency class                   |
+| ------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Agents list   | tags (cached) + `GetAgentRuntime` per agent (cached) + 30d cost aggregate (cached) + DynamoDB last-run rows | Fast on cache hit, seconds cold |
+| Agent → Runs  | Logs Insights window query (cached) + DynamoDB in-flight rows                                               | Seconds cold                    |
+| Agent → Repos | DynamoDB `Query GSI1 PK=AGENT#x`                                                                            | Milliseconds, uncached          |
+| Repos list    | DynamoDB, N agent queries + subject META query                                                              | Milliseconds, uncached          |
+| Run panel     | Logs Insights trace query + `FilterLogEvents`                                                               | Seconds, uncached               |
 
 ### 4.3 Trust boundaries
 
@@ -236,14 +236,14 @@ erDiagram
 
 Single table `agent-fleet-config`, on-demand, PITR on.
 
-| Property | Value |
-| --- | --- |
-| Partition key | `pk` (String) |
-| Sort key | `sk` (String) |
-| GSI1 | `pk` = `sk`, `sk` = `pk` (inverted), projection `ALL` |
-| Billing | `PAY_PER_REQUEST` |
-| PITR | Enabled |
-| Deletion protection | Enabled |
+| Property            | Value                                                 |
+| ------------------- | ----------------------------------------------------- |
+| Partition key       | `pk` (String)                                         |
+| Sort key            | `sk` (String)                                         |
+| GSI1                | `pk` = `sk`, `sk` = `pk` (inverted), projection `ALL` |
+| Billing             | `PAY_PER_REQUEST`                                     |
+| PITR                | Enabled                                               |
+| Deletion protection | Enabled                                               |
 
 Attribute names are `snake_case` on the wire, mapped to camelCase in TypeScript inside the repository layer only.
 
@@ -251,27 +251,27 @@ Attribute names are `snake_case` on the wire, mapped to camelCase in TypeScript 
 
 Every pattern is a `Query` or `GetItem`. **No `Scan` anywhere**, including the Repos list, which is the one place a Scan would be tempting.
 
-| # | Need | Operation |
-| - | --- | --- |
-| A1 | Enabled repos for an agent (orchestrator + Repos tab) | `Query GSI1 pk = "AGENT#<name>" AND begins_with(sk, "SUBJECT#")`, filter `enabled = true` |
-| A2 | All repos for an agent, enabled or not (Repos tab) | Same, no filter |
-| A3 | Agents covering a repo | `Query pk = "SUBJECT#<repo>" AND begins_with(sk, "AGENT#")` |
-| A4 | **All subjects** (Repos list) | `Query GSI1 pk = "META"` |
-| A5 | Global agent config | `GetItem pk = "AGENT#<name>", sk = "CONFIG"` |
-| A6 | One pair (toggle target) | `GetItem pk = "SUBJECT#<repo>", sk = "AGENT#<name>"` |
-| A7 | Add repo to scope | `PutItem` with `attribute_not_exists(pk)` condition |
-| A8 | Orchestrator run-start stamp | `UpdateItem` on `last_session_id`, `last_run_at`, `last_status` |
-| A9 | Agent run-finish stamp | `UpdateItem` on `last_status`, `last_outcome_url` |
+| #   | Need                                                  | Operation                                                                                 |
+| --- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| A1  | Enabled repos for an agent (orchestrator + Repos tab) | `Query GSI1 pk = "AGENT#<name>" AND begins_with(sk, "SUBJECT#")`, filter `enabled = true` |
+| A2  | All repos for an agent, enabled or not (Repos tab)    | Same, no filter                                                                           |
+| A3  | Agents covering a repo                                | `Query pk = "SUBJECT#<repo>" AND begins_with(sk, "AGENT#")`                               |
+| A4  | **All subjects** (Repos list)                         | `Query GSI1 pk = "META"`                                                                  |
+| A5  | Global agent config                                   | `GetItem pk = "AGENT#<name>", sk = "CONFIG"`                                              |
+| A6  | One pair (toggle target)                              | `GetItem pk = "SUBJECT#<repo>", sk = "AGENT#<name>"`                                      |
+| A7  | Add repo to scope                                     | `PutItem` with `attribute_not_exists(pk)` condition                                       |
+| A8  | Orchestrator run-start stamp                          | `UpdateItem` on `last_session_id`, `last_run_at`, `last_status`                           |
+| A9  | Agent run-finish stamp                                | `UpdateItem` on `last_status`, `last_outcome_url`                                         |
 
 **A4 deserves a note.** Listing every subject looks like it needs a Scan, and it does not. Because GSI1 inverts the keys, every `SUBJECT#<repo> / META` item appears in GSI1 under partition `META`. `Query GSI1 pk = "META"` returns all subjects in one query, no schema change, no Scan. This works only if a `META` item is written for every subject, so §8.5 makes `addSubjectToAgent` write both items transactionally.
 
 ### 5.4 Write separation as policy, not convention
 
-| Writer | Role | May write | Operation | Enforcement |
-| --- | --- | --- | --- | --- |
-| Control plane | `control-plane-role` | `enabled`, `params` | `PutItem`, `UpdateItem` | `dynamodb:Attributes` condition |
-| Orchestrator | `orchestrator-role` | `last_session_id`, `last_run_at`, `last_status` | `UpdateItem` | `dynamodb:Attributes` condition |
-| Agent | `agent-exec-role` | `last_status`, `last_outcome_url` | `UpdateItem` **only** | `dynamodb:Attributes` + no `PutItem` in policy |
+| Writer        | Role                 | May write                                       | Operation               | Enforcement                                    |
+| ------------- | -------------------- | ----------------------------------------------- | ----------------------- | ---------------------------------------------- |
+| Control plane | `control-plane-role` | `enabled`, `params`                             | `PutItem`, `UpdateItem` | `dynamodb:Attributes` condition                |
+| Orchestrator  | `orchestrator-role`  | `last_session_id`, `last_run_at`, `last_status` | `UpdateItem`            | `dynamodb:Attributes` condition                |
+| Agent         | `agent-exec-role`    | `last_status`, `last_outcome_url`               | `UpdateItem` **only**   | `dynamodb:Attributes` + no `PutItem` in policy |
 
 The agent's `PutItem` denial is load-bearing, not stylistic. A `PutItem` from an agent replaces the whole item, silently erasing `enabled` and `params` — the operator's configuration would vanish on the next successful run, and nothing would report it. §12.2 gives the policy.
 
@@ -291,30 +291,22 @@ Three actions, each a public endpoint regardless of how it looks in source.
 
 ```ts
 // apps/control-plane/src/server/actions/scope.ts
-'use server';
+"use server";
 
-type ActionResult<T = void> =
-  | { ok: true; data: T }
-  | { ok: false; error: ActionError };
+type ActionResult<T = void> = { ok: true; data: T } | { ok: false; error: ActionError };
 
 type ActionError =
-  | { kind: 'validation'; field: string; message: string }
-  | { kind: 'conflict'; message: string }
-  | { kind: 'not_found'; message: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'upstream'; message: string };   // AWS detail logged, not returned
+  | { kind: "validation"; field: string; message: string }
+  | { kind: "conflict"; message: string }
+  | { kind: "not_found"; message: string }
+  | { kind: "unauthorized" }
+  | { kind: "upstream"; message: string }; // AWS detail logged, not returned
 
-export async function setSubjectEnabled(
-  input: unknown,
-): Promise<ActionResult>;
+export async function setSubjectEnabled(input: unknown): Promise<ActionResult>;
 
-export async function setSubjectParams(
-  input: unknown,
-): Promise<ActionResult>;
+export async function setSubjectParams(input: unknown): Promise<ActionResult>;
 
-export async function addSubjectToAgent(
-  input: unknown,
-): Promise<ActionResult>;
+export async function addSubjectToAgent(input: unknown): Promise<ActionResult>;
 ```
 
 Every action follows the same four steps, in this order:
@@ -326,21 +318,25 @@ Every action follows the same four steps, in this order:
 
 ### 6.2 Action contracts
 
-| Action | Input schema | Success | Failure modes |
-| --- | --- | --- | --- |
-| `setSubjectEnabled` | `{ repo: RepoName, agent: AgentName, enabled: boolean }` | `{ ok: true }` | `not_found` if pair absent; `upstream` |
-| `setSubjectParams` | `{ repo: RepoName, agent: AgentName, params: ParamsSchema }` | `{ ok: true }` | `validation` on bad JSON or unknown key; `not_found`; `upstream` |
+| Action              | Input schema                                                  | Success        | Failure modes                                                              |
+| ------------------- | ------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------- |
+| `setSubjectEnabled` | `{ repo: RepoName, agent: AgentName, enabled: boolean }`      | `{ ok: true }` | `not_found` if pair absent; `upstream`                                     |
+| `setSubjectParams`  | `{ repo: RepoName, agent: AgentName, params: ParamsSchema }`  | `{ ok: true }` | `validation` on bad JSON or unknown key; `not_found`; `upstream`           |
 | `addSubjectToAgent` | `{ repo: RepoName, agent: AgentName, params?: ParamsSchema }` | `{ ok: true }` | `conflict` if pair exists; `validation` on malformed repo name; `upstream` |
 
 ```ts
 // packages/shared/src/schema/scope.ts
-export const RepoName = z.string()
-  .min(1).max(100)
-  .regex(/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)?$/, 'owner/repo or repo');
+export const RepoName = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)?$/, "owner/repo or repo");
 
-export const AgentName = z.string()
-  .min(1).max(64)
-  .regex(/^[a-z0-9-]+$/, 'lowercase, digits, hyphens');
+export const AgentName = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9-]+$/, "lowercase, digits, hyphens");
 
 /**
  * Params are per-agent, so the schema is a registry rather than one shape.
@@ -349,10 +345,12 @@ export const AgentName = z.string()
  * so nothing unvalidated can reach an invocation payload.
  */
 export const PARAMS_SCHEMAS = {
-  'dep-updater': z.object({
-    allow_fixes:      z.boolean().optional(),
-    max_fix_attempts: z.number().int().min(1).max(5).optional(),
-  }).strict(),
+  "dep-updater": z
+    .object({
+      allow_fixes: z.boolean().optional(),
+      max_fix_attempts: z.number().int().min(1).max(5).optional(),
+    })
+    .strict(),
 } as const satisfies Record<string, z.ZodType>;
 
 export const paramsSchemaFor = (agent: string) =>
@@ -434,7 +432,7 @@ flowchart TB
 
 ```ts
 // apps/control-plane/src/middleware.ts  (Edge runtime)
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const JWKS = createRemoteJWKSet(
   new URL(`https://${process.env.CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`),
@@ -442,48 +440,48 @@ const JWKS = createRemoteJWKSet(
 );
 
 export async function middleware(req: NextRequest) {
-  const token = req.headers.get('Cf-Access-Jwt-Assertion');
+  const token = req.headers.get("Cf-Access-Jwt-Assertion");
   if (!token) return deny();
 
   try {
     await jwtVerify(token, JWKS, {
       issuer: `https://${process.env.CF_ACCESS_TEAM_DOMAIN}`,
       audience: process.env.CF_ACCESS_AUD,
-      algorithms: ['RS256'],          // allowlist, never read from the header
+      algorithms: ["RS256"], // allowlist, never read from the header
       clockTolerance: 30,
     });
     return NextResponse.next();
   } catch {
-    return deny();                     // fail closed on every path, incl. JWKS fetch failure
+    return deny(); // fail closed on every path, incl. JWKS fetch failure
   }
 }
 
-export const config = { matcher: ['/((?!healthz|_next/static|favicon).*)'] };
+export const config = { matcher: ["/((?!healthz|_next/static|favicon).*)"] };
 ```
 
 `jose` rather than `jsonwebtoken`: middleware runs in the Edge runtime, which has Web Crypto but not Node's `crypto`. `algorithms: ['RS256']` is an explicit allowlist — accepting the token header's own `alg` claim is the classic algorithm-confusion hole.
 
 ### 7.3 Authorization matrix
 
-| Principal | Read runs/agents/repos | Toggle `enabled` | Edit `params` | Add repo | Invoke agent | Modify runtime |
-| --- | --- | --- | --- | --- | --- | --- |
-| Authenticated operator | yes | yes | yes | yes | **no** | **no** |
-| Unauthenticated | no | no | no | no | no | no |
+| Principal              | Read runs/agents/repos | Toggle `enabled` | Edit `params` | Add repo | Invoke agent | Modify runtime |
+| ---------------------- | ---------------------- | ---------------- | ------------- | -------- | ------------ | -------------- |
+| Authenticated operator | yes                    | yes              | yes           | yes      | **no**       | **no**         |
+| Unauthenticated        | no                     | no               | no            | no       | no           | no             |
 
-One authenticated role, matching PRD §10's exclusion of differentiated permissions. That is a decision about *what distinctions exist among authenticated users* — it is not permission to skip authentication. The last two columns are `no` for every principal because the capability is absent from the credential, not hidden from the UI.
+One authenticated role, matching PRD §10's exclusion of differentiated permissions. That is a decision about _what distinctions exist among authenticated users_ — it is not permission to skip authentication. The last two columns are `no` for every principal because the capability is absent from the credential, not hidden from the UI.
 
 ### 7.4 AWS credentials
 
 ```ts
 // apps/control-plane/src/server/aws/credentials.ts — the only place this varies
-export const credentials =
-  process.env.AWS_ROLE_ARN
-    ? fromWebToken({                        // Fly Machines OIDC (preferred)
-        roleArn: process.env.AWS_ROLE_ARN!,
-        webIdentityToken: await readFlyOidcToken(),
-        durationSeconds: 3600,
-      })
-    : fromEnv();                            // static-key fallback, same minimal policy
+export const credentials = process.env.AWS_ROLE_ARN
+  ? fromWebToken({
+      // Fly Machines OIDC (preferred)
+      roleArn: process.env.AWS_ROLE_ARN!,
+      webIdentityToken: await readFlyOidcToken(),
+      durationSeconds: 3600,
+    })
+  : fromEnv(); // static-key fallback, same minimal policy
 ```
 
 Isolating this means resolving PRD open question #2 either way touches one module. If the fallback is used, keys must be rotatable via `fly secrets set` without a rebuild.
@@ -522,7 +520,7 @@ stateDiagram-v2
 // packages/shared/src/run/status.ts
 
 /** AgentCore service default when lifecycleConfiguration.maxLifetime is absent. */
-export const DEFAULT_MAX_LIFETIME_MS = 28_800_000;   // 8 h
+export const DEFAULT_MAX_LIFETIME_MS = 28_800_000; // 8 h
 
 /** Covers instance termination (~15 s) plus span and DynamoDB write lag. */
 export const TERMINATION_GRACE_MS = 5 * 60 * 1000;
@@ -533,9 +531,9 @@ export function deriveStatus(
   maxLifetimeMs: number = DEFAULT_MAX_LIFETIME_MS,
   now: number = Date.now(),
 ): RunStatus {
-  if (lastStatus !== 'running') return lastStatus;
+  if (lastStatus !== "running") return lastStatus;
   const elapsed = now - Date.parse(lastRunAt);
-  return elapsed > maxLifetimeMs + TERMINATION_GRACE_MS ? 'incomplete' : 'running';
+  return elapsed > maxLifetimeMs + TERMINATION_GRACE_MS ? "incomplete" : "running";
 }
 ```
 
@@ -593,26 +591,28 @@ Query execution wraps `StartQuery` → poll `GetQueryResults`:
 
 ```ts
 async function runInsightsQuery(q: string, range: TimeRange): Promise<QueryOutcome> {
-  const { queryId } = await logs.send(new StartQueryCommand({
-    logGroupName: config.spansLogGroup,
-    startTime: Math.floor(range.from / 1000),
-    endTime: Math.floor(range.to / 1000),
-    queryString: q,
-    limit: 5000,
-  }));
+  const { queryId } = await logs.send(
+    new StartQueryCommand({
+      logGroupName: config.spansLogGroup,
+      startTime: Math.floor(range.from / 1000),
+      endTime: Math.floor(range.to / 1000),
+      queryString: q,
+      limit: 5000,
+    }),
+  );
 
-  const deadline = Date.now() + QUERY_TIMEOUT_MS;   // 25s
+  const deadline = Date.now() + QUERY_TIMEOUT_MS; // 25s
   let delay = 300;
   while (Date.now() < deadline) {
     const res = await logs.send(new GetQueryResultsCommand({ queryId }));
-    if (res.status === 'Complete') return { kind: 'ok', rows: res.results ?? [] };
-    if (res.status === 'Failed')    return { kind: 'error', message: 'query failed' };
-    if (res.status === 'Cancelled') return { kind: 'error', message: 'query cancelled' };
+    if (res.status === "Complete") return { kind: "ok", rows: res.results ?? [] };
+    if (res.status === "Failed") return { kind: "error", message: "query failed" };
+    if (res.status === "Cancelled") return { kind: "error", message: "query cancelled" };
     await sleep(delay);
-    delay = Math.min(delay * 1.5, 2000);            // backoff, not a tight loop
+    delay = Math.min(delay * 1.5, 2000); // backoff, not a tight loop
   }
   await logs.send(new StopQueryCommand({ queryId }));
-  return { kind: 'timeout' };                        // distinct from ok-with-zero-rows
+  return { kind: "timeout" }; // distinct from ok-with-zero-rows
 }
 ```
 
@@ -636,7 +636,7 @@ flowchart TB
 
 ```ts
 export function mergeRuns(spanRuns: Run[], configRuns: Run[]): Run[] {
-  const bySession = new Map(spanRuns.map(r => [r.sessionId, r]));
+  const bySession = new Map(spanRuns.map((r) => [r.sessionId, r]));
   for (const cr of configRuns) {
     if (!bySession.has(cr.sessionId)) bySession.set(cr.sessionId, cr);
   }
@@ -674,9 +674,11 @@ export function estimateRunCost(perModel: ModelUsage[], table: PricingTable): Co
 
   for (const u of perModel) {
     const p = table.models[u.modelId];
-    if (!p) { unpricedModels.push(u.modelId); continue; }
-    usd += (u.tokensIn / 1_000_000) * p.inputPerMTok
-         + (u.tokensOut / 1_000_000) * p.outputPerMTok;
+    if (!p) {
+      unpricedModels.push(u.modelId);
+      continue;
+    }
+    usd += (u.tokensIn / 1_000_000) * p.inputPerMTok + (u.tokensOut / 1_000_000) * p.outputPerMTok;
     priced++;
   }
 
@@ -692,11 +694,11 @@ One shape and one flag rather than a variant union — less machinery, same guar
 
 Display rules, per DESIGN.md §5:
 
-| State | Rendered |
-| --- | --- |
-| `complete`, `usd` set | `$0.0123` |
+| State                  | Rendered                                                                    |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `complete`, `usd` set  | `$0.0123`                                                                   |
 | `!complete`, `usd` set | `≥ $0.0123` with an incomplete marker and the unpriced model in the tooltip |
-| `usd` null | `unknown` |
+| `usd` null             | `unknown`                                                                   |
 
 `warn`-level log on any unpriced `model_id`, so a pricing gap surfaces without a dashboard. Full multi-model attribution and automated pricing sync are in the PRD backlog, marked pending for a later release.
 
@@ -708,8 +710,8 @@ Display rules, per DESIGN.md §5:
   "currency": "USD",
   "note": "Per million tokens. Fill from AWS Bedrock pricing at implementation time.",
   "models": {
-    "<model-id>": { "inputPerMTok": 0.0, "outputPerMTok": 0.0 }
-  }
+    "<model-id>": { "inputPerMTok": 0.0, "outputPerMTok": 0.0 },
+  },
 }
 ```
 
@@ -722,19 +724,28 @@ Values are placeholders. I have not verified current Bedrock per-model prices an
 A4 (list all subjects) depends on every subject having a `META` item. A repo added with only its `AGENT#` item would be invisible in the Repos list — present in the agent's scope, absent from the repos view. `TransactWriteItems` makes that state impossible:
 
 ```ts
-await ddb.send(new TransactWriteItemsCommand({
-  TransactItems: [
-    { Put: {                                  // idempotent: fine if it exists
-        TableName, Item: { pk: `SUBJECT#${repo}`, sk: 'META', enabled: true },
-        ConditionExpression: 'attribute_not_exists(pk) OR attribute_exists(pk)',
-    }},
-    { Put: {                                  // must not clobber existing scope
-        TableName,
-        Item: { pk: `SUBJECT#${repo}`, sk: `AGENT#${agent}`, enabled: true, params },
-        ConditionExpression: 'attribute_not_exists(sk)',
-    }},
-  ],
-}));
+await ddb.send(
+  new TransactWriteItemsCommand({
+    TransactItems: [
+      {
+        Put: {
+          // idempotent: fine if it exists
+          TableName,
+          Item: { pk: `SUBJECT#${repo}`, sk: "META", enabled: true },
+          ConditionExpression: "attribute_not_exists(pk) OR attribute_exists(pk)",
+        },
+      },
+      {
+        Put: {
+          // must not clobber existing scope
+          TableName,
+          Item: { pk: `SUBJECT#${repo}`, sk: `AGENT#${agent}`, enabled: true, params },
+          ConditionExpression: "attribute_not_exists(sk)",
+        },
+      },
+    ],
+  }),
+);
 ```
 
 ### 8.6 Orchestrator
@@ -782,9 +793,9 @@ If invocation throws, the row is walked back to `failed` — otherwise it would 
 export const SESSION_ID_MIN_LENGTH = 33;
 
 export function buildSessionId(agent: string, repo: string, scheduledAt: Date): string {
-  const slug = repo.includes('/') ? repo.split('/')[1]! : repo;
-  const ts = scheduledAt.toISOString().replace(/[-:T]/g, '').slice(0, 14); // yyyymmddhhmmss
-  const base = `${agent}-${slug}-${ts}`.replace(/[^A-Za-z0-9-]/g, '-');
+  const slug = repo.includes("/") ? repo.split("/")[1]! : repo;
+  const ts = scheduledAt.toISOString().replace(/[-:T]/g, "").slice(0, 14); // yyyymmddhhmmss
+  const base = `${agent}-${slug}-${ts}`.replace(/[^A-Za-z0-9-]/g, "-");
   return base.length >= SESSION_ID_MIN_LENGTH
     ? base
     : `${base}-${randomSuffix(SESSION_ID_MIN_LENGTH - base.length - 1)}`;
@@ -799,15 +810,15 @@ Derived from `scheduledAt` rather than `Date.now()` so a Lambda retry of the sam
 
 ## 9. Integration Details
 
-| Integration | Client | Retry | Failure behaviour |
-| --- | --- | --- | --- |
-| `tag:GetResources` | `@aws-sdk/client-resource-groups-tagging-api` | 3×, jittered backoff | Agents list shows error state; other views unaffected |
-| `GetAgentRuntime` | `@aws-sdk/client-bedrock-agentcore-control` | 3× | Row renders without runtime detail |
-| Logs Insights | `@aws-sdk/client-cloudwatch-logs` | No retry on timeout | `timeout` state, retry button |
-| `FilterLogEvents` | same | 2× | Panel shows metadata; log section shows error |
-| DynamoDB | `@aws-sdk/lib-dynamodb` | SDK default adaptive | Action returns `upstream`; UI reverts optimistic state |
-| `InvokeAgentRuntime` | `@aws-sdk/client-bedrock-agentcore` (orchestrator only) | None — no blind retry | Stamp `failed`, continue |
-| GitHub App | agent-side, `PyGithub` or raw REST | 3× on 5xx, honour `Retry-After` | Run fails, `llipe.run.status="failed"` |
+| Integration          | Client                                                  | Retry                           | Failure behaviour                                      |
+| -------------------- | ------------------------------------------------------- | ------------------------------- | ------------------------------------------------------ |
+| `tag:GetResources`   | `@aws-sdk/client-resource-groups-tagging-api`           | 3×, jittered backoff            | Agents list shows error state; other views unaffected  |
+| `GetAgentRuntime`    | `@aws-sdk/client-bedrock-agentcore-control`             | 3×                              | Row renders without runtime detail                     |
+| Logs Insights        | `@aws-sdk/client-cloudwatch-logs`                       | No retry on timeout             | `timeout` state, retry button                          |
+| `FilterLogEvents`    | same                                                    | 2×                              | Panel shows metadata; log section shows error          |
+| DynamoDB             | `@aws-sdk/lib-dynamodb`                                 | SDK default adaptive            | Action returns `upstream`; UI reverts optimistic state |
+| `InvokeAgentRuntime` | `@aws-sdk/client-bedrock-agentcore` (orchestrator only) | None — no blind retry           | Stamp `failed`, continue                               |
+| GitHub App           | agent-side, `PyGithub` or raw REST                      | 3× on 5xx, honour `Retry-After` | Run fails, `llipe.run.status="failed"`                 |
 
 Retry policy: jittered exponential backoff on throttling and 5xx only. **Never retry a validation error**, and never blind-retry `InvokeAgentRuntime` — a retry after an ambiguous timeout can double-invoke an agent that already started, producing two runs against one repo with one `session_id`.
 
@@ -819,15 +830,15 @@ Every adapter returns domain types. No AWS SDK type escapes `src/server/aws/`, w
 
 ### 10.1 Routes
 
-| Route | View | Rendering |
-| --- | --- | --- |
-| `/` | redirect → `/agents` | — |
-| `/agents` | Agents table | Server, dynamic |
-| `/agents/[name]?tab=runs&status=&from=&to=&run=` | Agent detail, Runs tab | Server, streamed |
-| `/agents/[name]?tab=repos` | Agent detail, Repos tab | Server, dynamic |
-| `/repos` | Repos table | Server, dynamic |
-| `/repos/[repo]?status=&from=&to=&run=` | Repo runs | Server, streamed |
-| `/healthz` | health check | Static, unauthenticated, no data |
+| Route                                            | View                    | Rendering                        |
+| ------------------------------------------------ | ----------------------- | -------------------------------- |
+| `/`                                              | redirect → `/agents`    | —                                |
+| `/agents`                                        | Agents table            | Server, dynamic                  |
+| `/agents/[name]?tab=runs&status=&from=&to=&run=` | Agent detail, Runs tab  | Server, streamed                 |
+| `/agents/[name]?tab=repos`                       | Agent detail, Repos tab | Server, dynamic                  |
+| `/repos`                                         | Repos table             | Server, dynamic                  |
+| `/repos/[repo]?status=&from=&to=&run=`           | Repo runs               | Server, streamed                 |
+| `/healthz`                                       | health check            | Static, unauthenticated, no data |
 
 All data routes set `export const dynamic = 'force-dynamic'`. Static prerendering of a page that reads AWS would bake one operator's data into the build output and serve it stale forever.
 
@@ -843,12 +854,12 @@ The run panel's three sections have different latencies and must not block each 
 
 ```tsx
 <Sheet open={!!runId}>
-  <RunMetadata run={run} />                        {/* already loaded from the table */}
+  <RunMetadata run={run} /> {/* already loaded from the table */}
   <Suspense fallback={<TimelineSkeleton />}>
-    <SpanTimeline sessionId={runId} />             {/* Insights trace query, ~seconds */}
+    <SpanTimeline sessionId={runId} /> {/* Insights trace query, ~seconds */}
   </Suspense>
   <Suspense fallback={<LogSkeleton />}>
-    <LogViewer sessionId={runId} />                {/* FilterLogEvents, uncached */}
+    <LogViewer sessionId={runId} /> {/* FilterLogEvents, uncached */}
   </Suspense>
 </Sheet>
 ```
@@ -859,13 +870,13 @@ Metadata is already in hand from the table row, so it paints instantly while the
 
 Per DESIGN.md §3 — one `DataTable`, one `StatusBadge`, no second implementations.
 
-| View | Components |
-| --- | --- |
-| Agents | `DataTable`, `StatusBadge`, `RelativeTime`, `CostEstimate` |
-| Agent → Runs | `DataTable`, `StatusBadge`, `RelativeTime`, `CostEstimate`, `RunPanel` |
+| View          | Components                                                                 |
+| ------------- | -------------------------------------------------------------------------- |
+| Agents        | `DataTable`, `StatusBadge`, `RelativeTime`, `CostEstimate`                 |
+| Agent → Runs  | `DataTable`, `StatusBadge`, `RelativeTime`, `CostEstimate`, `RunPanel`     |
 | Agent → Repos | `DataTable`, `EnabledToggle`, `ParamsEditor`, `AddRepoForm`, `StatusBadge` |
-| Repos | `DataTable`, `StatusBadge`, `RelativeTime` |
-| Run panel | `RunPanel`, `SpanTimeline`, `LogViewer`, `CostEstimate` |
+| Repos         | `DataTable`, `StatusBadge`, `RelativeTime`                                 |
+| Run panel     | `RunPanel`, `SpanTimeline`, `LogViewer`, `CostEstimate`                    |
 
 ### 10.5 Client-side validation
 
@@ -892,10 +903,13 @@ export async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   if (hit && Date.now() - hit.at < TTL_MS) return hit.value as T;
 
   const pending = inflight.get(key);
-  if (pending) return pending as Promise<T>;        // single-flight
+  if (pending) return pending as Promise<T>; // single-flight
 
   const p = fn()
-    .then(v => { store.set(key, { at: Date.now(), value: v }); return v; })
+    .then((v) => {
+      store.set(key, { at: Date.now(), value: v });
+      return v;
+    })
     .finally(() => inflight.delete(key));
   inflight.set(key, p);
   return p;
@@ -904,13 +918,13 @@ export async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 Single-flight matters more than the TTL here. Without it, a page with four server components requesting the same 30-day cost aggregate fires four Logs Insights queries against a quota-limited API, on every cold load.
 
-| Key | TTL |
-| --- | --- |
-| `agents:inventory` | 5 min |
-| `runtime:<arn>` | 5 min |
-| `runs:<agent|repo>:<from>:<to>:<status>` | 5 min |
-| `cost30d:<agent>` | 5 min |
-| `logs:*`, `config:*` | **not cached** |
+| Key                  | TTL                         |
+| -------------------- | --------------------------- |
+| `agents:inventory`   | 5 min                       |
+| `runtime:<arn>`      | 5 min                       |
+| `runs:<agent         | repo>:<from>:<to>:<status>` | 5 min |
+| `cost30d:<agent>`    | 5 min                       |
+| `logs:*`, `config:*` | **not cached**              |
 
 Logs and DynamoDB configuration reads stay uncached because they are read precisely when the operator needs current truth — mid-incident, or right after a toggle.
 
@@ -918,13 +932,13 @@ Cache entries are bounded by an LRU cap (500) so a long-lived container with man
 
 ### 11.2 Targets
 
-| Path | Target |
-| --- | --- |
-| Cached view render | < 300 ms server time |
-| Cold run list | < 8 s, hard timeout 25 s |
-| Log fetch | < 5 s for 1,000 events |
-| DynamoDB read | < 50 ms |
-| Container memory | < 512 MB |
+| Path               | Target                   |
+| ------------------ | ------------------------ |
+| Cached view render | < 300 ms server time     |
+| Cold run list      | < 8 s, hard timeout 25 s |
+| Log fetch          | < 5 s for 1,000 events   |
+| DynamoDB read      | < 50 ms                  |
+| Container memory   | < 512 MB                 |
 
 ### 11.3 Bounds
 
@@ -944,23 +958,46 @@ Exactly PRD §12.2, no additions.
 {
   "Version": "2012-10-17",
   "Statement": [
-    { "Sid": "Discovery", "Effect": "Allow",
-      "Action": ["tag:GetResources"], "Resource": "*" },
-    { "Sid": "RuntimeReadOnly", "Effect": "Allow",
-      "Action": ["bedrock-agentcore-control:GetAgentRuntime",
-                 "bedrock-agentcore-control:ListAgentRuntimes"],
-      "Resource": "*" },
-    { "Sid": "LogsRead", "Effect": "Allow",
-      "Action": ["logs:StartQuery", "logs:GetQueryResults",
-                 "logs:StopQuery", "logs:FilterLogEvents"],
-      "Resource": ["arn:aws:logs:*:*:log-group:aws/spans:*",
-                   "arn:aws:logs:*:*:log-group:/aws/bedrock-agentcore/*"] },
-    { "Sid": "ConfigReadWrite", "Effect": "Allow",
-      "Action": ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem",
-                 "dynamodb:UpdateItem", "dynamodb:DeleteItem",
-                 "dynamodb:TransactWriteItems"],
-      "Resource": ["arn:aws:dynamodb:*:*:table/agent-fleet-config",
-                   "arn:aws:dynamodb:*:*:table/agent-fleet-config/index/GSI1"] }
+    { "Sid": "Discovery", "Effect": "Allow", "Action": ["tag:GetResources"], "Resource": "*" },
+    {
+      "Sid": "RuntimeReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore-control:GetAgentRuntime",
+        "bedrock-agentcore-control:ListAgentRuntimes"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LogsRead",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "logs:StopQuery",
+        "logs:FilterLogEvents"
+      ],
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:aws/spans:*",
+        "arn:aws:logs:*:*:log-group:/aws/bedrock-agentcore/*"
+      ]
+    },
+    {
+      "Sid": "ConfigReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:TransactWriteItems"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:*:*:table/agent-fleet-config",
+        "arn:aws:dynamodb:*:*:table/agent-fleet-config/index/GSI1"
+      ]
+    }
   ]
 }
 ```
@@ -995,37 +1032,37 @@ No `bedrock-agentcore:InvokeAgentRuntime`. No runtime write action of any kind. 
 
 `params` is the one operator-controlled value that crosses a process boundary: textarea → DynamoDB → invocation payload → agent. Treated as untrusted at both ends.
 
-| Boundary | Control |
-| --- | --- |
-| Client | JSON parse + `ParamsSchema` before save enabled |
-| Server Action | `ParamsSchema.strict()` — unknown keys rejected, not stripped |
-| DynamoDB | `lib-dynamodb` marshalling, no expression string interpolation |
-| Agent (Python) | Re-validate against the generated schema on payload receipt |
-| Agent sinks | Never interpolated into a shell command, prompt, or URL without sink-appropriate escaping |
+| Boundary       | Control                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Client         | JSON parse + `ParamsSchema` before save enabled                                           |
+| Server Action  | `ParamsSchema.strict()` — unknown keys rejected, not stripped                             |
+| DynamoDB       | `lib-dynamodb` marshalling, no expression string interpolation                            |
+| Agent (Python) | Re-validate against the generated schema on payload receipt                               |
+| Agent sinks    | Never interpolated into a shell command, prompt, or URL without sink-appropriate escaping |
 
 Rejecting unknown keys rather than stripping them is deliberate: stripping makes a typo'd key look accepted while silently doing nothing.
 
 ### 12.4 Secrets and logging
 
-| Secret | Location | Never |
-| --- | --- | --- |
-| GitHub App private key | Secrets Manager | In repo, image, env var, or log |
-| GitHub installation token | Memory only, short TTL | Persisted, logged, or spanned |
-| `CF_ACCESS_AUD`, team domain | Fly secrets | Committed |
-| AWS credentials | OIDC, or Fly secrets | Committed |
+| Secret                       | Location               | Never                           |
+| ---------------------------- | ---------------------- | ------------------------------- |
+| GitHub App private key       | Secrets Manager        | In repo, image, env var, or log |
+| GitHub installation token    | Memory only, short TTL | Persisted, logged, or spanned   |
+| `CF_ACCESS_AUD`, team domain | Fly secrets            | Committed                       |
+| AWS credentials              | OIDC, or Fly secrets   | Committed                       |
 
 A log-redaction helper strips known secret-shaped keys before emission, and no span attribute carries operator input. HTTPS only, HSTS on.
 
 ### 12.5 OWASP notes
 
-| Risk | Handling |
-| --- | --- |
-| Broken access control | Middleware + per-action re-verification; capability absent from IAM |
-| Injection | Zod `.strict()`, no string-built expressions, parameterised SDK calls |
-| Cryptographic failures | `alg` allowlist, JWKS pinned to team domain, fail closed |
-| SSRF | `outcome_url` rendered as a link with `rel="noopener noreferrer"`, never fetched server-side |
-| Vulnerable components | Exact pins, `pnpm audit` in CI |
-| Logging failures | JSON logs with `session_id`; no alerting in v1 by design |
+| Risk                   | Handling                                                                                     |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| Broken access control  | Middleware + per-action re-verification; capability absent from IAM                          |
+| Injection              | Zod `.strict()`, no string-built expressions, parameterised SDK calls                        |
+| Cryptographic failures | `alg` allowlist, JWKS pinned to team domain, fail closed                                     |
+| SSRF                   | `outcome_url` rendered as a link with `rel="noopener noreferrer"`, never fetched server-side |
+| Vulnerable components  | Exact pins, `pnpm audit` in CI                                                               |
+| Logging failures       | JSON logs with `session_id`; no alerting in v1 by design                                     |
 
 ---
 
@@ -1035,10 +1072,10 @@ A log-redaction helper strips known secret-shaped keys before emission, and no s
 
 ```ts
 export type ReadOutcome<T> =
-  | { kind: 'ok'; data: T }
-  | { kind: 'empty' }
-  | { kind: 'timeout' }
-  | { kind: 'error'; message: string; correlationId: string };
+  | { kind: "ok"; data: T }
+  | { kind: "empty" }
+  | { kind: "timeout" }
+  | { kind: "error"; message: string; correlationId: string };
 ```
 
 Four cases, propagated to the UI unflattened. Collapsing `timeout` into `empty` is the single most likely implementation shortcut here and it destroys the operator's ability to tell "nothing ran" from "we couldn't tell" — a distinction that matters most during exactly the incident the tool exists to support.
@@ -1048,15 +1085,22 @@ Four cases, propagated to the UI unflattened. Collapsing `timeout` into `empty` 
 JSON, one object per line, `session_id` on every line that relates to a run. With 3–5 repos in parallel, a time-window filter interleaves runs into noise; `session_id` is the only separator.
 
 ```json
-{"timestamp":"2026-08-24T06:00:03.412Z","level":"info","session_id":"dep-updater-fintrack-home-20260824-060000","agent":"dep-updater","repo":"myorg/fintrack-home","message":"run started"}
+{
+  "timestamp": "2026-08-24T06:00:03.412Z",
+  "level": "info",
+  "session_id": "dep-updater-fintrack-home-20260824-060000",
+  "agent": "dep-updater",
+  "repo": "myorg/fintrack-home",
+  "message": "run started"
+}
 ```
 
-| Level | Use |
-| --- | --- |
+| Level   | Use                                                                          |
+| ------- | ---------------------------------------------------------------------------- |
 | `error` | Failed runs, unexpected exceptions, JWT verification infrastructure failures |
-| `warn` | Retries, throttling, degraded reads, unpriced `model_id` |
-| `info` | Run lifecycle boundaries, scope writes (who changed what) |
-| `debug` | Off in production |
+| `warn`  | Retries, throttling, degraded reads, unpriced `model_id`                     |
+| `info`  | Run lifecycle boundaries, scope writes (who changed what)                    |
+| `debug` | Off in production                                                            |
 
 Scope writes log at `info` with the before/after value. It is the only mutable state in the system and the only thing whose history is otherwise unrecoverable.
 
@@ -1076,14 +1120,14 @@ Test-first per technical guidelines §11. Tests are written before the implement
 
 ### 14.1 Layers
 
-| Layer | Tool | Scope |
-| --- | --- | --- |
-| Unit (TS) | Vitest | `deriveStatus`, `estimateRunCost`, `buildSessionId`, `mergeRuns`, key builders, span→Run mapper, `ParamsSchema` |
-| Integration (TS) | Vitest + `aws-sdk-client-mock` | Adapters, repository, Insights poll loop, orchestrator fan-out |
-| Contract | Vitest + pytest | Emitted span attributes and item shapes vs `packages/shared`; generated Python matches TS source |
-| E2E | Playwright | Four views, filters, toggle, panel, four async states; stubbed Access header, fixture AWS |
-| IAM | CDK + integration | Real deny assertions against a live table (§12.2) |
-| Unit (Python) | pytest | Payload parse, re-validation, emission helper |
+| Layer            | Tool                           | Scope                                                                                                           |
+| ---------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Unit (TS)        | Vitest                         | `deriveStatus`, `estimateRunCost`, `buildSessionId`, `mergeRuns`, key builders, span→Run mapper, `ParamsSchema` |
+| Integration (TS) | Vitest + `aws-sdk-client-mock` | Adapters, repository, Insights poll loop, orchestrator fan-out                                                  |
+| Contract         | Vitest + pytest                | Emitted span attributes and item shapes vs `packages/shared`; generated Python matches TS source                |
+| E2E              | Playwright                     | Four views, filters, toggle, panel, four async states; stubbed Access header, fixture AWS                       |
+| IAM              | CDK + integration              | Real deny assertions against a live table (§12.2)                                                               |
+| Unit (Python)    | pytest                         | Payload parse, re-validation, emission helper                                                                   |
 
 ### 14.2 The contract test
 
@@ -1096,20 +1140,20 @@ The load-bearing one. Everything else in the repo can be re-derived from source;
 
 ### 14.3 Acceptance criteria → tests
 
-| PRD AC | Test |
-| --- | --- |
-| Agents list from `agent:managed=true` | Integration: tagging mock incl. an untagged agent asserted absent |
-| Runs tab filterable by status + range | E2E: filter, assert rows and URL params |
-| Repos view lists all subjects | Integration: A4 GSI1 `META` query; asserts no `Scan` issued |
-| Panel opens without unmounting table | E2E: scroll, open, assert scroll position and table still mounted |
-| Toggle writes and reflects | Integration + E2E incl. failure → revert |
-| Add repo < 30 s, zero deploys | E2E: timed happy path |
-| `params` validated, bad JSON never stored | Unit + E2E: unknown key, malformed JSON, valid round-trip |
-| JWT validated, 401 on invalid | Integration: valid, expired, wrong `aud`, wrong `iss`, missing header, unknown `kid`, `alg: none`, JWKS unreachable — **each must deny** |
-| Origin locked down | Manual + deploy checklist; not unit-testable |
-| Unknown `model_id` → "unknown", never `$0.00` | Unit: `unknown` and `partial` cases; E2E asserts rendered text |
-| `incomplete` derived at read | Unit at the `maxLifetime + grace` boundary ±1 ms both directions, plus the absent-`maxLifetime` fallback |
-| Cost < USD 10/month | Manual monthly check; not a test |
+| PRD AC                                        | Test                                                                                                                                     |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Agents list from `agent:managed=true`         | Integration: tagging mock incl. an untagged agent asserted absent                                                                        |
+| Runs tab filterable by status + range         | E2E: filter, assert rows and URL params                                                                                                  |
+| Repos view lists all subjects                 | Integration: A4 GSI1 `META` query; asserts no `Scan` issued                                                                              |
+| Panel opens without unmounting table          | E2E: scroll, open, assert scroll position and table still mounted                                                                        |
+| Toggle writes and reflects                    | Integration + E2E incl. failure → revert                                                                                                 |
+| Add repo < 30 s, zero deploys                 | E2E: timed happy path                                                                                                                    |
+| `params` validated, bad JSON never stored     | Unit + E2E: unknown key, malformed JSON, valid round-trip                                                                                |
+| JWT validated, 401 on invalid                 | Integration: valid, expired, wrong `aud`, wrong `iss`, missing header, unknown `kid`, `alg: none`, JWKS unreachable — **each must deny** |
+| Origin locked down                            | Manual + deploy checklist; not unit-testable                                                                                             |
+| Unknown `model_id` → "unknown", never `$0.00` | Unit: `unknown` and `partial` cases; E2E asserts rendered text                                                                           |
+| `incomplete` derived at read                  | Unit at the `maxLifetime + grace` boundary ±1 ms both directions, plus the absent-`maxLifetime` fallback                                 |
+| Cost < USD 10/month                           | Manual monthly check; not a test                                                                                                         |
 
 ### 14.4 Coverage
 
@@ -1140,12 +1184,12 @@ Step 4 is new relative to PRD §20 and blocks the query layer: the span field ma
 
 ### 15.2 CI workflows
 
-| Trigger path | Job |
-| --- | --- |
-| `apps/control-plane/**` | `validate` → build → deploy Fly |
-| `agents/<name>/**` | `validate` → deploy that agent |
-| `infra/**` | `cdk diff` → gated `cdk deploy` |
-| `packages/shared/**` | `validate` **all** consumers + assert generated artifacts current |
+| Trigger path            | Job                                                               |
+| ----------------------- | ----------------------------------------------------------------- |
+| `apps/control-plane/**` | `validate` → build → deploy Fly                                   |
+| `agents/<name>/**`      | `validate` → deploy that agent                                    |
+| `infra/**`              | `cdk diff` → gated `cdk deploy`                                   |
+| `packages/shared/**`    | `validate` **all** consumers + assert generated artifacts current |
 
 The `shared` fan-out is the one path where narrow gating would be wrong — a contract change that only validated `shared` would let a breaking change reach both consumers unnoticed.
 
@@ -1157,12 +1201,12 @@ No feature flags. Single operator, no gradual rollout to stage.
 
 No backward compatibility concerns: greenfield, no existing consumers, no public API.
 
-| Component | Rollback |
-| --- | --- |
+| Component     | Rollback                                            |
+| ------------- | --------------------------------------------------- |
 | Control plane | `fly deploy --image <previous>`; stateless, instant |
-| Agent | Redeploy previous AgentCore version |
-| Orchestrator | CDK deploy of previous version |
-| Table schema | Additive only; PITR for data recovery |
+| Agent         | Redeploy previous AgentCore version                 |
+| Orchestrator  | CDK deploy of previous version                      |
+| Table schema  | Additive only; PITR for data recovery               |
 
 Rollback is cheap precisely because the control plane holds no state. That property was chosen for cost and simplicity, and this is where it pays a second time.
 
@@ -1172,38 +1216,38 @@ Rollback is cheap precisely because the control plane holds no state. That prope
 
 ### 16.1 Dependencies
 
-| Dependency | Used by | Risk if unavailable |
-| --- | --- | --- |
-| `next`, `react` | control plane | — |
-| `@aws-sdk/client-*` (5 clients) | control plane, orchestrator | — |
-| `@aws-sdk/lib-dynamodb` | both | — |
-| `jose` | middleware (Edge-compatible) | Auth cannot be implemented in middleware |
-| `zod` | shared, actions | — |
-| `@tanstack/react-table` | tables | — |
-| shadcn/ui + Tailwind | UI | — |
-| `vitest`, `@playwright/test`, `aws-sdk-client-mock` | tests | — |
-| AgentCore Python SDK | agents | Agent rebuild blocked |
-| `ruff`, `mypy`, `uv` | agents | — |
+| Dependency                                          | Used by                      | Risk if unavailable                      |
+| --------------------------------------------------- | ---------------------------- | ---------------------------------------- |
+| `next`, `react`                                     | control plane                | —                                        |
+| `@aws-sdk/client-*` (5 clients)                     | control plane, orchestrator  | —                                        |
+| `@aws-sdk/lib-dynamodb`                             | both                         | —                                        |
+| `jose`                                              | middleware (Edge-compatible) | Auth cannot be implemented in middleware |
+| `zod`                                               | shared, actions              | —                                        |
+| `@tanstack/react-table`                             | tables                       | —                                        |
+| shadcn/ui + Tailwind                                | UI                           | —                                        |
+| `vitest`, `@playwright/test`, `aws-sdk-client-mock` | tests                        | —                                        |
+| AgentCore Python SDK                                | agents                       | Agent rebuild blocked                    |
+| `ruff`, `mypy`, `uv`                                | agents                       | —                                        |
 
 All pinned exactly, lockfiles committed.
 
 ### 16.2 Risks
 
-| # | Risk | Impact | Mitigation |
-| - | --- | --- | --- |
-| R1 | Span field paths differ from §8.2's assumption | High — read path is wrong | Phase 1 step 4 verifies against real spans; mapping confined to one file |
-| R2 | F1 unresolved: no `session_id` on spans | High — no span↔log↔row join | Add `llipe.session.id` (needs your decision) |
-| R3 | Logs Insights quota or latency worse than assumed | Medium — cold loads degrade | 25 s timeout, distinct `timeout` state, 5 min cache, single-flight, 30 d range cap |
-| R4 | `dynamodb:Attributes` condition doesn't deny as expected | High — silent config loss | Integration test asserting a real deny (§14.1) |
-| R5 | Fly OIDC friction | Low | Fallback isolated in one module (§7.4) |
-| R6 | Pricing table goes stale | Low — estimates drift | Versioned in repo; test asserts every observed `model_id` is priced |
-| R7 | Multi-model runs mis-costed | Medium | `partial` cost variant; per-model aggregation |
-| R8 | Log retention shorter than expected | Medium — history truncated | PRD open question #6; surface retention in the UI's range picker |
-| R9 | `incomplete` false-positive on a long run | Low | Bound is the agent's own `maxLifetime`, so a false positive means AgentCore already killed it; reversible on late write |
-| R10 | Agent `PutItem` erases config despite policy | High | Action withheld entirely, plus R4's test |
-| R11 | ~~`idleRuntimeSessionTimeout` reclaims fire-and-forget sessions.~~ **Resolved (§2.4)** — confirmed real: a blocking entrypoint blocks `/ping`, and the session is reclaimed at 300 s. | Was high | Async-task pattern (C16). Residual: verify `HealthyBusy` is observed on a real long run. |
-| R12 | Reused `session_id` collapses run history (§19.2 C1) | High | Timestamp component + contract test on uniqueness |
-| R13 | Lambda waits for agent completion (§19.2 C7): 15 min Lambda ceiling vs 60 min agent lifetime | High | Fire-and-forget rewrite; bounded pool |
+| #   | Risk                                                                                                                                                                                  | Impact                      | Mitigation                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| R1  | Span field paths differ from §8.2's assumption                                                                                                                                        | High — read path is wrong   | Phase 1 step 4 verifies against real spans; mapping confined to one file                                                |
+| R2  | F1 unresolved: no `session_id` on spans                                                                                                                                               | High — no span↔log↔row join | Add `llipe.session.id` (needs your decision)                                                                            |
+| R3  | Logs Insights quota or latency worse than assumed                                                                                                                                     | Medium — cold loads degrade | 25 s timeout, distinct `timeout` state, 5 min cache, single-flight, 30 d range cap                                      |
+| R4  | `dynamodb:Attributes` condition doesn't deny as expected                                                                                                                              | High — silent config loss   | Integration test asserting a real deny (§14.1)                                                                          |
+| R5  | Fly OIDC friction                                                                                                                                                                     | Low                         | Fallback isolated in one module (§7.4)                                                                                  |
+| R6  | Pricing table goes stale                                                                                                                                                              | Low — estimates drift       | Versioned in repo; test asserts every observed `model_id` is priced                                                     |
+| R7  | Multi-model runs mis-costed                                                                                                                                                           | Medium                      | `partial` cost variant; per-model aggregation                                                                           |
+| R8  | Log retention shorter than expected                                                                                                                                                   | Medium — history truncated  | PRD open question #6; surface retention in the UI's range picker                                                        |
+| R9  | `incomplete` false-positive on a long run                                                                                                                                             | Low                         | Bound is the agent's own `maxLifetime`, so a false positive means AgentCore already killed it; reversible on late write |
+| R10 | Agent `PutItem` erases config despite policy                                                                                                                                          | High                        | Action withheld entirely, plus R4's test                                                                                |
+| R11 | ~~`idleRuntimeSessionTimeout` reclaims fire-and-forget sessions.~~ **Resolved (§2.4)** — confirmed real: a blocking entrypoint blocks `/ping`, and the session is reclaimed at 300 s. | Was high                    | Async-task pattern (C16). Residual: verify `HealthyBusy` is observed on a real long run.                                |
+| R12 | Reused `session_id` collapses run history (§19.2 C1)                                                                                                                                  | High                        | Timestamp component + contract test on uniqueness                                                                       |
+| R13 | Lambda waits for agent completion (§19.2 C7): 15 min Lambda ceiling vs 60 min agent lifetime                                                                                          | High                        | Fire-and-forget rewrite; bounded pool                                                                                   |
 
 ---
 
@@ -1211,21 +1255,21 @@ All pinned exactly, lockfiles committed.
 
 Carried from PRD §18, plus those raised by this specification. S1, S2 and S7 are resolved in v1.1.
 
-| # | Question | Blocks | Needs |
-| - | --- | --- | --- |
-| ~~S1~~ | ~~F1: add `llipe.session.id`?~~ **Resolved** — AgentCore injects `session.id` under ADOT; the verification task survives as S3 | — | Closed |
-| ~~S2~~ | ~~F3 merge confirmation~~ **Resolved** — `incomplete` bounded by `maxLifetime`, merge as specified in §8.3 | — | Closed |
-| S3 | Exact span JSON field paths, **including whether `session.id` is actually present** | Query layer | Phase 1 verification against a real span |
-| S4 | Span destination: shared `aws/spans` assumed | Query config | Confirm the default |
-| S5 | Fly OIDC vs static keys | Deployment auth | Phase 1 spike |
-| S6 | Cloudflare Tunnel vs IP allowlist | Deployment | Your decision |
-| ~~S7~~ | ~~`dep-updater` scope and params~~ **Resolved** — reference repo read; params are `allow_fixes` / `max_fix_attempts`; gaps enumerated in §19 | — | Closed |
-| S8 | Bedrock per-model prices | Cost accuracy | Populate `pricing-v1.json` |
-| S9 | Span log-group retention period | Range picker bounds | Confirm at Phase 2 |
-| ~~S10~~ | ~~Adopt CDK over Terraform?~~ **Resolved** — CDK approved; technical guidelines v1.1 updated | — | Closed |
-| ~~S11~~ | ~~Does `idleRuntimeSessionTimeout` kill fire-and-forget runs?~~ **Resolved (§2.4)** — yes, via a blocked `/ping`; fixed by the async-task pattern (C16) | — | Closed |
-| S12 | Canonical agent name — reference uses `dependencyUpdateAgent` / `depUpdateAgent`, PRD uses `dep-updater` (§19.2 C14) | Tag ↔ `AGENT#` key join | Confirm `dep-updater` |
-| S13 | Should `idleRuntimeSessionTimeout` be raised from 300 s as defence in depth, given `HealthyBusy` should already cover it? | Agent runtime config | Low stakes; decide at M1 |
+| #       | Question                                                                                                                                                | Blocks                  | Needs                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------------------- |
+| ~~S1~~  | ~~F1: add `llipe.session.id`?~~ **Resolved** — AgentCore injects `session.id` under ADOT; the verification task survives as S3                          | —                       | Closed                                   |
+| ~~S2~~  | ~~F3 merge confirmation~~ **Resolved** — `incomplete` bounded by `maxLifetime`, merge as specified in §8.3                                              | —                       | Closed                                   |
+| S3      | Exact span JSON field paths, **including whether `session.id` is actually present**                                                                     | Query layer             | Phase 1 verification against a real span |
+| S4      | Span destination: shared `aws/spans` assumed                                                                                                            | Query config            | Confirm the default                      |
+| S5      | Fly OIDC vs static keys                                                                                                                                 | Deployment auth         | Phase 1 spike                            |
+| S6      | Cloudflare Tunnel vs IP allowlist                                                                                                                       | Deployment              | Your decision                            |
+| ~~S7~~  | ~~`dep-updater` scope and params~~ **Resolved** — reference repo read; params are `allow_fixes` / `max_fix_attempts`; gaps enumerated in §19            | —                       | Closed                                   |
+| S8      | Bedrock per-model prices                                                                                                                                | Cost accuracy           | Populate `pricing-v1.json`               |
+| S9      | Span log-group retention period                                                                                                                         | Range picker bounds     | Confirm at Phase 2                       |
+| ~~S10~~ | ~~Adopt CDK over Terraform?~~ **Resolved** — CDK approved; technical guidelines v1.1 updated                                                            | —                       | Closed                                   |
+| ~~S11~~ | ~~Does `idleRuntimeSessionTimeout` kill fire-and-forget runs?~~ **Resolved (§2.4)** — yes, via a blocked `/ping`; fixed by the async-task pattern (C16) | —                       | Closed                                   |
+| S12     | Canonical agent name — reference uses `dependencyUpdateAgent` / `depUpdateAgent`, PRD uses `dep-updater` (§19.2 C14)                                    | Tag ↔ `AGENT#` key join | Confirm `dep-updater`                    |
+| S13     | Should `idleRuntimeSessionTimeout` be raised from 300 s as defence in depth, given `HealthyBusy` should already cover it?                               | Agent runtime config    | Low stakes; decide at M1                 |
 
 What remains are lookups and one deployed-run verification (S3), not design decisions. The two that could have changed the architecture are closed.
 
@@ -1233,30 +1277,30 @@ What remains are lookups and one deployed-run verification (S3), not design deci
 
 ## 18. PRD Requirement Traceability
 
-| PRD § | Requirement | Spec § |
-| --- | --- | --- |
-| 7.1 | Run entity fields | 5.1, 8.2, 8.3 |
-| 7.2 | Data sources + cache | 4.2, 11.1 |
-| 7.3 | Emission contract | 2.1 F1, 14.2 |
-| 7.4 | Discovery tags | 4.1, 9 |
-| 7.5 A | Agents view | 10.1, 10.4 |
-| 7.5 B | Agent view, both tabs | 10.1, 10.4, 6.2 |
-| 7.5 C | Repos view | 5.3 A4, 10.1 |
-| 7.5 D | Run panel | 10.3, 10.4 |
-| 7.6 | Estimated cost | 8.4 |
-| 8.1 | DynamoDB schema | 5.1, 5.2, 5.3 |
-| 8.2 | Write separation | 5.4, 12.2 |
-| 8.3 | Orchestration | 8.6 |
-| 8.4 | GitHub | 9, 12.4 |
-| 9 | Data requirements | 5.1, 5.5, 12.4 |
-| 10 | Non-goals | 12.1 (enforced by IAM) |
-| 11 | Design considerations | 10 |
-| 12.1 | Authentication | 7.1, 7.2 |
-| 12.2 | IAM | 12.1, 12.2 |
-| 12.3 | Repo layout | 3, 15.2 |
-| 12.4 | Prerequisites | 15.1 |
-| 13 | Acceptance criteria | 14.3 |
-| 17 | Security & compliance | 12 |
+| PRD § | Requirement           | Spec §                 |
+| ----- | --------------------- | ---------------------- |
+| 7.1   | Run entity fields     | 5.1, 8.2, 8.3          |
+| 7.2   | Data sources + cache  | 4.2, 11.1              |
+| 7.3   | Emission contract     | 2.1 F1, 14.2           |
+| 7.4   | Discovery tags        | 4.1, 9                 |
+| 7.5 A | Agents view           | 10.1, 10.4             |
+| 7.5 B | Agent view, both tabs | 10.1, 10.4, 6.2        |
+| 7.5 C | Repos view            | 5.3 A4, 10.1           |
+| 7.5 D | Run panel             | 10.3, 10.4             |
+| 7.6   | Estimated cost        | 8.4                    |
+| 8.1   | DynamoDB schema       | 5.1, 5.2, 5.3          |
+| 8.2   | Write separation      | 5.4, 12.2              |
+| 8.3   | Orchestration         | 8.6                    |
+| 8.4   | GitHub                | 9, 12.4                |
+| 9     | Data requirements     | 5.1, 5.5, 12.4         |
+| 10    | Non-goals             | 12.1 (enforced by IAM) |
+| 11    | Design considerations | 10                     |
+| 12.1  | Authentication        | 7.1, 7.2               |
+| 12.2  | IAM                   | 12.1, 12.2             |
+| 12.3  | Repo layout           | 3, 15.2                |
+| 12.4  | Prerequisites         | 15.1                   |
+| 13    | Acceptance criteria   | 14.3                   |
+| 17    | Security & compliance | 12                     |
 
 ---
 
@@ -1282,21 +1326,21 @@ dep-update-agent/
 └── lambda/trigger/handler.py       # the fan-out, Python
 ```
 
-| Aspect | Current state | Control-plane relevance |
-| --- | --- | --- |
-| Framework | Strands Agents, `BedrockAgentCoreApp`, `@app.entrypoint` | Compatible |
-| Instrumentation | `CMD ["opentelemetry-instrument", "python", "main.py"]` | **Already satisfies the F1 precondition** — ADOT is what makes `session.id` injection work |
-| Model | Claude Sonnet 4, invoked only when tests break | Most runs cost zero tokens, so many rows will legitimately show near-zero cost |
-| Runtime | arm64 container, `PYTHON_3_14` declared, `python:3.13-slim` in the image | Version declarations disagree (C14) |
-| Lifecycle | `idleRuntimeSessionTimeout: 300`, `maxLifetime: 3600` | Feeds `incomplete` derivation; the 300 s value drives R11 |
-| Fan-out | `lambda/trigger/handler.py`, serial `for` loop over `REPOS` env var | Replaced (C1, C7, C8, C9, C10) |
-| Session ID | `f"dep-update-{sha256(repo_url)[:24]}"` | **Broken for this product** (C1) |
-| Payload | `{repo_url, allow_fixes, max_fix_attempts}` | Reshaped (C5) |
-| Logging | `print(f"[dep-agent] ...")`, plain text | Replaced (C2) |
-| Return values | `success` / `no_updates` / `pr_already_open` / `tests_failing` / `error`, `pr_url` when a PR exists | Maps to the emission contract (C15) |
-| Tags | `agentcore:created-by`, `agentcore:project-name` | Discovery tags missing (C11) |
-| IaC | AWS CDK TypeScript throughout | Drives the §2.3 reversal |
-| DynamoDB | none | Added (C10) |
+| Aspect          | Current state                                                                                       | Control-plane relevance                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Framework       | Strands Agents, `BedrockAgentCoreApp`, `@app.entrypoint`                                            | Compatible                                                                                 |
+| Instrumentation | `CMD ["opentelemetry-instrument", "python", "main.py"]`                                             | **Already satisfies the F1 precondition** — ADOT is what makes `session.id` injection work |
+| Model           | Claude Sonnet 4, invoked only when tests break                                                      | Most runs cost zero tokens, so many rows will legitimately show near-zero cost             |
+| Runtime         | arm64 container, `PYTHON_3_14` declared, `python:3.13-slim` in the image                            | Version declarations disagree (C14)                                                        |
+| Lifecycle       | `idleRuntimeSessionTimeout: 300`, `maxLifetime: 3600`                                               | Feeds `incomplete` derivation; the 300 s value drives R11                                  |
+| Fan-out         | `lambda/trigger/handler.py`, serial `for` loop over `REPOS` env var                                 | Replaced (C1, C7, C8, C9, C10)                                                             |
+| Session ID      | `f"dep-update-{sha256(repo_url)[:24]}"`                                                             | **Broken for this product** (C1)                                                           |
+| Payload         | `{repo_url, allow_fixes, max_fix_attempts}`                                                         | Reshaped (C5)                                                                              |
+| Logging         | `print(f"[dep-agent] ...")`, plain text                                                             | Replaced (C2)                                                                              |
+| Return values   | `success` / `no_updates` / `pr_already_open` / `tests_failing` / `error`, `pr_url` when a PR exists | Maps to the emission contract (C15)                                                        |
+| Tags            | `agentcore:created-by`, `agentcore:project-name`                                                    | Discovery tags missing (C11)                                                               |
+| IaC             | AWS CDK TypeScript throughout                                                                       | Drives the §2.3 reversal                                                                   |
+| DynamoDB        | none                                                                                                | Added (C10)                                                                                |
 
 ### 19.2 Required changes
 
@@ -1404,42 +1448,42 @@ Today: `REPOS = json.loads(os.environ.get("REPOS", "[]"))`, set in `trigger-stac
 
 **C14 — Reconcile names and versions.**
 
-| Thing | Today | Target |
-| --- | --- | --- |
-| Agent identity | `dependencyUpdateAgent` (project), `depUpdateAgent` (runtime) | `dep-updater` everywhere — it is the `agent:name` tag value **and** the `AGENT#` key, so it must match exactly |
-| Python | `PYTHON_3_14` in `agentcore.json`, `python:3.13-slim` image, `>=3.13` in `pyproject.toml` | Pick 3.13, align all three |
-| Location | `dependencyUpdateAgent/app/depUpdateAgent/` | `agents/dep-updater/` per PRD §12.3 |
+| Thing          | Today                                                                                     | Target                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Agent identity | `dependencyUpdateAgent` (project), `depUpdateAgent` (runtime)                             | `dep-updater` everywhere — it is the `agent:name` tag value **and** the `AGENT#` key, so it must match exactly |
+| Python         | `PYTHON_3_14` in `agentcore.json`, `python:3.13-slim` image, `>=3.13` in `pyproject.toml` | Pick 3.13, align all three                                                                                     |
+| Location       | `dependencyUpdateAgent/app/depUpdateAgent/`                                               | `agents/dep-updater/` per PRD §12.3                                                                            |
 
 The version disagreement may be harmless with `build: Container`, but three declarations of one fact is the kind of thing that becomes load-bearing at the worst moment.
 
 **C15 — Map return values to the emission contract.**
 The agent's five outcomes must project onto `llipe.run.status` ∈ {`success`, `failed`} and `llipe.outcome.type` ∈ {`pr`, `report`, `none`}:
 
-| Agent result | `run.status` | `outcome.type` | `outcome.url` | Reasoning |
-| --- | --- | --- | --- | --- |
-| `success` | `success` | `pr` | `pr_url` | PR opened |
-| `no_updates` | `success` | `none` | — | Ran correctly, nothing to do. **Not a failure** — treating it as one would make a healthy fleet look broken most weeks |
-| `pr_already_open` | `success` | `pr` | existing PR URL | Correct no-op, and the PR is still the useful artefact |
-| `tests_failing` | `failed` | `none` | — | Updates broke the build and the fix agent could not repair it. A real, reported failure |
-| `error` | `failed` | `none` | — | Exception |
+| Agent result      | `run.status` | `outcome.type` | `outcome.url`   | Reasoning                                                                                                              |
+| ----------------- | ------------ | -------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `success`         | `success`    | `pr`           | `pr_url`        | PR opened                                                                                                              |
+| `no_updates`      | `success`    | `none`         | —               | Ran correctly, nothing to do. **Not a failure** — treating it as one would make a healthy fleet look broken most weeks |
+| `pr_already_open` | `success`    | `pr`           | existing PR URL | Correct no-op, and the PR is still the useful artefact                                                                 |
+| `tests_failing`   | `failed`     | `none`         | —               | Updates broke the build and the fix agent could not repair it. A real, reported failure                                |
+| `error`           | `failed`     | `none`         | —               | Exception                                                                                                              |
 
-This mapping is a judgement call worth stating explicitly: two of the five results are *successful runs that produced no pull request*, and collapsing "nothing needed doing" into `failed` would be the single fastest way to make the Agents view useless.
+This mapping is a judgement call worth stating explicitly: two of the five results are _successful runs that produced no pull request_, and collapsing "nothing needed doing" into `failed` would be the single fastest way to make the Agents view useless.
 
 ### 19.3 Migration task outline
 
-| # | Task | Depends on |
-| - | --- | --- |
-| M1 | Move agent to `agents/dep-updater/`, align Python version and names (C14) | Monorepo scaffold |
-| M2 | `packages/shared` contract + Python codegen | — |
-| M3 | JSON logging with bound `session_id` (C2) | M1 |
-| M4 | Emit `llipe.*` attributes in a `finally` block (C3, C15) | M2, M3 |
-| M5 | Accept the new payload envelope; normalise `subject_id` (C5) | M2 |
-| M6 | Agent-side `UpdateItem` outcome stamp in `finally` (C6) | M2, M5 |
-| **M7** | **Non-blocking entrypoint: pipeline onto a worker thread, `add_async_task` / `complete_async_task` (C16)** | M1 |
-| M8 | **Verify on one deployed long run:** `session.id` present on spans (C4, S3), `HealthyBusy` observed, run survives past 5 minutes | M4, M7 |
-| M9 | Rewrite orchestrator in TypeScript: DynamoDB query, `buildSessionId`, pool of 4, fire-and-forget, start stamp (C1, C7, C8, C9, C10, C12) | M2, M8 |
-| M10 | Discovery tags on the runtime (C11) | M1 |
-| M11 | Port CDK stacks into `infra/`, importing constants from `shared` (C13) | M2 |
-| M12 | Contract tests: attributes present, generated Python current, `session_id` uniqueness and length, agent write cannot clear `enabled` | M4, M6, M9 |
+| #      | Task                                                                                                                                     | Depends on        |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| M1     | Move agent to `agents/dep-updater/`, align Python version and names (C14)                                                                | Monorepo scaffold |
+| M2     | `packages/shared` contract + Python codegen                                                                                              | —                 |
+| M3     | JSON logging with bound `session_id` (C2)                                                                                                | M1                |
+| M4     | Emit `llipe.*` attributes in a `finally` block (C3, C15)                                                                                 | M2, M3            |
+| M5     | Accept the new payload envelope; normalise `subject_id` (C5)                                                                             | M2                |
+| M6     | Agent-side `UpdateItem` outcome stamp in `finally` (C6)                                                                                  | M2, M5            |
+| **M7** | **Non-blocking entrypoint: pipeline onto a worker thread, `add_async_task` / `complete_async_task` (C16)**                               | M1                |
+| M8     | **Verify on one deployed long run:** `session.id` present on spans (C4, S3), `HealthyBusy` observed, run survives past 5 minutes         | M4, M7            |
+| M9     | Rewrite orchestrator in TypeScript: DynamoDB query, `buildSessionId`, pool of 4, fire-and-forget, start stamp (C1, C7, C8, C9, C10, C12) | M2, M8            |
+| M10    | Discovery tags on the runtime (C11)                                                                                                      | M1                |
+| M11    | Port CDK stacks into `infra/`, importing constants from `shared` (C13)                                                                   | M2                |
+| M12    | Contract tests: attributes present, generated Python current, `session_id` uniqueness and length, agent write cannot clear `enabled`     | M4, M6, M9        |
 
 M7 comes before M8 because there is no point verifying span emission on a run that gets killed at five minutes. M8 gates M9: one deployed run answers both the `session.id` question and whether the liveness fix works, and both would change orchestration choices, so the verification belongs before the orchestrator is written rather than after.

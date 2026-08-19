@@ -1,0 +1,5 @@
+packages:
+  - "apps/*"
+  - "agents/*"
+  - "packages/*"
+  - "infra"
