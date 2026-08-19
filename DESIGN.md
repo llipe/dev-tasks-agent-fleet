@@ -6,6 +6,7 @@ The design contract for `apps/control-plane`. Every story that touches UI, UX, o
 
 | Version | Date       | Summary                                              | Author           |
 | ------- | ---------- | ---------------------------------------------------- | ---------------- |
+| 1.1     | 2026-08-19 | `stale` renamed to `incomplete`; added partial-cost display rule | product-engineer |
 | 1.0     | 2026-08-19 | Baseline, derived from PRD v1.0 §11                   | product-engineer |
 
 ---
@@ -39,14 +40,18 @@ Both light and dark schemes are supported from the start, driven by `prefers-col
 
 Four run states, each with a reserved token pair. These are the only status colours in the interface, and they must not be reused for anything else.
 
-| Status    | Token             | Hue family | Meaning                                             |
-| --------- | ----------------- | ---------- | --------------------------------------------------- |
-| `running` | `--status-running` | Blue       | In progress, invoked and not yet closed out          |
-| `success` | `--status-success` | Green      | Completed successfully                               |
-| `failed`  | `--status-failed`  | Red        | Completed with failure                               |
-| `stale`   | `--status-stale`   | Amber      | Derived: still `running` after 6 hours. Probably dead. |
+| Status       | Token                 | Hue family | Meaning                                                        |
+| ------------ | --------------------- | ---------- | -------------------------------------------------------------- |
+| `running`    | `--status-running`     | Blue       | In progress, invoked and not yet closed out                     |
+| `success`    | `--status-success`     | Green      | Completed successfully                                          |
+| `failed`     | `--status-failed`      | Red        | Completed with a reported failure                               |
+| `incomplete` | `--status-incomplete`  | Amber      | Derived: ran past the agent's `maxLifetime`. Cut off, no output. |
 
-`stale` is amber rather than red because it is an inference, not a reported outcome. It says "this looks wrong" rather than "this failed," and the visual language should carry that difference. It is also the one status nobody writes — see PRD §9.
+`incomplete` is amber rather than red because it is a different fact, not a lesser one. `failed` means the agent ran and reported that it could not do the job. `incomplete` means the runtime terminated the instance before anything was reported — there is no outcome to show, and no failure was diagnosed. Presenting both in red would merge "this went wrong" with "we never found out", and the second needs a different response from the operator.
+
+Copy should reflect that distinction: `failed` rows link to the reported error, `incomplete` rows say the run was cut off at its lifetime limit and offer the logs.
+
+`incomplete` is also the only status nobody writes — see PRD §8.3.
 
 **Status is never communicated by colour alone.** Every status indicator pairs its colour with a text label, and a shape or icon where space allows. Roughly one in twelve men has some form of colour vision deficiency, red/green being the common axis — which is exactly the pair doing the most work here. A badge reading "failed" in red is accessible; a bare red dot is not.
 

@@ -4,6 +4,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 1.1     | 2026-08-19 | `incomplete` replaces the fixed-threshold `stale` assumption. `dep-updater` base repo identified, closing an open question. | product-engineer |
 | 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)      | product-engineer |
 
 ---
@@ -153,7 +154,7 @@ No approval chain, no external stakeholders. Scope decisions are made by one per
 1. **1% Transaction Search indexing is sufficient.** 100% of spans are ingested as logs; the indexing percentage affects only X-Ray trace summaries, which the product does not consume.
 2. **A single span destination is achievable across the fleet.** Two destinations means two queries and a materially more complex read path.
 3. **A 5-minute cache TTL is acceptable freshness** for inventory, runtime detail, and run lists. Logs and configuration reads are uncached because they are the ones read when something is wrong.
-4. **6 hours is the right threshold for `stale`.** Long enough that legitimate long runs are not flagged, short enough to catch a death the same working day. It is a heuristic, derived at read time, never written.
+4. **The agent's own `maxLifetime` is the right bound for `incomplete`.** `GetAgentRuntime` reports each agent's configured instance lifetime, so the threshold is the platform's limit rather than a guess. Past it, AgentCore has terminated the instance, making "no outcome was written" a fact rather than a heuristic. Derived at read time, never written.
 5. **Token-derived cost is close enough to be useful.** Excluding runtime compute cost is acceptable because the estimate exists to spot anomalies, not to reconcile a bill.
 6. **A hand-maintained pricing table stays current enough.** Model prices change rarely; a versioned JSON file in the repo is cheaper than a pricing API integration.
 7. **AgentCore's automatic instrumentation supplies tokens, latency, and model** without agent-side code.
@@ -176,6 +177,6 @@ No approval chain, no external stakeholders. Scope decisions are made by one per
 
 ## Reference
 
-- PRD: [`docs/PRD-agent-control-plane-v1-en.md`](./PRD-agent-control-plane-v1-en.md) — v1.0, scope closed
+- PRD: [`docs/requirements/PRD-agent-control-plane-v1-en.md`](./requirements/PRD-agent-control-plane-v1-en.md) — v1.1, scope closed
 - Technical guidelines: [`docs/technical-guidelines.md`](./technical-guidelines.md)
 - Design contract: [`../DESIGN.md`](../DESIGN.md)
