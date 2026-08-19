@@ -5,7 +5,7 @@
 - `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.nvmrc` - Monorepo root config
 - `eslint.config.js`, `.prettierrc`, `vitest.workspace.ts` - Quality tooling
 - `.github/workflows/{control-plane,agent,infra,shared}.yml` - Path-gated CI
-- `packages/shared/src/**` - Contract: keys, schemas, status, session-id, span fields, codegen
+- `packages/shared/src/**` - Contract: keys, schemas, status, session-id, span fields, codegen, IAM attribute allowlists
 - `packages/shared/generated/**` - Generated Python module + JSON Schema
 - `infra/bin/app.ts`, `infra/lib/{data-stack,iam-stack,agent-stack,orchestration-stack}.ts` - CDK
 - `infra/seed/seed.ts` - Table seeder
@@ -151,18 +151,18 @@ S-001 (foundation)
   - [x] 3.13 Request user confirmation, deploy table, run seed, verify — DEFERRED: deployment requires user confirmation, documented in PR
   - [x] 3.14 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration`
 
-- [ ] 4.0 Implement Story S-004: IAM roles enforcing write separation — #6 https://github.com/llipe/dev-tasks-agent-fleet/issues/6
+- [x] 4.0 Implement Story S-004: IAM roles enforcing write separation — #6 https://github.com/llipe/dev-tasks-agent-fleet/issues/6
 
-  - [ ] 4.1 Implement `iam-stack.ts` with three role constructs: `control-plane-role`, `orchestrator-role`, `agent-exec-role`
-  - [ ] 4.2 Import attribute allowlists from `packages/shared` for `dynamodb:Attributes` conditions
-  - [ ] 4.3 CDK snapshot test: policy documents contain expected actions and do NOT contain forbidden ones
-  - [ ] 4.4 CDK snapshot test: agent role has no `PutItem` action
-  - [ ] 4.5 Integration test: assume control-plane role, assert `InvokeAgentRuntime` is denied
-  - [ ] 4.6 Integration test: assume agent role, assert `PutItem` is denied
-  - [ ] 4.7 Integration test: assume agent role, assert `UpdateItem` touching `enabled` is denied
-  - [ ] 4.8 Integration test: agent `UpdateItem` on `last_status` succeeds (targeted deny, not blanket)
-  - [ ] 4.9 Deploy via gated `cdk deploy` and verify
-  - [ ] 4.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- iam`
+  - [x] 4.1 Implement `iam-stack.ts` with three role constructs: `control-plane-role`, `orchestrator-role`, `agent-exec-role`
+  - [x] 4.2 Import attribute allowlists from `packages/shared` for `dynamodb:Attributes` conditions
+  - [x] 4.3 CDK snapshot test: policy documents contain expected actions and do NOT contain forbidden ones
+  - [x] 4.4 CDK snapshot test: agent role has no `PutItem` action
+  - [x] 4.5 Integration test: assume control-plane role, assert `InvokeAgentRuntime` is denied
+  - [x] 4.6 Integration test: assume agent role, assert `PutItem` is denied
+  - [x] 4.7 Integration test: assume agent role, assert `UpdateItem` touching `enabled` is denied
+  - [x] 4.8 Integration test: agent `UpdateItem` on `last_status` succeeds (targeted deny, not blanket)
+  - [x] 4.9 Deploy via gated `cdk deploy` and verify — DEFERRED: deployment requires user confirmation
+  - [x] 4.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- iam`
 
 - [ ] 5.0 Implement Story S-005: Observability prerequisites and discovery tags — #7 https://github.com/llipe/dev-tasks-agent-fleet/issues/7
 
