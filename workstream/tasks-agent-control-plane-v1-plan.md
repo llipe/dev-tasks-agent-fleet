@@ -24,6 +24,78 @@
 - `apps/control-plane/Dockerfile`, `infra/control-plane.fly.toml` - Deployment
 - `apps/control-plane/pricing/pricing-v1.json` - Model pricing table
 
+## Execution Plan
+
+Integration branch: `integration/acp-v1-control-plane`
+Repository: `llipe/dev-tasks-agent-fleet`
+Test plan: `workstream/test-plan-agent-control-plane-v1.md`
+Developer execution mode: pre-approved autonomous sequential
+
+### Dependency Graph
+
+```
+S-001 (foundation)
+├── S-002 (shared contract)
+│   ├── S-003 (DynamoDB + seed) [depends: S-001, S-002]
+│   │   ├── S-004 (IAM roles) [depends: S-003]
+│   │   │   ├── S-005 (Observability + tags) [depends: S-003, S-004]
+│   │   │   │   └── S-010 (Span attributes) [depends: S-005, S-009]
+│   │   │   ├── S-011 (Agent DynamoDB stamps) [depends: S-004, S-010]
+│   │   │   ├── S-013 (Orchestrator Lambda) [depends: S-002, S-004, S-011]
+│   │   │   └── S-015 (AWS adapters) [depends: S-002, S-004, S-014]
+│   │   └── S-009 (Payload envelope) [depends: S-002, S-008]
+│   └── S-017 (Logs Insights query) [depends: S-012, S-015]
+├── S-006 (Port agent) [depends: S-001, S-005]
+│   └── S-007 (Non-blocking entrypoint) [depends: S-006]
+│       └── S-008 (Structured logging) [depends: S-007]
+├── S-014 (App shell + JWT) [depends: S-001]
+│   ├── S-015 (AWS adapters) [depends: S-002, S-004, S-014]
+│   └── S-016 (Design-system primitives) [depends: S-014]
+├── S-012 (Verify telemetry) [depends: S-010, S-011]
+├── S-018 (Run merge + cost) [depends: S-002, S-015, S-017]
+│   ├── S-019 (Agents list view) [depends: S-016, S-018]
+│   └── S-020 (Agent detail – Runs tab) [depends: S-016, S-018]
+│       └── S-021 (Run side panel) [depends: S-017, S-020]
+│           └── S-022 (Scope config – Repos tab) [depends: S-015, S-016, S-021]
+│               └── S-023 (Repos list view) [depends: S-022]
+└── S-024 (Fly deployment) [depends: all S-014–S-023]
+```
+
+### Sequential Execution Order
+
+| Seq | Story | Title | Issue | Dependencies |
+|-----|-------|-------|-------|--------------|
+| 1 | S-001 | Monorepo scaffold with quality gates and path-gated CI | #1 | — |
+| 2 | S-002 | `packages/shared` contract with Python code generation | #2 | S-001 |
+| 3 | S-003 | DynamoDB table, GSI1, and seed script via CDK | #3 | S-001, S-002 |
+| 4 | S-004 | IAM roles enforcing write separation | #6 | S-003 |
+| 5 | S-005 | Observability prerequisites and discovery tags | #7 | S-003, S-004 |
+| 6 | S-006 | Port `dep-update-agent` into the monorepo | #8 | S-001, S-005 |
+| 7 | S-007 | Non-blocking entrypoint so long runs survive | #9 | S-006 |
+| 8 | S-008 | Structured JSON logging keyed by `session_id` | #10 | S-007 |
+| 9 | S-009 | Accept the control-plane payload envelope | #11 | S-002, S-008 |
+| 10 | S-010 | Emit the `llipe.*` span attributes | #12 | S-005, S-009 |
+| 11 | S-011 | Agent stamps its outcome into DynamoDB | #13 | S-004, S-010 |
+| 12 | S-012 | Verify telemetry assumptions and pin the span field mapping | #14 | S-010, S-011 |
+| 13 | S-013 | Orchestrator Lambda driven by DynamoDB scope | #15 | S-002, S-004, S-011 |
+| 14 | S-014 | App shell with Cloudflare Access JWT validation | #18 | S-001 |
+| 15 | S-015 | AWS adapter layer, credentials, and TTL cache | #22 | S-002, S-004, S-014 |
+| 16 | S-016 | Design-system primitives — tokens, DataTable, StatusBadge | #23 | S-014 |
+| 17 | S-017 | Logs Insights run query and span-to-run mapping | #24 | S-012, S-015 |
+| 18 | S-018 | Run list merge, status derivation, and cost estimation | #25 | S-002, S-015, S-017 |
+| 19 | S-019 | Agents list view | #26 | S-016, S-018 |
+| 20 | S-020 | Agent detail — Runs tab with URL-persisted filters | #27 | S-016, S-018 |
+| 21 | S-021 | Run side panel with span timeline and logs | #28 | S-017, S-020 |
+| 22 | S-022 | Scope configuration — Repos tab and write actions | #29 | S-015, S-016, S-021 |
+| 23 | S-023 | Repos list and per-repository run view | #30 | S-022 |
+| 24 | S-024 | Fly deployment with Cloudflare Tunnel origin lockdown | #31 | S-014–S-023 |
+
+### Notes
+
+- Sequences 6–12 (agent-compat track) and 14–16 (control-plane shell track) are logically independent but serialized here because S-017 requires both S-012 (from agent track) and S-015 (from control-plane track). The agent track is scheduled first because it feeds telemetry fixtures needed downstream.
+- S-013 (Orchestrator) is independent of the control-plane UI track and is placed at sequence 13 after its last dependency (S-011) completes.
+- S-024 (Deployment) is terminal — it depends on all control-plane stories being integrated.
+
 ## Tasks
 
 - [ ] 1.0 Implement Story S-001: Monorepo scaffold with quality gates and path-gated CI — #1 https://github.com/llipe/dev-tasks-agent-fleet/issues/1
