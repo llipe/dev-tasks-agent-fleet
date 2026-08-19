@@ -45,6 +45,11 @@ jobs:
       - name: Test
         run: pnpm --filter @fleet/shared run test
 
+      - name: Codegen drift check
+        run: |
+          pnpm --filter @fleet/shared run codegen
+          git diff --exit-code packages/shared/generated/ || (echo "ERROR: Generated files are out of date! Run 'pnpm --filter shared run codegen' and commit the result." && exit 1)
+
       - name: Import boundary check
         run: pnpm run check-boundaries
 

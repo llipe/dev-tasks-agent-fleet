@@ -4,7 +4,13 @@ import globals from "globals";
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/.next/**", "**/coverage/**"],
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.next/**",
+      "**/coverage/**",
+      "**/generated/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.strict,
