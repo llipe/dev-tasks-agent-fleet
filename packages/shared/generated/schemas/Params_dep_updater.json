@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "allow_fixes": {
+      "type": "boolean"
+    },
+    "max_fix_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    }
+  },
+  "required": [
+    "allow_fixes",
+    "max_fix_attempts"
+  ],
+  "additionalProperties": false
+}

@@ -114,25 +114,25 @@ S-001 (foundation)
   - [x] 1.12 Verify AC: deliberate lint error fails `lint`; deliberate type error fails `typecheck`; unformatted file fails `format:check`; cross-package import fails boundary check
   - [x] 1.13 Run Tests: `pnpm run validate` green
 
-- [ ] 2.0 Implement Story S-002: `packages/shared` contract with Python code generation — #2 https://github.com/llipe/dev-tasks-agent-fleet/issues/2
+- [x] 2.0 Implement Story S-002: `packages/shared` contract with Python code generation — #2 https://github.com/llipe/dev-tasks-agent-fleet/issues/2
 
-  - [ ] 2.1 Implement key builders: `subjectPk(repo)`, `agentSk(name)`, `META`, `CONFIG` — prefixes defined once
-  - [ ] 2.2 Implement Zod schemas for `SubjectMetaItem`, `SubjectAgentItem`, `AgentConfigItem`
-  - [ ] 2.3 Implement `PARAMS_SCHEMAS` registry with `dep-updater` (`allow_fixes: boolean`, `max_fix_attempts: int 1–5`), `.strict()`; `paramsSchemaFor(unknown)` returns empty strict object
-  - [ ] 2.4 Implement `LLIPE` attribute-name constants (`SUBJECT_ID`, `RUN_STATUS`, `OUTCOME_TYPE`, `OUTCOME_URL`)
-  - [ ] 2.5 Implement `SPAN_FIELDS` mapping (single point of change for field paths, initially placeholder)
-  - [ ] 2.6 Implement `deriveStatus(lastStatus, lastRunAt, maxLifetimeMs, now)` with `DEFAULT_MAX_LIFETIME_MS = 28_800_000` and `TERMINATION_GRACE_MS = 300_000`
-  - [ ] 2.7 Implement `buildSessionId(agent, repo, scheduledAt)` with ≥33-char guarantee and determinism
-  - [ ] 2.8 Implement `normalizeSubjectId(input)` handling bare name, `owner/repo`, HTTPS clone URL, `.git` suffix, trailing slash
-  - [ ] 2.9 Write codegen script: Zod → JSON Schema → Python module; output committed under `generated/`
-  - [ ] 2.10 Add CI drift check: fails if `pnpm --filter shared run codegen` produces a diff
-  - [ ] 2.11 Unit test: key builders round-trip
-  - [ ] 2.12 Unit test: `deriveStatus` at boundary ±1 ms, absent-`maxLifetime` fallback, unparseable `lastRunAt`
-  - [ ] 2.13 Unit test: `buildSessionId` length floor with shortest agent+repo, determinism, charset
-  - [ ] 2.14 Unit test: `normalizeSubjectId` across all input forms incl. SSH remote edge case
-  - [ ] 2.15 Unit test: `PARAMS_SCHEMAS` rejects unknown keys and wrong types
-  - [ ] 2.16 Verify AC: `packages/shared` has no dependency on `apps/` or `agents/`
-  - [ ] 2.17 Run Tests: `pnpm --filter shared run test:unit && pnpm --filter shared run codegen && pnpm run validate`
+  - [x] 2.1 Implement key builders: `subjectPk(repo)`, `agentSk(name)`, `META`, `CONFIG` — prefixes defined once
+  - [x] 2.2 Implement Zod schemas for `SubjectMetaItem`, `SubjectAgentItem`, `AgentConfigItem`
+  - [x] 2.3 Implement `PARAMS_SCHEMAS` registry with `dep-updater` (`allow_fixes: boolean`, `max_fix_attempts: int 1–5`), `.strict()`; `paramsSchemaFor(unknown)` returns empty strict object
+  - [x] 2.4 Implement `LLIPE` attribute-name constants (`SUBJECT_ID`, `RUN_STATUS`, `OUTCOME_TYPE`, `OUTCOME_URL`)
+  - [x] 2.5 Implement `SPAN_FIELDS` mapping (single point of change for field paths, initially placeholder)
+  - [x] 2.6 Implement `deriveStatus(lastStatus, lastRunAt, maxLifetimeMs, now)` with `DEFAULT_MAX_LIFETIME_MS = 28_800_000` and `TERMINATION_GRACE_MS = 300_000`
+  - [x] 2.7 Implement `buildSessionId(agent, repo, scheduledAt)` with ≥33-char guarantee and determinism
+  - [x] 2.8 Implement `normalizeSubjectId(input)` handling bare name, `owner/repo`, HTTPS clone URL, `.git` suffix, trailing slash
+  - [x] 2.9 Write codegen script: Zod → JSON Schema → Python module; output committed under `generated/`
+  - [x] 2.10 Add CI drift check: fails if `pnpm --filter shared run codegen` produces a diff
+  - [x] 2.11 Unit test: key builders round-trip
+  - [x] 2.12 Unit test: `deriveStatus` at boundary ±1 ms, absent-`maxLifetime` fallback, unparseable `lastRunAt`
+  - [x] 2.13 Unit test: `buildSessionId` length floor with shortest agent+repo, determinism, charset
+  - [x] 2.14 Unit test: `normalizeSubjectId` across all input forms incl. SSH remote edge case
+  - [x] 2.15 Unit test: `PARAMS_SCHEMAS` rejects unknown keys and wrong types
+  - [x] 2.16 Verify AC: `packages/shared` has no dependency on `apps/` or `agents/`
+  - [x] 2.17 Run Tests: `pnpm --filter shared run test:unit && pnpm --filter shared run codegen && pnpm run validate`
 
 - [ ] 3.0 Implement Story S-003: DynamoDB table, GSI1, and seed script via CDK — #3 https://github.com/llipe/dev-tasks-agent-fleet/issues/3
 
