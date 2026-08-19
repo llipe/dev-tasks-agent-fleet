@@ -134,7 +134,7 @@ S-001 (foundation)
   - [x] 2.16 Verify AC: `packages/shared` has no dependency on `apps/` or `agents/`
   - [x] 2.17 Run Tests: `pnpm --filter shared run test:unit && pnpm --filter shared run codegen && pnpm run validate`
 
-- [ ] 3.0 Implement Story S-003: DynamoDB table, GSI1, and seed script via CDK — #3 https://github.com/llipe/dev-tasks-agent-fleet/issues/3
+- [x] 3.0 Implement Story S-003: DynamoDB table, GSI1, and seed script via CDK — #3 https://github.com/llipe/dev-tasks-agent-fleet/issues/3
 
   - [x] 3.1 Create CDK app skeleton in `infra/`: `bin/app.ts` with stack instantiation
   - [x] 3.2 Implement `data-stack.ts`: table `agent-fleet-config`, `pk`/`sk` string keys, on-demand, PITR, deletion protection, GSI1 (pk=sk, sk=pk, ALL projection)
