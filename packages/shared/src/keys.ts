@@ -3,6 +3,12 @@
  * Single source of truth for all key structure in the agent-fleet-config table.
  */
 
+/** DynamoDB table name */
+export const TABLE_NAME = "agent-fleet-config" as const;
+
+/** GSI1 index name (inverted: pk=sk, sk=pk) */
+export const GSI1_NAME = "GSI1" as const;
+
 export const PREFIXES = {
   SUBJECT: "SUBJECT#",
   AGENT: "AGENT#",
