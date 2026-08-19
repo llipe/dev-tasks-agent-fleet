@@ -15,7 +15,7 @@
 | 1        | S-001    | #1      | ✅ Merged      | #32 | story/S-001-monorepo-scaffold |
 | 2        | S-002    | #2      | ✅ Merged      | #33 | story/S-002-shared-contract   |
 | 3        | S-003    | #3      | ✅ Merged      | #34 | story/S-003-dynamodb-table    |
-| 4        | S-004    | #6      | 🔄 In Progress | —   | —                             |
+| 4        | S-004    | #6      | ✅ Merged      | #35 | story/S-004-iam-roles         |
 | 5        | S-005    | #7      | ⏳ Pending     | —   | —                             |
 | 6        | S-006    | #8      | ⏳ Pending     | —   | —                             |
 | 7        | S-007    | #9      | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-004
-- Last merged PR: #34
-- Integration branch HEAD: bda8f8f
+- Next story: S-005
+- Last merged PR: #35
+- Integration branch HEAD: a5642d6
 
 ## Decisions Log
 
@@ -49,3 +49,4 @@
 - GitHub self-approval limitation bypassed for story PRs targeting integration branch (planner is the PR author).
 - S-002 verifier audit identified 3 minor drift items (params optionality, prettierignore scope, boundary operator). D-2 fixed before merge. D-1 and D-3 non-blocking, deferred.
 - S-003 verifier audit: High fidelity, 2 minor drift items (both non-blocking). Deployment deferred pending user confirmation.
+- S-004 verifier audit: High fidelity, 0 drift. Deployment deferred pending user confirmation.
