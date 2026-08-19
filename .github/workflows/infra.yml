@@ -1,0 +1,62 @@
+name: CI — Infra
+
+on:
+  push:
+    branches: [main, "integration/**"]
+    paths:
+      - "infra/**"
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/infra.yml"
+  pull_request:
+    branches: [main, "integration/**"]
+    paths:
+      - "infra/**"
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/infra.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @fleet/infra run lint
+
+      - name: Format check
+        run: pnpm --filter @fleet/infra run format:check
+
+      - name: Type check
+        run: pnpm --filter @fleet/infra run typecheck
+
+      - name: Test
+        run: pnpm --filter @fleet/infra run test
+
+      - name: Import boundary check
+        run: pnpm run check-boundaries
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+        if: vars.AWS_CI_ROLE_ARN != ''
+
+      - name: CDK diff
+        run: pnpm --filter @fleet/infra run cdk diff
+        if: vars.AWS_CI_ROLE_ARN != ''

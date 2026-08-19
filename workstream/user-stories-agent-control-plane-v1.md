@@ -2,21 +2,21 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                        | Author           |
-| ------- | ---------- | -------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-08-19 | Initial stories, derived from spec v1.2 and PRD v1.3            | product-engineer |
+| Version | Date       | Summary                                              | Author           |
+| ------- | ---------- | ---------------------------------------------------- | ---------------- |
+| 1.0     | 2026-08-19 | Initial stories, derived from spec v1.2 and PRD v1.3 | product-engineer |
 
 ---
 
 ## Source Documents
 
-| Document | Version |
-| --- | --- |
-| [PRD](../docs/requirements/PRD-agent-control-plane-v1-en.md) | 1.3 |
-| [Specification](./specification-agent-control-plane-v1.md) | 1.2 |
-| [Technical guidelines](../docs/technical-guidelines.md) | 1.1 |
-| [Design contract](../DESIGN.md) | 1.1 |
-| [Product context](../docs/product-context.md) | 1.1 |
+| Document                                                     | Version |
+| ------------------------------------------------------------ | ------- |
+| [PRD](../docs/requirements/PRD-agent-control-plane-v1-en.md) | 1.3     |
+| [Specification](./specification-agent-control-plane-v1.md)   | 1.2     |
+| [Technical guidelines](../docs/technical-guidelines.md)      | 1.1     |
+| [Design contract](../DESIGN.md)                              | 1.1     |
+| [Product context](../docs/product-context.md)                | 1.1     |
 
 ## Sequencing Rationale
 
@@ -1966,16 +1966,16 @@ Not applicable.
 
 ## Execution Plan
 
-| Phase | Stories | Sizes | Gate |
-| --- | --- | --- | --- |
-| 1 — Foundation | S-001, S-002 | M, M | Contract exists and CI enforces it |
-| 2 — Infrastructure & data | S-003, S-004, S-005 | M, S, S | Table live, denials proven, spans arriving |
-| 3 — Agent compatibility | S-006 … S-012 | M, S, S, S, S, S, S | **S-012 verifies telemetry assumptions** |
-| 4 — Orchestration | S-013 | L | Scope changes need no deploy |
-| 5 — Control plane foundation | S-014, S-015, S-016 | M, M, M | Auth closed, adapters cached, primitives ready |
-| 6 — Read path | S-017, S-018 | L, M | All four statuses visible |
-| 7 — Views | S-019 … S-023 | M, M, M, L, M | Both axes navigable, writes working |
-| 8 — Deployment | S-024 | M | Two auth controls live |
+| Phase                        | Stories             | Sizes               | Gate                                           |
+| ---------------------------- | ------------------- | ------------------- | ---------------------------------------------- |
+| 1 — Foundation               | S-001, S-002        | M, M                | Contract exists and CI enforces it             |
+| 2 — Infrastructure & data    | S-003, S-004, S-005 | M, S, S             | Table live, denials proven, spans arriving     |
+| 3 — Agent compatibility      | S-006 … S-012       | M, S, S, S, S, S, S | **S-012 verifies telemetry assumptions**       |
+| 4 — Orchestration            | S-013               | L                   | Scope changes need no deploy                   |
+| 5 — Control plane foundation | S-014, S-015, S-016 | M, M, M             | Auth closed, adapters cached, primitives ready |
+| 6 — Read path                | S-017, S-018        | L, M                | All four statuses visible                      |
+| 7 — Views                    | S-019 … S-023       | M, M, M, L, M       | Both axes navigable, writes working            |
+| 8 — Deployment               | S-024               | M                   | Two auth controls live                         |
 
 **Total: 24 stories.** Roughly 44 developer-days at the stated sizes.
 
@@ -1998,102 +1998,102 @@ Only S-013 delivers PRD §1's zero-deploy scope change; only S-023 delivers the 
 
 #### PRD §6 User Stories
 
-| PRD user story | Story ID(s) | Status |
-| --- | --- | --- |
-| 1. All managed agents in one table | S-019 | Covered |
-| 2. Runs for an agent, date descending | S-020 | Covered |
-| 3. Agents and runs for a repository | S-023 | Covered |
-| 4. Run detail without losing position | S-021 | Covered |
-| 5. Toggle `enabled` instantly | S-022 | Covered |
-| 6. Add repository by name | S-022 | Covered |
-| 7. Edit `params` JSON | S-022 | Covered |
-| 8. Estimated 30-day cost per agent | S-018, S-019 | Covered |
+| PRD user story                                  | Story ID(s)  | Status  |
+| ----------------------------------------------- | ------------ | ------- |
+| 1. All managed agents in one table              | S-019        | Covered |
+| 2. Runs for an agent, date descending           | S-020        | Covered |
+| 3. Agents and runs for a repository             | S-023        | Covered |
+| 4. Run detail without losing position           | S-021        | Covered |
+| 5. Toggle `enabled` instantly                   | S-022        | Covered |
+| 6. Add repository by name                       | S-022        | Covered |
+| 7. Edit `params` JSON                           | S-022        | Covered |
+| 8. Estimated 30-day cost per agent              | S-018, S-019 | Covered |
 | 9. Cut-off runs visually distinct from failures | S-016, S-018 | Covered |
-| 10. Filter runs by status and date range | S-020, S-023 | Covered |
+| 10. Filter runs by status and date range        | S-020, S-023 | Covered |
 
 #### PRD §7 Functional Requirements
 
-| Requirement | Story ID(s) | Status |
-| --- | --- | --- |
-| 7.1 Run entity fields | S-002, S-017, S-018 | Covered |
-| 7.1 Four statuses incl. `incomplete` | S-002, S-018 | Covered |
-| 7.2 Agent inventory, 5 min cache | S-015 | Covered |
-| 7.2 Runtime detail + `lifecycleConfiguration` | S-015 | Covered |
-| 7.2 Runs via Logs Insights, 5 min cache | S-017 | Covered |
-| 7.2 Execution logs uncached | S-021 | Covered |
-| 7.2 Configuration uncached | S-015 | Covered |
-| 7.3 Four `llipe.*` attributes | S-010 | Covered |
-| 7.3 `session.id` availability | S-012 | Covered |
-| 7.3 JSON logs with `session_id` | S-008 | Covered |
-| 7.4 Discovery tags, opt-in | S-005 | Covered |
-| 7.5 A Agents view | S-019 | Covered |
-| 7.5 B Agent view, Runs tab | S-020 | Covered |
-| 7.5 B Agent view, Repos tab | S-022 | Covered |
-| 7.5 C Repos view | S-023 | Covered |
-| 7.5 D Run side panel | S-021 | Covered |
-| 7.6 Estimated cost formula + pricing table | S-018 | Covered |
-| 7.6 Labelled as estimate | S-016, S-018 | Covered |
+| Requirement                                   | Story ID(s)         | Status  |
+| --------------------------------------------- | ------------------- | ------- |
+| 7.1 Run entity fields                         | S-002, S-017, S-018 | Covered |
+| 7.1 Four statuses incl. `incomplete`          | S-002, S-018        | Covered |
+| 7.2 Agent inventory, 5 min cache              | S-015               | Covered |
+| 7.2 Runtime detail + `lifecycleConfiguration` | S-015               | Covered |
+| 7.2 Runs via Logs Insights, 5 min cache       | S-017               | Covered |
+| 7.2 Execution logs uncached                   | S-021               | Covered |
+| 7.2 Configuration uncached                    | S-015               | Covered |
+| 7.3 Four `llipe.*` attributes                 | S-010               | Covered |
+| 7.3 `session.id` availability                 | S-012               | Covered |
+| 7.3 JSON logs with `session_id`               | S-008               | Covered |
+| 7.4 Discovery tags, opt-in                    | S-005               | Covered |
+| 7.5 A Agents view                             | S-019               | Covered |
+| 7.5 B Agent view, Runs tab                    | S-020               | Covered |
+| 7.5 B Agent view, Repos tab                   | S-022               | Covered |
+| 7.5 C Repos view                              | S-023               | Covered |
+| 7.5 D Run side panel                          | S-021               | Covered |
+| 7.6 Estimated cost formula + pricing table    | S-018               | Covered |
+| 7.6 Labelled as estimate                      | S-016, S-018        | Covered |
 
 #### PRD §8 Business Rules
 
-| Rule | Story ID(s) | Status |
-| --- | --- | --- |
-| 8.1 Single table + inverted GSI1 | S-003 | Covered |
-| 8.1 Access pattern: repos for agent | S-003, S-015 | Covered |
-| 8.1 Access pattern: agents for repo | S-003, S-023 | Covered |
-| 8.1 Add repo as single write | S-022 | Covered |
-| 8.2 Front end writes `enabled`, `params` | S-022 | Covered |
-| 8.2 Orchestrator writes `last_*` | S-013 | Covered |
-| 8.2 Agent writes two attributes via `UpdateExpression` | S-011 | Covered |
-| 8.2 `dynamodb:Attributes` constraint | S-004 | Covered |
-| 8.3 One schedule per agent, Lambda fan-out | S-013 | Covered |
-| 8.3 Orchestrator-generated `session_id`, ≥33 chars | S-002, S-013 | Covered |
-| 8.3 Concurrency pool 3–5 | S-013 | Covered |
-| 8.3 Partial failures isolated | S-013 | Covered |
-| 8.3 `incomplete` derived from `maxLifetime` | S-002, S-018 | Covered |
-| 8.4 GitHub App, Secrets Manager key | S-006 (inherited) | Covered |
-| 8.4 DynamoDB allowlist, no API discovery | S-009, S-013 | Covered |
-| 8.5 Agent liveness / non-blocking entrypoint | S-007 | Covered |
+| Rule                                                   | Story ID(s)       | Status  |
+| ------------------------------------------------------ | ----------------- | ------- |
+| 8.1 Single table + inverted GSI1                       | S-003             | Covered |
+| 8.1 Access pattern: repos for agent                    | S-003, S-015      | Covered |
+| 8.1 Access pattern: agents for repo                    | S-003, S-023      | Covered |
+| 8.1 Add repo as single write                           | S-022             | Covered |
+| 8.2 Front end writes `enabled`, `params`               | S-022             | Covered |
+| 8.2 Orchestrator writes `last_*`                       | S-013             | Covered |
+| 8.2 Agent writes two attributes via `UpdateExpression` | S-011             | Covered |
+| 8.2 `dynamodb:Attributes` constraint                   | S-004             | Covered |
+| 8.3 One schedule per agent, Lambda fan-out             | S-013             | Covered |
+| 8.3 Orchestrator-generated `session_id`, ≥33 chars     | S-002, S-013      | Covered |
+| 8.3 Concurrency pool 3–5                               | S-013             | Covered |
+| 8.3 Partial failures isolated                          | S-013             | Covered |
+| 8.3 `incomplete` derived from `maxLifetime`            | S-002, S-018      | Covered |
+| 8.4 GitHub App, Secrets Manager key                    | S-006 (inherited) | Covered |
+| 8.4 DynamoDB allowlist, no API discovery               | S-009, S-013      | Covered |
+| 8.5 Agent liveness / non-blocking entrypoint           | S-007             | Covered |
 
 #### PRD §13 Acceptance Criteria
 
-| Criterion | Story ID(s) | Status |
-| --- | --- | --- |
-| Agents list with all columns | S-019 | Covered |
-| Runs + Repos tabs, filterable | S-020, S-022 | Covered |
-| Repos view with coverage | S-023 | Covered |
-| Panel opens without unmounting table | S-021 | Covered |
-| Toggle writes and reflects | S-022 | Covered |
-| Add repo under 30 s, zero deploys | S-013, S-022 | Covered |
-| `params` validated, bad JSON never stored | S-022 | Covered |
-| JWT validated, invalid returns 401 | S-014 | Covered |
-| Origin locked down | S-024 | Covered |
-| Unknown `model_id` shows unknown | S-016, S-018 | Covered |
-| `incomplete` derived at read | S-018 | Covered |
-| Cost under USD 10/month | S-024 | Covered |
+| Criterion                                 | Story ID(s)  | Status  |
+| ----------------------------------------- | ------------ | ------- |
+| Agents list with all columns              | S-019        | Covered |
+| Runs + Repos tabs, filterable             | S-020, S-022 | Covered |
+| Repos view with coverage                  | S-023        | Covered |
+| Panel opens without unmounting table      | S-021        | Covered |
+| Toggle writes and reflects                | S-022        | Covered |
+| Add repo under 30 s, zero deploys         | S-013, S-022 | Covered |
+| `params` validated, bad JSON never stored | S-022        | Covered |
+| JWT validated, invalid returns 401        | S-014        | Covered |
+| Origin locked down                        | S-024        | Covered |
+| Unknown `model_id` shows unknown          | S-016, S-018 | Covered |
+| `incomplete` derived at read              | S-018        | Covered |
+| Cost under USD 10/month                   | S-024        | Covered |
 
 #### PRD §17 Security & Compliance
 
-| Requirement | Story ID(s) | Status |
-| --- | --- | --- |
-| IAM least privilege, no `InvokeAgentRuntime` | S-004 | Covered |
-| Write separation by policy | S-004, S-011 | Covered |
-| JWT validation, fail closed | S-014 | Covered |
-| Origin lockdown not optional | S-024 | Covered |
-| `params` injection boundary, both ends | S-009, S-022 | Covered |
+| Requirement                                        | Story ID(s)  | Status  |
+| -------------------------------------------------- | ------------ | ------- |
+| IAM least privilege, no `InvokeAgentRuntime`       | S-004        | Covered |
+| Write separation by policy                         | S-004, S-011 | Covered |
+| JWT validation, fail closed                        | S-014        | Covered |
+| Origin lockdown not optional                       | S-024        | Covered |
+| `params` injection boundary, both ends             | S-009, S-022 | Covered |
 | GitHub App key in Secrets Manager, tokens unlogged | S-006, S-008 | Covered |
-| No PII beyond repo names | S-008 | Covered |
-| HTTPS + HSTS | S-024 | Covered |
-| Exact pins, lockfiles, CI scanning | S-001 | Covered |
+| No PII beyond repo names                           | S-008        | Covered |
+| HTTPS + HSTS                                       | S-024        | Covered |
+| Exact pins, lockfiles, CI scanning                 | S-001        | Covered |
 
 #### Prerequisites (PRD §12.4)
 
-| Prerequisite | Story ID(s) | Status |
-| --- | --- | --- |
-| Transaction Search enabled | S-005 | Covered |
-| Unified span destination | S-005 | Covered |
-| Tags applied | S-005 | Covered |
-| Emission contract implemented | S-010 | Covered |
+| Prerequisite                  | Story ID(s) | Status  |
+| ----------------------------- | ----------- | ------- |
+| Transaction Search enabled    | S-005       | Covered |
+| Unified span destination      | S-005       | Covered |
+| Tags applied                  | S-005       | Covered |
+| Emission contract implemented | S-010       | Covered |
 
 ### Gaps
 

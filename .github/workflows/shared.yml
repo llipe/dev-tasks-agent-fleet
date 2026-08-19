@@ -1,0 +1,59 @@
+name: CI — Shared
+
+on:
+  push:
+    branches: [main, "integration/**"]
+    paths:
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/shared.yml"
+  pull_request:
+    branches: [main, "integration/**"]
+    paths:
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/shared.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @fleet/shared run lint
+
+      - name: Format check
+        run: pnpm --filter @fleet/shared run format:check
+
+      - name: Type check
+        run: pnpm --filter @fleet/shared run typecheck
+
+      - name: Test
+        run: pnpm --filter @fleet/shared run test
+
+      - name: Import boundary check
+        run: pnpm run check-boundaries
+
+      - name: Validate all consumers
+        run: pnpm -r run typecheck
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+        if: vars.AWS_CI_ROLE_ARN != ''

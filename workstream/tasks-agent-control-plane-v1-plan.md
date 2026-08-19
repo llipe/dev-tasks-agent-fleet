@@ -63,32 +63,32 @@ S-001 (foundation)
 
 ### Sequential Execution Order
 
-| Seq | Story | Title | Issue | Dependencies |
-|-----|-------|-------|-------|--------------|
-| 1 | S-001 | Monorepo scaffold with quality gates and path-gated CI | #1 | — |
-| 2 | S-002 | `packages/shared` contract with Python code generation | #2 | S-001 |
-| 3 | S-003 | DynamoDB table, GSI1, and seed script via CDK | #3 | S-001, S-002 |
-| 4 | S-004 | IAM roles enforcing write separation | #6 | S-003 |
-| 5 | S-005 | Observability prerequisites and discovery tags | #7 | S-003, S-004 |
-| 6 | S-006 | Port `dep-update-agent` into the monorepo | #8 | S-001, S-005 |
-| 7 | S-007 | Non-blocking entrypoint so long runs survive | #9 | S-006 |
-| 8 | S-008 | Structured JSON logging keyed by `session_id` | #10 | S-007 |
-| 9 | S-009 | Accept the control-plane payload envelope | #11 | S-002, S-008 |
-| 10 | S-010 | Emit the `llipe.*` span attributes | #12 | S-005, S-009 |
-| 11 | S-011 | Agent stamps its outcome into DynamoDB | #13 | S-004, S-010 |
-| 12 | S-012 | Verify telemetry assumptions and pin the span field mapping | #14 | S-010, S-011 |
-| 13 | S-013 | Orchestrator Lambda driven by DynamoDB scope | #15 | S-002, S-004, S-011 |
-| 14 | S-014 | App shell with Cloudflare Access JWT validation | #18 | S-001 |
-| 15 | S-015 | AWS adapter layer, credentials, and TTL cache | #22 | S-002, S-004, S-014 |
-| 16 | S-016 | Design-system primitives — tokens, DataTable, StatusBadge | #23 | S-014 |
-| 17 | S-017 | Logs Insights run query and span-to-run mapping | #24 | S-012, S-015 |
-| 18 | S-018 | Run list merge, status derivation, and cost estimation | #25 | S-002, S-015, S-017 |
-| 19 | S-019 | Agents list view | #26 | S-016, S-018 |
-| 20 | S-020 | Agent detail — Runs tab with URL-persisted filters | #27 | S-016, S-018 |
-| 21 | S-021 | Run side panel with span timeline and logs | #28 | S-017, S-020 |
-| 22 | S-022 | Scope configuration — Repos tab and write actions | #29 | S-015, S-016, S-021 |
-| 23 | S-023 | Repos list and per-repository run view | #30 | S-022 |
-| 24 | S-024 | Fly deployment with Cloudflare Tunnel origin lockdown | #31 | S-014–S-023 |
+| Seq | Story | Title                                                       | Issue | Dependencies        |
+| --- | ----- | ----------------------------------------------------------- | ----- | ------------------- |
+| 1   | S-001 | Monorepo scaffold with quality gates and path-gated CI      | #1    | —                   |
+| 2   | S-002 | `packages/shared` contract with Python code generation      | #2    | S-001               |
+| 3   | S-003 | DynamoDB table, GSI1, and seed script via CDK               | #3    | S-001, S-002        |
+| 4   | S-004 | IAM roles enforcing write separation                        | #6    | S-003               |
+| 5   | S-005 | Observability prerequisites and discovery tags              | #7    | S-003, S-004        |
+| 6   | S-006 | Port `dep-update-agent` into the monorepo                   | #8    | S-001, S-005        |
+| 7   | S-007 | Non-blocking entrypoint so long runs survive                | #9    | S-006               |
+| 8   | S-008 | Structured JSON logging keyed by `session_id`               | #10   | S-007               |
+| 9   | S-009 | Accept the control-plane payload envelope                   | #11   | S-002, S-008        |
+| 10  | S-010 | Emit the `llipe.*` span attributes                          | #12   | S-005, S-009        |
+| 11  | S-011 | Agent stamps its outcome into DynamoDB                      | #13   | S-004, S-010        |
+| 12  | S-012 | Verify telemetry assumptions and pin the span field mapping | #14   | S-010, S-011        |
+| 13  | S-013 | Orchestrator Lambda driven by DynamoDB scope                | #15   | S-002, S-004, S-011 |
+| 14  | S-014 | App shell with Cloudflare Access JWT validation             | #18   | S-001               |
+| 15  | S-015 | AWS adapter layer, credentials, and TTL cache               | #22   | S-002, S-004, S-014 |
+| 16  | S-016 | Design-system primitives — tokens, DataTable, StatusBadge   | #23   | S-014               |
+| 17  | S-017 | Logs Insights run query and span-to-run mapping             | #24   | S-012, S-015        |
+| 18  | S-018 | Run list merge, status derivation, and cost estimation      | #25   | S-002, S-015, S-017 |
+| 19  | S-019 | Agents list view                                            | #26   | S-016, S-018        |
+| 20  | S-020 | Agent detail — Runs tab with URL-persisted filters          | #27   | S-016, S-018        |
+| 21  | S-021 | Run side panel with span timeline and logs                  | #28   | S-017, S-020        |
+| 22  | S-022 | Scope configuration — Repos tab and write actions           | #29   | S-015, S-016, S-021 |
+| 23  | S-023 | Repos list and per-repository run view                      | #30   | S-022               |
+| 24  | S-024 | Fly deployment with Cloudflare Tunnel origin lockdown       | #31   | S-014–S-023         |
 
 ### Notes
 
@@ -98,21 +98,21 @@ S-001 (foundation)
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-001: Monorepo scaffold with quality gates and path-gated CI — #1 https://github.com/llipe/dev-tasks-agent-fleet/issues/1
+- [x] 1.0 Implement Story S-001: Monorepo scaffold with quality gates and path-gated CI — #1 https://github.com/llipe/dev-tasks-agent-fleet/issues/1
 
-  - [ ] 1.1 Initialize pnpm workspace: `package.json`, `pnpm-workspace.yaml` covering `apps/*`, `agents/*`, `packages/*`, `infra`
-  - [ ] 1.2 Create `tsconfig.base.json` with `strict: true`, `noUncheckedIndexedAccess: true`; pin Node in `.nvmrc` and `engines`
-  - [ ] 1.3 Create placeholder packages for `apps/control-plane`, `agents/dep-updater`, `packages/shared`, `infra` with minimal `package.json` and `tsconfig.json` extending root
-  - [ ] 1.4 Configure ESLint (flat config, TS + Next.js rules), Prettier (single config), and shared formatting rules
-  - [ ] 1.5 Configure Vitest workspace with per-package projects; install Playwright (no specs yet)
-  - [ ] 1.6 Wire canonical scripts in root and every JS/TS package: `lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`
-  - [ ] 1.7 Write `scripts/check-import-boundaries.ts`: asserts `apps/` never imports `agents/`, `agents/` never imports `apps/`, `shared` imports neither
-  - [ ] 1.8 Add one trivial passing test per package proving the runner is wired
-  - [ ] 1.9 Create four path-gated GitHub Actions workflows with OIDC role assumption
-  - [ ] 1.10 Verify `pnpm run validate` passes end to end on the empty scaffold
-  - [ ] 1.11 Verify a commit touching only `agents/dep-updater/**` does not trigger the control-plane workflow
-  - [ ] 1.12 Verify AC: deliberate lint error fails `lint`; deliberate type error fails `typecheck`; unformatted file fails `format:check`; cross-package import fails boundary check
-  - [ ] 1.13 Run Tests: `pnpm run validate` green
+  - [x] 1.1 Initialize pnpm workspace: `package.json`, `pnpm-workspace.yaml` covering `apps/*`, `agents/*`, `packages/*`, `infra`
+  - [x] 1.2 Create `tsconfig.base.json` with `strict: true`, `noUncheckedIndexedAccess: true`; pin Node in `.nvmrc` and `engines`
+  - [x] 1.3 Create placeholder packages for `apps/control-plane`, `agents/dep-updater`, `packages/shared`, `infra` with minimal `package.json` and `tsconfig.json` extending root
+  - [x] 1.4 Configure ESLint (flat config, TS + Next.js rules), Prettier (single config), and shared formatting rules
+  - [x] 1.5 Configure Vitest workspace with per-package projects; install Playwright (no specs yet)
+  - [x] 1.6 Wire canonical scripts in root and every JS/TS package: `lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`
+  - [x] 1.7 Write `scripts/check-import-boundaries.ts`: asserts `apps/` never imports `agents/`, `agents/` never imports `apps/`, `shared` imports neither
+  - [x] 1.8 Add one trivial passing test per package proving the runner is wired
+  - [x] 1.9 Create four path-gated GitHub Actions workflows with OIDC role assumption
+  - [x] 1.10 Verify `pnpm run validate` passes end to end on the empty scaffold
+  - [x] 1.11 Verify a commit touching only `agents/dep-updater/**` does not trigger the control-plane workflow
+  - [x] 1.12 Verify AC: deliberate lint error fails `lint`; deliberate type error fails `typecheck`; unformatted file fails `format:check`; cross-package import fails boundary check
+  - [x] 1.13 Run Tests: `pnpm run validate` green
 
 - [ ] 2.0 Implement Story S-002: `packages/shared` contract with Python code generation — #2 https://github.com/llipe/dev-tasks-agent-fleet/issues/2
 
