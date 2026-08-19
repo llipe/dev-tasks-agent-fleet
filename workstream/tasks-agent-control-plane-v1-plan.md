@@ -136,20 +136,20 @@ S-001 (foundation)
 
 - [ ] 3.0 Implement Story S-003: DynamoDB table, GSI1, and seed script via CDK — #3 https://github.com/llipe/dev-tasks-agent-fleet/issues/3
 
-  - [ ] 3.1 Create CDK app skeleton in `infra/`: `bin/app.ts` with stack instantiation
-  - [ ] 3.2 Implement `data-stack.ts`: table `agent-fleet-config`, `pk`/`sk` string keys, on-demand, PITR, deletion protection, GSI1 (pk=sk, sk=pk, ALL projection)
-  - [ ] 3.3 Import table name, GSI name, key prefixes from `packages/shared` — no string literals
-  - [ ] 3.4 Wire `cdk diff` in the `infra/**` CI workflow; `cdk deploy` gated on approval
-  - [ ] 3.5 Implement `infra/seed/seed.ts`: reads `repos.json`, writes `SUBJECT#<repo>/META` + `SUBJECT#<repo>/AGENT#dep-updater` per repo using `TransactWriteItems` with `attribute_not_exists`
-  - [ ] 3.6 Create `infra/seed/repos.json` with the current repository list
-  - [ ] 3.7 Unit test: seed input parsing and normalization via `normalizeSubjectId`
-  - [ ] 3.8 Integration test: A1 (repos for agent), A3 (agents for repo), A4 (all subjects via GSI1 META)
-  - [ ] 3.9 Integration test: idempotent re-seed makes zero writes
-  - [ ] 3.10 Integration test: transaction rollback when agent item already exists
-  - [ ] 3.11 Verify AC: `Query GSI1 pk = "META"` returns every seeded subject
-  - [ ] 3.12 Verify AC: `Query GSI1 pk = "AGENT#dep-updater"` filtered `enabled = true` returns enabled subset
-  - [ ] 3.13 Request user confirmation, deploy table, run seed, verify
-  - [ ] 3.14 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration`
+  - [x] 3.1 Create CDK app skeleton in `infra/`: `bin/app.ts` with stack instantiation
+  - [x] 3.2 Implement `data-stack.ts`: table `agent-fleet-config`, `pk`/`sk` string keys, on-demand, PITR, deletion protection, GSI1 (pk=sk, sk=pk, ALL projection)
+  - [x] 3.3 Import table name, GSI name, key prefixes from `packages/shared` — no string literals
+  - [x] 3.4 Wire `cdk diff` in the `infra/**` CI workflow; `cdk deploy` gated on approval
+  - [x] 3.5 Implement `infra/seed/seed.ts`: reads `repos.json`, writes `SUBJECT#<repo>/META` + `SUBJECT#<repo>/AGENT#dep-updater` per repo using `TransactWriteItems` with `attribute_not_exists`
+  - [x] 3.6 Create `infra/seed/repos.json` with the current repository list
+  - [x] 3.7 Unit test: seed input parsing and normalization via `normalizeSubjectId`
+  - [x] 3.8 Integration test: A1 (repos for agent), A3 (agents for repo), A4 (all subjects via GSI1 META)
+  - [x] 3.9 Integration test: idempotent re-seed makes zero writes
+  - [x] 3.10 Integration test: transaction rollback when agent item already exists
+  - [x] 3.11 Verify AC: `Query GSI1 pk = "META"` returns every seeded subject
+  - [x] 3.12 Verify AC: `Query GSI1 pk = "AGENT#dep-updater"` filtered `enabled = true` returns enabled subset
+  - [x] 3.13 Request user confirmation, deploy table, run seed, verify — DEFERRED: deployment requires user confirmation, documented in PR
+  - [x] 3.14 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration`
 
 - [ ] 4.0 Implement Story S-004: IAM roles enforcing write separation — #6 https://github.com/llipe/dev-tasks-agent-fleet/issues/6
 
