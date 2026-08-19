@@ -1,13 +1,5 @@
 // Key builders and prefixes
-export {
-  subjectPk,
-  agentSk,
-  META,
-  CONFIG,
-  PREFIXES,
-  TABLE_NAME,
-  GSI1_NAME,
-} from "./keys.js";
+export { subjectPk, agentSk, META, CONFIG, PREFIXES, TABLE_NAME, GSI1_NAME } from "./keys.js";
 
 // DynamoDB item schemas
 export { SubjectMetaItem, SubjectAgentItem, AgentConfigItem } from "./schemas.js";
