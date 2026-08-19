@@ -97,9 +97,7 @@ async function ensureTestItem(): Promise<void> {
 describe("IAM write separation — integration", () => {
   beforeAll(async () => {
     if (!ACCOUNT_ID) {
-      throw new Error(
-        "AWS_ACCOUNT_ID env var required for integration tests",
-      );
+      throw new Error("AWS_ACCOUNT_ID env var required for integration tests");
     }
     await ensureTestItem();
   });
@@ -197,10 +195,11 @@ describe("IAM write separation — integration", () => {
       );
 
       expect(result.Attributes).toBeDefined();
-      expect(result.Attributes!["last_status"]?.S).toBe("success");
+      const attrs = result.Attributes ?? {};
+      expect(attrs["last_status"]?.S).toBe("success");
       // Verify enabled and params were not touched
-      expect(result.Attributes!["enabled"]?.BOOL).toBe(true);
-      expect(result.Attributes!["params"]?.M).toEqual({});
+      expect(attrs["enabled"]?.BOOL).toBe(true);
+      expect(attrs["params"]?.M).toEqual({});
     });
   });
 });

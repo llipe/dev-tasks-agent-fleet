@@ -48,11 +48,7 @@ export class IamStack extends cdk.Stack {
       new iam.PolicyStatement({
         sid: "DynamoDBRead",
         effect: iam.Effect.ALLOW,
-        actions: [
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:BatchGetItem",
-        ],
+        actions: ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:BatchGetItem"],
         resources: [tableArn, gsiArn],
       }),
     );
@@ -86,12 +82,9 @@ export class IamStack extends cdk.Stack {
     this.orchestratorRole = new iam.Role(this, "OrchestratorRole", {
       roleName: "agent-fleet-orchestrator-role",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      description:
-        "Orchestrator role: read all, write run lifecycle, InvokeAgentRuntime",
+      description: "Orchestrator role: read all, write run lifecycle, InvokeAgentRuntime",
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          "service-role/AWSLambdaBasicExecutionRole",
-        ),
+        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
       ],
     });
 
@@ -100,11 +93,7 @@ export class IamStack extends cdk.Stack {
       new iam.PolicyStatement({
         sid: "DynamoDBRead",
         effect: iam.Effect.ALLOW,
-        actions: [
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:BatchGetItem",
-        ],
+        actions: ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:BatchGetItem"],
         resources: [tableArn, gsiArn],
       }),
     );
@@ -173,9 +162,7 @@ export class IamStack extends cdk.Stack {
         sid: "SecretsManagerRead",
         effect: iam.Effect.ALLOW,
         actions: ["secretsmanager:GetSecretValue"],
-        resources: [
-          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:agent-fleet/*`,
-        ],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:agent-fleet/*`],
       }),
     );
 

@@ -153,15 +153,15 @@ S-001 (foundation)
 
 - [ ] 4.0 Implement Story S-004: IAM roles enforcing write separation — #6 https://github.com/llipe/dev-tasks-agent-fleet/issues/6
 
-  - [ ] 4.1 Implement `iam-stack.ts` with three role constructs: `control-plane-role`, `orchestrator-role`, `agent-exec-role`
-  - [ ] 4.2 Import attribute allowlists from `packages/shared` for `dynamodb:Attributes` conditions
-  - [ ] 4.3 CDK snapshot test: policy documents contain expected actions and do NOT contain forbidden ones
-  - [ ] 4.4 CDK snapshot test: agent role has no `PutItem` action
-  - [ ] 4.5 Integration test: assume control-plane role, assert `InvokeAgentRuntime` is denied
-  - [ ] 4.6 Integration test: assume agent role, assert `PutItem` is denied
-  - [ ] 4.7 Integration test: assume agent role, assert `UpdateItem` touching `enabled` is denied
-  - [ ] 4.8 Integration test: agent `UpdateItem` on `last_status` succeeds (targeted deny, not blanket)
-  - [ ] 4.9 Deploy via gated `cdk deploy` and verify
+  - [x] 4.1 Implement `iam-stack.ts` with three role constructs: `control-plane-role`, `orchestrator-role`, `agent-exec-role`
+  - [x] 4.2 Import attribute allowlists from `packages/shared` for `dynamodb:Attributes` conditions
+  - [x] 4.3 CDK snapshot test: policy documents contain expected actions and do NOT contain forbidden ones
+  - [x] 4.4 CDK snapshot test: agent role has no `PutItem` action
+  - [x] 4.5 Integration test: assume control-plane role, assert `InvokeAgentRuntime` is denied
+  - [x] 4.6 Integration test: assume agent role, assert `PutItem` is denied
+  - [x] 4.7 Integration test: assume agent role, assert `UpdateItem` touching `enabled` is denied
+  - [x] 4.8 Integration test: agent `UpdateItem` on `last_status` succeeds (targeted deny, not blanket)
+  - [x] 4.9 Deploy via gated `cdk deploy` and verify — DEFERRED: deployment requires user confirmation
   - [ ] 4.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- iam`
 
 - [ ] 5.0 Implement Story S-005: Observability prerequisites and discovery tags — #7 https://github.com/llipe/dev-tasks-agent-fleet/issues/7

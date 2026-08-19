@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as cdk from "aws-cdk-lib";
-import { Template, Match } from "aws-cdk-lib/assertions";
+import { Template } from "aws-cdk-lib/assertions";
 import { DataStack } from "../lib/data-stack.js";
 import { IamStack } from "../lib/iam-stack.js";
 import {
@@ -21,10 +21,7 @@ function createTemplate(): Template {
 /**
  * Helper: extracts all inline policy statements from a role's policy document.
  */
-function getPolicyStatements(
-  template: Template,
-  roleName: string,
-): Array<Record<string, unknown>> {
+function getPolicyStatements(template: Template, roleName: string): Array<Record<string, unknown>> {
   const policies = template.findResources("AWS::IAM::Policy");
   const statements: Array<Record<string, unknown>> = [];
 
@@ -81,60 +78,38 @@ describe("IamStack", () => {
     it("has DynamoDB read actions", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "ControlPlaneRole");
-      const readStmt = stmts.find(
-        (s) => (s.Sid as string) === "DynamoDBRead",
-      );
+      const readStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBRead");
       expect(readStmt).toBeDefined();
       if (!readStmt) return;
       expect(readStmt.Effect).toBe("Allow");
       expect(readStmt.Action).toEqual(
-        expect.arrayContaining([
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:BatchGetItem",
-        ]),
+        expect.arrayContaining(["dynamodb:GetItem", "dynamodb:Query", "dynamodb:BatchGetItem"]),
       );
     });
 
     it("has write access with attribute condition for scope config", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "ControlPlaneRole");
-      const writeStmt = stmts.find(
-        (s) => (s.Sid as string) === "DynamoDBWriteScopeConfig",
-      );
+      const writeStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBWriteScopeConfig");
       expect(writeStmt).toBeDefined();
       if (!writeStmt) return;
       expect(writeStmt.Effect).toBe("Allow");
       expect(writeStmt.Action).toEqual(
-        expect.arrayContaining([
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-        ]),
+        expect.arrayContaining(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]),
       );
-      const condition = writeStmt.Condition as Record<
-        string,
-        Record<string, string[]>
-      >;
-      const attrs =
-        condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
-      expect(attrs).toEqual(
-        expect.arrayContaining([...CONTROL_PLANE_WRITE_ATTRIBUTES]),
-      );
+      const condition = writeStmt.Condition as Record<string, Record<string, string[]>>;
+      const attrs = condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
+      expect(attrs).toEqual(expect.arrayContaining([...CONTROL_PLANE_WRITE_ATTRIBUTES]));
     });
 
     it("explicitly denies InvokeAgentRuntime", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "ControlPlaneRole");
-      const denyStmt = stmts.find(
-        (s) => (s.Sid as string) === "DenyInvokeAgentRuntime",
-      );
+      const denyStmt = stmts.find((s) => (s.Sid as string) === "DenyInvokeAgentRuntime");
       expect(denyStmt).toBeDefined();
       if (!denyStmt) return;
       expect(denyStmt.Effect).toBe("Deny");
-      expect(denyStmt.Action).toContain(
-        "bedrock-agentcore:InvokeAgentRuntime",
-      );
+      expect(denyStmt.Action).toContain("bedrock-agentcore:InvokeAgentRuntime");
     });
 
     it("does NOT have InvokeAgentRuntime in any Allow statement", () => {
@@ -142,12 +117,8 @@ describe("IamStack", () => {
       const stmts = getPolicyStatements(template, "ControlPlaneRole");
       const allowStmts = stmts.filter((s) => s.Effect === "Allow");
       for (const stmt of allowStmts) {
-        const actions = Array.isArray(stmt.Action)
-          ? stmt.Action
-          : [stmt.Action];
-        expect(actions).not.toContain(
-          "bedrock-agentcore:InvokeAgentRuntime",
-        );
+        const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
+        expect(actions).not.toContain("bedrock-agentcore:InvokeAgentRuntime");
       }
     });
   });
@@ -156,9 +127,7 @@ describe("IamStack", () => {
     it("has DynamoDB read actions", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "OrchestratorRole");
-      const readStmt = stmts.find(
-        (s) => (s.Sid as string) === "DynamoDBRead",
-      );
+      const readStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBRead");
       expect(readStmt).toBeDefined();
       if (!readStmt) return;
       expect(readStmt.Effect).toBe("Allow");
@@ -167,36 +136,24 @@ describe("IamStack", () => {
     it("has UpdateItem with orchestrator attribute condition", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "OrchestratorRole");
-      const writeStmt = stmts.find(
-        (s) => (s.Sid as string) === "DynamoDBWriteRunLifecycle",
-      );
+      const writeStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBWriteRunLifecycle");
       expect(writeStmt).toBeDefined();
       if (!writeStmt) return;
       expect(writeStmt.Effect).toBe("Allow");
       expect(writeStmt.Action).toContain("dynamodb:UpdateItem");
-      const condition = writeStmt.Condition as Record<
-        string,
-        Record<string, string[]>
-      >;
-      const attrs =
-        condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
-      expect(attrs).toEqual(
-        expect.arrayContaining([...ORCHESTRATOR_WRITE_ATTRIBUTES]),
-      );
+      const condition = writeStmt.Condition as Record<string, Record<string, string[]>>;
+      const attrs = condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
+      expect(attrs).toEqual(expect.arrayContaining([...ORCHESTRATOR_WRITE_ATTRIBUTES]));
     });
 
     it("has InvokeAgentRuntime permission", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "OrchestratorRole");
-      const invokeStmt = stmts.find(
-        (s) => (s.Sid as string) === "InvokeAgentRuntime",
-      );
+      const invokeStmt = stmts.find((s) => (s.Sid as string) === "InvokeAgentRuntime");
       expect(invokeStmt).toBeDefined();
       if (!invokeStmt) return;
       expect(invokeStmt.Effect).toBe("Allow");
-      expect(invokeStmt.Action).toContain(
-        "bedrock-agentcore:InvokeAgentRuntime",
-      );
+      expect(invokeStmt.Action).toContain("bedrock-agentcore:InvokeAgentRuntime");
     });
 
     it("does NOT have PutItem action", () => {
@@ -204,9 +161,7 @@ describe("IamStack", () => {
       const stmts = getPolicyStatements(template, "OrchestratorRole");
       for (const stmt of stmts) {
         if (stmt.Effect === "Allow") {
-          const actions = Array.isArray(stmt.Action)
-            ? stmt.Action
-            : [stmt.Action];
+          const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
           expect(actions).not.toContain("dynamodb:PutItem");
         }
       }
@@ -217,9 +172,7 @@ describe("IamStack", () => {
     it("has DynamoDB read actions", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "AgentExecRole");
-      const readStmt = stmts.find(
-        (s) => (s.Sid as string) === "DynamoDBRead",
-      );
+      const readStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBRead");
       expect(readStmt).toBeDefined();
       if (!readStmt) return;
       expect(readStmt.Effect).toBe("Allow");
@@ -228,22 +181,14 @@ describe("IamStack", () => {
     it("has UpdateItem constrained to agent-allowed attributes only", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "AgentExecRole");
-      const updateStmt = stmts.find(
-        (s) => (s.Sid as string) === "DynamoDBUpdateOutcome",
-      );
+      const updateStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBUpdateOutcome");
       expect(updateStmt).toBeDefined();
       if (!updateStmt) return;
       expect(updateStmt.Effect).toBe("Allow");
       expect(updateStmt.Action).toContain("dynamodb:UpdateItem");
-      const condition = updateStmt.Condition as Record<
-        string,
-        Record<string, string[]>
-      >;
-      const attrs =
-        condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
-      expect(attrs).toEqual(
-        expect.arrayContaining([...AGENT_EXEC_WRITE_ATTRIBUTES]),
-      );
+      const condition = updateStmt.Condition as Record<string, Record<string, string[]>>;
+      const attrs = condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
+      expect(attrs).toEqual(expect.arrayContaining([...AGENT_EXEC_WRITE_ATTRIBUTES]));
     });
 
     it("has NO PutItem in any Allow statement (sub-task 4.4)", () => {
@@ -251,9 +196,7 @@ describe("IamStack", () => {
       const stmts = getPolicyStatements(template, "AgentExecRole");
       const allowStmts = stmts.filter((s) => s.Effect === "Allow");
       for (const stmt of allowStmts) {
-        const actions = Array.isArray(stmt.Action)
-          ? stmt.Action
-          : [stmt.Action];
+        const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
         expect(actions).not.toContain("dynamodb:PutItem");
       }
     });
@@ -261,9 +204,7 @@ describe("IamStack", () => {
     it("has explicit Deny on PutItem", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "AgentExecRole");
-      const denyStmt = stmts.find(
-        (s) => (s.Sid as string) === "DenyPutItem",
-      );
+      const denyStmt = stmts.find((s) => (s.Sid as string) === "DenyPutItem");
       expect(denyStmt).toBeDefined();
       if (!denyStmt) return;
       expect(denyStmt.Effect).toBe("Deny");
@@ -273,48 +214,32 @@ describe("IamStack", () => {
     it("has explicit Deny on UpdateItem touching enabled/params", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "AgentExecRole");
-      const denyStmt = stmts.find(
-        (s) => (s.Sid as string) === "DenyWriteForbiddenAttributes",
-      );
+      const denyStmt = stmts.find((s) => (s.Sid as string) === "DenyWriteForbiddenAttributes");
       expect(denyStmt).toBeDefined();
       if (!denyStmt) return;
       expect(denyStmt.Effect).toBe("Deny");
       expect(denyStmt.Action).toContain("dynamodb:UpdateItem");
-      const condition = denyStmt.Condition as Record<
-        string,
-        Record<string, string[]>
-      >;
-      const attrs =
-        condition["ForAnyValue:StringEquals"]?.["dynamodb:Attributes"];
-      expect(attrs).toEqual(
-        expect.arrayContaining(["enabled", "params"]),
-      );
+      const condition = denyStmt.Condition as Record<string, Record<string, string[]>>;
+      const attrs = condition["ForAnyValue:StringEquals"]?.["dynamodb:Attributes"];
+      expect(attrs).toEqual(expect.arrayContaining(["enabled", "params"]));
     });
 
     it("has Secrets Manager read permission", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "AgentExecRole");
-      const secretsStmt = stmts.find(
-        (s) => (s.Sid as string) === "SecretsManagerRead",
-      );
+      const secretsStmt = stmts.find((s) => (s.Sid as string) === "SecretsManagerRead");
       expect(secretsStmt).toBeDefined();
       if (!secretsStmt) return;
       expect(secretsStmt.Effect).toBe("Allow");
-      expect(secretsStmt.Action).toContain(
-        "secretsmanager:GetSecretValue",
-      );
+      expect(secretsStmt.Action).toContain("secretsmanager:GetSecretValue");
     });
 
     it("does NOT have InvokeAgentRuntime", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "AgentExecRole");
       for (const stmt of stmts) {
-        const actions = Array.isArray(stmt.Action)
-          ? stmt.Action
-          : [stmt.Action];
-        expect(actions).not.toContain(
-          "bedrock-agentcore:InvokeAgentRuntime",
-        );
+        const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
+        expect(actions).not.toContain("bedrock-agentcore:InvokeAgentRuntime");
       }
     });
   });
@@ -328,13 +253,7 @@ describe("IamStack", () => {
 
     it("ORCHESTRATOR_WRITE_ATTRIBUTES includes pk, sk, last_session_id, last_run_at, last_status", () => {
       expect(ORCHESTRATOR_WRITE_ATTRIBUTES).toEqual(
-        expect.arrayContaining([
-          "pk",
-          "sk",
-          "last_session_id",
-          "last_run_at",
-          "last_status",
-        ]),
+        expect.arrayContaining(["pk", "sk", "last_session_id", "last_run_at", "last_status"]),
       );
     });
 
@@ -363,15 +282,9 @@ describe("IamStack", () => {
       const outputs = template.toJSON().Outputs;
       expect(outputs).toBeDefined();
       const outputKeys = Object.keys(outputs);
-      expect(
-        outputKeys.some((k) => k.includes("ControlPlaneRoleArn")),
-      ).toBe(true);
-      expect(
-        outputKeys.some((k) => k.includes("OrchestratorRoleArn")),
-      ).toBe(true);
-      expect(outputKeys.some((k) => k.includes("AgentExecRoleArn"))).toBe(
-        true,
-      );
+      expect(outputKeys.some((k) => k.includes("ControlPlaneRoleArn"))).toBe(true);
+      expect(outputKeys.some((k) => k.includes("OrchestratorRoleArn"))).toBe(true);
+      expect(outputKeys.some((k) => k.includes("AgentExecRoleArn"))).toBe(true);
     });
   });
 });

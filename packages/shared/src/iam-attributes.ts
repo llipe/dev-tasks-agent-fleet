@@ -15,11 +15,7 @@ export const KEY_ATTRIBUTES = ["pk", "sk"] as const;
  * Control-plane role: manages scope configuration.
  * Can write `enabled` and `params` attributes.
  */
-export const CONTROL_PLANE_WRITE_ATTRIBUTES = [
-  ...KEY_ATTRIBUTES,
-  "enabled",
-  "params",
-] as const;
+export const CONTROL_PLANE_WRITE_ATTRIBUTES = [...KEY_ATTRIBUTES, "enabled", "params"] as const;
 
 /**
  * Orchestrator role: stamps run lifecycle metadata.
@@ -60,9 +56,6 @@ export const ALL_ITEM_ATTRIBUTES = [
   "default_params",
 ] as const;
 
-export type ControlPlaneWriteAttribute =
-  (typeof CONTROL_PLANE_WRITE_ATTRIBUTES)[number];
-export type OrchestratorWriteAttribute =
-  (typeof ORCHESTRATOR_WRITE_ATTRIBUTES)[number];
-export type AgentExecWriteAttribute =
-  (typeof AGENT_EXEC_WRITE_ATTRIBUTES)[number];
+export type ControlPlaneWriteAttribute = (typeof CONTROL_PLANE_WRITE_ATTRIBUTES)[number];
+export type OrchestratorWriteAttribute = (typeof ORCHESTRATOR_WRITE_ATTRIBUTES)[number];
+export type AgentExecWriteAttribute = (typeof AGENT_EXEC_WRITE_ATTRIBUTES)[number];
