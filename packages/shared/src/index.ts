@@ -28,3 +28,17 @@ export { buildSessionId } from "./session-id.js";
 
 // Subject ID normalizer
 export { normalizeSubjectId } from "./normalize-subject-id.js";
+
+// IAM attribute allowlists for write separation
+export {
+  KEY_ATTRIBUTES,
+  CONTROL_PLANE_WRITE_ATTRIBUTES,
+  ORCHESTRATOR_WRITE_ATTRIBUTES,
+  AGENT_EXEC_WRITE_ATTRIBUTES,
+  ALL_ITEM_ATTRIBUTES,
+} from "./iam-attributes.js";
+export type {
+  ControlPlaneWriteAttribute,
+  OrchestratorWriteAttribute,
+  AgentExecWriteAttribute,
+} from "./iam-attributes.js";

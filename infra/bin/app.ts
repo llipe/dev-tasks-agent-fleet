@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
 import { DataStack } from "../lib/data-stack.js";
+import { IamStack } from "../lib/iam-stack.js";
 
 const app = new cdk.App();
 
-new DataStack(app, "AgentFleetDataStack", {
-  env: {
-    account: process.env["CDK_DEFAULT_ACCOUNT"],
-    region: process.env["CDK_DEFAULT_REGION"],
-  },
+const env = {
+  account: process.env["CDK_DEFAULT_ACCOUNT"],
+  region: process.env["CDK_DEFAULT_REGION"],
+};
+
+const dataStack = new DataStack(app, "AgentFleetDataStack", { env });
+
+new IamStack(app, "AgentFleetIamStack", {
+  env,
+  table: dataStack.table,
 });
