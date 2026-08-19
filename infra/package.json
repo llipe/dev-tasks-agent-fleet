@@ -11,9 +11,21 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run",
-    "test:integration": "echo 'No integration tests configured yet'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "echo 'No e2e tests configured yet'",
     "audit": "pnpm audit --prod",
-    "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test"
+    "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test",
+    "cdk": "cdk",
+    "seed": "tsx seed/seed.ts"
+  },
+  "dependencies": {
+    "@fleet/shared": "workspace:*",
+    "aws-cdk-lib": "2.266.0",
+    "constructs": "10.8.1",
+    "@aws-sdk/client-dynamodb": "3.750.0",
+    "@aws-sdk/lib-dynamodb": "3.750.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1138.0"
   }
 }
