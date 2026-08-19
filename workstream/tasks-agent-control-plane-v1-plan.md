@@ -98,21 +98,21 @@ S-001 (foundation)
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-001: Monorepo scaffold with quality gates and path-gated CI — #1 https://github.com/llipe/dev-tasks-agent-fleet/issues/1
+- [x] 1.0 Implement Story S-001: Monorepo scaffold with quality gates and path-gated CI — #1 https://github.com/llipe/dev-tasks-agent-fleet/issues/1
 
-  - [ ] 1.1 Initialize pnpm workspace: `package.json`, `pnpm-workspace.yaml` covering `apps/*`, `agents/*`, `packages/*`, `infra`
-  - [ ] 1.2 Create `tsconfig.base.json` with `strict: true`, `noUncheckedIndexedAccess: true`; pin Node in `.nvmrc` and `engines`
-  - [ ] 1.3 Create placeholder packages for `apps/control-plane`, `agents/dep-updater`, `packages/shared`, `infra` with minimal `package.json` and `tsconfig.json` extending root
-  - [ ] 1.4 Configure ESLint (flat config, TS + Next.js rules), Prettier (single config), and shared formatting rules
-  - [ ] 1.5 Configure Vitest workspace with per-package projects; install Playwright (no specs yet)
-  - [ ] 1.6 Wire canonical scripts in root and every JS/TS package: `lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`
-  - [ ] 1.7 Write `scripts/check-import-boundaries.ts`: asserts `apps/` never imports `agents/`, `agents/` never imports `apps/`, `shared` imports neither
-  - [ ] 1.8 Add one trivial passing test per package proving the runner is wired
-  - [ ] 1.9 Create four path-gated GitHub Actions workflows with OIDC role assumption
-  - [ ] 1.10 Verify `pnpm run validate` passes end to end on the empty scaffold
-  - [ ] 1.11 Verify a commit touching only `agents/dep-updater/**` does not trigger the control-plane workflow
-  - [ ] 1.12 Verify AC: deliberate lint error fails `lint`; deliberate type error fails `typecheck`; unformatted file fails `format:check`; cross-package import fails boundary check
-  - [ ] 1.13 Run Tests: `pnpm run validate` green
+  - [x] 1.1 Initialize pnpm workspace: `package.json`, `pnpm-workspace.yaml` covering `apps/*`, `agents/*`, `packages/*`, `infra`
+  - [x] 1.2 Create `tsconfig.base.json` with `strict: true`, `noUncheckedIndexedAccess: true`; pin Node in `.nvmrc` and `engines`
+  - [x] 1.3 Create placeholder packages for `apps/control-plane`, `agents/dep-updater`, `packages/shared`, `infra` with minimal `package.json` and `tsconfig.json` extending root
+  - [x] 1.4 Configure ESLint (flat config, TS + Next.js rules), Prettier (single config), and shared formatting rules
+  - [x] 1.5 Configure Vitest workspace with per-package projects; install Playwright (no specs yet)
+  - [x] 1.6 Wire canonical scripts in root and every JS/TS package: `lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`
+  - [x] 1.7 Write `scripts/check-import-boundaries.ts`: asserts `apps/` never imports `agents/`, `agents/` never imports `apps/`, `shared` imports neither
+  - [x] 1.8 Add one trivial passing test per package proving the runner is wired
+  - [x] 1.9 Create four path-gated GitHub Actions workflows with OIDC role assumption
+  - [x] 1.10 Verify `pnpm run validate` passes end to end on the empty scaffold
+  - [x] 1.11 Verify a commit touching only `agents/dep-updater/**` does not trigger the control-plane workflow
+  - [x] 1.12 Verify AC: deliberate lint error fails `lint`; deliberate type error fails `typecheck`; unformatted file fails `format:check`; cross-package import fails boundary check
+  - [x] 1.13 Run Tests: `pnpm run validate` green
 
 - [ ] 2.0 Implement Story S-002: `packages/shared` contract with Python code generation — #2 https://github.com/llipe/dev-tasks-agent-fleet/issues/2
 
