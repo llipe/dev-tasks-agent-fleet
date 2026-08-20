@@ -384,22 +384,22 @@ S-001 (foundation)
   - [x] 15.14 Integration test: assert no `ScanCommand` ever sent
   - [x] 15.15 Run Tests: `pnpm --filter control-plane run test:unit && pnpm --filter control-plane run test:integration`
 
-- [ ] 16.0 Implement Story S-016: Design-system primitives — tokens, DataTable, StatusBadge — #23 https://github.com/llipe/dev-tasks-agent-fleet/issues/23
+- [x] 16.0 Implement Story S-016: Design-system primitives — tokens, DataTable, StatusBadge — #23 https://github.com/llipe/dev-tasks-agent-fleet/issues/23
 
-  - [ ] 16.1 Configure Tailwind + shadcn/ui; define semantic tokens incl. four status pairs in CSS custom properties
-  - [ ] 16.2 Implement light and dark colour schemes; verify and record contrast ratios (4.5:1 text, 3:1 UI)
-  - [ ] 16.3 Implement `StatusBadge`: colour + text label always; `incomplete` amber, `failed` red
-  - [ ] 16.4 Implement `DataTable` on TanStack Table: sorting, row click, keyboard nav (arrow/Enter/Space), real `<table>` semantics
-  - [ ] 16.5 Implement four required states in `DataTable`: loading skeleton, empty, error, timed-out
-  - [ ] 16.6 Numeric columns: tabular figures, right alignment
-  - [ ] 16.7 Implement `RelativeTime`: relative text, absolute UTC in `title`
-  - [ ] 16.8 Implement `CostEstimate`: exact, `≥` partial with marker, `unknown` — never `$0.00` for unpriced
-  - [ ] 16.9 Handle `prefers-reduced-motion`; no animated status indicator
-  - [ ] 16.10 Ensure no hardcoded colour, spacing, or radius value in any component
-  - [ ] 16.11 Unit test: `StatusBadge` for all four statuses; `CostEstimate` across complete/partial/unknown incl. genuinely free run; `RelativeTime` formatting
-  - [ ] 16.12 Component integration test: `DataTable` renders all four states; row click fires; sorting works; keyboard nav
-  - [ ] 16.13 Manual: keyboard-only navigation; screen-reader pass; contrast check both schemes
-  - [ ] 16.14 Run Tests: `pnpm --filter control-plane run test:unit -- components`
+  - [x] 16.1 Configure Tailwind + shadcn/ui; define semantic tokens incl. four status pairs in CSS custom properties
+  - [x] 16.2 Implement light and dark colour schemes; verify and record contrast ratios (4.5:1 text, 3:1 UI)
+  - [x] 16.3 Implement `StatusBadge`: colour + text label always; `incomplete` amber, `failed` red
+  - [x] 16.4 Implement `DataTable` on TanStack Table: sorting, row click, keyboard nav (arrow/Enter/Space), real `<table>` semantics
+  - [x] 16.5 Implement four required states in `DataTable`: loading skeleton, empty, error, timed-out
+  - [x] 16.6 Numeric columns: tabular figures, right alignment
+  - [x] 16.7 Implement `RelativeTime`: relative text, absolute UTC in `title`
+  - [x] 16.8 Implement `CostEstimate`: exact, `≥` partial with marker, `unknown` — never `$0.00` for unpriced
+  - [x] 16.9 Handle `prefers-reduced-motion`; no animated status indicator
+  - [x] 16.10 Ensure no hardcoded colour, spacing, or radius value in any component
+  - [x] 16.11 Unit test: `StatusBadge` for all four statuses; `CostEstimate` across complete/partial/unknown incl. genuinely free run; `RelativeTime` formatting
+  - [x] 16.12 Component integration test: `DataTable` renders all four states; row click fires; sorting works; keyboard nav
+  - [x] 16.13 Manual: keyboard-only navigation; screen-reader pass; contrast check both schemes
+  - [x] 16.14 Run Tests: `pnpm --filter control-plane run test:unit -- components`
 
 - [ ] 17.0 Implement Story S-017: Logs Insights run query and span-to-run mapping — #24 https://github.com/llipe/dev-tasks-agent-fleet/issues/24
 
