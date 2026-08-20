@@ -26,7 +26,7 @@
 | 12       | S-012    | #14     | ✅ Merged      | #43 | story/S-012-verify-telemetry-pin-span-fields |
 | 13       | S-013    | #15     | ✅ Merged      | #44 | story/S-013-orchestrator-lambda |
 | 14       | S-014    | #18     | ✅ Merged      | #45 | story/S-014-app-shell-jwt-validation |
-| 15       | S-015    | #22     | ⏳ Pending     | —   | —                             |
+| 15       | S-015    | #22     | ✅ Merged      | #46 | story/S-015-aws-adapter-layer |
 | 16       | S-016    | #23     | ⏳ Pending     | —   | —                             |
 | 17       | S-017    | #24     | ⏳ Pending     | —   | —                             |
 | 18       | S-018    | #25     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-015
-- Last merged PR: #45
-- Integration branch HEAD: c87fd18
+- Next story: S-016
+- Last merged PR: #46
+- Integration branch HEAD: 94c0e8a
 
 ## Decisions Log
 
