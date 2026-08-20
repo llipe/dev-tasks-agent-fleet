@@ -21,7 +21,7 @@
 | 7        | S-007    | #9      | ✅ Merged      | #38 | story/S-007-non-blocking-entrypoint |
 | 8        | S-008    | #10     | ✅ Merged      | #39 | story/S-008-structured-json-logging |
 | 9        | S-009    | #11     | ✅ Merged      | #40 | story/S-009-payload-envelope |
-| 10       | S-010    | #12     | ⏳ Pending     | —   | —                             |
+| 10       | S-010    | #12     | ✅ Merged      | #41 | story/S-010-span-attributes |
 | 11       | S-011    | #13     | ⏳ Pending     | —   | —                             |
 | 12       | S-012    | #14     | ⏳ Pending     | —   | —                             |
 | 13       | S-013    | #15     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-010
-- Last merged PR: #40
-- Integration branch HEAD: d86d269
+- Next story: S-011
+- Last merged PR: #41
+- Integration branch HEAD: 121db84
 
 ## Decisions Log
 
@@ -55,3 +55,4 @@
 - S-007 verifier audit: High fidelity, 0 drift. Deployment verification deferred.
 - S-008 verifier audit: High fidelity, 0 drift. FilterLogEvents integration test deferred.
 - S-009 verifier audit: High fidelity, 0 drift. Normalization parity validated via shared fixture.
+- S-010 verifier audit: High fidelity, 0 drift. Post-deploy span verification deferred to S-012.
