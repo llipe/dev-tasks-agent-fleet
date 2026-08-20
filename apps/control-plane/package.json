@@ -14,23 +14,32 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run",
-    "test:integration": "echo 'No integration tests configured yet'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "echo 'No e2e tests configured yet'",
     "audit": "pnpm audit --prod",
     "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1114.0",
+    "@aws-sdk/client-dynamodb": "3.750.0",
+    "@aws-sdk/client-resource-groups-tagging-api": "3.750.0",
+    "@aws-sdk/credential-providers": "^3.1114.0",
+    "@aws-sdk/lib-dynamodb": "3.750.0",
+    "@fleet/shared": "workspace:*",
     "jose": "^6.0.11",
     "next": "^15.3.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@aws-sdk/types": "^3.974.4",
+    "@smithy/types": "^4.17.2",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "autoprefixer": "^10.4.21",
+    "aws-sdk-client-mock": "^4.1.0",
     "postcss": "^8.5.4",
     "tailwindcss": "^4.1.8",
     "typescript": "5.8.3"
