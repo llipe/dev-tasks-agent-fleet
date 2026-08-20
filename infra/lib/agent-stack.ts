@@ -3,34 +3,82 @@ import type { Construct } from "constructs";
 import { DEP_UPDATER_TAGS } from "@fleet/shared";
 
 /**
- * AgentStack — Minimal CDK construct defining agent discovery tags.
+ * Agent runtime lifecycle configuration.
+ * Values sourced from agentcore.json and recorded here for CDK synthesis.
+ */
+export interface AgentLifecycleConfig {
+  /** Maximum seconds a runtime session can live before forced termination. */
+  readonly maxLifetime: number;
+  /** Seconds of idle time before the runtime session is stopped. */
+  readonly idleRuntimeSessionTimeout: number;
+}
+
+/**
+ * Agent runtime specification for AgentCore deployment.
+ */
+export interface AgentRuntimeSpec {
+  readonly name: string;
+  readonly build: "Container";
+  readonly entrypoint: string;
+  readonly codeLocation: string;
+  readonly runtimeVersion: string;
+  readonly networkMode: "PUBLIC" | "PRIVATE";
+  readonly protocol: "HTTP";
+  readonly lifecycleConfiguration: AgentLifecycleConfig;
+}
+
+/**
+ * dep-updater agent runtime specification.
  *
- * This stack applies resource tags that enable the control plane to discover
- * managed agents via `tag:GetResources` filtered on `agent:managed=true`.
+ * Matches the values in agents/dep-updater/agentcore.json (Python 3.13,
+ * container build, HTTP protocol on AgentCore Runtime).
+ */
+export const DEP_UPDATER_RUNTIME: AgentRuntimeSpec = {
+  name: "dep-updater",
+  build: "Container",
+  entrypoint: "main.py",
+  codeLocation: "agents/dep-updater/",
+  runtimeVersion: "PYTHON_3_13",
+  networkMode: "PUBLIC",
+  protocol: "HTTP",
+  lifecycleConfiguration: {
+    maxLifetime: 3600,
+    idleRuntimeSessionTimeout: 300,
+  },
+};
+
+/**
+ * AgentStack — CDK stack for the dep-updater agent.
  *
- * S-006 will extend this stack with the full agent runtime (container, IAM, etc).
- * For now, it defines the tag contract and applies it to all resources in the stack.
+ * Responsibilities:
+ * 1. Apply discovery tags (agent:managed, agent:name, agent:domain) to all
+ *    resources for control-plane discovery via `tag:GetResources`.
+ * 2. Define the agent runtime spec (container config, lifecycle settings)
+ *    as CDK outputs and metadata for the AgentCore deployment pipeline.
  *
- * Tags applied:
- * - `agent:managed=true` — primary discovery filter
- * - `agent:name=dep-updater` — join key matching `AGENT#dep-updater` in DynamoDB
- * - `agent:domain=security` — domain classification for UI grouping
+ * The actual AgentCore runtime resource is deployed via `agentcore deploy`
+ * (CLI-driven), not synthesized here. This stack provides:
+ * - Tag-based discovery contract
+ * - Runtime configuration as infrastructure-as-code documentation
+ * - Lifecycle configuration values for the control plane's status derivation
  */
 export class AgentStack extends cdk.Stack {
+  /** The agent runtime specification. */
+  public readonly runtimeSpec: AgentRuntimeSpec = DEP_UPDATER_RUNTIME;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     // Apply discovery tags to all resources in this stack.
-    // When S-006 adds the agent runtime resource, these tags will be inherited.
     for (const [key, value] of Object.entries(DEP_UPDATER_TAGS)) {
       cdk.Tags.of(this).add(key, value);
     }
 
     // Placeholder resource to ensure the stack is deployable and tags are applied.
-    // This will be replaced by the actual agent runtime in S-006.
+    // The actual agent runtime is deployed via `agentcore deploy` CLI.
     new cdk.CfnWaitConditionHandle(this, "AgentTagAnchor");
 
-    // Outputs for reference
+    // ── Outputs: discovery tags ──────────────────────────────────────
     new cdk.CfnOutput(this, "AgentName", {
       value: DEP_UPDATER_TAGS["agent:name"],
       description: "Agent name (matches AGENT# key in DynamoDB)",
@@ -44,6 +92,27 @@ export class AgentStack extends cdk.Stack {
     new cdk.CfnOutput(this, "AgentManaged", {
       value: DEP_UPDATER_TAGS["agent:managed"],
       description: "Agent managed flag for discovery",
+    });
+
+    // ── Outputs: runtime configuration ───────────────────────────────
+    new cdk.CfnOutput(this, "RuntimeName", {
+      value: DEP_UPDATER_RUNTIME.name,
+      description: "AgentCore runtime name",
+    });
+
+    new cdk.CfnOutput(this, "RuntimeVersion", {
+      value: DEP_UPDATER_RUNTIME.runtimeVersion,
+      description: "Python runtime version (AgentCore enum)",
+    });
+
+    new cdk.CfnOutput(this, "MaxLifetime", {
+      value: String(DEP_UPDATER_RUNTIME.lifecycleConfiguration.maxLifetime),
+      description: "Maximum session lifetime in seconds",
+    });
+
+    new cdk.CfnOutput(this, "IdleTimeout", {
+      value: String(DEP_UPDATER_RUNTIME.lifecycleConfiguration.idleRuntimeSessionTimeout),
+      description: "Idle session timeout in seconds",
     });
   }
 }

@@ -100,4 +100,34 @@ describe("AgentStack", () => {
       template.resourceCountIs("AWS::CloudFormation::WaitConditionHandle", 1);
     });
   });
+
+  describe("runtime configuration (S-006)", () => {
+    it("exports runtime name as dep-updater", () => {
+      const template = createTemplate();
+      template.hasOutput("RuntimeName", { Value: "dep-updater" });
+    });
+
+    it("exports runtime version as PYTHON_3_13", () => {
+      const template = createTemplate();
+      template.hasOutput("RuntimeVersion", { Value: "PYTHON_3_13" });
+    });
+
+    it("exports maxLifetime as 3600", () => {
+      const template = createTemplate();
+      template.hasOutput("MaxLifetime", { Value: "3600" });
+    });
+
+    it("exports idleRuntimeSessionTimeout as 300", () => {
+      const template = createTemplate();
+      template.hasOutput("IdleTimeout", { Value: "300" });
+    });
+
+    it("stack exposes runtimeSpec property", () => {
+      const app = new cdk.App();
+      const stack = new AgentStack(app, "TestAgentStack");
+      expect(stack.runtimeSpec.name).toBe("dep-updater");
+      expect(stack.runtimeSpec.lifecycleConfiguration.maxLifetime).toBe(3600);
+      expect(stack.runtimeSpec.lifecycleConfiguration.idleRuntimeSessionTimeout).toBe(300);
+    });
+  });
 });

@@ -46,3 +46,32 @@ _This deployment will be documented after S-005 implementation._
 - Deletion protection is enabled on the table — you must disable it manually before any destructive action.
 - IAM roles use `dynamodb:Attributes` condition keys for write separation. The integration tests (`pnpm --filter @fleet/infra run test:integration -- iam`) validate these denials against live AWS.
 - The seed script is idempotent (uses `attribute_not_exists` conditions). Safe to re-run.
+
+
+---
+
+## 4. Agent Port to AgentCore (S-006) — DEFERRED
+
+**Stack:** `AgentFleetAgentStack` (runtime config added)
+**What it adds:**
+
+- Full agent runtime specification in CDK (container, lifecycle config)
+- `agentcore.json` with `dep-updater` name, `PYTHON_3_13`, lifecycle values
+
+**Manual steps required:**
+
+1. Start Docker daemon
+2. Build container: `cd agents/dep-updater && docker build --platform linux/arm64 -t dep-updater:local .`
+3. Deploy to AgentCore: `agentcore deploy` from the `agents/dep-updater/` directory
+4. Trigger one run against a test repository to validate pipeline behaviour unchanged
+
+**Sub-tasks deferred:**
+
+- 6.7 (partial): Docker build requires running Docker daemon — build command documented above
+- 6.8: Deploy to AgentCore and trigger one run against a test repository
+- 6.9: Verify AC: pipeline behaviour unchanged, run completes successfully
+
+**lifecycleConfiguration (recorded per sub-task 6.10):**
+
+- `maxLifetime`: 3600 (seconds — 1 hour max session)
+- `idleRuntimeSessionTimeout`: 300 (seconds — 5 min idle before stop)

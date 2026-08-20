@@ -2,18 +2,14 @@
   "name": "@fleet/dep-updater",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:unit": "vitest run",
-    "test:integration": "echo 'No integration tests configured yet'",
-    "test:e2e": "echo 'No e2e tests configured yet'",
-    "audit": "pnpm audit --prod",
+    "lint": "uv run ruff check .",
+    "lint:fix": "uv run ruff check . --fix",
+    "format": "uv run ruff format .",
+    "format:check": "uv run ruff format . --check",
+    "typecheck": "uv run mypy --strict .",
+    "test": "uv run pytest",
+    "test:unit": "uv run pytest",
     "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test"
   }
 }
