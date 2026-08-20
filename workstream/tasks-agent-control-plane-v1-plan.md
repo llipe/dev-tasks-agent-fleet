@@ -41,7 +41,11 @@
 - `apps/control-plane/src/app/layout.tsx` - Root layout with TopBar
 - `apps/control-plane/src/app/page.tsx` - Root redirect to /agents
 - `apps/control-plane/src/app/healthz/route.ts` - Health check endpoint (no auth)
-- `apps/control-plane/src/app/agents/page.tsx` - Placeholder agents page (force-dynamic)
+- `apps/control-plane/src/app/agents/page.tsx` - Agents list server component (force-dynamic)
+- `apps/control-plane/src/app/agents/agents-data.ts` - Agents data layer with DI for testability (S-019)
+- `apps/control-plane/src/app/agents/agents-table.tsx` - Client DataTable wrapper with row-click navigation (S-019)
+- `apps/control-plane/src/app/agents/agents-cost-column.tsx` - Suspense streaming boundary for cost column (S-019)
+- `apps/control-plane/src/app/agents/agents-list.integration-test.ts` - Integration tests for agents list (S-019)
 - `apps/control-plane/src/app/repos/page.tsx` - Placeholder repos page (force-dynamic)
 - `apps/control-plane/src/app/globals.css` - Tailwind CSS entry point
 - `apps/control-plane/src/components/top-bar.tsx` - Navigation bar component
@@ -447,15 +451,15 @@ S-001 (foundation)
 
 - [ ] 19.0 Implement Story S-019: Agents list view — #26 https://github.com/llipe/dev-tasks-agent-fleet/issues/26
 
-  - [ ] 19.1 Implement server component fetching inventory + config counts + 30d cost aggregate
-  - [ ] 19.2 Implement row view-model: name, domain, last run (relative), status, active repo count, 30d cost
-  - [ ] 19.3 Wire `DataTable` with column definitions; streaming boundary for cost column
-  - [ ] 19.4 Row click navigates to `/agents/[name]`
-  - [ ] 19.5 Implement all four async states (loading, empty, error, timeout)
-  - [ ] 19.6 Integration test: renders with mocked adapters; untagged agent excluded
-  - [ ] 19.7 Integration test: zero agents (empty state); agent with zero repos; agent never run; cost unknown; timeout
-  - [ ] 19.8 Manual: load against real data; confirm counts and costs match DynamoDB/console
-  - [ ] 19.9 Run Tests: `pnpm --filter control-plane run test:integration -- agents`
+  - [x] 19.1 Implement server component fetching inventory + config counts + 30d cost aggregate
+  - [x] 19.2 Implement row view-model: name, domain, last run (relative), status, active repo count, 30d cost
+  - [x] 19.3 Wire `DataTable` with column definitions; streaming boundary for cost column
+  - [x] 19.4 Row click navigates to `/agents/[name]`
+  - [x] 19.5 Implement all four async states (loading, empty, error, timeout)
+  - [x] 19.6 Integration test: renders with mocked adapters; untagged agent excluded
+  - [x] 19.7 Integration test: zero agents (empty state); agent with zero repos; agent never run; cost unknown; timeout
+  - [ ] 19.8 Manual: load against real data; confirm counts and costs match DynamoDB/console — DEFERRED
+  - [x] 19.9 Run Tests: `pnpm --filter control-plane run test:integration -- agents`
 
 - [ ] 20.0 Implement Story S-020: Agent detail — Runs tab with URL-persisted filters — #27 https://github.com/llipe/dev-tasks-agent-fleet/issues/27
 
