@@ -29,6 +29,13 @@ export { buildSessionId } from "./session-id.js";
 // Subject ID normalizer
 export { normalizeSubjectId } from "./normalize-subject-id.js";
 
+// Agent discovery tags
+export { DEP_UPDATER_TAGS, agentNameToSortKey, sortKeyToAgentName } from "./agent-tags.js";
+export type { AgentTagSet } from "./agent-tags.js";
+
+// Observability configuration
+export { SPANS_LOG_GROUP, SPANS_RETENTION_DAYS } from "./observability-config.js";
+
 // IAM attribute allowlists for write separation
 export {
   KEY_ATTRIBUTES,
