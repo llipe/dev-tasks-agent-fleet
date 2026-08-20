@@ -20,6 +20,22 @@ export type { LlipeAttributeKey, LlipeAttributeValue } from "./llipe.js";
 export { SPAN_FIELDS } from "./span-fields.js";
 export type { SpanFieldKey, SpanFieldPath } from "./span-fields.js";
 
+// Span session ID resolution
+export { resolveSessionId, resolveFieldPath, SESSION_ID_PATHS } from "./span-session-resolver.js";
+
+// Span-to-run mapper
+export {
+  mapSpanToRunFields,
+  mapSpanToGenAiFields,
+  isRootSpan,
+  isGenAiChildSpan,
+} from "./span-mapper.js";
+export type { MappedRunFields, MappedGenAiFields } from "./span-mapper.js";
+
+// Logs Insights query builders
+export { buildRunListQuery, buildSessionSpansQuery, QUERY_LIMITS } from "./span-query.js";
+export type { RunListQueryOptions } from "./span-query.js";
+
 // Status derivation
 export { deriveStatus, DEFAULT_MAX_LIFETIME_MS, TERMINATION_GRACE_MS } from "./status.js";
 

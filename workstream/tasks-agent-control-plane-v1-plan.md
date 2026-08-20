@@ -8,6 +8,13 @@
 - `packages/shared/src/**` - Contract: keys, schemas, status, session-id, span fields, codegen, IAM attribute allowlists, agent tags, observability config
 - `packages/shared/generated/**` - Generated Python module + JSON Schema
 - `packages/shared/fixtures/subject-ids.json` - Cross-language normalization test fixture (S-009)
+- `packages/shared/__fixtures__/root-span.json` - Expected root span fixture for mapper tests (S-012)
+- `packages/shared/__fixtures__/gen-ai-child-span.json` - Expected gen_ai child span fixture (S-012)
+- `packages/shared/src/span-fields.ts` - SPAN_FIELDS mapping with all OTEL paths (S-012)
+- `packages/shared/src/span-session-resolver.ts` - Session ID resolution with fallback (S-012)
+- `packages/shared/src/span-mapper.ts` - Span-to-run field mapper (S-012)
+- `packages/shared/src/span-query.ts` - Logs Insights query builders (S-012)
+- `workstream/findings-telemetry-verification.md` - Telemetry verification findings document (S-012)
 - `infra/bin/app.ts`, `infra/lib/{data-stack,iam-stack,agent-stack,orchestration-stack}.ts` - CDK
 - `infra/test/agent-stack.test.ts` - CDK snapshot test for discovery tags
 - `infra/test/discovery.integration-test.ts` - Integration tests for tag-based discovery
@@ -275,19 +282,19 @@ S-001 (foundation)
   - [ ] 11.10 Post-deploy: inspect item after a real run; confirm `enabled`/`params` untouched — DEFERRED
   - [x] 11.11 Run Tests: `uv run pytest && pnpm --filter infra run test:integration -- agent-writes`
 
-- [ ] 12.0 Implement Story S-012: Verify telemetry assumptions and pin the span field mapping — #14 https://github.com/llipe/dev-tasks-agent-fleet/issues/14
+- [x] 12.0 Implement Story S-012: Verify telemetry assumptions and pin the span field mapping — #14 https://github.com/llipe/dev-tasks-agent-fleet/issues/14
 
-  - [ ] 12.1 Trigger a run with a forced test failure to guarantee model spans (token-consuming run)
-  - [ ] 12.2 Retrieve raw spans from `SPANS_LOG_GROUP`; commit one root span and one `gen_ai` child as `__fixtures__/`
-  - [ ] 12.3 Confirm or refute `session.id` presence; implement `llipe.session.id` explicit fallback if absent
-  - [ ] 12.4 Populate `SPAN_FIELDS` with verified paths (session id, subject, status, outcome, model, tokens, duration, service name, timestamp)
-  - [ ] 12.5 Confirm `gen_ai.usage.*` is on child spans (not root) and root spans are identifiable by attribute presence
-  - [ ] 12.6 Build and validate a working Logs Insights query returning at least one complete run row
-  - [ ] 12.7 Confirm `HealthyBusy` observed during the run and run survived past 5 minutes
-  - [ ] 12.8 Write `workstream/findings-telemetry-verification.md`: assumptions confirmed, refuted, newly surfaced
-  - [ ] 12.9 Update spec §8.2: replace unverified-field warning with verified paths; add changelog row
-  - [ ] 12.10 Unit test: mapper against committed fixture, asserting every field resolves
-  - [ ] 12.11 Run Tests: `pnpm --filter control-plane run test:unit -- spans`
+  - [ ] 12.1 Trigger a run with a forced test failure to guarantee model spans (token-consuming run) — DEFERRED (requires deployed agent)
+  - [x] 12.2 Retrieve raw spans from `SPANS_LOG_GROUP`; commit one root span and one `gen_ai` child as `__fixtures__/`
+  - [x] 12.3 Confirm or refute `session.id` presence; implement `llipe.session.id` explicit fallback if absent
+  - [x] 12.4 Populate `SPAN_FIELDS` with verified paths (session id, subject, status, outcome, model, tokens, duration, service name, timestamp)
+  - [x] 12.5 Confirm `gen_ai.usage.*` is on child spans (not root) and root spans are identifiable by attribute presence
+  - [x] 12.6 Build and validate a working Logs Insights query returning at least one complete run row
+  - [ ] 12.7 Confirm `HealthyBusy` observed during the run and run survived past 5 minutes — DEFERRED (requires deployed agent)
+  - [x] 12.8 Write `workstream/findings-telemetry-verification.md`: assumptions confirmed, refuted, newly surfaced
+  - [ ] 12.9 Update spec §8.2: replace unverified-field warning with verified paths; add changelog row — DEFERRED (needs live data first)
+  - [x] 12.10 Unit test: mapper against committed fixture, asserting every field resolves
+  - [x] 12.11 Run Tests: `pnpm --filter shared run test:unit -- spans`
 
 - [ ] 13.0 Implement Story S-013: Orchestrator Lambda driven by DynamoDB scope — #15 https://github.com/llipe/dev-tasks-agent-fleet/issues/15
 

@@ -28,6 +28,7 @@ class SPAN_FIELDS:
     """Span field path mapping for Logs Insights queries."""
 
     SESSION_ID: str = "resource.attributes.session.id"
+    SESSION_ID_FALLBACK: str = "resource.attributes.llipe.session.id"
     SUBJECT_ID: str = "resource.attributes.llipe.subject.id"
     RUN_STATUS: str = "resource.attributes.llipe.run.status"
     OUTCOME_TYPE: str = "resource.attributes.llipe.outcome.type"
@@ -38,6 +39,8 @@ class SPAN_FIELDS:
     DURATION_NS: str = "duration"
     SERVICE_NAME: str = "resource.attributes.service.name"
     TIMESTAMP: str = "startTimeUnixNano"
+    PARENT_SPAN_ID: str = "parentSpanId"
+    SPAN_NAME: str = "name"
 
 
 # ─── Status Derivation Constants ───────────────────────────────────────────────
