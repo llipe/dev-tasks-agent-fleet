@@ -19,7 +19,6 @@ import { PARAMS_SCHEMAS } from "../src/params-schemas.js";
 import { LLIPE } from "../src/llipe.js";
 import { SPAN_FIELDS } from "../src/span-fields.js";
 import { DEFAULT_MAX_LIFETIME_MS, TERMINATION_GRACE_MS } from "../src/status.js";
-import { normalizeSubjectId } from "../src/normalize-subject-id.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -254,7 +253,9 @@ Source: packages/shared/src/ (TypeScript Zod schemas)
   lines.push("");
   lines.push("");
   lines.push("_SSH_PATTERN = re.compile(r'^[\\w.-]+@[\\w.-]+:([\\w.-]+/[\\w.-]+?)(?:\\.git)?$')");
-  lines.push("_HTTPS_PATTERN = re.compile(r'^https?://[^/]+/([\\w.-]+/[\\w.-]+?)(?:\\.git)?/?\\s*$')");
+  lines.push(
+    "_HTTPS_PATTERN = re.compile(r'^https?://[^/]+/([\\w.-]+/[\\w.-]+?)(?:\\.git)?/?\\s*$')",
+  );
   lines.push("");
   lines.push("");
   lines.push("def normalize_subject_id(input_val: str) -> str:");
