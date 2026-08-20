@@ -1,0 +1,29 @@
+{
+  "_comment": "Expected shape of a root span as stored in CloudWatch by ADOT. Paths here are based on OTEL spec and AWS ADOT documentation. Pending live verification after first deployed run.",
+  "traceId": "abc123def456789012345678deadbeef",
+  "spanId": "1234567890abcdef",
+  "parentSpanId": "",
+  "name": "dep-updater-run",
+  "kind": 1,
+  "startTimeUnixNano": "1737999000000000000",
+  "endTimeUnixNano": "1737999060000000000",
+  "duration": 60000000000,
+  "status": {
+    "code": 1,
+    "message": "OK"
+  },
+  "resource": {
+    "attributes": {
+      "service.name": "dep-updater",
+      "session.id": "dep-updater__llipe-dev-tasks-agent-fleet__20250127T120000Z",
+      "llipe.session.id": "dep-updater__llipe-dev-tasks-agent-fleet__20250127T120000Z",
+      "llipe.subject.id": "llipe/dev-tasks-agent-fleet",
+      "llipe.run.status": "success",
+      "llipe.outcome.type": "pr",
+      "llipe.outcome.url": "https://github.com/llipe/dev-tasks-agent-fleet/pull/42"
+    }
+  },
+  "attributes": {
+    "thread.name": "session-dep-updater__llipe-dev-tasks-agent-fleet__20250127T120000Z"
+  }
+}
