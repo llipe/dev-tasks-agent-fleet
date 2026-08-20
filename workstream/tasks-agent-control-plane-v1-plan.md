@@ -73,9 +73,16 @@
 - `apps/control-plane/src/server/runs/span-to-run-mapper.ts` - Pure span-to-Run mapper with per-model folding (S-017)
 - `apps/control-plane/src/server/runs/trace-query.ts` - Single-run trace query for span timeline (S-017)
 - `apps/control-plane/src/server/runs/run-query-service.ts` - Orchestrates build→execute→map→cache with single-flight (S-017)
+- `apps/control-plane/src/server/runs/merge-runs.ts` - Merges span and config runs, keyed by session_id, with filters and sort (S-018)
+- `apps/control-plane/src/server/runs/config-projection.ts` - SubjectAgentItem → ConfigRun projection with deriveStatus (S-018)
+- `apps/control-plane/src/server/runs/merge-runs.test.ts` - Unit tests: mergeRuns merge, sort, filters (S-018)
+- `apps/control-plane/src/server/runs/config-projection.test.ts` - Unit tests: projection and deriveStatus boundary (S-018)
+- `apps/control-plane/src/server/runs/read-path.integration-test.ts` - Integration test: full read path with merged list (S-018)
 - `apps/control-plane/src/server/runs/span-to-run-mapper.test.ts` - Unit tests: mapper, folding, edge cases (S-017)
 - `apps/control-plane/src/server/runs/insights-query.integration-test.ts` - Integration tests: polling, timeout, single-flight (S-017)
-- `apps/control-plane/src/lib/cost.ts` - Cost estimation
+- `apps/control-plane/src/lib/cost.ts` - Cost estimation: estimateRunCost, pricing loader, 30-day aggregate (S-018)
+- `apps/control-plane/src/lib/cost.test.ts` - Unit tests: cost estimation complete/partial/unpriced/free (S-018)
+- `apps/control-plane/pricing/pricing-v1.json` - Model pricing table (S-018)
 - `apps/control-plane/src/components/**` - UI primitives and view components
 - `apps/control-plane/src/app/**` - Routes and layouts
 - `apps/control-plane/Dockerfile`, `infra/control-plane.fly.toml` - Deployment
@@ -422,21 +429,21 @@ S-001 (foundation)
   - [ ] 17.10 Manual: query real data, compare a row against the AWS console — DEFERRED
   - [x] 17.11 Run Tests: `pnpm --filter control-plane run test:unit -- spans && pnpm --filter control-plane run test:integration -- insights`
 
-- [ ] 18.0 Implement Story S-018: Run list merge, status derivation, and cost estimation — #25 https://github.com/llipe/dev-tasks-agent-fleet/issues/25
+- [x] 18.0 Implement Story S-018: Run list merge, status derivation, and cost estimation — #25 https://github.com/llipe/dev-tasks-agent-fleet/issues/25
 
-  - [ ] 18.1 Implement `mergeRuns(spanRuns, configRuns)`: keyed by `session_id`, span wins on conflict, config-only included regardless of `last_status`
-  - [ ] 18.2 Implement config-row-to-`Run` projection with `deriveStatus` using per-agent `maxLifetime`
-  - [ ] 18.3 Apply status filter and date-range filter after merge; sort `started_at` desc
-  - [ ] 18.4 Implement pricing table loader from `pricing/pricing-v1.json`
-  - [ ] 18.5 Implement `estimateRunCost(perModel, table)` returning `{ usd, complete, unpricedModels }`
-  - [ ] 18.6 Implement 30-day per-agent cost aggregate; cache 5 min
-  - [ ] 18.7 Log `warn` on any unpriced `model_id`
-  - [ ] 18.8 Populate `pricing-v1.json` with placeholder values (test asserts every observed model has an entry)
-  - [ ] 18.9 Unit test: `mergeRuns` — in-both, spans-only, config-only; sort order; filter application
-  - [ ] 18.10 Unit test: `estimateRunCost` — complete, partial, unpriced; genuinely free run (usd=0, complete=true)
-  - [ ] 18.11 Unit test: `deriveStatus` wired with per-agent `maxLifetime`; boundary case ±1 ms
-  - [ ] 18.12 Integration test: full read path producing merged list with one completed, one running, one incomplete
-  - [ ] 18.13 Run Tests: `pnpm --filter control-plane run test:unit -- runs && pnpm --filter control-plane run test:integration -- read-path`
+  - [x] 18.1 Implement `mergeRuns(spanRuns, configRuns)`: keyed by `session_id`, span wins on conflict, config-only included regardless of `last_status`
+  - [x] 18.2 Implement config-row-to-`Run` projection with `deriveStatus` using per-agent `maxLifetime`
+  - [x] 18.3 Apply status filter and date-range filter after merge; sort `started_at` desc
+  - [x] 18.4 Implement pricing table loader from `pricing/pricing-v1.json`
+  - [x] 18.5 Implement `estimateRunCost(perModel, table)` returning `{ usd, complete, unpricedModels }`
+  - [x] 18.6 Implement 30-day per-agent cost aggregate; cache 5 min
+  - [x] 18.7 Log `warn` on any unpriced `model_id`
+  - [x] 18.8 Populate `pricing-v1.json` with placeholder values (test asserts every observed model has an entry)
+  - [x] 18.9 Unit test: `mergeRuns` — in-both, spans-only, config-only; sort order; filter application
+  - [x] 18.10 Unit test: `estimateRunCost` — complete, partial, unpriced; genuinely free run (usd=0, complete=true)
+  - [x] 18.11 Unit test: `deriveStatus` wired with per-agent `maxLifetime`; boundary case ±1 ms
+  - [x] 18.12 Integration test: full read path producing merged list with one completed, one running, one incomplete
+  - [x] 18.13 Run Tests: `pnpm --filter control-plane run test:unit -- runs && pnpm --filter control-plane run test:integration -- read-path`
 
 - [ ] 19.0 Implement Story S-019: Agents list view — #26 https://github.com/llipe/dev-tasks-agent-fleet/issues/26
 

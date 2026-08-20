@@ -1,0 +1,18 @@
+{
+  "us.anthropic.claude-sonnet-4-6": {
+    "inputPer1k": 0.003,
+    "outputPer1k": 0.015
+  },
+  "us.anthropic.claude-haiku-3-5-20241022-v1:0": {
+    "inputPer1k": 0.0008,
+    "outputPer1k": 0.004
+  },
+  "us.anthropic.claude-opus-4-20250514-v1:0": {
+    "inputPer1k": 0.015,
+    "outputPer1k": 0.075
+  },
+  "us.anthropic.claude-sonnet-3-5-20241022-v2:0": {
+    "inputPer1k": 0.003,
+    "outputPer1k": 0.015
+  }
+}
