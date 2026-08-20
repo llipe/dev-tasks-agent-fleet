@@ -16,6 +16,8 @@
 - `agents/dep-updater/{main.py,Dockerfile,pyproject.toml}` - Agent
 - `agents/dep-updater/payload.py` - Control-plane payload envelope parser (S-009)
 - `agents/dep-updater/tests/test_payload.py` - Pytest coverage for payload parsing (S-009)
+- `agents/dep-updater/emission.py` - LLIPE span attribute emission module (S-010)
+- `agents/dep-updater/tests/test_emission.py` - Pytest coverage for span attribute emission (S-010)
 - `agents/dep-updater/logging_json.py` - Structured JSON logging module with secret redaction
 - `agents/dep-updater/{agentcore.json,uv.lock,package.json,.gitignore}` - Agent config and deps
 - `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
@@ -245,16 +247,16 @@ S-001 (foundation)
 
 - [ ] 10.0 Implement Story S-010: Emit the `llipe.*` span attributes — #12 https://github.com/llipe/dev-tasks-agent-fleet/issues/12
 
-  - [ ] 10.1 Implement `emission.py`: import `LLIPE` from generated contract; result-to-attribute mapping function
-  - [ ] 10.2 Map all five agent results: `success`→(success,pr,url); `no_updates`→(success,none,—); `pr_already_open`→(success,pr,existing); `tests_failing`→(failed,none,—); `error`→(failed,none,—)
-  - [ ] 10.3 Set attributes on root span in `finally` block of `_run_pipeline`; verify span is the root from the worker thread
-  - [ ] 10.4 Ensure `llipe.subject.id` equals normalized `subject_id`; `outcome.url` empty rather than absent when none
-  - [ ] 10.5 Unit test: result-to-attribute mapping for all five results
-  - [ ] 10.6 Unit test: attributes emitted on exception path
-  - [ ] 10.7 Integration test: in-memory OTel exporter asserts four attributes on root span
-  - [ ] 10.8 Integration test: confirm root span annotation from worker thread (not a child span)
-  - [ ] 10.9 Post-deploy verification: query span destination, confirm attributes present
-  - [ ] 10.10 Run Tests: `uv run pytest`
+  - [x] 10.1 Implement `emission.py`: import `LLIPE` from generated contract; result-to-attribute mapping function
+  - [x] 10.2 Map all five agent results: `success`→(success,pr,url); `no_updates`→(success,none,—); `pr_already_open`→(success,pr,existing); `tests_failing`→(failed,none,—); `error`→(failed,none,—)
+  - [x] 10.3 Set attributes on root span in `finally` block of `_run_pipeline`; verify span is the root from the worker thread
+  - [x] 10.4 Ensure `llipe.subject.id` equals normalized `subject_id`; `outcome.url` empty rather than absent when none
+  - [x] 10.5 Unit test: result-to-attribute mapping for all five results
+  - [x] 10.6 Unit test: attributes emitted on exception path
+  - [x] 10.7 Integration test: in-memory OTel exporter asserts four attributes on root span
+  - [x] 10.8 Integration test: confirm root span annotation from worker thread (not a child span)
+  - [ ] 10.9 Post-deploy verification: query span destination, confirm attributes present — DEFERRED
+  - [x] 10.10 Run Tests: `uv run pytest`
 
 - [ ] 11.0 Implement Story S-011: Agent stamps its outcome into DynamoDB — #13 https://github.com/llipe/dev-tasks-agent-fleet/issues/13
 

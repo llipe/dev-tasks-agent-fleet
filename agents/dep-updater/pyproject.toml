@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "bedrock-agentcore>=1.21.0",
     "boto3>=1.43.72",
+    "opentelemetry-api>=1.20.0",
     # [crypto] is required for RS256 — plain pyjwt fails
     "pyjwt[crypto]>=2.13.0",
     "requests>=2.34.2",
@@ -15,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy>=1.15.0",
+    "opentelemetry-sdk>=1.20.0",
     "pytest>=8.0.0",
     "ruff>=0.11.0",
     # Type stubs
@@ -50,6 +52,7 @@ module = [
     "bedrock_agentcore.*",
     "strands.*",
     "shared_contract",
+    "opentelemetry.*",
 ]
 ignore_missing_imports = true
 

@@ -13,6 +13,7 @@ import requests
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent, tool
 
+from emission import emit_span_attributes, map_result
 from logging_json import JsonLogger
 from payload import PayloadError, parse_payload
 
@@ -579,6 +580,10 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
     global _workspace, _log  # noqa: PLW0603
 
     token: str | None = None
+    # Track pipeline result for span attribute emission (S-010)
+    _pipeline_result: str = "error"  # default to error; overwritten on success paths
+    _pr_url: str | None = None
+    _subject_id: str | None = None
 
     try:
         # Parse the control-plane payload envelope (handles prompt-unwrap, normalization,
@@ -595,6 +600,7 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         repo_url = parsed.clone_url
         max_attempts = int(parsed.params.get("max_fix_attempts", 3))
         allow_fixes = bool(parsed.params.get("allow_fixes", True))
+        _subject_id = parsed.repo
 
         _workspace = tempfile.mkdtemp(prefix="dep-agent-", dir="/tmp")
 
@@ -642,6 +648,7 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         update_packages(_workspace)
         if not has_changes(_workspace):
             _log.info("no changes after update — nothing to do")
+            _pipeline_result = "no_updates"
             return
 
         # -- Snapshot after state ---
@@ -732,6 +739,7 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
                 "tests still failing after fix attempts",
                 attempts=attempts,
             )
+            _pipeline_result = "tests_failing"
             return
 
         # -- Idempotency check ---
@@ -740,6 +748,8 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         already = existing_pr(_workspace, env)
         if already:
             _log.info("PR already open, skipping", pr_url=already)
+            _pipeline_result = "pr_already_open"
+            _pr_url = already
             return
 
         # -- Build PR body ---
@@ -757,6 +767,8 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
 
         pr_url = create_pr(_workspace, token, base, body)
         _log.info("PR created", pr_url=pr_url)
+        _pipeline_result = "success"
+        _pr_url = pr_url
 
     except subprocess.CalledProcessError as e:
         cmd_str = " ".join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
@@ -775,6 +787,17 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         if _log:
             _log.error("unhandled exception", error=msg)
     finally:
+        # Emit llipe.* span attributes on the root span (S-010).
+        # This runs on every path: success, failure, exception.
+        if _subject_id:
+            try:
+                run_result = map_result(_pipeline_result, pr_url=_pr_url)
+                emit_span_attributes(result=run_result, subject_id=_subject_id)
+            except Exception:
+                # Never let emission failure mask the actual pipeline result
+                if _log:
+                    _log.warn("failed to emit span attributes")
+
         app.complete_async_task(task_id)
 
 
