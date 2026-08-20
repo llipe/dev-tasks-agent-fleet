@@ -13,7 +13,9 @@
 - `infra/seed/seed.ts` - Table seeder
 - `infra/orchestrator/src/**` - Orchestrator Lambda
 - `agents/dep-updater/{main.py,Dockerfile,pyproject.toml}` - Agent
-- `agents/dep-updater/{logging_json,payload,emission,outcome_store}.py` - Agent compatibility modules
+- `agents/dep-updater/{agentcore.json,uv.lock,package.json,.gitignore}` - Agent config and deps
+- `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
+- `agents/dep-updater/ca/.keep` - Corporate CA certificate directory
 - `apps/control-plane/src/middleware.ts` - JWT validation
 - `apps/control-plane/src/server/aws/**` - AWS adapters
 - `apps/control-plane/src/server/cache/ttl-cache.ts` - In-process cache
