@@ -17,7 +17,7 @@
 | 3        | S-003    | #3      | ✅ Merged      | #34 | story/S-003-dynamodb-table    |
 | 4        | S-004    | #6      | ✅ Merged      | #35 | story/S-004-iam-roles         |
 | 5        | S-005    | #7      | ✅ Merged      | #36 | story/S-005-observability-discovery-tags |
-| 6        | S-006    | #8      | ⏳ Pending     | —   | —                             |
+| 6        | S-006    | #8      | ✅ Merged      | #37 | story/S-006-port-dep-updater |
 | 7        | S-007    | #9      | ⏳ Pending     | —   | —                             |
 | 8        | S-008    | #10     | ⏳ Pending     | —   | —                             |
 | 9        | S-009    | #11     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-006
-- Last merged PR: #36
-- Integration branch HEAD: 2a5ce1f
+- Next story: S-007
+- Last merged PR: #37
+- Integration branch HEAD: 0767a01
 
 ## Decisions Log
 
@@ -51,3 +51,4 @@
 - S-003 verifier audit: High fidelity, 2 minor drift items (both non-blocking). Deployment deferred pending user confirmation.
 - S-004 verifier audit: High fidelity, 0 drift. Deployment deferred pending user confirmation.
 - S-005 verifier audit: High fidelity, 2 minor drift items (PRD question #6 not marked resolved, prettierignore gap). Both non-blocking.
+- S-006 verifier audit: High fidelity, 0 drift. Deployment deferred. Docker build not verified (no daemon).
