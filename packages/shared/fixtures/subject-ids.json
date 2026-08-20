@@ -1,0 +1,8 @@
+[
+  { "input": "owner/repo", "expected": "owner/repo" },
+  { "input": "https://github.com/owner/repo", "expected": "owner/repo" },
+  { "input": "https://github.com/owner/repo.git", "expected": "owner/repo" },
+  { "input": "git@github.com:owner/repo.git", "expected": "owner/repo" },
+  { "input": "owner/repo/", "expected": "owner/repo" },
+  { "input": "OWNER/REPO", "expected": "owner/repo" }
+]

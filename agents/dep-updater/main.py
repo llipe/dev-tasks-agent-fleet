@@ -14,6 +14,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent, tool
 
 from logging_json import JsonLogger
+from payload import PayloadError, parse_payload
 
 # ─────────────────────────────────────────────────────────────────
 # Config
@@ -580,17 +581,20 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
     token: str | None = None
 
     try:
-        # The CLI sends the invocation input as a JSON string inside the "prompt" key.
-        # Unwrap it so we can access the actual fields.
-        if "repo_url" not in payload and "prompt" in payload:
-            payload = json.loads(payload["prompt"])
+        # Parse the control-plane payload envelope (handles prompt-unwrap, normalization,
+        # params validation, and defaults).
+        try:
+            parsed = parse_payload(payload)
+        except PayloadError as e:
+            # Fail fast with a clear logged error for invalid payloads
+            _log = JsonLogger(session_id="unknown", agent="dep-updater", repo="unknown")
+            _log.error("payload validation failed", error=str(e))
+            return
 
-        repo_url: str = payload["repo_url"]
-        max_attempts = int(payload.get("max_fix_attempts", 3))
-        allow_fixes = bool(payload.get("allow_fixes", True))
-
-        # Extract session_id from payload if present (set by entrypoint)
-        session_id: str = payload.get("_session_id", "unknown")
+        session_id = parsed.session_id
+        repo_url = parsed.clone_url
+        max_attempts = int(parsed.params.get("max_fix_attempts", 3))
+        allow_fixes = bool(parsed.params.get("allow_fixes", True))
 
         _workspace = tempfile.mkdtemp(prefix="dep-agent-", dir="/tmp")
 
@@ -598,7 +602,7 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         _log = JsonLogger(
             session_id=session_id,
             agent="dep-updater",
-            repo=repo_url,
+            repo=parsed.repo,
         )
 
         _log.info(
@@ -779,11 +783,14 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
     """Non-blocking entrypoint: registers an async task and starts the pipeline
     on a daemon worker thread, returning immediately so /ping stays responsive.
     """
-    # Extract session_id from context for task tracking
+    # Extract session_id from context for task tracking (fallback for CLI invocations
+    # where session_id is not in the payload envelope).
     session_id: str = getattr(context, "session_id", None) or "unknown"
 
-    # Inject session_id into payload so the pipeline can bind it to the logger
-    payload["_session_id"] = session_id
+    # If the payload doesn't already have a session_id (CLI shim case),
+    # inject the one from the runtime context.
+    if "session_id" not in payload:
+        payload["session_id"] = session_id
 
     # Register async task so /ping reports HealthyBusy
     task_id = app.add_async_task(f"dep-update-{session_id}")

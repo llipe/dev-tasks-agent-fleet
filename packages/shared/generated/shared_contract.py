@@ -98,3 +98,50 @@ class Params_dep_updater:
 PARAMS_SCHEMAS: dict[str, type] = {
     "dep-updater": Params_dep_updater,
 }
+
+
+# ─── Params Validation Schema (runtime) ────────────────────────────────────────
+
+DEP_UPDATER_PARAMS_SCHEMA: dict[str, dict[str, object]] = {
+    "allow_fixes": {"type": "boolean"},
+    "max_fix_attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+}
+
+
+# ─── Subject ID Normalizer ─────────────────────────────────────────────────────
+
+import re
+
+
+_SSH_PATTERN = re.compile(r'^[\w.-]+@[\w.-]+:([\w.-]+/[\w.-]+?)(?:\.git)?$')
+_HTTPS_PATTERN = re.compile(r'^https?://[^/]+/([\w.-]+/[\w.-]+?)(?:\.git)?/?\s*$')
+
+
+def normalize_subject_id(input_val: str) -> str:
+    """Normalize any supported subject ID format to owner/repo (lowercase).
+
+    Supported formats:
+    - bare: owner/repo
+    - HTTPS: https://github.com/owner/repo[.git][/]
+    - SSH: git@github.com:owner/repo[.git]
+    """
+    trimmed = input_val.strip()
+
+    # Try SSH format first
+    ssh_match = _SSH_PATTERN.match(trimmed)
+    if ssh_match:
+        return ssh_match.group(1).lower()
+
+    # Try HTTPS format
+    https_match = _HTTPS_PATTERN.match(trimmed)
+    if https_match:
+        return https_match.group(1).lower()
+
+    # Bare format: strip .git suffix and trailing slash, then lowercase
+    result = trimmed
+    if result.endswith("/"):
+        result = result[:-1]
+    if result.endswith(".git"):
+        result = result[:-4]
+
+    return result.lower()

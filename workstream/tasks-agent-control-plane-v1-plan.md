@@ -7,12 +7,15 @@
 - `.github/workflows/{control-plane,agent,infra,shared}.yml` - Path-gated CI
 - `packages/shared/src/**` - Contract: keys, schemas, status, session-id, span fields, codegen, IAM attribute allowlists, agent tags, observability config
 - `packages/shared/generated/**` - Generated Python module + JSON Schema
+- `packages/shared/fixtures/subject-ids.json` - Cross-language normalization test fixture (S-009)
 - `infra/bin/app.ts`, `infra/lib/{data-stack,iam-stack,agent-stack,orchestration-stack}.ts` - CDK
 - `infra/test/agent-stack.test.ts` - CDK snapshot test for discovery tags
 - `infra/test/discovery.integration-test.ts` - Integration tests for tag-based discovery
 - `infra/seed/seed.ts` - Table seeder
 - `infra/orchestrator/src/**` - Orchestrator Lambda
 - `agents/dep-updater/{main.py,Dockerfile,pyproject.toml}` - Agent
+- `agents/dep-updater/payload.py` - Control-plane payload envelope parser (S-009)
+- `agents/dep-updater/tests/test_payload.py` - Pytest coverage for payload parsing (S-009)
 - `agents/dep-updater/logging_json.py` - Structured JSON logging module with secret redaction
 - `agents/dep-updater/{agentcore.json,uv.lock,package.json,.gitignore}` - Agent config and deps
 - `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
@@ -226,19 +229,19 @@ S-001 (foundation)
 
 - [ ] 9.0 Implement Story S-009: Accept the control-plane payload envelope — #11 https://github.com/llipe/dev-tasks-agent-fleet/issues/11
 
-  - [ ] 9.1 Implement `payload.py`: model from the generated Python contract; parse `{session_id, repo, params}`
-  - [ ] 9.2 Normalize `subject_id` via generated `normalize_subject_id`; derive clone URL
-  - [ ] 9.3 Validate `params` against generated schema; reject unknown keys
-  - [ ] 9.4 Apply defaults (`allow_fixes=True`, `max_fix_attempts=3`)
-  - [ ] 9.5 Preserve the `prompt`-unwrapping CLI shim
-  - [ ] 9.6 Fail fast on missing `session_id` or `repo` with a clear logged error
-  - [ ] 9.7 Create `packages/shared/fixtures/subject-ids.json` with test cases
-  - [ ] 9.8 Unit test: envelope parsing; normalization equivalence with TS over shared fixture
-  - [ ] 9.9 Unit test: params validation accept/reject; unknown key rejected not stripped
-  - [ ] 9.10 Unit test: missing `session_id`; missing `repo`; `params` null vs `{}`
-  - [ ] 9.11 Integration test: end-to-end invocation with control-plane-shaped payload
-  - [ ] 9.12 Verify AC: CLI invocation still works via `prompt` shim
-  - [ ] 9.13 Run Tests: `uv run pytest && pnpm --filter shared run test:unit`
+  - [x] 9.1 Implement `payload.py`: model from the generated Python contract; parse `{session_id, repo, params}`
+  - [x] 9.2 Normalize `subject_id` via generated `normalize_subject_id`; derive clone URL
+  - [x] 9.3 Validate `params` against generated schema; reject unknown keys
+  - [x] 9.4 Apply defaults (`allow_fixes=True`, `max_fix_attempts=3`)
+  - [x] 9.5 Preserve the `prompt`-unwrapping CLI shim
+  - [x] 9.6 Fail fast on missing `session_id` or `repo` with a clear logged error
+  - [x] 9.7 Create `packages/shared/fixtures/subject-ids.json` with test cases
+  - [x] 9.8 Unit test: envelope parsing; normalization equivalence with TS over shared fixture
+  - [x] 9.9 Unit test: params validation accept/reject; unknown key rejected not stripped
+  - [x] 9.10 Unit test: missing `session_id`; missing `repo`; `params` null vs `{}`
+  - [x] 9.11 Integration test: end-to-end invocation with control-plane-shaped payload
+  - [x] 9.12 Verify AC: CLI invocation still works via `prompt` shim
+  - [x] 9.13 Run Tests: `uv run pytest && pnpm --filter shared run test:unit`
 
 - [ ] 10.0 Implement Story S-010: Emit the `llipe.*` span attributes — #12 https://github.com/llipe/dev-tasks-agent-fleet/issues/12
 
