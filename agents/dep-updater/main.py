@@ -13,6 +13,8 @@ import requests
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent, tool
 
+from logging_json import JsonLogger
+
 # ─────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────
@@ -24,6 +26,9 @@ TEST_TIMEOUT = int(os.environ.get("TEST_TIMEOUT", "600"))
 # Set per-invocation. Tools read it instead of taking a path argument,
 # so the model cannot wander outside the checkout.
 _workspace: str | None = None
+
+# Module-level logger, initialized per invocation in _run_pipeline.
+_log: JsonLogger | None = None
 
 
 def _ws() -> str:
@@ -255,13 +260,16 @@ def _ensure_pnpm_version(workspace: str) -> None:
     target_major = target.split(".")[0]
     if current_major == target_major:
         return
-    print(
-        f"[dep-agent] project expects pnpm {target}, "
-        f"container has pnpm {result.stdout.strip()}. Switching..."
-    )
+    if _log:
+        _log.info(
+            "project expects different pnpm version, switching",
+            expected=target,
+            current=result.stdout.strip(),
+        )
     _run(["npm", "install", "-g", f"pnpm@{target_major}"], cwd=workspace, timeout=120)
     ver_result = _run(["pnpm", "--version"], cwd=workspace, check=False)
-    print(f"[dep-agent] now using pnpm {ver_result.stdout.strip()}")
+    if _log:
+        _log.info("pnpm version switched", version=ver_result.stdout.strip())
 
 
 def install_deps(workspace: str, frozen: bool = True) -> None:
@@ -411,7 +419,8 @@ def run_lint(workspace: str) -> tuple[int, str]:
         return -1, "no lint script"
     result = _run(["pnpm", "lint"], cwd=workspace, timeout=300, check=False)
     if result.returncode != 0 and "lint:fix" in scripts:
-        print("[dep-agent] lint failed, attempting lint:fix")
+        if _log:
+            _log.warn("lint failed, attempting lint:fix")
         _run(["pnpm", "lint:fix"], cwd=workspace, timeout=300, check=False)
         result = _run(["pnpm", "lint"], cwd=workspace, timeout=300, check=False)
     return result.returncode, (result.stdout + "\n" + result.stderr)[-2000:]
@@ -566,7 +575,7 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
     Wrapped in try/finally to guarantee app.complete_async_task is called,
     ensuring /ping transitions back to Healthy even on failure.
     """
-    global _workspace  # noqa: PLW0603
+    global _workspace, _log  # noqa: PLW0603
 
     token: str | None = None
 
@@ -580,89 +589,100 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         max_attempts = int(payload.get("max_fix_attempts", 3))
         allow_fixes = bool(payload.get("allow_fixes", True))
 
+        # Extract session_id from payload if present (set by entrypoint)
+        session_id: str = payload.get("_session_id", "unknown")
+
         _workspace = tempfile.mkdtemp(prefix="dep-agent-", dir="/tmp")
 
-        print(
-            f"[dep-agent] invocation start: repo={repo_url} "
-            f"allow_fixes={allow_fixes} max_attempts={max_attempts}"
+        # Initialize structured logger binding context for this invocation
+        _log = JsonLogger(
+            session_id=session_id,
+            agent="dep-updater",
+            repo=repo_url,
         )
 
-        print("[dep-agent] fetching GitHub token from Secrets Manager")
-        token = get_github_token()
-        print("[dep-agent] token retrieved successfully")
+        _log.info(
+            "invocation start",
+            allow_fixes=allow_fixes,
+            max_attempts=max_attempts,
+        )
 
-        print(f"[dep-agent] cloning {repo_url}")
+        _log.info("fetching GitHub token from Secrets Manager")
+        token = get_github_token()
+        _log.info("token retrieved successfully")
+
+        _log.info("cloning repository")
         clone_repo(repo_url, _workspace, token)
         base = default_branch(_workspace)
-        print(f"[dep-agent] cloned to {_workspace}, base branch={base}")
+        _log.info("clone complete", workspace=_workspace, base_branch=base)
 
-        print("[dep-agent] detecting project pnpm version")
+        _log.info("detecting project pnpm version")
         _ensure_pnpm_version(_workspace)
 
-        print("[dep-agent] installing dependencies (frozen)")
+        _log.info("installing dependencies (frozen)")
         install_deps(_workspace, frozen=True)
-        print("[dep-agent] install complete")
+        _log.info("install complete")
 
         # -- Snapshot before state ---
-        print("[dep-agent] snapshotting package versions (before)")
+        _log.info("snapshotting package versions (before)")
         packages_before = snapshot_lockfile_packages(_workspace)
 
-        print("[dep-agent] running pnpm audit (before)")
+        _log.info("running pnpm audit (before)")
         audit_before = run_audit(_workspace)
         vuln_count_before = count_vulns(audit_before)
         advisories_before = extract_advisories(audit_before)
-        print(f"[dep-agent] audit complete: {vuln_count_before} vulnerabilities")
+        _log.info("audit complete", vulnerabilities=vuln_count_before)
 
         # -- Update ---
-        print("[dep-agent] running pnpm update")
+        _log.info("running pnpm update")
         update_packages(_workspace)
         if not has_changes(_workspace):
-            print("[dep-agent] no changes after update — nothing to do")
+            _log.info("no changes after update — nothing to do")
             return
 
         # -- Snapshot after state ---
-        print("[dep-agent] snapshotting package versions (after)")
+        _log.info("snapshotting package versions (after)")
         packages_after = snapshot_lockfile_packages(_workspace)
         upgraded = diff_packages(packages_before, packages_after)
-        print(f"[dep-agent] {len(upgraded)} package(s) changed")
+        _log.info("packages diffed", packages_changed=len(upgraded))
 
-        print("[dep-agent] running pnpm audit (after)")
+        _log.info("running pnpm audit (after)")
         audit_after = run_audit(_workspace)
         vuln_count_after = count_vulns(audit_after)
         advisories_after = extract_advisories(audit_after)
-        print(f"[dep-agent] vulnerabilities after update: {vuln_count_after}")
+        _log.info("post-update audit complete", vulnerabilities=vuln_count_after)
 
         # Determine which advisories were fixed
         after_ids = {a["id"] for a in advisories_after}
         fixed_advisories = [a for a in advisories_before if a["id"] not in after_ids]
-        print(f"[dep-agent] {len(fixed_advisories)} advisory(ies) fixed")
+        _log.info("advisories resolved", fixed_count=len(fixed_advisories))
 
         # -- Re-install and validate ---
-        print("[dep-agent] re-installing dependencies")
+        _log.info("re-installing dependencies")
         install_deps(_workspace, frozen=False)
 
-        print("[dep-agent] running lint")
+        _log.info("running lint")
         lint_code, _lint_output = run_lint(_workspace)
         lint_status = "passed" if lint_code == 0 else ("skipped" if lint_code == -1 else "failed")
-        print(f"[dep-agent] lint: {lint_status}")
+        _log.info("lint complete", status=lint_status)
 
-        print("[dep-agent] running format")
+        _log.info("running format")
         fmt_code, _fmt_output = run_format(_workspace)
         fmt_status = "passed" if fmt_code == 0 else ("skipped" if fmt_code == -1 else "failed")
-        print(f"[dep-agent] format: {fmt_status}")
+        _log.info("format complete", status=fmt_status)
 
-        print("[dep-agent] running typecheck")
+        _log.info("running typecheck")
         tc_code, _tc_output = run_typecheck(_workspace)
         tc_status = "passed" if tc_code == 0 else ("skipped" if tc_code == -1 else "failed")
-        print(f"[dep-agent] typecheck: {tc_status}")
+        _log.info("typecheck complete", status=tc_status)
 
-        print("[dep-agent] running tests")
+        _log.info("running tests")
         exit_code, test_output = run_tests(_workspace)
-        print(f"[dep-agent] tests exit code: {exit_code}")
+        _log.info("tests complete", exit_code=exit_code)
         attempts = 0
 
         if exit_code != 0 and allow_fixes:
-            print(f"[dep-agent] tests failed — invoking fix agent (model={MODEL_ID})")
+            _log.warn("tests failed, invoking fix agent", model=MODEL_ID)
             fix_agent = Agent(
                 model=MODEL_ID,
                 tools=[shell, read_file, write_file, find_files, grep_code],
@@ -681,14 +701,14 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
             )
             while exit_code != 0 and attempts < max_attempts:
                 attempts += 1
-                print(f"[dep-agent] fix attempt {attempts}/{max_attempts}")
+                _log.warn("fix attempt", attempt=attempts, max_attempts=max_attempts)
                 fix_agent(
                     f"Attempt {attempts} of {max_attempts}.\n\n"
                     f"Test output (tail):\n{test_output[-4000:]}\n\n"
                     "Diagnose and fix. Then run `pnpm test`."
                 )
                 exit_code, test_output = run_tests(_workspace)
-                print(f"[dep-agent] post-fix tests exit code: {exit_code}")
+                _log.info("post-fix tests complete", exit_code=exit_code)
 
             # Re-run lint/format/typecheck after fixes in case the agent touched source
             if exit_code == 0:
@@ -704,15 +724,18 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
                 tc_status = "passed" if tc_code == 0 else ("skipped" if tc_code == -1 else "failed")
 
         if exit_code != 0:
-            print(f"[dep-agent] tests still failing after {attempts} attempt(s)")
+            _log.error(
+                "tests still failing after fix attempts",
+                attempts=attempts,
+            )
             return
 
         # -- Idempotency check ---
         env = {**os.environ, "GH_TOKEN": token}
-        print("[dep-agent] checking for existing PR")
+        _log.info("checking for existing PR")
         already = existing_pr(_workspace, env)
         if already:
-            print(f"[dep-agent] PR already open: {already}")
+            _log.info("PR already open, skipping", pr_url=already)
             return
 
         # -- Build PR body ---
@@ -729,7 +752,7 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         )
 
         pr_url = create_pr(_workspace, token, base, body)
-        print(f"[dep-agent] PR created: {pr_url}")
+        _log.info("PR created", pr_url=pr_url)
 
     except subprocess.CalledProcessError as e:
         cmd_str = " ".join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
@@ -739,12 +762,14 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
         stderr = (e.stderr or "")[-1500:]
         if token:
             stderr = stderr.replace(token, "***")
-        print(f"[dep-agent] CalledProcessError at: {cmd_str}")
+        if _log:
+            _log.error("CalledProcessError", cmd=cmd_str, stderr=stderr)
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
         if token:
             msg = msg.replace(token, "***")
-        print(f"[dep-agent] unhandled exception: {msg}")
+        if _log:
+            _log.error("unhandled exception", error=msg)
     finally:
         app.complete_async_task(task_id)
 
@@ -756,6 +781,9 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
     """
     # Extract session_id from context for task tracking
     session_id: str = getattr(context, "session_id", None) or "unknown"
+
+    # Inject session_id into payload so the pipeline can bind it to the logger
+    payload["_session_id"] = session_id
 
     # Register async task so /ping reports HealthyBusy
     task_id = app.add_async_task(f"dep-update-{session_id}")
