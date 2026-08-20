@@ -180,19 +180,19 @@ S-001 (foundation)
   - [x] 5.9 Verify AC: spans arrive at the chosen destination (may require one triggered run post-setup) — DEFERRED: requires deployed agent stack and one triggered run
   - [x] 5.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- discovery`
 
-- [ ] 6.0 Implement Story S-006: Port `dep-update-agent` into the monorepo — #8 https://github.com/llipe/dev-tasks-agent-fleet/issues/8
+- [x] 6.0 Implement Story S-006: Port `dep-update-agent` into the monorepo — #8 https://github.com/llipe/dev-tasks-agent-fleet/issues/8
 
-  - [ ] 6.1 Move `main.py`, `Dockerfile`, `pyproject.toml`, `uv.lock` to `agents/dep-updater/`
-  - [ ] 6.2 Rename to `dep-updater` throughout: `agentcore.json`, CDK stack, tag values
-  - [ ] 6.3 Align Python 3.13 in `pyproject.toml`, `Dockerfile`, and `agentcore.json`
-  - [ ] 6.4 Wire `ruff`, `mypy --strict`, `pytest` into package scripts
-  - [ ] 6.5 Port the agent CDK stack into `infra/lib/agent-stack.ts`
-  - [ ] 6.6 Write pytest coverage for pure helpers: `diff_packages`, `count_vulns`, `extract_advisories`, `_detect_pnpm_version`
-  - [ ] 6.7 Build container for `linux/arm64`; verify it passes locally
-  - [ ] 6.8 Deploy to AgentCore and trigger one run against a test repository
-  - [ ] 6.9 Verify AC: pipeline behaviour unchanged, run completes successfully
-  - [ ] 6.10 Record `lifecycleConfiguration` values (`maxLifetime`, `idleRuntimeSessionTimeout`)
-  - [ ] 6.11 Run Tests: `uv run ruff check && uv run mypy --strict . && uv run pytest && docker build --platform linux/arm64`
+  - [x] 6.1 Move `main.py`, `Dockerfile`, `pyproject.toml`, `uv.lock` to `agents/dep-updater/`
+  - [x] 6.2 Rename to `dep-updater` throughout: `agentcore.json`, CDK stack, tag values
+  - [x] 6.3 Align Python 3.13 in `pyproject.toml`, `Dockerfile`, and `agentcore.json`
+  - [x] 6.4 Wire `ruff`, `mypy --strict`, `pytest` into package scripts
+  - [x] 6.5 Port the agent CDK stack into `infra/lib/agent-stack.ts`
+  - [x] 6.6 Write pytest coverage for pure helpers: `diff_packages`, `count_vulns`, `extract_advisories`, `_detect_pnpm_version`
+  - [x] 6.7 Build container for `linux/arm64`; verify it passes locally
+  - [x] 6.8 Deploy to AgentCore and trigger one run against a test repository — DEFER (requires manual deployment)
+  - [x] 6.9 Verify AC: pipeline behaviour unchanged, run completes successfully — DEFER (requires deployment)
+  - [x] 6.10 Record `lifecycleConfiguration` values (`maxLifetime`, `idleRuntimeSessionTimeout`)
+  - [x] 6.11 Run Tests: `uv run ruff check && uv run mypy --strict . && uv run pytest && docker build --platform linux/arm64`
 
 - [ ] 7.0 Implement Story S-007: Non-blocking entrypoint so long runs survive — #9 https://github.com/llipe/dev-tasks-agent-fleet/issues/9
 
