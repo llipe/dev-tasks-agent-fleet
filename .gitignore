@@ -3,6 +3,24 @@ dist
 .next
 coverage
 *.tsbuildinfo
+
+# Secrets and environment
 .env
-.env.local
+.env.*
+!.env.example
+
+# CDK build artifacts (may contain account IDs, ARNs)
 cdk.out
+cdk.context.json
+
+# AWS credentials and config (should never be in repo)
+.aws/
+credentials
+*.pem
+*.key
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
