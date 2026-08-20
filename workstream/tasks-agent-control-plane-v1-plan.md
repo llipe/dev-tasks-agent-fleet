@@ -18,6 +18,9 @@
 - `agents/dep-updater/tests/test_payload.py` - Pytest coverage for payload parsing (S-009)
 - `agents/dep-updater/emission.py` - LLIPE span attribute emission module (S-010)
 - `agents/dep-updater/tests/test_emission.py` - Pytest coverage for span attribute emission (S-010)
+- `agents/dep-updater/outcome_store.py` - DynamoDB outcome stamping module (S-011)
+- `agents/dep-updater/tests/test_outcome_store.py` - Pytest coverage for outcome stamping (S-011)
+- `infra/test/agent-writes.integration-test.ts` - Integration tests for agent DynamoDB writes (S-011)
 - `agents/dep-updater/logging_json.py` - Structured JSON logging module with secret redaction
 - `agents/dep-updater/{agentcore.json,uv.lock,package.json,.gitignore}` - Agent config and deps
 - `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
@@ -260,17 +263,17 @@ S-001 (foundation)
 
 - [ ] 11.0 Implement Story S-011: Agent stamps its outcome into DynamoDB — #13 https://github.com/llipe/dev-tasks-agent-fleet/issues/13
 
-  - [ ] 11.1 Implement `outcome_store.py`: `UpdateItem` on `last_status` and `last_outcome_url` only, `UpdateExpression`
-  - [ ] 11.2 Add conditional expression `attribute_exists(pk)` so a missing item logs error, does not create one
-  - [ ] 11.3 Call from `_run_pipeline`'s `finally` block alongside span attributes
-  - [ ] 11.4 Ensure no `PutItem` exists anywhere in agent code
-  - [ ] 11.5 Handle failed DynamoDB write: log `error`, do not mask the run's actual result
-  - [ ] 11.6 Unit test: update expression contains only two attributes
-  - [ ] 11.7 Unit test: called on both success and failure paths
-  - [ ] 11.8 Integration test: real write under `agent-exec-role`; assert `enabled` and `params` unchanged
-  - [ ] 11.9 Integration test: attempted write to `enabled` is denied
-  - [ ] 11.10 Post-deploy: inspect item after a real run; confirm `enabled`/`params` untouched
-  - [ ] 11.11 Run Tests: `uv run pytest && pnpm --filter infra run test:integration -- agent-writes`
+  - [x] 11.1 Implement `outcome_store.py`: `UpdateItem` on `last_status` and `last_outcome_url` only, `UpdateExpression`
+  - [x] 11.2 Add conditional expression `attribute_exists(pk)` so a missing item logs error, does not create one
+  - [x] 11.3 Call from `_run_pipeline`'s `finally` block alongside span attributes
+  - [x] 11.4 Ensure no `PutItem` exists anywhere in agent code
+  - [x] 11.5 Handle failed DynamoDB write: log `error`, do not mask the run's actual result
+  - [x] 11.6 Unit test: update expression contains only two attributes
+  - [x] 11.7 Unit test: called on both success and failure paths
+  - [x] 11.8 Integration test: real write under `agent-exec-role`; assert `enabled` and `params` unchanged
+  - [x] 11.9 Integration test: attempted write to `enabled` is denied
+  - [ ] 11.10 Post-deploy: inspect item after a real run; confirm `enabled`/`params` untouched — DEFERRED
+  - [x] 11.11 Run Tests: `uv run pytest && pnpm --filter infra run test:integration -- agent-writes`
 
 - [ ] 12.0 Implement Story S-012: Verify telemetry assumptions and pin the span field mapping — #14 https://github.com/llipe/dev-tasks-agent-fleet/issues/14
 
