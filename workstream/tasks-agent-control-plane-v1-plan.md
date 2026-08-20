@@ -296,26 +296,26 @@ S-001 (foundation)
   - [x] 12.10 Unit test: mapper against committed fixture, asserting every field resolves
   - [x] 12.11 Run Tests: `pnpm --filter shared run test:unit -- spans`
 
-- [ ] 13.0 Implement Story S-013: Orchestrator Lambda driven by DynamoDB scope — #15 https://github.com/llipe/dev-tasks-agent-fleet/issues/15
+- [x] 13.0 Implement Story S-013: Orchestrator Lambda driven by DynamoDB scope — #15 https://github.com/llipe/dev-tasks-agent-fleet/issues/15
 
-  - [ ] 13.1 Create TypeScript Lambda scaffold in `infra/orchestrator/`
-  - [ ] 13.2 Implement GSI1 query: `pk = "AGENT#<name>"`, filter `enabled = true`
-  - [ ] 13.3 Implement params merge: global CONFIG + subject-level params, subject wins
-  - [ ] 13.4 Stamp-then-invoke per repository: `UpdateItem` `last_session_id`, `last_run_at`, `last_status="running"` then `InvokeAgentRuntime` fire-and-forget (never read response body)
-  - [ ] 13.5 Implement bounded concurrency pool of 4 (`ORCHESTRATOR_CONCURRENCY`), per-repo try/catch
-  - [ ] 13.6 Implement failure walk-back: if invoke throws, `UpdateItem` `last_status="failed"` immediately
-  - [ ] 13.7 Use `buildSessionId(agent, repo, scheduledAt)` — `scheduledAt` from EventBridge event
-  - [ ] 13.8 Implement structured JSON logging: `session_id` per invocation, summary line with invoked/skipped counts
-  - [ ] 13.9 Create `orchestration-stack.ts` in CDK: EventBridge Scheduler rule per agent, Lambda with 60 s timeout, orchestrator role
-  - [ ] 13.10 Remove `REPOS` env var from any residual config; confirm scope comes from DynamoDB only
-  - [ ] 13.11 Unit test: `buildSessionId` integration; params merge precedence
-  - [ ] 13.12 Unit test: pool bounds concurrency to 4
-  - [ ] 13.13 Integration test (mocked): full fan-out over N repos; one throwing while rest proceed; failure walk-back
-  - [ ] 13.14 Integration test: disabled repos excluded; `scheduledAt` retry produces identical `session_id`
-  - [ ] 13.15 Integration test: zero enabled repos produces zero invocations and a clean return
-  - [ ] 13.16 Manual: trigger schedule manually; confirm N runs start and DynamoDB rows stamp
-  - [ ] 13.17 Verify AC: adding a repo in DynamoDB (by S-022) causes the next schedule to invoke it without a deploy
-  - [ ] 13.18 Run Tests: `pnpm --filter orchestrator run test && pnpm --filter infra run cdk diff`
+  - [x] 13.1 Create TypeScript Lambda scaffold in `infra/orchestrator/`
+  - [x] 13.2 Implement GSI1 query: `pk = "AGENT#<name>"`, filter `enabled = true`
+  - [x] 13.3 Implement params merge: global CONFIG + subject-level params, subject wins
+  - [x] 13.4 Stamp-then-invoke per repository: `UpdateItem` `last_session_id`, `last_run_at`, `last_status="running"` then `InvokeAgentRuntime` fire-and-forget (never read response body)
+  - [x] 13.5 Implement bounded concurrency pool of 4 (`ORCHESTRATOR_CONCURRENCY`), per-repo try/catch
+  - [x] 13.6 Implement failure walk-back: if invoke throws, `UpdateItem` `last_status="failed"` immediately
+  - [x] 13.7 Use `buildSessionId(agent, repo, scheduledAt)` — `scheduledAt` from EventBridge event
+  - [x] 13.8 Implement structured JSON logging: `session_id` per invocation, summary line with invoked/skipped counts
+  - [x] 13.9 Create `orchestration-stack.ts` in CDK: EventBridge Scheduler rule per agent, Lambda with 60 s timeout, orchestrator role
+  - [x] 13.10 Remove `REPOS` env var from any residual config; confirm scope comes from DynamoDB only
+  - [x] 13.11 Unit test: `buildSessionId` integration; params merge precedence
+  - [x] 13.12 Unit test: pool bounds concurrency to 4
+  - [x] 13.13 Integration test (mocked): full fan-out over N repos; one throwing while rest proceed; failure walk-back
+  - [x] 13.14 Integration test: disabled repos excluded; `scheduledAt` retry produces identical `session_id`
+  - [x] 13.15 Integration test: zero enabled repos produces zero invocations and a clean return
+  - [ ] 13.16 Manual: trigger schedule manually; confirm N runs start and DynamoDB rows stamp — DEFERRED
+  - [ ] 13.17 Verify AC: adding a repo in DynamoDB (by S-022) causes the next schedule to invoke it without a deploy — DEFERRED
+  - [x] 13.18 Run Tests: `pnpm --filter orchestrator run test && pnpm --filter infra run cdk diff`
 
 - [ ] 14.0 Implement Story S-014: App shell with Cloudflare Access JWT validation — #18 https://github.com/llipe/dev-tasks-agent-fleet/issues/18
 

@@ -3,3 +3,4 @@ packages:
   - "agents/*"
   - "packages/*"
   - "infra"
+  - "infra/orchestrator"
