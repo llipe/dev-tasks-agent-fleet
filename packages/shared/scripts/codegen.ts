@@ -19,6 +19,7 @@ import { PARAMS_SCHEMAS } from "../src/params-schemas.js";
 import { LLIPE } from "../src/llipe.js";
 import { SPAN_FIELDS } from "../src/span-fields.js";
 import { DEFAULT_MAX_LIFETIME_MS, TERMINATION_GRACE_MS } from "../src/status.js";
+import { normalizeSubjectId } from "../src/normalize-subject-id.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -224,6 +225,66 @@ Source: packages/shared/src/ (TypeScript Zod schemas)
     lines.push(`    "${agentName}": ${className},`);
   }
   lines.push("}");
+  lines.push("");
+  lines.push("");
+
+  // Params validation schema (dict-based for runtime validation)
+  lines.push("# ─── Params Validation Schema (runtime) ────────────────────────────────────────");
+  lines.push("");
+  lines.push("DEP_UPDATER_PARAMS_SCHEMA: dict[str, dict[str, object]] = {");
+  // Read the dep-updater Zod schema and produce Python type/range info
+  const depUpdaterJsonSchema = schemas["Params_dep_updater"] as JsonSchema | undefined;
+  if (depUpdaterJsonSchema?.properties) {
+    for (const [key, prop] of Object.entries(depUpdaterJsonSchema.properties)) {
+      const parts: string[] = [];
+      parts.push(`"type": "${prop.type ?? "any"}"`);
+      if (prop.minimum !== undefined) parts.push(`"minimum": ${prop.minimum}`);
+      if (prop.maximum !== undefined) parts.push(`"maximum": ${prop.maximum}`);
+      lines.push(`    "${key}": {${parts.join(", ")}},`);
+    }
+  }
+  lines.push("}");
+  lines.push("");
+  lines.push("");
+
+  // Normalize subject ID function
+  lines.push("# ─── Subject ID Normalizer ─────────────────────────────────────────────────────");
+  lines.push("");
+  lines.push("import re");
+  lines.push("");
+  lines.push("");
+  lines.push("_SSH_PATTERN = re.compile(r'^[\\w.-]+@[\\w.-]+:([\\w.-]+/[\\w.-]+?)(?:\\.git)?$')");
+  lines.push("_HTTPS_PATTERN = re.compile(r'^https?://[^/]+/([\\w.-]+/[\\w.-]+?)(?:\\.git)?/?\\s*$')");
+  lines.push("");
+  lines.push("");
+  lines.push("def normalize_subject_id(input_val: str) -> str:");
+  lines.push('    """Normalize any supported subject ID format to owner/repo (lowercase).');
+  lines.push("");
+  lines.push("    Supported formats:");
+  lines.push("    - bare: owner/repo");
+  lines.push("    - HTTPS: https://github.com/owner/repo[.git][/]");
+  lines.push("    - SSH: git@github.com:owner/repo[.git]");
+  lines.push('    """');
+  lines.push("    trimmed = input_val.strip()");
+  lines.push("");
+  lines.push("    # Try SSH format first");
+  lines.push("    ssh_match = _SSH_PATTERN.match(trimmed)");
+  lines.push("    if ssh_match:");
+  lines.push("        return ssh_match.group(1).lower()");
+  lines.push("");
+  lines.push("    # Try HTTPS format");
+  lines.push("    https_match = _HTTPS_PATTERN.match(trimmed)");
+  lines.push("    if https_match:");
+  lines.push("        return https_match.group(1).lower()");
+  lines.push("");
+  lines.push("    # Bare format: strip .git suffix and trailing slash, then lowercase");
+  lines.push("    result = trimmed");
+  lines.push('    if result.endswith("/"):');
+  lines.push("        result = result[:-1]");
+  lines.push('    if result.endswith(".git"):');
+  lines.push("        result = result[:-4]");
+  lines.push("");
+  lines.push("    return result.lower()");
   lines.push("");
 
   return lines.join("\n");
