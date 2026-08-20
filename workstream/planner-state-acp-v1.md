@@ -24,7 +24,7 @@
 | 10       | S-010    | #12     | ✅ Merged      | #41 | story/S-010-span-attributes |
 | 11       | S-011    | #13     | ✅ Merged      | #42 | story/S-011-agent-dynamo-stamps |
 | 12       | S-012    | #14     | ✅ Merged      | #43 | story/S-012-verify-telemetry-pin-span-fields |
-| 13       | S-013    | #15     | ⏳ Pending     | —   | —                             |
+| 13       | S-013    | #15     | ✅ Merged      | #44 | story/S-013-orchestrator-lambda |
 | 14       | S-014    | #18     | ⏳ Pending     | —   | —                             |
 | 15       | S-015    | #22     | ⏳ Pending     | —   | —                             |
 | 16       | S-016    | #23     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-013
-- Last merged PR: #43
-- Integration branch HEAD: 824332e
+- Next story: S-014
+- Last merged PR: #44
+- Integration branch HEAD: c0d1125
 
 ## Decisions Log
 
@@ -58,3 +58,4 @@
 - S-010 verifier audit: High fidelity, 0 drift. Post-deploy span verification deferred to S-012.
 - S-011 verifier audit: High fidelity, 0 drift. Integration tests require deployed infrastructure.
 - S-012 verifier audit: High fidelity, 0 drift. Live verification sub-tasks deferred pending deployment.
+- S-013 verifier audit: High fidelity, 0 drift. Manual trigger deferred. Uses Lambda InvokeCommand as proxy for AgentCore SDK.
