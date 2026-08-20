@@ -22,7 +22,7 @@
 | 8        | S-008    | #10     | ✅ Merged      | #39 | story/S-008-structured-json-logging |
 | 9        | S-009    | #11     | ✅ Merged      | #40 | story/S-009-payload-envelope |
 | 10       | S-010    | #12     | ✅ Merged      | #41 | story/S-010-span-attributes |
-| 11       | S-011    | #13     | ⏳ Pending     | —   | —                             |
+| 11       | S-011    | #13     | ✅ Merged      | #42 | story/S-011-agent-dynamo-stamps |
 | 12       | S-012    | #14     | ⏳ Pending     | —   | —                             |
 | 13       | S-013    | #15     | ⏳ Pending     | —   | —                             |
 | 14       | S-014    | #18     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-011
-- Last merged PR: #41
-- Integration branch HEAD: 121db84
+- Next story: S-012
+- Last merged PR: #42
+- Integration branch HEAD: 52ccbb6
 
 ## Decisions Log
 
@@ -56,3 +56,4 @@
 - S-008 verifier audit: High fidelity, 0 drift. FilterLogEvents integration test deferred.
 - S-009 verifier audit: High fidelity, 0 drift. Normalization parity validated via shared fixture.
 - S-010 verifier audit: High fidelity, 0 drift. Post-deploy span verification deferred to S-012.
+- S-011 verifier audit: High fidelity, 0 drift. Integration tests require deployed infrastructure.
