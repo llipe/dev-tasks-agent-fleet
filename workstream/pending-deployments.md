@@ -4,75 +4,17 @@ Deployment steps deferred during implementation. Each requires your explicit con
 
 ---
 
-## 1. DynamoDB Table + GSI1 (S-003)
+## 1. DynamoDB Table + GSI1 (S-003) ✅ DEPLOYED
 
 **Stack:** `AgentFleetDataStack`
-**What it creates:**
-
-- DynamoDB table `agent-fleet-config` (on-demand, PITR, deletion protection)
-- GSI1 inverted index (pk=sk, sk=pk, ALL projection)
-
-**Commands:**
-
-```bash
-cd infra
-pnpm run cdk diff AgentFleetDataStack   # review changes
-pnpm run cdk deploy AgentFleetDataStack  # deploy
-```
-
-**Post-deploy: run seed script**
-
-```bash
-pnpm --filter @fleet/infra run seed
-```
-
-**Verification:**
-
-```bash
-aws dynamodb describe-table --table-name agent-fleet-config --query "Table.TableStatus"
-# Expected: "ACTIVE"
-
-aws dynamodb query \
-  --table-name agent-fleet-config \
-  --index-name GSI1 \
-  --key-condition-expression "sk = :meta" \
-  --expression-attribute-values '{":meta": {"S": "META"}}' \
-  --select COUNT
-# Expected: Count matches number of repos in infra/seed/repos.json
-```
+**Status:** Deployed and seeded.
 
 ---
 
-## 2. IAM Roles (S-004)
+## 2. IAM Roles (S-004) ✅ DEPLOYED
 
 **Stack:** `AgentFleetIamStack`
-**What it creates:**
-
-- `agent-fleet-control-plane-role` — read + write scope config, deny InvokeAgentRuntime
-- `agent-fleet-orchestrator-role` — read + write run lifecycle, InvokeAgentRuntime
-- `agent-fleet-agent-exec-role` — UpdateItem on `last_status`/`last_outcome_url` only, deny PutItem
-
-**Depends on:** DynamoDB table deployed first (cross-stack reference for table ARN).
-
-**Commands:**
-
-```bash
-cd infra
-pnpm run cdk diff AgentFleetIamStack   # review changes
-pnpm run cdk deploy AgentFleetIamStack  # deploy
-```
-
-**Verification:**
-
-```bash
-# Verify roles exist
-aws iam get-role --role-name agent-fleet-control-plane-role --query "Role.Arn"
-aws iam get-role --role-name agent-fleet-orchestrator-role --query "Role.Arn"
-aws iam get-role --role-name agent-fleet-agent-exec-role --query "Role.Arn"
-
-# Run integration tests to validate denials
-pnpm --filter @fleet/infra run test:integration -- iam
-```
+**Status:** Deployed. Integration tests require `AWS_ACCOUNT_ID` env var to validate denials live.
 
 ---
 
