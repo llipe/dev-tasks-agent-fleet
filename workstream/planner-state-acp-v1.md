@@ -23,7 +23,7 @@
 | 9        | S-009    | #11     | ✅ Merged      | #40 | story/S-009-payload-envelope |
 | 10       | S-010    | #12     | ✅ Merged      | #41 | story/S-010-span-attributes |
 | 11       | S-011    | #13     | ✅ Merged      | #42 | story/S-011-agent-dynamo-stamps |
-| 12       | S-012    | #14     | ⏳ Pending     | —   | —                             |
+| 12       | S-012    | #14     | ✅ Merged      | #43 | story/S-012-verify-telemetry-pin-span-fields |
 | 13       | S-013    | #15     | ⏳ Pending     | —   | —                             |
 | 14       | S-014    | #18     | ⏳ Pending     | —   | —                             |
 | 15       | S-015    | #22     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-012
-- Last merged PR: #42
-- Integration branch HEAD: 52ccbb6
+- Next story: S-013
+- Last merged PR: #43
+- Integration branch HEAD: 824332e
 
 ## Decisions Log
 
@@ -57,3 +57,4 @@
 - S-009 verifier audit: High fidelity, 0 drift. Normalization parity validated via shared fixture.
 - S-010 verifier audit: High fidelity, 0 drift. Post-deploy span verification deferred to S-012.
 - S-011 verifier audit: High fidelity, 0 drift. Integration tests require deployed infrastructure.
+- S-012 verifier audit: High fidelity, 0 drift. Live verification sub-tasks deferred pending deployment.
