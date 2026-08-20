@@ -68,6 +68,13 @@
 - `apps/control-plane/vitest.integration.config.ts` - Integration test runner config
 - `apps/control-plane/src/server/actions/scope.ts` - Server Actions (writes)
 - `apps/control-plane/src/server/runs/**` - Run merge, projection, query
+- `apps/control-plane/src/server/runs/query-builder.ts` - Logs Insights query builder composing SPAN_FIELDS and SPANS_LOG_GROUP (S-017)
+- `apps/control-plane/src/server/runs/query-executor.ts` - Query executor wrapping adapter with QueryOutcome types (S-017)
+- `apps/control-plane/src/server/runs/span-to-run-mapper.ts` - Pure span-to-Run mapper with per-model folding (S-017)
+- `apps/control-plane/src/server/runs/trace-query.ts` - Single-run trace query for span timeline (S-017)
+- `apps/control-plane/src/server/runs/run-query-service.ts` - Orchestrates build→execute→map→cache with single-flight (S-017)
+- `apps/control-plane/src/server/runs/span-to-run-mapper.test.ts` - Unit tests: mapper, folding, edge cases (S-017)
+- `apps/control-plane/src/server/runs/insights-query.integration-test.ts` - Integration tests: polling, timeout, single-flight (S-017)
 - `apps/control-plane/src/lib/cost.ts` - Cost estimation
 - `apps/control-plane/src/components/**` - UI primitives and view components
 - `apps/control-plane/src/app/**` - Routes and layouts
@@ -403,17 +410,17 @@ S-001 (foundation)
 
 - [ ] 17.0 Implement Story S-017: Logs Insights run query and span-to-run mapping — #24 https://github.com/llipe/dev-tasks-agent-fleet/issues/24
 
-  - [ ] 17.1 Implement query builder reading `SPAN_FIELDS` and `SPANS_LOG_GROUP` from config
-  - [ ] 17.2 Implement `StartQuery`/poll/`StopQuery` executor with 25 s deadline and capped backoff
-  - [ ] 17.3 Map `timeout`, `Failed`, `Cancelled` to their `QueryOutcome` variants; `timeout` calls `StopQuery`
-  - [ ] 17.4 Implement pure span-to-`Run` mapper: fold per-model rows into one `Run` per `session_id`
-  - [ ] 17.5 Implement single-run trace query for the run panel's span timeline
-  - [ ] 17.6 Integrate results into the TTL cache, keyed by full filter shape
-  - [ ] 17.7 Unit test: mapper against S-012's committed fixture; per-model folding; zero-token run; missing optional attribute; malformed row skipped with `warn`
-  - [ ] 17.8 Integration test (mocked): `Complete` after several `Running` polls; `Failed`; `Cancelled`; deadline exceeded → `StopQuery` + `timeout`
-  - [ ] 17.9 Integration test: concurrent identical queries collapse via single-flight
-  - [ ] 17.10 Manual: query real data, compare a row against the AWS console
-  - [ ] 17.11 Run Tests: `pnpm --filter control-plane run test:unit -- spans && pnpm --filter control-plane run test:integration -- insights`
+  - [x] 17.1 Implement query builder reading `SPAN_FIELDS` and `SPANS_LOG_GROUP` from config
+  - [x] 17.2 Implement `StartQuery`/poll/`StopQuery` executor with 25 s deadline and capped backoff
+  - [x] 17.3 Map `timeout`, `Failed`, `Cancelled` to their `QueryOutcome` variants; `timeout` calls `StopQuery`
+  - [x] 17.4 Implement pure span-to-`Run` mapper: fold per-model rows into one `Run` per `session_id`
+  - [x] 17.5 Implement single-run trace query for the run panel's span timeline
+  - [x] 17.6 Integrate results into the TTL cache, keyed by full filter shape
+  - [x] 17.7 Unit test: mapper against S-012's committed fixture; per-model folding; zero-token run; missing optional attribute; malformed row skipped with `warn`
+  - [x] 17.8 Integration test (mocked): `Complete` after several `Running` polls; `Failed`; `Cancelled`; deadline exceeded → `StopQuery` + `timeout`
+  - [x] 17.9 Integration test: concurrent identical queries collapse via single-flight
+  - [ ] 17.10 Manual: query real data, compare a row against the AWS console — DEFERRED
+  - [x] 17.11 Run Tests: `pnpm --filter control-plane run test:unit -- spans && pnpm --filter control-plane run test:integration -- insights`
 
 - [ ] 18.0 Implement Story S-018: Run list merge, status derivation, and cost estimation — #25 https://github.com/llipe/dev-tasks-agent-fleet/issues/25
 
