@@ -6,7 +6,7 @@
 - Integration branch: integration/acp-v1-control-plane
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2025-01-20
-- Last updated: 2025-01-20
+- Last updated: 2025-01-27
 
 ## Story Status
 
@@ -16,7 +16,7 @@
 | 2        | S-002    | #2      | ✅ Merged      | #33 | story/S-002-shared-contract   |
 | 3        | S-003    | #3      | ✅ Merged      | #34 | story/S-003-dynamodb-table    |
 | 4        | S-004    | #6      | ✅ Merged      | #35 | story/S-004-iam-roles         |
-| 5        | S-005    | #7      | ⏳ Pending     | —   | —                             |
+| 5        | S-005    | #7      | ✅ Merged      | #36 | story/S-005-observability-discovery-tags |
 | 6        | S-006    | #8      | ⏳ Pending     | —   | —                             |
 | 7        | S-007    | #9      | ⏳ Pending     | —   | —                             |
 | 8        | S-008    | #10     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-005
-- Last merged PR: #35
-- Integration branch HEAD: a5642d6
+- Next story: S-006
+- Last merged PR: #36
+- Integration branch HEAD: 2a5ce1f
 
 ## Decisions Log
 
@@ -50,3 +50,4 @@
 - S-002 verifier audit identified 3 minor drift items (params optionality, prettierignore scope, boundary operator). D-2 fixed before merge. D-1 and D-3 non-blocking, deferred.
 - S-003 verifier audit: High fidelity, 2 minor drift items (both non-blocking). Deployment deferred pending user confirmation.
 - S-004 verifier audit: High fidelity, 0 drift. Deployment deferred pending user confirmation.
+- S-005 verifier audit: High fidelity, 2 minor drift items (PRD question #6 not marked resolved, prettierignore gap). Both non-blocking.
