@@ -20,7 +20,7 @@
 | 6        | S-006    | #8      | ✅ Merged      | #37 | story/S-006-port-dep-updater |
 | 7        | S-007    | #9      | ✅ Merged      | #38 | story/S-007-non-blocking-entrypoint |
 | 8        | S-008    | #10     | ✅ Merged      | #39 | story/S-008-structured-json-logging |
-| 9        | S-009    | #11     | ⏳ Pending     | —   | —                             |
+| 9        | S-009    | #11     | ✅ Merged      | #40 | story/S-009-payload-envelope |
 | 10       | S-010    | #12     | ⏳ Pending     | —   | —                             |
 | 11       | S-011    | #13     | ⏳ Pending     | —   | —                             |
 | 12       | S-012    | #14     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-009
-- Last merged PR: #39
-- Integration branch HEAD: 1b71c11
+- Next story: S-010
+- Last merged PR: #40
+- Integration branch HEAD: d86d269
 
 ## Decisions Log
 
@@ -54,3 +54,4 @@
 - S-006 verifier audit: High fidelity, 0 drift. Deployment deferred. Docker build not verified (no daemon).
 - S-007 verifier audit: High fidelity, 0 drift. Deployment verification deferred.
 - S-008 verifier audit: High fidelity, 0 drift. FilterLogEvents integration test deferred.
+- S-009 verifier audit: High fidelity, 0 drift. Normalization parity validated via shared fixture.
