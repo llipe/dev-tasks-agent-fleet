@@ -30,7 +30,7 @@
 | 16       | S-016    | #23     | ✅ Merged      | #47 | story/S-016-design-system-primitives |
 | 17       | S-017    | #24     | ✅ Merged      | #48 | story/S-017-logs-insights-run-query |
 | 18       | S-018    | #25     | ✅ Merged      | #49 | story/S-018-run-merge-cost-estimation |
-| 19       | S-019    | #26     | ⏳ Pending     | —   | —                             |
+| 19       | S-019    | #26     | ✅ Merged      | #50 | story/S-019-agents-list-view |
 | 20       | S-020    | #27     | ⏳ Pending     | —   | —                             |
 | 21       | S-021    | #28     | ⏳ Pending     | —   | —                             |
 | 22       | S-022    | #29     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-019
-- Last merged PR: #49
-- Integration branch HEAD: 87dc0e1
+- Next story: S-020
+- Last merged PR: #50
+- Integration branch HEAD: 330c626
 
 ## Decisions Log
 
