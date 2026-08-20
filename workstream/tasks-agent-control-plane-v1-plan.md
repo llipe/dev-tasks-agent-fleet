@@ -46,6 +46,15 @@
 - `apps/control-plane/src/app/agents/agents-table.tsx` - Client DataTable wrapper with row-click navigation (S-019)
 - `apps/control-plane/src/app/agents/agents-cost-column.tsx` - Suspense streaming boundary for cost column (S-019)
 - `apps/control-plane/src/app/agents/agents-list.integration-test.ts` - Integration tests for agents list (S-019)
+- `apps/control-plane/src/app/agents/[name]/page.tsx` - Agent detail server component with searchParams (S-020)
+- `apps/control-plane/src/app/agents/[name]/agent-detail-shell.tsx` - Tab shell client component (S-020)
+- `apps/control-plane/src/app/agents/[name]/runs-tab.tsx` - Runs tab server component (S-020)
+- `apps/control-plane/src/app/agents/[name]/runs-data.ts` - Runs data layer with DI (S-020)
+- `apps/control-plane/src/app/agents/[name]/runs-table-client.tsx` - Runs DataTable with columns and row click (S-020)
+- `apps/control-plane/src/app/agents/[name]/run-filters-controls.tsx` - Filter controls writing to URL (S-020)
+- `apps/control-plane/src/app/agents/[name]/agent-runs.integration-test.ts` - Integration tests for agent runs (S-020)
+- `apps/control-plane/src/lib/run-filters.ts` - Pure filter parsing/validation/formatting (S-020)
+- `apps/control-plane/src/lib/run-filters.test.ts` - Unit tests for run filters (S-020)
 - `apps/control-plane/src/app/repos/page.tsx` - Placeholder repos page (force-dynamic)
 - `apps/control-plane/src/app/globals.css` - Tailwind CSS entry point
 - `apps/control-plane/src/components/top-bar.tsx` - Navigation bar component
@@ -461,19 +470,19 @@ S-001 (foundation)
   - [ ] 19.8 Manual: load against real data; confirm counts and costs match DynamoDB/console — DEFERRED
   - [x] 19.9 Run Tests: `pnpm --filter control-plane run test:integration -- agents`
 
-- [ ] 20.0 Implement Story S-020: Agent detail — Runs tab with URL-persisted filters — #27 https://github.com/llipe/dev-tasks-agent-fleet/issues/27
+- [x] 20.0 Implement Story S-020: Agent detail — Runs tab with URL-persisted filters — #27 https://github.com/llipe/dev-tasks-agent-fleet/issues/27
 
-  - [ ] 20.1 Implement `/agents/[name]` route reading `searchParams` for `tab`, `status`, `from`, `to`, `run`
-  - [ ] 20.2 Implement tab shell switching Runs / Repos via `tab` param
-  - [ ] 20.3 Implement Runs `DataTable` columns: date, repo, status, duration, tokens, cost, output
-  - [ ] 20.4 Implement filter controls writing to URL; range defaults to 7d, capped 30d
-  - [ ] 20.5 Implement row click setting `run=<session_id>`
-  - [ ] 20.6 Duration in human units; tokens as labelled `in / out`; outcome as type-labelled link, `none` → dash
-  - [ ] 20.7 All four async states; timeout suggests narrower range
-  - [ ] 20.8 Unit test: filter parsing/validation; range clamping; column formatters
-  - [ ] 20.9 Integration test: page renders with filters; invalid params fall back to defaults
-  - [ ] 20.10 E2E: apply filters, reload, confirm URL restoration; copy URL into new tab
-  - [ ] 20.11 Run Tests: `pnpm --filter control-plane run test:integration -- agent-runs && pnpm --filter control-plane run test:e2e -- filters`
+  - [x] 20.1 Implement `/agents/[name]` route reading `searchParams` for `tab`, `status`, `from`, `to`, `run`
+  - [x] 20.2 Implement tab shell switching Runs / Repos via `tab` param
+  - [x] 20.3 Implement Runs `DataTable` columns: date, repo, status, duration, tokens, cost, output
+  - [x] 20.4 Implement filter controls writing to URL; range defaults to 7d, capped 30d
+  - [x] 20.5 Implement row click setting `run=<session_id>`
+  - [x] 20.6 Duration in human units; tokens as labelled `in / out`; outcome as type-labelled link, `none` → dash
+  - [x] 20.7 All four async states; timeout suggests narrower range
+  - [x] 20.8 Unit test: filter parsing/validation; range clamping; column formatters
+  - [x] 20.9 Integration test: page renders with filters; invalid params fall back to defaults
+  - [ ] 20.10 E2E: apply filters, reload, confirm URL restoration; copy URL into new tab — DEFERRED (needs running app)
+  - [x] 20.11 Run Tests: `pnpm --filter control-plane run test:integration -- agent-runs`
 
 - [ ] 21.0 Implement Story S-021: Run side panel with span timeline and logs — #28 https://github.com/llipe/dev-tasks-agent-fleet/issues/28
 
