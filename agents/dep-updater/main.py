@@ -15,6 +15,7 @@ from strands import Agent, tool
 
 from emission import emit_span_attributes, map_result
 from logging_json import JsonLogger
+from outcome_store import stamp_outcome
 from payload import PayloadError, parse_payload
 
 # ─────────────────────────────────────────────────────────────────
@@ -797,6 +798,22 @@ def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg
                 # Never let emission failure mask the actual pipeline result
                 if _log:
                     _log.warn("failed to emit span attributes")
+
+        # Stamp outcome into DynamoDB (S-011).
+        # Uses the mapped result status from emission — "success" or "failed".
+        if _subject_id:
+            try:
+                _outcome_result = map_result(_pipeline_result, pr_url=_pr_url)
+                stamp_outcome(
+                    subject_id=_subject_id,
+                    agent_name="dep-updater",
+                    status=_outcome_result.status,
+                    outcome_url=_outcome_result.outcome_url,
+                )
+            except Exception:
+                # Never let DynamoDB failure mask the actual pipeline result
+                if _log:
+                    _log.error("failed to stamp outcome to DynamoDB")
 
         app.complete_async_task(task_id)
 
