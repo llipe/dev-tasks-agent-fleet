@@ -20,6 +20,7 @@ import {
   PutItemCommand,
   UpdateItemCommand,
   GetItemCommand,
+  type AttributeValue,
 } from "@aws-sdk/client-dynamodb";
 import { TABLE_NAME, subjectPk, agentSk } from "@fleet/shared";
 
@@ -85,7 +86,7 @@ async function ensureTestItem(): Promise<void> {
   );
 }
 
-async function getItem(): Promise<Record<string, Record<string, unknown>>> {
+async function getItem(): Promise<Record<string, AttributeValue>> {
   const client = new DynamoDBClient({ region: REGION });
   const result = await client.send(
     new GetItemCommand({
