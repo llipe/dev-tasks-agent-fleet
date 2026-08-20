@@ -198,16 +198,16 @@ S-001 (foundation)
 
 - [ ] 7.0 Implement Story S-007: Non-blocking entrypoint so long runs survive — #9 https://github.com/llipe/dev-tasks-agent-fleet/issues/9
 
-  - [ ] 7.1 Extract the pipeline body into `_run_pipeline(payload, task_id)`
-  - [ ] 7.2 Rewrite `@app.entrypoint` to register `app.add_async_task`, start a daemon thread, and return within 1 s
-  - [ ] 7.3 Wrap `_run_pipeline` in try/finally with `app.complete_async_task`
-  - [ ] 7.4 Verify `time_of_last_update` is not set manually anywhere
-  - [ ] 7.5 Unit test: entrypoint returns without running the pipeline
-  - [ ] 7.6 Unit test: `complete_async_task` invoked on both success and exception
-  - [ ] 7.7 Unit test: worker thread started as daemon
-  - [ ] 7.8 Local integration test: poll `/ping` during a simulated long task → assert `HealthyBusy`; assert `Healthy` after completion
-  - [ ] 7.9 Deploy and run against a repo whose pipeline exceeds 10 minutes; confirm logs continue past 5 min and run completes
-  - [ ] 7.10 Run Tests: `uv run pytest`
+  - [x] 7.1 Extract the pipeline body into `_run_pipeline(payload, task_id)`
+  - [x] 7.2 Rewrite `@app.entrypoint` to register `app.add_async_task`, start a daemon thread, and return within 1 s
+  - [x] 7.3 Wrap `_run_pipeline` in try/finally with `app.complete_async_task`
+  - [x] 7.4 Verify `time_of_last_update` is not set manually anywhere
+  - [x] 7.5 Unit test: entrypoint returns without running the pipeline
+  - [x] 7.6 Unit test: `complete_async_task` invoked on both success and exception
+  - [x] 7.7 Unit test: worker thread started as daemon
+  - [x] 7.8 Local integration test: poll `/ping` during a simulated long task → assert `HealthyBusy`; assert `Healthy` after completion
+  - [ ] 7.9 Deploy and run against a repo whose pipeline exceeds 10 minutes; confirm logs continue past 5 min and run completes — DEFERRED (requires deployment)
+  - [x] 7.10 Run Tests: `uv run pytest`
 
 - [ ] 8.0 Implement Story S-008: Structured JSON logging keyed by `session_id` — #10 https://github.com/llipe/dev-tasks-agent-fleet/issues/10
 

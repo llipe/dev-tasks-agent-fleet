@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime
 
@@ -559,23 +560,28 @@ def create_pr(workspace: str, token: str, base: str, body: str) -> str:
 app = BedrockAgentCoreApp()
 
 
-@app.entrypoint
-def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg]
+def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg]
+    """Execute the full dependency-update pipeline on a worker thread.
+
+    Wrapped in try/finally to guarantee app.complete_async_task is called,
+    ensuring /ping transitions back to Healthy even on failure.
+    """
     global _workspace  # noqa: PLW0603
 
-    # The CLI sends the invocation input as a JSON string inside the "prompt" key.
-    # Unwrap it so we can access the actual fields.
-    if "repo_url" not in payload and "prompt" in payload:
-        payload = json.loads(payload["prompt"])
-
-    repo_url: str = payload["repo_url"]
-    max_attempts = int(payload.get("max_fix_attempts", 3))
-    allow_fixes = bool(payload.get("allow_fixes", True))
-
-    _workspace = tempfile.mkdtemp(prefix="dep-agent-", dir="/tmp")
     token: str | None = None
 
     try:
+        # The CLI sends the invocation input as a JSON string inside the "prompt" key.
+        # Unwrap it so we can access the actual fields.
+        if "repo_url" not in payload and "prompt" in payload:
+            payload = json.loads(payload["prompt"])
+
+        repo_url: str = payload["repo_url"]
+        max_attempts = int(payload.get("max_fix_attempts", 3))
+        allow_fixes = bool(payload.get("allow_fixes", True))
+
+        _workspace = tempfile.mkdtemp(prefix="dep-agent-", dir="/tmp")
+
         print(
             f"[dep-agent] invocation start: repo={repo_url} "
             f"allow_fixes={allow_fixes} max_attempts={max_attempts}"
@@ -612,7 +618,7 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
         update_packages(_workspace)
         if not has_changes(_workspace):
             print("[dep-agent] no changes after update — nothing to do")
-            return {"status": "no_updates", "vulnerabilities": vuln_count_before}
+            return
 
         # -- Snapshot after state ---
         print("[dep-agent] snapshotting package versions (after)")
@@ -699,13 +705,7 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
 
         if exit_code != 0:
             print(f"[dep-agent] tests still failing after {attempts} attempt(s)")
-            return {
-                "status": "tests_failing",
-                "vulnerabilities": vuln_count_before,
-                "fix_attempts": attempts,
-                "test_output": test_output[-2000:],
-                "llm_used": attempts > 0,
-            }
+            return
 
         # -- Idempotency check ---
         env = {**os.environ, "GH_TOKEN": token}
@@ -713,7 +713,7 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
         already = existing_pr(_workspace, env)
         if already:
             print(f"[dep-agent] PR already open: {already}")
-            return {"status": "pr_already_open", "pr_url": already}
+            return
 
         # -- Build PR body ---
         body = _build_pr_body(
@@ -731,17 +731,6 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
         pr_url = create_pr(_workspace, token, base, body)
         print(f"[dep-agent] PR created: {pr_url}")
 
-        return {
-            "status": "success",
-            "pr_url": pr_url,
-            "vulnerabilities": vuln_count_before,
-            "vulnerabilities_after": vuln_count_after,
-            "fixed_advisories": len(fixed_advisories),
-            "packages_updated": len(upgraded),
-            "fix_attempts": attempts,
-            "llm_used": attempts > 0,
-        }
-
     except subprocess.CalledProcessError as e:
         cmd_str = " ".join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
         # Scrub any embedded credentials from the command string.
@@ -751,17 +740,37 @@ def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg
         if token:
             stderr = stderr.replace(token, "***")
         print(f"[dep-agent] CalledProcessError at: {cmd_str}")
-        return {
-            "status": "error",
-            "stage": cmd_str,
-            "stderr": stderr,
-        }
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
         if token:
             msg = msg.replace(token, "***")
         print(f"[dep-agent] unhandled exception: {msg}")
-        return {"status": "error", "error": msg}
+    finally:
+        app.complete_async_task(task_id)
+
+
+@app.entrypoint
+def dep_update(payload: dict, context: object) -> dict:  # type: ignore[type-arg]
+    """Non-blocking entrypoint: registers an async task and starts the pipeline
+    on a daemon worker thread, returning immediately so /ping stays responsive.
+    """
+    # Extract session_id from context for task tracking
+    session_id: str = getattr(context, "session_id", None) or "unknown"
+
+    # Register async task so /ping reports HealthyBusy
+    task_id = app.add_async_task(f"dep-update-{session_id}")
+
+    # Start the pipeline on a daemon thread — does not block the HTTP thread
+    worker = threading.Thread(
+        target=_run_pipeline,
+        args=(payload, task_id),
+        name=f"pipeline-{session_id}",
+        daemon=True,
+    )
+    worker.start()
+
+    # Return immediately — pipeline continues in background
+    return {"status": "accepted", "session_id": session_id, "task_id": task_id}
 
 
 def _build_pr_body(
