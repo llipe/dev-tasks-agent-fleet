@@ -5,9 +5,11 @@
 - `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.nvmrc` - Monorepo root config
 - `eslint.config.js`, `.prettierrc`, `vitest.workspace.ts` - Quality tooling
 - `.github/workflows/{control-plane,agent,infra,shared}.yml` - Path-gated CI
-- `packages/shared/src/**` - Contract: keys, schemas, status, session-id, span fields, codegen, IAM attribute allowlists
+- `packages/shared/src/**` - Contract: keys, schemas, status, session-id, span fields, codegen, IAM attribute allowlists, agent tags, observability config
 - `packages/shared/generated/**` - Generated Python module + JSON Schema
 - `infra/bin/app.ts`, `infra/lib/{data-stack,iam-stack,agent-stack,orchestration-stack}.ts` - CDK
+- `infra/test/agent-stack.test.ts` - CDK snapshot test for discovery tags
+- `infra/test/discovery.integration-test.ts` - Integration tests for tag-based discovery
 - `infra/seed/seed.ts` - Table seeder
 - `infra/orchestrator/src/**` - Orchestrator Lambda
 - `agents/dep-updater/{main.py,Dockerfile,pyproject.toml}` - Agent
@@ -23,6 +25,7 @@
 - `apps/control-plane/src/app/**` - Routes and layouts
 - `apps/control-plane/Dockerfile`, `infra/control-plane.fly.toml` - Deployment
 - `apps/control-plane/pricing/pricing-v1.json` - Model pricing table
+- `docs/runbook-observability-setup.md` - CloudWatch Transaction Search, span destination, retention setup
 
 ## Execution Plan
 
@@ -164,18 +167,18 @@ S-001 (foundation)
   - [x] 4.9 Deploy via gated `cdk deploy` and verify — DEFERRED: deployment requires user confirmation
   - [x] 4.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- iam`
 
-- [ ] 5.0 Implement Story S-005: Observability prerequisites and discovery tags — #7 https://github.com/llipe/dev-tasks-agent-fleet/issues/7
+- [x] 5.0 Implement Story S-005: Observability prerequisites and discovery tags — #7 https://github.com/llipe/dev-tasks-agent-fleet/issues/7
 
-  - [ ] 5.1 Enable CloudWatch Transaction Search (console); document the steps in `docs/runbook-observability-setup.md`
-  - [ ] 5.2 Choose and record the span destination; set `SPANS_LOG_GROUP` config; record in runbook
-  - [ ] 5.3 Record the log-group retention period, closing PRD open question #6
-  - [ ] 5.4 Add `agent:managed=true`, `agent:name=dep-updater`, `agent:domain=security` to the agent CDK stack
-  - [ ] 5.5 CDK snapshot test asserting all three tags on the runtime
-  - [ ] 5.6 Integration test: `tag:GetResources` filtered on `agent:managed=true` returns the agent
-  - [ ] 5.7 Integration test: an untagged control resource is absent from results
-  - [ ] 5.8 Consistency assertion: `agent:name` value equals the `AGENT#<name>` key
-  - [ ] 5.9 Verify AC: spans arrive at the chosen destination (may require one triggered run post-setup)
-  - [ ] 5.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- discovery`
+  - [x] 5.1 Enable CloudWatch Transaction Search (console); document the steps in `docs/runbook-observability-setup.md`
+  - [x] 5.2 Choose and record the span destination; set `SPANS_LOG_GROUP` config; record in runbook
+  - [x] 5.3 Record the log-group retention period, closing PRD open question #6
+  - [x] 5.4 Add `agent:managed=true`, `agent:name=dep-updater`, `agent:domain=security` to the agent CDK stack
+  - [x] 5.5 CDK snapshot test asserting all three tags on the runtime
+  - [x] 5.6 Integration test: `tag:GetResources` filtered on `agent:managed=true` returns the agent
+  - [x] 5.7 Integration test: an untagged control resource is absent from results
+  - [x] 5.8 Consistency assertion: `agent:name` value equals the `AGENT#<name>` key
+  - [x] 5.9 Verify AC: spans arrive at the chosen destination (may require one triggered run post-setup) — DEFERRED: requires deployed agent stack and one triggered run
+  - [x] 5.10 Run Tests: `pnpm --filter infra run test && pnpm --filter infra run test:integration -- discovery`
 
 - [ ] 6.0 Implement Story S-006: Port `dep-update-agent` into the monorepo — #8 https://github.com/llipe/dev-tasks-agent-fleet/issues/8
 
