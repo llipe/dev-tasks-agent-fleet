@@ -6,7 +6,7 @@
 - Integration branch: integration/acp-v1-control-plane
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2025-01-20
-- Last updated: 2025-01-27
+- Last updated: 2025-01-28
 
 ## Story Status
 
@@ -25,7 +25,7 @@
 | 11       | S-011    | #13     | ✅ Merged      | #42 | story/S-011-agent-dynamo-stamps |
 | 12       | S-012    | #14     | ✅ Merged      | #43 | story/S-012-verify-telemetry-pin-span-fields |
 | 13       | S-013    | #15     | ✅ Merged      | #44 | story/S-013-orchestrator-lambda |
-| 14       | S-014    | #18     | ⏳ Pending     | —   | —                             |
+| 14       | S-014    | #18     | ✅ Merged      | #45 | story/S-014-app-shell-jwt-validation |
 | 15       | S-015    | #22     | ⏳ Pending     | —   | —                             |
 | 16       | S-016    | #23     | ⏳ Pending     | —   | —                             |
 | 17       | S-017    | #24     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-014
-- Last merged PR: #44
-- Integration branch HEAD: c0d1125
+- Next story: S-015
+- Last merged PR: #45
+- Integration branch HEAD: c87fd18
 
 ## Decisions Log
 
