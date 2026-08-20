@@ -13,8 +13,10 @@
 - `infra/seed/seed.ts` - Table seeder
 - `infra/orchestrator/src/**` - Orchestrator Lambda
 - `agents/dep-updater/{main.py,Dockerfile,pyproject.toml}` - Agent
+- `agents/dep-updater/logging_json.py` - Structured JSON logging module with secret redaction
 - `agents/dep-updater/{agentcore.json,uv.lock,package.json,.gitignore}` - Agent config and deps
 - `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
+- `agents/dep-updater/tests/test_logging_json.py` - Pytest coverage for JSON logging and redaction
 - `agents/dep-updater/ca/.keep` - Corporate CA certificate directory
 - `apps/control-plane/src/middleware.ts` - JWT validation
 - `apps/control-plane/src/server/aws/**` - AWS adapters
@@ -209,18 +211,18 @@ S-001 (foundation)
   - [ ] 7.9 Deploy and run against a repo whose pipeline exceeds 10 minutes; confirm logs continue past 5 min and run completes — DEFERRED (requires deployment)
   - [x] 7.10 Run Tests: `uv run pytest`
 
-- [ ] 8.0 Implement Story S-008: Structured JSON logging keyed by `session_id` — #10 https://github.com/llipe/dev-tasks-agent-fleet/issues/10
+- [x] 8.0 Implement Story S-008: Structured JSON logging keyed by `session_id` — #10 https://github.com/llipe/dev-tasks-agent-fleet/issues/10
 
-  - [ ] 8.1 Implement `logging_json.py`: JSON logging helper that binds `session_id`, `agent`, `repo` once; emits one JSON object per line
-  - [ ] 8.2 Implement secret redaction helper stripping token-shaped values
-  - [ ] 8.3 Choose and implement subprocess output handling (one JSON object per line with `stream` field, or captured block)
-  - [ ] 8.4 Convert all `print()` calls in `main.py` to the structured logger, preserving messages
-  - [ ] 8.5 Ensure log levels follow guidelines: `error` for failures, `warn` for retries, `info` for lifecycle
-  - [ ] 8.6 Unit test: emitted line parses as JSON with required fields
-  - [ ] 8.7 Unit test: redaction helper strips token-shaped values
-  - [ ] 8.8 Unit test: message with quotes/newlines/non-UTF8 does not break JSON
-  - [ ] 8.9 Post-deploy integration test: `FilterLogEvents` by `session_id` returns only that run
-  - [ ] 8.10 Run Tests: `uv run pytest && uv run ruff check`
+  - [x] 8.1 Implement `logging_json.py`: JSON logging helper that binds `session_id`, `agent`, `repo` once; emits one JSON object per line
+  - [x] 8.2 Implement secret redaction helper stripping token-shaped values
+  - [x] 8.3 Choose and implement subprocess output handling (one JSON object per line with `stream` field, or captured block)
+  - [x] 8.4 Convert all `print()` calls in `main.py` to the structured logger, preserving messages
+  - [x] 8.5 Ensure log levels follow guidelines: `error` for failures, `warn` for retries, `info` for lifecycle
+  - [x] 8.6 Unit test: emitted line parses as JSON with required fields
+  - [x] 8.7 Unit test: redaction helper strips token-shaped values
+  - [x] 8.8 Unit test: message with quotes/newlines/non-UTF8 does not break JSON
+  - [x] 8.9 Post-deploy integration test: `FilterLogEvents` by `session_id` returns only that run — DEFERRED
+  - [x] 8.10 Run Tests: `uv run pytest && uv run ruff check`
 
 - [ ] 9.0 Implement Story S-009: Accept the control-plane payload envelope — #11 https://github.com/llipe/dev-tasks-agent-fleet/issues/11
 
