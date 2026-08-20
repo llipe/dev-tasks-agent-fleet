@@ -33,7 +33,21 @@
 - `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
 - `agents/dep-updater/tests/test_logging_json.py` - Pytest coverage for JSON logging and redaction
 - `agents/dep-updater/ca/.keep` - Corporate CA certificate directory
-- `apps/control-plane/src/middleware.ts` - JWT validation
+- `apps/control-plane/src/middleware.ts` - JWT validation middleware
+- `apps/control-plane/src/lib/auth/verify-token.ts` - Cloudflare Access JWT verification helper
+- `apps/control-plane/src/lib/auth/verify-token.test.ts` - Unit tests for JWT verification (12 tests)
+- `apps/control-plane/src/lib/auth/middleware.integration.test.ts` - Middleware integration tests (8 tests)
+- `apps/control-plane/src/lib/env.ts` - Environment variable validation (CF_ACCESS_TEAM_NAME, CF_ACCESS_AUD)
+- `apps/control-plane/src/app/layout.tsx` - Root layout with TopBar
+- `apps/control-plane/src/app/page.tsx` - Root redirect to /agents
+- `apps/control-plane/src/app/healthz/route.ts` - Health check endpoint (no auth)
+- `apps/control-plane/src/app/agents/page.tsx` - Placeholder agents page (force-dynamic)
+- `apps/control-plane/src/app/repos/page.tsx` - Placeholder repos page (force-dynamic)
+- `apps/control-plane/src/app/globals.css` - Tailwind CSS entry point
+- `apps/control-plane/src/components/top-bar.tsx` - Navigation bar component
+- `apps/control-plane/next.config.ts` - Next.js config with output: standalone
+- `apps/control-plane/postcss.config.mjs` - PostCSS config for Tailwind
+- `apps/control-plane/vitest.config.ts` - Vitest config with path alias
 - `apps/control-plane/src/server/aws/**` - AWS adapters
 - `apps/control-plane/src/server/cache/ttl-cache.ts` - In-process cache
 - `apps/control-plane/src/server/repository/**` - DynamoDB repository layer
@@ -317,25 +331,25 @@ S-001 (foundation)
   - [ ] 13.17 Verify AC: adding a repo in DynamoDB (by S-022) causes the next schedule to invoke it without a deploy — DEFERRED
   - [x] 13.18 Run Tests: `pnpm --filter orchestrator run test && pnpm --filter infra run cdk diff`
 
-- [ ] 14.0 Implement Story S-014: App shell with Cloudflare Access JWT validation — #18 https://github.com/llipe/dev-tasks-agent-fleet/issues/18
+- [x] 14.0 Implement Story S-014: App shell with Cloudflare Access JWT validation — #18 https://github.com/llipe/dev-tasks-agent-fleet/issues/18
 
-  - [ ] 14.1 Create Next.js app in `apps/control-plane` with `output: 'standalone'`, strict TS
-  - [ ] 14.2 Implement verification helper using `jose`: JWKS fetch with caching, RS256 allowlist, iss/aud/exp/iat checks, fail closed
-  - [ ] 14.3 Implement `middleware.ts`: verify `Cf-Access-Jwt-Assertion` on every request except `/healthz` and `_next/static`
-  - [ ] 14.4 Implement `/healthz` route handler: returns 200 with no auth, no data access
-  - [ ] 14.5 Implement app shell layout: slim top bar with Agents/Repos navigation; `/` redirects to `/agents`
-  - [ ] 14.6 Set `export const dynamic = 'force-dynamic'` on all data routes
-  - [ ] 14.7 Unit test: valid token → allowed
-  - [ ] 14.8 Unit test: expired token → denied
-  - [ ] 14.9 Unit test: wrong `aud` → denied
-  - [ ] 14.10 Unit test: wrong `iss` → denied
-  - [ ] 14.11 Unit test: missing header → denied
-  - [ ] 14.12 Unit test: unknown `kid` → denied
-  - [ ] 14.13 Unit test: `alg: none` → denied
-  - [ ] 14.14 Unit test: JWKS unreachable → denied (fail closed)
-  - [ ] 14.15 Unit test: malformed token → denied
-  - [ ] 14.16 Integration test: middleware denies unauthenticated data route; allows `/healthz`
-  - [ ] 14.17 Run Tests: `pnpm --filter control-plane run test:unit -- auth && pnpm run validate`
+  - [x] 14.1 Create Next.js app in `apps/control-plane` with `output: 'standalone'`, strict TS
+  - [x] 14.2 Implement verification helper using `jose`: JWKS fetch with caching, RS256 allowlist, iss/aud/exp/iat checks, fail closed
+  - [x] 14.3 Implement `middleware.ts`: verify `Cf-Access-Jwt-Assertion` on every request except `/healthz` and `_next/static`
+  - [x] 14.4 Implement `/healthz` route handler: returns 200 with no auth, no data access
+  - [x] 14.5 Implement app shell layout: slim top bar with Agents/Repos navigation; `/` redirects to `/agents`
+  - [x] 14.6 Set `export const dynamic = 'force-dynamic'` on all data routes
+  - [x] 14.7 Unit test: valid token → allowed
+  - [x] 14.8 Unit test: expired token → denied
+  - [x] 14.9 Unit test: wrong `aud` → denied
+  - [x] 14.10 Unit test: wrong `iss` → denied
+  - [x] 14.11 Unit test: missing header → denied
+  - [x] 14.12 Unit test: unknown `kid` → denied
+  - [x] 14.13 Unit test: `alg: none` → denied
+  - [x] 14.14 Unit test: JWKS unreachable → denied (fail closed)
+  - [x] 14.15 Unit test: malformed token → denied
+  - [x] 14.16 Integration test: middleware denies unauthenticated data route; allows `/healthz`
+  - [x] 14.17 Run Tests: `pnpm --filter control-plane run test:unit -- auth && pnpm run validate`
 
 - [ ] 15.0 Implement Story S-015: AWS adapter layer, credentials, and TTL cache — #22 https://github.com/llipe/dev-tasks-agent-fleet/issues/22
 
