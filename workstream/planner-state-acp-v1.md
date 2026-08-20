@@ -27,7 +27,7 @@
 | 13       | S-013    | #15     | ✅ Merged      | #44 | story/S-013-orchestrator-lambda |
 | 14       | S-014    | #18     | ✅ Merged      | #45 | story/S-014-app-shell-jwt-validation |
 | 15       | S-015    | #22     | ✅ Merged      | #46 | story/S-015-aws-adapter-layer |
-| 16       | S-016    | #23     | ⏳ Pending     | —   | —                             |
+| 16       | S-016    | #23     | ✅ Merged      | #47 | story/S-016-design-system-primitives |
 | 17       | S-017    | #24     | ⏳ Pending     | —   | —                             |
 | 18       | S-018    | #25     | ⏳ Pending     | —   | —                             |
 | 19       | S-019    | #26     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-016
-- Last merged PR: #46
-- Integration branch HEAD: 94c0e8a
+- Next story: S-017
+- Last merged PR: #47
+- Integration branch HEAD: cd50e35
 
 ## Decisions Log
 
