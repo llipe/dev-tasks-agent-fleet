@@ -49,8 +49,23 @@
 - `apps/control-plane/postcss.config.mjs` - PostCSS config for Tailwind
 - `apps/control-plane/vitest.config.ts` - Vitest config with path alias
 - `apps/control-plane/src/server/aws/**` - AWS adapters
-- `apps/control-plane/src/server/cache/ttl-cache.ts` - In-process cache
+- `apps/control-plane/src/server/aws/credentials.ts` - Fly OIDC + env fallback credentials provider
+- `apps/control-plane/src/server/aws/dynamodb-client.ts` - Shared DDB document client
+- `apps/control-plane/src/server/aws/tagging-adapter.ts` - ResourceGroupsTaggingAPI adapter
+- `apps/control-plane/src/server/aws/agentcore-adapter.ts` - GetAgentRuntime adapter (maxLifetime)
+- `apps/control-plane/src/server/aws/logs-insights-adapter.ts` - StartQuery/poll/StopQuery executor
+- `apps/control-plane/src/server/aws/filter-logs-adapter.ts` - FilterLogEvents by session_id
+- `apps/control-plane/src/server/aws/agentcore-adapter.test.ts` - Unit test: maxLifetime default
+- `apps/control-plane/src/server/aws/adapters.integration-test.ts` - Integration tests: throttle/retry/no-scan
+- `apps/control-plane/src/server/cache/ttl-cache.ts` - In-process TTL + single-flight + LRU cache
+- `apps/control-plane/src/server/cache/ttl-cache.test.ts` - Unit tests: cache hit/miss/expiry/LRU
 - `apps/control-plane/src/server/repository/**` - DynamoDB repository layer
+- `apps/control-plane/src/server/repository/scope-repository.ts` - Intent-named DDB queries (no Scan)
+- `apps/control-plane/src/server/repository/types.ts` - ReadOutcome<T> union type
+- `apps/control-plane/src/server/repository/types.test.ts` - Unit tests: ReadOutcome constructors
+- `apps/control-plane/src/server/retry.ts` - Jittered backoff retry helper
+- `apps/control-plane/src/server/retry.test.ts` - Unit tests: retry behavior
+- `apps/control-plane/vitest.integration.config.ts` - Integration test runner config
 - `apps/control-plane/src/server/actions/scope.ts` - Server Actions (writes)
 - `apps/control-plane/src/server/runs/**` - Run merge, projection, query
 - `apps/control-plane/src/lib/cost.ts` - Cost estimation
@@ -353,21 +368,21 @@ S-001 (foundation)
 
 - [ ] 15.0 Implement Story S-015: AWS adapter layer, credentials, and TTL cache — #22 https://github.com/llipe/dev-tasks-agent-fleet/issues/22
 
-  - [ ] 15.1 Implement credentials module: Fly OIDC `fromWebToken`, falling back to `fromEnv`; isolated in one file
-  - [ ] 15.2 Implement TTL cache with 5 min expiry, single-flight de-dup, LRU cap 500
-  - [ ] 15.3 Implement adapter: resource tagging (filter `agent:managed=true`) → domain type with name, domain, ARN
-  - [ ] 15.4 Implement adapter: AgentCore control → `lifecycleConfiguration.maxLifetime` defaulting to 28800
-  - [ ] 15.5 Implement adapter: CloudWatch Logs Insights → `StartQuery`/poll/`StopQuery` executor
-  - [ ] 15.6 Implement adapter: `FilterLogEvents` by `session_id`
-  - [ ] 15.7 Implement adapter: DynamoDB via `@aws-sdk/lib-dynamodb`
-  - [ ] 15.8 Implement scope repository with intent-named methods; no `Scan` anywhere
-  - [ ] 15.9 Implement `ReadOutcome<T>` union: `ok | empty | timeout | error` with correlation id
-  - [ ] 15.10 Implement retry policy helper: jittered backoff on throttle/5xx, never retry validation errors
-  - [ ] 15.11 Unit test: cache hit/miss/expiry; single-flight collapses concurrent calls; LRU eviction
-  - [ ] 15.12 Unit test: `maxLifetime` default when absent
-  - [ ] 15.13 Integration test (mocked): each adapter throttle-then-success; validation error not retried
-  - [ ] 15.14 Integration test: assert no `ScanCommand` ever sent
-  - [ ] 15.15 Run Tests: `pnpm --filter control-plane run test:unit && pnpm --filter control-plane run test:integration`
+  - [x] 15.1 Implement credentials module: Fly OIDC `fromWebToken`, falling back to `fromEnv`; isolated in one file
+  - [x] 15.2 Implement TTL cache with 5 min expiry, single-flight de-dup, LRU cap 500
+  - [x] 15.3 Implement adapter: resource tagging (filter `agent:managed=true`) → domain type with name, domain, ARN
+  - [x] 15.4 Implement adapter: AgentCore control → `lifecycleConfiguration.maxLifetime` defaulting to 28800
+  - [x] 15.5 Implement adapter: CloudWatch Logs Insights → `StartQuery`/poll/`StopQuery` executor
+  - [x] 15.6 Implement adapter: `FilterLogEvents` by `session_id`
+  - [x] 15.7 Implement adapter: DynamoDB via `@aws-sdk/lib-dynamodb`
+  - [x] 15.8 Implement scope repository with intent-named methods; no `Scan` anywhere
+  - [x] 15.9 Implement `ReadOutcome<T>` union: `ok | empty | timeout | error` with correlation id
+  - [x] 15.10 Implement retry policy helper: jittered backoff on throttle/5xx, never retry validation errors
+  - [x] 15.11 Unit test: cache hit/miss/expiry; single-flight collapses concurrent calls; LRU eviction
+  - [x] 15.12 Unit test: `maxLifetime` default when absent
+  - [x] 15.13 Integration test (mocked): each adapter throttle-then-success; validation error not retried
+  - [x] 15.14 Integration test: assert no `ScanCommand` ever sent
+  - [x] 15.15 Run Tests: `pnpm --filter control-plane run test:unit && pnpm --filter control-plane run test:integration`
 
 - [ ] 16.0 Implement Story S-016: Design-system primitives — tokens, DataTable, StatusBadge — #23 https://github.com/llipe/dev-tasks-agent-fleet/issues/23
 
