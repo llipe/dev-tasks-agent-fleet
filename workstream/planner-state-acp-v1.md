@@ -31,7 +31,7 @@
 | 17       | S-017    | #24     | ✅ Merged      | #48 | story/S-017-logs-insights-run-query |
 | 18       | S-018    | #25     | ✅ Merged      | #49 | story/S-018-run-merge-cost-estimation |
 | 19       | S-019    | #26     | ✅ Merged      | #50 | story/S-019-agents-list-view |
-| 20       | S-020    | #27     | ⏳ Pending     | —   | —                             |
+| 20       | S-020    | #27     | ✅ Merged      | #51 | story/S-020-agent-detail-runs-tab |
 | 21       | S-021    | #28     | ⏳ Pending     | —   | —                             |
 | 22       | S-022    | #29     | ⏳ Pending     | —   | —                             |
 | 23       | S-023    | #30     | ⏳ Pending     | —   | —                             |
@@ -39,9 +39,9 @@
 
 ## Current Position
 
-- Next story: S-020
-- Last merged PR: #50
-- Integration branch HEAD: 330c626
+- Next story: S-021
+- Last merged PR: #51
+- Integration branch HEAD: 217ba87
 
 ## Decisions Log
 
