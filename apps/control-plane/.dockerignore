@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+*.md
+.env*
+vitest*.config.*
+__tests__
+*.test.ts
+*.integration-test.ts
