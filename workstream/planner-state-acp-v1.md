@@ -33,15 +33,15 @@
 | 19       | S-019    | #26     | ✅ Merged      | #50 | story/S-019-agents-list-view |
 | 20       | S-020    | #27     | ✅ Merged      | #51 | story/S-020-agent-detail-runs-tab |
 | 21       | S-021    | #28     | ✅ Merged      | #52 | story/S-021-run-side-panel |
-| 22       | S-022    | #29     | ⏳ Pending     | —   | —                             |
+| 22       | S-022    | #29     | ✅ Merged      | #53 | story/S-022-scope-config-repos-tab |
 | 23       | S-023    | #30     | ⏳ Pending     | —   | —                             |
 | 24       | S-024    | #31     | ⏳ Pending     | —   | —                             |
 
 ## Current Position
 
-- Next story: S-022
-- Last merged PR: #52
-- Integration branch HEAD: c539975
+- Next story: S-023
+- Last merged PR: #53
+- Integration branch HEAD: f393a59
 
 ## Decisions Log
 
