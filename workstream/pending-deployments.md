@@ -95,6 +95,15 @@ last-match-wins. A nested path re-includes whole trees (`.venv`, `cdk.out`) and
 CDK asset staging then recurses into its own output until it fails with
 `ENAMETOOLONG`. A regression test guards this.
 
+**Base image comes from ECR Public, not Docker Hub.** `agentcore deploy` builds
+the Dockerfile in CodeBuild, which runs on shared AWS IPs that Docker Hub
+rate-limits for anonymous pulls. Pulling `python:3.13-slim-trixie` from
+`docker.io` there fails the build with `429 Too Many Requests` (and CloudFormation
+then rolls the stack back). The Dockerfile pins
+`public.ecr.aws/docker/library/python:3.13-slim-trixie` — the same official image,
+mirrored by AWS and not rate-limited from AWS infrastructure. A test asserts every
+`FROM` line uses `public.ecr.aws/`.
+
 **If you are behind a TLS-intercepting proxy** (Netskope, Zscaler, corporate
 MITM), local `docker build` fails with `curl: (60) SSL certificate problem:
 self-signed certificate in certificate chain`. Drop your proxy's root CA into
@@ -110,7 +119,30 @@ cp "/Library/Application Support/Netskope/STAgent/data/nstenantcert.pem" \
    agents/dep-updater/ca/netskope-tenant-ca.crt
 ```
 
-In CodeBuild (no proxy) the directory is effectively empty and the step is a no-op.
+> **Caveat — the CA travels to CodeBuild.** The uploaded build context is taken
+> from the deploying machine, and the root `.dockerignore` excludes `*.pem`/`*.key`
+> but not `*.crt`. So any cert left in `ca/` is baked into the *deployed* image as
+> a trusted root. CodeBuild has no proxy and does not need it. If you would rather
+> the production image not trust your corporate MITM root, clear `ca/*.crt` before
+> `agentcore deploy` and keep it only for local builds.
+
+**If the stack is in `ROLLBACK_COMPLETE`,** a previous create failed. CloudFormation
+cannot update a stack in that state — delete it, then redeploy:
+
+```bash
+aws cloudformation delete-stack --stack-name AgentCore-depupdater-default
+aws cloudformation wait stack-delete-complete --stack-name AgentCore-depupdater-default
+cd agents/dep-updater && agentcore deploy
+```
+
+To diagnose a build failure before retrying:
+
+```bash
+aws cloudformation describe-stack-events --stack-name AgentCore-depupdater-default \
+  --query 'reverse(StackEvents[?ResourceStatus==`CREATE_FAILED`].[LogicalResourceId,ResourceStatusReason])' \
+  --output text
+# then follow the CodeBuild log link in the failure reason
+```
 
 **Verification commands post-deploy:**
 

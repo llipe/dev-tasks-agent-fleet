@@ -183,6 +183,27 @@ describe("agentcore.json — Python version is consistent across declarations", 
       resolve(contextRoot, runtime.dockerfile ?? "Dockerfile"),
       "utf-8",
     );
-    expect(dockerfile).toMatch(/^FROM python:3\.13-/m);
+    // Matches both docker.io ("python:3.13-...") and the ECR Public mirror
+    // ("public.ecr.aws/docker/library/python:3.13-..."), which is what CodeBuild uses.
+    expect(dockerfile).toMatch(/^FROM \S*python:3\.13-/m);
+  });
+
+  /**
+   * CodeBuild runs on shared AWS IPs that Docker Hub rate-limits for anonymous
+   * pulls, so `agentcore deploy` fails with "429 Too Many Requests" if the base
+   * image is pulled from docker.io. Pin the ECR Public mirror instead.
+   */
+  it("pulls the base image from ECR Public, not docker.io", () => {
+    const runtime = depUpdaterRuntime();
+    const contextRoot = resolve(AGENT_DIR, runtime.buildContextPath ?? ".");
+    const dockerfile = readFileSync(
+      resolve(contextRoot, runtime.dockerfile ?? "Dockerfile"),
+      "utf-8",
+    );
+    const fromLines = dockerfile.split("\n").filter((l) => /^FROM /.test(l));
+    expect(fromLines.length).toBeGreaterThan(0);
+    for (const line of fromLines) {
+      expect(line).toContain("public.ecr.aws/");
+    }
   });
 });

@@ -22,7 +22,13 @@
 # Deploy (the CLI performs the build itself, in CodeBuild):
 #   cd agents/dep-updater && agentcore deploy
 #
-FROM python:3.13-slim-trixie
+# Base image comes from the ECR Public mirror of Docker Hub's official images,
+# NOT from docker.io. CodeBuild runs on shared AWS IPs that Docker Hub rate-limits
+# aggressively for anonymous pulls, and `agentcore deploy` builds this Dockerfile
+# in CodeBuild — pulling from docker.io fails there with
+# "429 Too Many Requests". ECR Public is not rate-limited from AWS infrastructure
+# and mirrors the same official image and tags.
+FROM public.ecr.aws/docker/library/python:3.13-slim-trixie
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
