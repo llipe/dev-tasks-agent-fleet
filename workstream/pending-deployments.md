@@ -18,39 +18,21 @@ Deployment steps deferred during implementation. Each requires your explicit con
 
 ---
 
-## 3. Observability + Discovery Tags (S-005) — upcoming
+## 3. Observability + Discovery Tags (S-005) — PENDING
 
-**Stack:** `AgentFleetAgentStack` (tags added)
-**What it adds:**
+**What it requires (manual console steps):**
 
-- Tags: `agent:managed=true`, `agent:name=dep-updater`, `agent:domain=security`
-- CloudWatch Transaction Search enabled (manual console step)
-- `SPANS_LOG_GROUP` configured
-
-_This deployment will be documented after S-005 implementation._
-
----
-
-## Deployment Order
-
-```
-1. AgentFleetDataStack  (table + GSI)
-2. Run seed script
-3. AgentFleetIamStack   (IAM roles — requires table ARN from step 1)
-4. Verify integration tests pass with live resources
-```
-
-## Notes
-
-- All stacks use `RemovalPolicy.RETAIN` — deleting the stack will NOT delete the table.
-- Deletion protection is enabled on the table — you must disable it manually before any destructive action.
-- IAM roles use `dynamodb:Attributes` condition keys for write separation. The integration tests (`pnpm --filter @fleet/infra run test:integration -- iam`) validate these denials against live AWS.
-- The seed script is idempotent (uses `attribute_not_exists` conditions). Safe to re-run.
-
+1. Enable CloudWatch Transaction Search at 1% sampling (console only)
+2. Set span log group retention to 30 days:
+   ```bash
+   aws logs put-retention-policy \
+     --log-group-name /aws/vendedlogs/agentcore/dep-updater/spans \
+     --retention-in-days 30
+   ```
 
 ---
 
-## 4. Agent Deployment to AgentCore (S-006 through S-010) — DEFERRED
+## 4. Agent Deployment to AgentCore (S-006 through S-011) — PENDING
 
 **Stack:** `AgentFleetAgentStack` (runtime config added)
 **What it delivers:**
@@ -108,3 +90,85 @@ aws logs filter-log-events \
 
 - `maxLifetime`: 3600 (seconds — 1 hour max session)
 - `idleRuntimeSessionTimeout`: 300 (seconds — 5 min idle before stop)
+
+
+
+---
+
+## 5. Orchestrator Lambda (S-013) — PENDING
+
+**Stack:** `AgentFleetOrchestrationStack`
+**What it creates:**
+
+- Lambda function `agent-fleet-orchestrator` (Node.js 20, 60s timeout)
+- EventBridge Scheduler rule (every 6 hours for dep-updater)
+- Uses the `orchestrator-role` from S-004
+
+**Commands:**
+
+```bash
+cd infra
+pnpm run cdk diff AgentFleetOrchestrationStack
+pnpm run cdk deploy AgentFleetOrchestrationStack
+```
+
+**Verification:**
+
+```bash
+# Manual trigger
+aws lambda invoke \
+  --function-name agent-fleet-orchestrator \
+  --payload '{"agent":"dep-updater","scheduledAt":"2025-01-28T10:00:00Z"}' \
+  /tmp/orchestrator-output.json
+
+cat /tmp/orchestrator-output.json
+```
+
+---
+
+## 6. Control Plane on Fly.io (S-024) — PENDING
+
+**See `docs/runbook-deployment.md` for full instructions.**
+
+Quick steps:
+
+```bash
+# One-time setup
+flyctl apps create agent-fleet-control-plane --org <your-org>
+fly secrets set CF_ACCESS_TEAM_NAME="<team>" \
+  CF_ACCESS_AUD="<aud>" \
+  AWS_REGION="us-east-1" \
+  --app agent-fleet-control-plane
+
+# Deploy
+flyctl deploy --config infra/control-plane.fly.toml --remote-only
+```
+
+**Also requires:**
+- Cloudflare Access application configured
+- Cloudflare Tunnel pointing to the Fly app
+- IAM OIDC trust policy for Fly → AWS
+
+---
+
+## Deployment Order (Complete)
+
+```
+1. ✅ AgentFleetDataStack   (table + GSI) — DONE
+2. ✅ Run seed script — DONE
+3. ✅ AgentFleetIamStack    (IAM roles) — DONE
+4. 🔲 Observability setup   (console: Transaction Search + retention)
+5. 🔲 Agent deploy          (docker build + agentcore deploy)
+6. 🔲 Trigger one agent run (validates S-006 through S-011)
+7. 🔲 AgentFleetOrchestrationStack (Lambda + EventBridge)
+8. 🔲 Fly app + secrets     (control plane deployment)
+9. 🔲 Cloudflare Access + Tunnel (origin lockdown)
+```
+
+## Notes
+
+- All CDK stacks use `RemovalPolicy.RETAIN` — deleting the stack will NOT delete the table.
+- Deletion protection is enabled on the DynamoDB table.
+- IAM roles use `dynamodb:Attributes` condition keys for write separation.
+- The seed script is idempotent (uses `attribute_not_exists` conditions). Safe to re-run.
+- The control plane is stateless — all state lives in DynamoDB and CloudWatch. Rollback is a simple image swap.
