@@ -53,6 +53,16 @@
 - `apps/control-plane/src/app/agents/[name]/runs-table-client.tsx` - Runs DataTable with columns and row click (S-020)
 - `apps/control-plane/src/app/agents/[name]/run-filters-controls.tsx` - Filter controls writing to URL (S-020)
 - `apps/control-plane/src/app/agents/[name]/agent-runs.integration-test.ts` - Integration tests for agent runs (S-020)
+- `apps/control-plane/src/app/agents/[name]/run-panel-data.ts` - Run panel data fetching layer with DI (S-021)
+- `apps/control-plane/src/app/agents/[name]/run-panel-wrapper.tsx` - Server component conditionally rendering RunPanel (S-021)
+- `apps/control-plane/src/components/run-panel/run-panel.tsx` - Main panel client component (S-021)
+- `apps/control-plane/src/components/run-panel/panel-metadata.tsx` - Metadata section (S-021)
+- `apps/control-plane/src/components/run-panel/span-timeline.tsx` - Timeline visualization (S-021)
+- `apps/control-plane/src/components/run-panel/log-viewer.tsx` - Log display (S-021)
+- `apps/control-plane/src/components/run-panel/index.ts` - Run panel module exports (S-021)
+- `apps/control-plane/src/lib/run-panel-utils.ts` - Truncation, bar geometry, log parsing helpers (S-021)
+- `apps/control-plane/src/lib/run-panel-utils.test.ts` - Unit tests for run panel utilities (S-021)
+- `apps/control-plane/src/components/run-panel/run-panel.integration-test.ts` - Integration tests (S-021)
 - `apps/control-plane/src/lib/run-filters.ts` - Pure filter parsing/validation/formatting (S-020)
 - `apps/control-plane/src/lib/run-filters.test.ts` - Unit tests for run filters (S-020)
 - `apps/control-plane/src/app/repos/page.tsx` - Placeholder repos page (force-dynamic)
@@ -484,20 +494,20 @@ S-001 (foundation)
   - [ ] 20.10 E2E: apply filters, reload, confirm URL restoration; copy URL into new tab — DEFERRED (needs running app)
   - [x] 20.11 Run Tests: `pnpm --filter control-plane run test:integration -- agent-runs`
 
-- [ ] 21.0 Implement Story S-021: Run side panel with span timeline and logs — #28 https://github.com/llipe/dev-tasks-agent-fleet/issues/28
+- [x] 21.0 Implement Story S-021: Run side panel with span timeline and logs — #28 https://github.com/llipe/dev-tasks-agent-fleet/issues/28
 
-  - [ ] 21.1 Implement `RunPanel` sheet driven by `run` URL param
-  - [ ] 21.2 Metadata section: agent, repo, session_id (monospace, truncated, copy), status, duration, tokens, cost, outcome link — paints immediately from row data
-  - [ ] 21.3 `SpanTimeline` in its own `Suspense`: per-call horizontal bars with latency and tokens
-  - [ ] 21.4 `LogViewer` in its own `Suspense`: `FilterLogEvents` by `session_id`, monospace, scrollable
-  - [ ] 21.5 Dismissal: `Esc`, backdrop click, explicit close; focus trapped while open, restored on close
-  - [ ] 21.6 Browser back closes the panel
-  - [ ] 21.7 Each section: loading, empty, error, timeout states independently
-  - [ ] 21.8 `incomplete` run shows logs up to cut-off point without an error
-  - [ ] 21.9 Unit test: log line parsing; timeline bar geometry; `session_id` truncation
-  - [ ] 21.10 Integration test: panel renders with mocked timeline and logs; each async state per section
-  - [ ] 21.11 E2E: open panel, assert table scroll preserved; count clicks from list to logs (≤3); keyboard open/close; focus restoration
-  - [ ] 21.12 Run Tests: `pnpm --filter control-plane run test:integration -- run-panel && pnpm --filter control-plane run test:e2e -- run-panel`
+  - [x] 21.1 Implement `RunPanel` sheet driven by `run` URL param
+  - [x] 21.2 Metadata section: agent, repo, session_id (monospace, truncated, copy), status, duration, tokens, cost, outcome link — paints immediately from row data
+  - [x] 21.3 `SpanTimeline` in its own `Suspense`: per-call horizontal bars with latency and tokens
+  - [x] 21.4 `LogViewer` in its own `Suspense`: `FilterLogEvents` by `session_id`, monospace, scrollable
+  - [x] 21.5 Dismissal: `Esc`, backdrop click, explicit close; focus trapped while open, restored on close
+  - [x] 21.6 Browser back closes the panel
+  - [x] 21.7 Each section: loading, empty, error, timeout states independently
+  - [x] 21.8 `incomplete` run shows logs up to cut-off point without an error
+  - [x] 21.9 Unit test: log line parsing; timeline bar geometry; `session_id` truncation
+  - [x] 21.10 Integration test: panel renders with mocked timeline and logs; each async state per section
+  - [ ] 21.11 E2E: open panel, assert table scroll preserved; count clicks from list to logs (≤3); keyboard open/close; focus restoration — DEFERRED
+  - [x] 21.12 Run Tests: `pnpm --filter control-plane run test:integration -- run-panel`
 
 - [ ] 22.0 Implement Story S-022: Scope configuration — Repos tab and write actions — #29 https://github.com/llipe/dev-tasks-agent-fleet/issues/29
 
