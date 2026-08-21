@@ -4,3 +4,7 @@ dist
 coverage
 pnpm-lock.yaml
 packages/shared/generated
+.venv
+.pytest_cache
+cdk.out
+workstream/

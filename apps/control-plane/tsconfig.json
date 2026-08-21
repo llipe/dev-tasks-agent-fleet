@@ -8,6 +8,7 @@
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
+    "types": ["@testing-library/jest-dom"],
     "plugins": [
       {
         "name": "next"

@@ -15,7 +15,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { paramsSchemaFor, normalizeSubjectId } from "@fleet/shared";
-import { verifyToken } from "@/lib/auth/verify-token.js";
+import { verifyToken } from "@/lib/auth/verify-token";
 import {
   setSubjectEnabled as repoSetEnabled,
   setSubjectParams as repoSetParams,

@@ -7,6 +7,7 @@ Verifies:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 
@@ -216,14 +217,14 @@ class TestErrorHandling:
         from outcome_store import stamp_outcome
 
         mock_table = MagicMock()
-        error_response = {
+        error_response: dict[str, Any] = {
             "Error": {
                 "Code": "ConditionalCheckFailedException",
                 "Message": "The conditional request failed",
             }
         }
         mock_table.update_item.side_effect = ClientError(
-            error_response, "UpdateItem"
+            error_response, "UpdateItem"  # type: ignore[arg-type]
         )
 
         with (

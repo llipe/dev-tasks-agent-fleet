@@ -86,7 +86,22 @@ function checkFile(filePath: string): Violation[] {
       if (!relPath.startsWith(rule.sourcePrefix)) continue;
 
       for (const forbidden of rule.forbiddenPatterns) {
-        if (importPath.includes(forbidden)) {
+        // For bare path prefixes (like "agents/"), match only at the start of the import
+        // to avoid false positives with path aliases like "@/app/agents/..."
+        if (forbidden.endsWith("/")) {
+          if (
+            importPath.startsWith(forbidden) ||
+            importPath.startsWith(`./${forbidden}`) ||
+            importPath.startsWith(`../${forbidden}`)
+          ) {
+            violations.push({
+              file: relPath,
+              line: i + 1,
+              importPath,
+              rule: rule.description,
+            });
+          }
+        } else if (importPath === forbidden || importPath.startsWith(`${forbidden}/`)) {
           violations.push({
             file: relPath,
             line: i + 1,
