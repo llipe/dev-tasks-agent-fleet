@@ -40,6 +40,7 @@ flyctl apps create agent-fleet-control-plane --org <your-org>
 ```
 
 The app configuration lives in `infra/control-plane.fly.toml`:
+
 - Region: `iad` (US East)
 - Single machine with auto-stop/auto-start
 - Internal port: 3000
@@ -115,6 +116,7 @@ Fly Machines expose an OIDC token at `FLY_OIDC_TOKEN_PATH`. The credentials modu
 **Steps to configure:**
 
 1. Register the Fly OIDC provider in IAM:
+
    ```bash
    aws iam create-open-id-connect-provider \
      --url "https://oidc.fly.io/<ORG_SLUG>" \
@@ -193,11 +195,13 @@ A Cloudflare Tunnel provides a secure, outbound-only connection from Cloudflare'
 ### Setup Steps
 
 1. Create a Cloudflare Tunnel:
+
    ```bash
    cloudflared tunnel create agent-fleet-cp
    ```
 
 2. Configure the tunnel in the Cloudflare dashboard or via `config.yml`:
+
    ```yaml
    tunnel: <TUNNEL_ID>
    credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
@@ -223,6 +227,7 @@ A Cloudflare Tunnel provides a secure, outbound-only connection from Cloudflare'
 ### Alternative: Cloudflare-Managed Tunnel (Recommended)
 
 Using the Zero Trust dashboard:
+
 1. Go to Networks → Tunnels → Create a tunnel.
 2. Name: `agent-fleet-control-plane`.
 3. Install the connector (or use dashboard-managed).
@@ -271,6 +276,7 @@ The control plane is **stateless** — all state lives in DynamoDB and CloudWatc
 ### Rollback Steps
 
 1. List recent deployments:
+
    ```bash
    fly releases --app agent-fleet-control-plane
    ```
@@ -278,16 +284,19 @@ The control plane is **stateless** — all state lives in DynamoDB and CloudWatc
 2. Identify the previous working image version from the releases list.
 
 3. Deploy the previous image:
+
    ```bash
    flyctl deploy --image <previous-image-ref> --app agent-fleet-control-plane
    ```
 
    Or roll back to the previous release:
+
    ```bash
    fly releases rollback --app agent-fleet-control-plane
    ```
 
 4. Verify health:
+
    ```bash
    curl -s https://agent-fleet-control-plane.fly.dev/healthz
    # Expected: {"status":"ok"}
@@ -300,6 +309,7 @@ The control plane is **stateless** — all state lives in DynamoDB and CloudWatc
 ### Stateless Recovery Verification
 
 After rollback:
+
 - No data loss occurs (all state is in DynamoDB).
 - No cache warm-up required (TTL cache rebuilds on demand).
 - Sessions are re-authenticated via Cloudflare Access (no server-side session state).
@@ -390,14 +400,15 @@ curl -s -I https://agent-fleet-control-plane.fly.dev/healthz | grep -i strict
 
 ### Fly.io Pricing (as of 2024)
 
-| Resource | Configuration | Estimated Monthly Cost |
-|----------|---------------|----------------------|
-| Shared CPU 1x (256 MB) | auto-stop enabled | ~$1.94 (prorated to uptime) |
-| Persistent bandwidth | Minimal (API calls only) | ~$0.00 (included) |
-| IPv4 address | Shared | $2.00 |
-| **Total** | | **~$3.94 – $5.00** |
+| Resource               | Configuration            | Estimated Monthly Cost      |
+| ---------------------- | ------------------------ | --------------------------- |
+| Shared CPU 1x (256 MB) | auto-stop enabled        | ~$1.94 (prorated to uptime) |
+| Persistent bandwidth   | Minimal (API calls only) | ~$0.00 (included)           |
+| IPv4 address           | Shared                   | $2.00                       |
+| **Total**              |                          | **~$3.94 – $5.00**          |
 
 With auto-stop enabled and low traffic:
+
 - Machine stops after idle period → charged only while running.
 - Estimated active hours: ~2-4 hours/day with occasional access.
 - **Well under USD 10/month budget.**
