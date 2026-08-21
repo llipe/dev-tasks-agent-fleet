@@ -65,7 +65,15 @@
 - `apps/control-plane/src/components/run-panel/run-panel.integration-test.ts` - Integration tests (S-021)
 - `apps/control-plane/src/lib/run-filters.ts` - Pure filter parsing/validation/formatting (S-020)
 - `apps/control-plane/src/lib/run-filters.test.ts` - Unit tests for run filters (S-020)
-- `apps/control-plane/src/app/repos/page.tsx` - Placeholder repos page (force-dynamic)
+- `apps/control-plane/src/app/repos/page.tsx` - Repos list server component (S-023)
+- `apps/control-plane/src/app/repos/repos-data.ts` - Repos data layer with coverage aggregation (S-023)
+- `apps/control-plane/src/app/repos/repos-table-client.tsx` - Repos DataTable client wrapper (S-023)
+- `apps/control-plane/src/app/repos/repos-list.integration-test.ts` - Integration tests for repos list (S-023)
+- `apps/control-plane/src/app/repos/[...repo]/page.tsx` - Per-repo detail server component (S-023)
+- `apps/control-plane/src/app/repos/[...repo]/repo-runs-data.ts` - Per-repo runs data layer (S-023)
+- `apps/control-plane/src/app/repos/[...repo]/repo-runs-table-client.tsx` - Per-repo runs table with agent column (S-023)
+- `apps/control-plane/src/app/repos/[...repo]/repo-run-filters.tsx` - Per-repo filter controls (S-023)
+- `apps/control-plane/src/app/repos/[...repo]/repo-run-panel-wrapper.tsx` - Per-repo run panel wrapper (S-023)
 - `apps/control-plane/src/server/actions/scope.ts` - Server Actions: setSubjectEnabled, setSubjectParams, addSubjectToAgent (S-022)
 - `apps/control-plane/src/server/actions/scope.test.ts` - Unit tests for scope action schemas (S-022)
 - `apps/control-plane/src/server/actions/scope-safety.test.ts` - Static safety test: no last_* writes (S-022)
@@ -538,18 +546,18 @@ S-001 (foundation)
   - [ ] 22.15 E2E: toggle, verify immediate reflection; add repo timed under 30 s; toggle failure → revert visible — DEFERRED
   - [x] 22.16 Run Tests: `pnpm --filter control-plane run test:unit -- actions && pnpm --filter control-plane run test:integration -- actions && pnpm --filter control-plane run test:e2e -- scope`
 
-- [ ] 23.0 Implement Story S-023: Repos list and per-repository run view — #30 https://github.com/llipe/dev-tasks-agent-fleet/issues/30
+- [x] 23.0 Implement Story S-023: Repos list and per-repository run view — #30 https://github.com/llipe/dev-tasks-agent-fleet/issues/30
 
-  - [ ] 23.1 Implement subject list service: `Query GSI1 pk = "META"` — no Scan
-  - [ ] 23.2 Implement coverage aggregation: per-agent GSI1 queries for agent count per subject
-  - [ ] 23.3 Implement `/repos` table: repo, agents covering it, last activity, status; row click → `/repos/[repo]`
-  - [ ] 23.4 Implement `/repos/[repo]` reusing `RunsTable` with agent column added
-  - [ ] 23.5 Wire filters and run panel identically to S-020/S-021
-  - [ ] 23.6 Subject with META only and no agents appears showing zero
-  - [ ] 23.7 All four async states
-  - [ ] 23.8 Integration test: no `ScanCommand` issued; subject with no agents appears; renders with mocks
-  - [ ] 23.9 E2E: navigate, filter, open panel from this view
-  - [ ] 23.10 Run Tests: `pnpm --filter control-plane run test:integration -- repos && pnpm --filter control-plane run test:e2e -- repos`
+  - [x] 23.1 Implement subject list service: `Query GSI1 pk = "META"` — no Scan
+  - [x] 23.2 Implement coverage aggregation: per-agent GSI1 queries for agent count per subject
+  - [x] 23.3 Implement `/repos` table: repo, agents covering it, last activity, status; row click → `/repos/[repo]`
+  - [x] 23.4 Implement `/repos/[repo]` reusing `RunsTable` with agent column added
+  - [x] 23.5 Wire filters and run panel identically to S-020/S-021
+  - [x] 23.6 Subject with META only and no agents appears showing zero
+  - [x] 23.7 All four async states
+  - [x] 23.8 Integration test: no `ScanCommand` issued; subject with no agents appears; renders with mocks
+  - [ ] 23.9 E2E: navigate, filter, open panel from this view — DEFERRED
+  - [x] 23.10 Run Tests: `pnpm --filter control-plane run test:integration -- repos`
 
 - [ ] 24.0 Implement Story S-024: Fly deployment with Cloudflare Tunnel origin lockdown — #31 https://github.com/llipe/dev-tasks-agent-fleet/issues/31
 
