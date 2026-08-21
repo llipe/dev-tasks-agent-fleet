@@ -1,11 +1,26 @@
 # AgentCore Runtime requires linux/arm64.
 #
-# IMPORTANT: build from the REPOSITORY ROOT, not this directory, because the
-# agent imports the generated shared contract from packages/shared/generated:
+# WHY THIS FILE LIVES AT THE REPOSITORY ROOT
 #
-#   docker build --platform linux/arm64 \
-#     -f agents/dep-updater/Dockerfile \
-#     -t dep-updater:local .
+# The agent imports the generated shared contract from packages/shared/generated,
+# so the Docker build context must be the repository root. The AgentCore CLI
+# supports that via `buildContextPath` in agents/dep-updater/agentcore/agentcore.json.
+#
+# The Dockerfile must ALSO sit at the build-context root. The CLI appends a
+# "force-keep" of the Dockerfile and every ancestor directory to the end of the
+# asset exclude list, and Docker ignore semantics are last-match-wins. A nested
+# path like `agents/dep-updater/Dockerfile` therefore emits `!agents` and
+# `!agents/dep-updater`, which re-include everything beneath them — including
+# `.venv` and `agentcore/cdk/cdk.out` — and CDK asset staging then recurses into
+# its own output directory until it dies on ENAMETOOLONG. Keeping the Dockerfile
+# at the context root emits only `!Dockerfile.dep-updater`, so the baseline and
+# .dockerignore exclusions survive.
+#
+# Build:
+#   docker build --platform linux/arm64 -f Dockerfile.dep-updater -t dep-updater:local .
+#
+# Deploy (the CLI performs the build itself, in CodeBuild):
+#   cd agents/dep-updater && agentcore deploy
 #
 FROM python:3.13-slim-trixie
 

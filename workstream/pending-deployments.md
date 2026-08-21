@@ -34,32 +34,69 @@ Deployment steps deferred during implementation. Each requires your explicit con
 
 ## 4. Agent Deployment to AgentCore (S-006 through S-011) — PENDING
 
-**Stack:** `AgentFleetAgentStack` (runtime config added)
+**Owner:** the **AgentCore CLI**, not our `infra/` CDK app.
+
+The agent runtime is defined in `agents/dep-updater/agentcore/agentcore.json` and
+deployed by the CLI's own vended CDK app (`agents/dep-updater/agentcore/cdk`),
+which creates CloudFormation stack **`AgentCore-depupdater-default`**.
+`infra/lib/agent-stack.ts` has been removed — see the note in `infra/bin/app.ts`.
+
 **What it delivers:**
 
 - Full agent runtime with non-blocking entrypoint (S-007)
 - Structured JSON logging keyed by `session_id` (S-008)
 - Control-plane payload envelope parsing (S-009)
 - `llipe.*` span attribute emission (S-010)
-- `agentcore.json` with `dep-updater` name, `PYTHON_3_13`, lifecycle values
+- DynamoDB outcome stamping (S-011)
+- Discovery tags `agent:managed` / `agent:name` / `agent:domain` on the
+  `AWS::BedrockAgentCore::Runtime` resource, kept in step with `packages/shared`
+  by `infra/test/agentcore-config.test.ts`
 
 **Manual steps required:**
 
-1. Start Docker daemon
-2. Build container — **must run from the repository root**, because the agent
-   imports the generated shared contract from `packages/shared/generated/`:
+1. Start Docker daemon.
+2. One-time: install the vended CDK app's dependencies (gitignored, npm-managed):
    ```bash
-   docker build --platform linux/arm64 \
-     -f agents/dep-updater/Dockerfile \
-     -t dep-updater:local .
+   cd agents/dep-updater/agentcore/cdk && npm ci
    ```
-3. Deploy to AgentCore:
+3. Optional local build check. The Dockerfile lives at the **repository root**
+   (`Dockerfile.dep-updater`) and the build context is the repository root:
    ```bash
-   cd agents/dep-updater && agentcore deploy
+   docker build --platform linux/arm64 -f Dockerfile.dep-updater -t dep-updater:local .
    ```
+4. Preview, then deploy. On a fresh clone the CLI first regenerates
+   `agentcore/aws-targets.json` from your ambient AWS credentials — that file is
+   gitignored because it carries the AWS account ID and this repo is public:
+   ```bash
+   cd agents/dep-updater
+   agentcore deploy --dry-run   # validate + synth only, no AWS changes
+   agentcore deploy             # real deploy; image is built in CodeBuild
+   ```
+5. Trigger one run against a test repository to validate:
+   - Pipeline behaviour unchanged (S-006 AC)
+   - Logs continue past 5 min / run completes without idle timeout kill (S-007 AC)
+   - JSON log output with `session_id` in CloudWatch (S-008 AC)
+   - `llipe.*` span attributes on root span in span log group (S-010 AC)
+   - `last_status` / `last_outcome_url` stamped, `enabled` / `params` untouched (S-011 AC)
+
+**Naming note.** The CLI's `AgentNameSchema` is `/^[a-zA-Z][a-zA-Z0-9_]{0,47}$/`
+— hyphens are rejected. The runtime is therefore named `dep_updater` (deployed
+resource `depupdater_dep_updater`), while the `agent:name` **tag** stays
+`dep-updater`. The control plane discovers agents by tag value, not resource
+name, so the `AGENT#dep-updater` DynamoDB contract is unaffected. Both halves are
+asserted by test.
+
+**Why the Dockerfile is at the repository root.** The agent imports the generated
+shared contract from `packages/shared/generated`, so the build context must be
+the repository root (`buildContextPath`). The Dockerfile must also sit at that
+context root: the CLI appends a force-keep of the Dockerfile *and every ancestor
+directory* to the end of the asset exclude list, and Docker ignore semantics are
+last-match-wins. A nested path re-includes whole trees (`.venv`, `cdk.out`) and
+CDK asset staging then recurses into its own output until it fails with
+`ENAMETOOLONG`. A regression test guards this.
 
 **If you are behind a TLS-intercepting proxy** (Netskope, Zscaler, corporate
-MITM), the build will fail with `curl: (60) SSL certificate problem:
+MITM), local `docker build` fails with `curl: (60) SSL certificate problem:
 self-signed certificate in certificate chain`. Drop your proxy's root CA into
 `agents/dep-updater/ca/` as a `.crt` file — the Dockerfile installs anything it
 finds there. `ca/*.crt` is gitignored, so this stays local.
@@ -73,12 +110,7 @@ cp "/Library/Application Support/Netskope/STAgent/data/nstenantcert.pem" \
    agents/dep-updater/ca/netskope-tenant-ca.crt
 ```
 
-In CI (no proxy) the directory is effectively empty and the step is a no-op.
-4. Trigger one run against a test repository to validate:
-   - Pipeline behaviour unchanged (S-006 AC)
-   - Logs continue past 5 min / run completes without idle timeout kill (S-007 AC)
-   - JSON log output with `session_id` in CloudWatch (S-008 AC)
-   - `llipe.*` span attributes on root span in span log group (S-010 AC)
+In CodeBuild (no proxy) the directory is effectively empty and the step is a no-op.
 
 **Verification commands post-deploy:**
 

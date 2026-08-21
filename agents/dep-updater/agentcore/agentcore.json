@@ -1,23 +1,31 @@
 {
-  "name": "dep-updater",
+  "name": "depupdater",
   "version": 1,
   "managedBy": "CDK",
   "tags": {
     "agentcore:created-by": "agentcore-cli",
-    "agentcore:project-name": "dep-updater"
+    "agentcore:project-name": "depupdater"
   },
   "runtimes": [
     {
-      "name": "dep-updater",
+      "name": "dep_updater",
+      "description": "Autonomous dependency updater agent",
       "build": "Container",
       "entrypoint": "main.py",
-      "codeLocation": "agents/dep-updater/",
+      "codeLocation": ".",
+      "buildContextPath": "../..",
+      "dockerfile": "Dockerfile.dep-updater",
       "runtimeVersion": "PYTHON_3_13",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 300,
         "maxLifetime": 3600
+      },
+      "tags": {
+        "agent:managed": "true",
+        "agent:name": "dep-updater",
+        "agent:domain": "security"
       }
     }
   ],

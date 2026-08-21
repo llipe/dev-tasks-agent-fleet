@@ -27,6 +27,10 @@ dev = [
 [tool.ruff]
 target-version = "py313"
 line-length = 100
+# The AgentCore CLI stages a copy of the Docker build context under
+# agentcore/cdk/cdk.out on every synth. It is gitignored build output, but it
+# contains a full copy of this package, so exclude it from all Python tooling.
+extend-exclude = ["agentcore"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "N", "S", "B", "A", "C4", "SIM", "TCH", "PLW", "RUF"]
@@ -46,6 +50,9 @@ python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+# See the ruff note above: agentcore/cdk/cdk.out holds a staged copy of this
+# package, which mypy would otherwise report as duplicate modules.
+exclude = ["agentcore/"]
 
 [[tool.mypy.overrides]]
 module = [

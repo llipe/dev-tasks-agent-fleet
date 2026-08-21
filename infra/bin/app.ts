@@ -2,8 +2,14 @@
 import * as cdk from "aws-cdk-lib";
 import { DataStack } from "../lib/data-stack.js";
 import { IamStack } from "../lib/iam-stack.js";
-import { AgentStack } from "../lib/agent-stack.js";
 import { OrchestrationStack } from "../lib/orchestration-stack.js";
+
+// NOTE: the dep-updater agent runtime is NOT deployed from this CDK app.
+// It is owned by the AgentCore CLI project at agents/dep-updater/agentcore,
+// which vends its own CDK app and deploys stack `AgentCore-depupdater-default`.
+// The discovery tags the control plane relies on (agent:managed / agent:name /
+// agent:domain) are declared on that runtime in agentcore.json and asserted
+// against packages/shared by infra/test/agentcore-config.test.ts.
 
 const app = new cdk.App();
 
@@ -18,8 +24,6 @@ const iamStack = new IamStack(app, "AgentFleetIamStack", {
   env,
   table: dataStack.table,
 });
-
-new AgentStack(app, "AgentFleetAgentStack", { env });
 
 new OrchestrationStack(app, "AgentFleetOrchestrationStack", {
   env,

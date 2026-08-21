@@ -10,6 +10,9 @@ export default tseslint.config(
       "**/.next/**",
       "**/coverage/**",
       "**/generated/**",
+      // Vendored by the AgentCore CLI (agentcore create / deploy regenerates it).
+      // Not ours to lint, and it is overwritten on CLI upgrade.
+      "agents/*/agentcore/cdk/**",
     ],
   },
   js.configs.recommended,

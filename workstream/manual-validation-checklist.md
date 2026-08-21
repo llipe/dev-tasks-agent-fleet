@@ -59,16 +59,15 @@ pnpm --filter @fleet/infra run test:integration -- agent-writes
 
 ## Phase 2: Agent Deployment to AgentCore (S-006–S-011)
 
-### 2.1 Build the Container
+### 2.1 Build the Container (optional local check)
 
-Run from the **repository root** — the agent imports the generated shared
-contract from `packages/shared/generated/`, so that path must be in the build
-context.
+The Dockerfile lives at the **repository root** as `Dockerfile.dep-updater`, and
+the build context is the repository root — the agent imports the generated shared
+contract from `packages/shared/generated`. See the note in
+`workstream/pending-deployments.md` for why the Dockerfile cannot be nested.
 
 ```bash
-docker build --platform linux/arm64 \
-  -f agents/dep-updater/Dockerfile \
-  -t dep-updater:local .
+docker build --platform linux/arm64 -f Dockerfile.dep-updater -t dep-updater:local .
 ```
 
 **Expected:** Build succeeds. Verify:
@@ -86,6 +85,9 @@ The final build stage runs an import smoke check
 (`python -c "import main, logging_json, payload, emission, outcome_store"`), so
 a missing module fails the build rather than the first invocation.
 
+Note that `agentcore deploy` does **not** use this local image — it builds the
+same Dockerfile in CodeBuild. This step only catches Dockerfile breakage early.
+
 **Behind a TLS-intercepting proxy?** If the build fails with
 `curl: (60) SSL certificate problem: self-signed certificate in certificate
 chain`, install your proxy's root CA into `agents/dep-updater/ca/` as a `.crt`
@@ -102,12 +104,40 @@ cp "/Library/Application Support/Netskope/STAgent/data/nstenantcert.pem" \
 
 ### 2.2 Deploy to AgentCore
 
+Deployment is owned by the AgentCore CLI, which vends its own CDK app at
+`agents/dep-updater/agentcore/cdk` and creates stack
+`AgentCore-depupdater-default`.
+
+One-time: install the vended CDK app's dependencies (gitignored, npm-managed):
+
 ```bash
-cd agents/dep-updater
-agentcore deploy
+cd agents/dep-updater/agentcore/cdk && npm ci
 ```
 
-**Expected:** Deployment succeeds, runtime shows as `ACTIVE`.
+Then preview and deploy:
+
+```bash
+cd agents/dep-updater
+agentcore deploy --dry-run   # validate + synth only, no AWS changes
+agentcore deploy             # real deploy
+```
+
+**Expected:** `--dry-run` ends with
+`✓ Dry run complete for 'default' (stack: AgentCore-depupdater-default)`.
+
+Confirm the discovery tags reached the runtime in the synthesized template:
+
+```bash
+python3 - <<'PY'
+import glob, json
+tpl = json.load(open(glob.glob(
+    'agents/dep-updater/agentcore/cdk/cdk.out/AgentCore-depupdater-default.template.json')[0]))
+for lid, res in tpl['Resources'].items():
+    if res['Type'] == 'AWS::BedrockAgentCore::Runtime':
+        print(json.dumps(res['Properties'].get('Tags'), indent=2))
+PY
+# Expected to include: agent:managed=true, agent:name=dep-updater, agent:domain=security
+```
 
 ### 2.3 Trigger a Test Run
 

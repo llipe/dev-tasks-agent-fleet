@@ -9,6 +9,11 @@ coverage
 .env.*
 !.env.example
 
+# AgentCore deployment targets: contains the AWS account ID, and this repo is
+# public. The CLI regenerates it from ambient AWS credentials on first
+# `agentcore deploy`, so committing it buys nothing.
+agents/*/agentcore/aws-targets.json
+
 # CDK build artifacts (may contain account IDs, ARNs)
 cdk.out
 cdk.context.json

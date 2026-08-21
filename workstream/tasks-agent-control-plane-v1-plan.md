@@ -15,12 +15,15 @@
 - `packages/shared/src/span-mapper.ts` - Span-to-run field mapper (S-012)
 - `packages/shared/src/span-query.ts` - Logs Insights query builders (S-012)
 - `workstream/findings-telemetry-verification.md` - Telemetry verification findings document (S-012)
-- `infra/bin/app.ts`, `infra/lib/{data-stack,iam-stack,agent-stack,orchestration-stack}.ts` - CDK
-- `infra/test/agent-stack.test.ts` - CDK snapshot test for discovery tags
+- `infra/bin/app.ts`, `infra/lib/{data-stack,iam-stack,orchestration-stack}.ts` - CDK (agent runtime is CLI-owned, see below)
+- `agents/dep-updater/agentcore/agentcore.json` - AgentCore CLI project config; declares the runtime and its discovery tags (S-005/S-006)
+- `agents/dep-updater/agentcore/cdk/**` - CDK app vended by the AgentCore CLI; deploys stack `AgentCore-depupdater-default` (not linted/formatted by us)
+- `Dockerfile.dep-updater` - Agent container; must live at the build-context root (repository root)
+- `infra/test/agentcore-config.test.ts` - Drift guard: agentcore.json discovery tags/lifecycle vs `@fleet/shared`
 - `infra/test/discovery.integration-test.ts` - Integration tests for tag-based discovery
 - `infra/seed/seed.ts` - Table seeder
 - `infra/orchestrator/src/**` - Orchestrator Lambda
-- `agents/dep-updater/{main.py,Dockerfile,pyproject.toml}` - Agent
+- `agents/dep-updater/{main.py,pyproject.toml}` - Agent
 - `agents/dep-updater/payload.py` - Control-plane payload envelope parser (S-009)
 - `agents/dep-updater/tests/test_payload.py` - Pytest coverage for payload parsing (S-009)
 - `agents/dep-updater/emission.py` - LLIPE span attribute emission module (S-010)
@@ -29,7 +32,7 @@
 - `agents/dep-updater/tests/test_outcome_store.py` - Pytest coverage for outcome stamping (S-011)
 - `infra/test/agent-writes.integration-test.ts` - Integration tests for agent DynamoDB writes (S-011)
 - `agents/dep-updater/logging_json.py` - Structured JSON logging module with secret redaction
-- `agents/dep-updater/{agentcore.json,uv.lock,package.json,.gitignore}` - Agent config and deps
+- `agents/dep-updater/{uv.lock,package.json,.gitignore}` - Agent config and deps
 - `agents/dep-updater/tests/test_helpers.py` - Pytest coverage for pure helpers
 - `agents/dep-updater/tests/test_logging_json.py` - Pytest coverage for JSON logging and redaction
 - `agents/dep-updater/ca/.keep` - Corporate CA certificate directory
@@ -288,12 +291,12 @@ S-001 (foundation)
 - [x] 6.0 Implement Story S-006: Port `dep-update-agent` into the monorepo — #8 https://github.com/llipe/dev-tasks-agent-fleet/issues/8
 
   - [x] 6.1 Move `main.py`, `Dockerfile`, `pyproject.toml`, `uv.lock` to `agents/dep-updater/`
-  - [x] 6.2 Rename to `dep-updater` throughout: `agentcore.json`, CDK stack, tag values
-  - [x] 6.3 Align Python 3.13 in `pyproject.toml`, `Dockerfile`, and `agentcore.json`
+  - [x] 6.2 Rename to `dep-updater` throughout: `agentcore.json`, CDK stack, tag values — CORRECTED: the CLI's `AgentNameSchema` rejects hyphens, so the runtime is named `dep_updater`; the `agent:name` tag remains `dep-updater` and discovery reads the tag, not the resource name
+  - [x] 6.3 Align Python 3.13 in `pyproject.toml`, `Dockerfile`, and `agentcore.json` — asserted by `infra/test/agentcore-config.test.ts`
   - [x] 6.4 Wire `ruff`, `mypy --strict`, `pytest` into package scripts
-  - [x] 6.5 Port the agent CDK stack into `infra/lib/agent-stack.ts`
+  - [x] 6.5 Port the agent CDK stack into `infra/lib/agent-stack.ts` — SUPERSEDED: agent deployment is owned by the AgentCore CLI's vended CDK app (`agents/dep-updater/agentcore/cdk`, stack `AgentCore-depupdater-default`). `infra/lib/agent-stack.ts` deleted; discovery tags now declared in `agentcore.json` and drift-guarded by `infra/test/agentcore-config.test.ts`
   - [x] 6.6 Write pytest coverage for pure helpers: `diff_packages`, `count_vulns`, `extract_advisories`, `_detect_pnpm_version`
-  - [x] 6.7 Build container for `linux/arm64`; verify it passes locally — VERIFIED: builds from repo root via `-f agents/dep-updater/Dockerfile`, image is arm64/linux, 238 MB
+  - [x] 6.7 Build container for `linux/arm64`; verify it passes locally — VERIFIED: `docker build -f Dockerfile.dep-updater .` from repo root, arm64/linux, 238 MB. Dockerfile must sit at the build-context root; regression-tested
   - [x] 6.8 Deploy to AgentCore and trigger one run against a test repository — DEFER (requires manual deployment)
   - [x] 6.9 Verify AC: pipeline behaviour unchanged, run completes successfully — DEFER (requires deployment)
   - [x] 6.10 Record `lifecycleConfiguration` values (`maxLifetime`, `idleRuntimeSessionTimeout`)
