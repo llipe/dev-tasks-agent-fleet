@@ -35,13 +35,13 @@
 | 21       | S-021    | #28     | ✅ Merged      | #52 | story/S-021-run-side-panel |
 | 22       | S-022    | #29     | ✅ Merged      | #53 | story/S-022-scope-config-repos-tab |
 | 23       | S-023    | #30     | ✅ Merged      | #54 | story/S-023-repos-list-view |
-| 24       | S-024    | #31     | ⏳ Pending     | —   | —                             |
+| 24       | S-024    | #31     | ✅ Merged      | #55 | story/S-024-fly-deployment |
 
 ## Current Position
 
-- Next story: S-024
-- Last merged PR: #54
-- Integration branch HEAD: aa1ebd9
+- Next story: ALL COMPLETE
+- Last merged PR: #55
+- Integration branch HEAD: 5b9a15e
 
 ## Decisions Log
 
