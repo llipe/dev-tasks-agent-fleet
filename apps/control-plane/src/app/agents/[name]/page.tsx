@@ -9,6 +9,7 @@
 import { parseRunFilters, type ParsedRunFilters } from "@/lib/run-filters.js";
 import { AgentDetailShell } from "./agent-detail-shell.js";
 import { RunsTab } from "./runs-tab.js";
+import { ReposTab } from "./repos-tab.js";
 import { RunPanelWrapper } from "./run-panel-wrapper.js";
 import { loadRunsForAgent } from "./runs-data.js";
 import type { MergedRun } from "@/server/runs/merge-runs.js";
@@ -56,9 +57,7 @@ export default async function AgentDetailPage({ params, searchParams }: AgentDet
         {filters.tab === "runs" ? (
           <RunsTab agentName={agentName} filters={filters} />
         ) : (
-          <div className="mt-4 rounded-lg border border-surface-border p-8 text-center text-text-muted">
-            Repos tab — coming in S-022.
-          </div>
+          <ReposTab agentName={agentName} />
         )}
       </AgentDetailShell>
 
