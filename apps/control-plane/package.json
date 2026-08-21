@@ -30,7 +30,8 @@
     "jose": "^6.0.11",
     "next": "^15.3.4",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@aws-sdk/types": "^3.974.4",
