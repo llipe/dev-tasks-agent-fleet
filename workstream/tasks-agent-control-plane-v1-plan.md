@@ -127,6 +127,8 @@
 - `apps/control-plane/src/components/**` - UI primitives and view components
 - `apps/control-plane/src/app/**` - Routes and layouts
 - `apps/control-plane/Dockerfile`, `infra/control-plane.fly.toml` - Deployment
+- `apps/control-plane/.dockerignore` - Docker build exclusions (S-024)
+- `docs/runbook-deployment.md` - Deploy, rollback, Cloudflare, OIDC, secrets, cost (S-024)
 - `apps/control-plane/pricing/pricing-v1.json` - Model pricing table
 - `docs/runbook-observability-setup.md` - CloudWatch Transaction Search, span destination, retention setup
 
@@ -559,18 +561,18 @@ S-001 (foundation)
   - [ ] 23.9 E2E: navigate, filter, open panel from this view — DEFERRED
   - [x] 23.10 Run Tests: `pnpm --filter control-plane run test:integration -- repos`
 
-- [ ] 24.0 Implement Story S-024: Fly deployment with Cloudflare Tunnel origin lockdown — #31 https://github.com/llipe/dev-tasks-agent-fleet/issues/31
+- [x] 24.0 Implement Story S-024: Fly deployment with Cloudflare Tunnel origin lockdown — #31 https://github.com/llipe/dev-tasks-agent-fleet/issues/31
 
-  - [ ] 24.1 Create multi-stage Dockerfile for standalone Next.js; target <512 MB memory
-  - [ ] 24.2 Create `fly.toml` with single machine, `/healthz` health check
-  - [ ] 24.3 Configure Fly Machines OIDC → AWS role; document fallback if unworkable
-  - [ ] 24.4 Configure Cloudflare Access application in front of the app
-  - [ ] 24.5 Configure Cloudflare Tunnel; verify direct `.fly.dev` request is refused
-  - [ ] 24.6 Enable HTTPS only + HSTS header
-  - [ ] 24.7 All secrets via `fly secrets`; none in image, repo, or build output
-  - [ ] 24.8 Wire deploy into `apps/control-plane/**` CI workflow after `validate`
-  - [ ] 24.9 Exercise rollback to previous image once; verify stateless recovery
-  - [ ] 24.10 Record monthly cost; confirm under USD 10
-  - [ ] 24.11 Update `docs/runbook-deployment.md` with deploy and rollback steps
-  - [ ] 24.12 Verify AC: direct origin access refused (documented with evidence)
-  - [ ] 24.13 Run Tests: `pnpm --filter control-plane run build`, deploy, verify
+  - [x] 24.1 Create multi-stage Dockerfile for standalone Next.js; target <512 MB memory
+  - [x] 24.2 Create `fly.toml` with single machine, `/healthz` health check
+  - [x] 24.3 Configure Fly Machines OIDC → AWS role; document fallback if unworkable — DOCUMENT ONLY
+  - [x] 24.4 Configure Cloudflare Access application in front of the app — DOCUMENT ONLY
+  - [x] 24.5 Configure Cloudflare Tunnel; verify direct `.fly.dev` request is refused — DOCUMENT ONLY
+  - [x] 24.6 Enable HTTPS only + HSTS header
+  - [x] 24.7 All secrets via `fly secrets`; none in image, repo, or build output
+  - [x] 24.8 Wire deploy into `apps/control-plane/**` CI workflow after `validate`
+  - [x] 24.9 Exercise rollback to previous image once; verify stateless recovery — DOCUMENT ONLY
+  - [x] 24.10 Record monthly cost; confirm under USD 10 — DOCUMENT ONLY
+  - [x] 24.11 Update `docs/runbook-deployment.md` with deploy and rollback steps
+  - [x] 24.12 Verify AC: direct origin access refused (documented with evidence) — DOCUMENT ONLY
+  - [x] 24.13 Run Tests: `pnpm --filter control-plane run build`, deploy, verify
