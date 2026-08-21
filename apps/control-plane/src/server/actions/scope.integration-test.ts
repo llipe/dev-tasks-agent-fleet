@@ -40,11 +40,7 @@ import {
   addSubject as repoAddSubject,
   getSubjectAgent,
 } from "@/server/repository/scope-repository.js";
-import {
-  setSubjectEnabled,
-  setSubjectParams,
-  addSubjectToAgent,
-} from "./scope.js";
+import { setSubjectEnabled, setSubjectParams, addSubjectToAgent } from "./scope.js";
 
 const mockHeaders = vi.mocked(headers);
 const mockVerifyToken = vi.mocked(verifyToken);
@@ -64,9 +60,7 @@ function setupAuthSuccess(): void {
 }
 
 function setupAuthFailure(): void {
-  mockHeaders.mockResolvedValue(
-    new Headers({}) as unknown as Awaited<ReturnType<typeof headers>>,
-  );
+  mockHeaders.mockResolvedValue(new Headers({}) as unknown as Awaited<ReturnType<typeof headers>>);
   mockVerifyToken.mockResolvedValue({ ok: false, reason: "invalid token" });
 }
 
@@ -486,12 +480,13 @@ describe("scope actions integration", () => {
       // It creates items with ONLY enabled and params attributes (plus keys)
       // No last_* attributes in the call
       expect(mockRepoAddSubject).toHaveBeenCalledWith("owner/repo", "dep-updater", true);
-      const args = mockRepoAddSubject.mock.calls[0]!;
+      const args = mockRepoAddSubject.mock.calls[0];
+      expect(args).toBeDefined();
       // Ensure no last_* in call args
       expect(args).toHaveLength(3);
-      expect(args[0]).toBe("owner/repo");
-      expect(args[1]).toBe("dep-updater");
-      expect(args[2]).toBe(true);
+      expect(args?.[0]).toBe("owner/repo");
+      expect(args?.[1]).toBe("dep-updater");
+      expect(args?.[2]).toBe(true);
     });
   });
 
@@ -507,7 +502,7 @@ describe("scope actions integration", () => {
         enabled: true,
       });
 
-      const call = mockRepoSetEnabled.mock.calls[0]!;
+      const call = mockRepoSetEnabled.mock.calls[0];
       expect(call).toEqual(["owner/repo", "dep-updater", true]);
     });
 
@@ -522,7 +517,7 @@ describe("scope actions integration", () => {
         params: { allow_fixes: true, max_fix_attempts: 3 },
       });
 
-      const call = mockRepoSetParams.mock.calls[0]!;
+      const call = mockRepoSetParams.mock.calls[0];
       expect(call).toEqual([
         "owner/repo",
         "dep-updater",

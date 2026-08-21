@@ -66,6 +66,16 @@
 - `apps/control-plane/src/lib/run-filters.ts` - Pure filter parsing/validation/formatting (S-020)
 - `apps/control-plane/src/lib/run-filters.test.ts` - Unit tests for run filters (S-020)
 - `apps/control-plane/src/app/repos/page.tsx` - Placeholder repos page (force-dynamic)
+- `apps/control-plane/src/server/actions/scope.ts` - Server Actions: setSubjectEnabled, setSubjectParams, addSubjectToAgent (S-022)
+- `apps/control-plane/src/server/actions/scope.test.ts` - Unit tests for scope action schemas (S-022)
+- `apps/control-plane/src/server/actions/scope-safety.test.ts` - Static safety test: no last_* writes (S-022)
+- `apps/control-plane/src/server/actions/scope.integration-test.ts` - Integration tests for scope actions (S-022)
+- `apps/control-plane/src/app/agents/[name]/repos-tab.tsx` - Repos tab server component (S-022)
+- `apps/control-plane/src/app/agents/[name]/repos-data.ts` - Repos data layer with DI (S-022)
+- `apps/control-plane/src/app/agents/[name]/repos-table-client.tsx` - Repos DataTable client wrapper (S-022)
+- `apps/control-plane/src/app/agents/[name]/enabled-toggle.tsx` - Optimistic enabled toggle (S-022)
+- `apps/control-plane/src/app/agents/[name]/params-editor.tsx` - JSON params editor with validation (S-022)
+- `apps/control-plane/src/app/agents/[name]/add-repo-form.tsx` - Add repo form with validation (S-022)
 - `apps/control-plane/src/app/globals.css` - Tailwind CSS entry point
 - `apps/control-plane/src/components/top-bar.tsx` - Navigation bar component
 - `apps/control-plane/next.config.ts` - Next.js config with output: standalone
@@ -511,22 +521,22 @@ S-001 (foundation)
 
 - [ ] 22.0 Implement Story S-022: Scope configuration — Repos tab and write actions — #29 https://github.com/llipe/dev-tasks-agent-fleet/issues/29
 
-  - [ ] 22.1 Implement `/agents/[name]?tab=repos` DataTable: repo, enabled toggle, last run, last status, output
-  - [ ] 22.2 Implement `setSubjectEnabled` Server Action: re-verify JWT, Zod parse from `unknown`, conditional `UpdateItem`, `revalidatePath`
-  - [ ] 22.3 Implement `EnabledToggle`: optimistic flip, rollback on failure with error naming the repo
-  - [ ] 22.4 Implement `setSubjectParams` Server Action: re-verify JWT, Zod parse, `paramsSchemaFor(agent).strict()`, update
-  - [ ] 22.5 Implement `ParamsEditor`: client-side JSON validation before enabling save; inline error naming the failing key
-  - [ ] 22.6 Implement `addSubjectToAgent` Server Action: re-verify JWT, normalize repo, `TransactWriteItems` (META + AGENT# items), `attribute_not_exists` on AGENT#, `conflict` if exists
-  - [ ] 22.7 Implement `AddRepoForm`: single input, validated repo name
-  - [ ] 22.8 All actions return discriminated result `{ ok: true } | { ok: false, error: ActionError }`; raw AWS error never returned
-  - [ ] 22.9 All actions parse input from `unknown` via Zod as the first statement
-  - [ ] 22.10 Assert no action ever touches `last_*` attributes
-  - [ ] 22.11 Log scope writes at `info` with before/after values
-  - [ ] 22.12 Unit test: input schemas for all three actions; params accept/reject
-  - [ ] 22.13 Integration test: each action success + failure modes (not_found, conflict, unauthorized, upstream)
-  - [ ] 22.14 Integration test: transactional add writes both items; assert written attrs exactly `enabled` or `params`
-  - [ ] 22.15 E2E: toggle, verify immediate reflection; add repo timed under 30 s; toggle failure → revert visible
-  - [ ] 22.16 Run Tests: `pnpm --filter control-plane run test:unit -- actions && pnpm --filter control-plane run test:integration -- actions && pnpm --filter control-plane run test:e2e -- scope`
+  - [x] 22.1 Implement `/agents/[name]?tab=repos` DataTable: repo, enabled toggle, last run, last status, output
+  - [x] 22.2 Implement `setSubjectEnabled` Server Action: re-verify JWT, Zod parse from `unknown`, conditional `UpdateItem`, `revalidatePath`
+  - [x] 22.3 Implement `EnabledToggle`: optimistic flip, rollback on failure with error naming the repo
+  - [x] 22.4 Implement `setSubjectParams` Server Action: re-verify JWT, Zod parse, `paramsSchemaFor(agent).strict()`, update
+  - [x] 22.5 Implement `ParamsEditor`: client-side JSON validation before enabling save; inline error naming the failing key
+  - [x] 22.6 Implement `addSubjectToAgent` Server Action: re-verify JWT, normalize repo, `TransactWriteItems` (META + AGENT# items), `attribute_not_exists` on AGENT#, `conflict` if exists
+  - [x] 22.7 Implement `AddRepoForm`: single input, validated repo name
+  - [x] 22.8 All actions return discriminated result `{ ok: true } | { ok: false, error: ActionError }`; raw AWS error never returned
+  - [x] 22.9 All actions parse input from `unknown` via Zod as the first statement
+  - [x] 22.10 Assert no action ever touches `last_*` attributes
+  - [x] 22.11 Log scope writes at `info` with before/after values
+  - [x] 22.12 Unit test: input schemas for all three actions; params accept/reject
+  - [x] 22.13 Integration test: each action success + failure modes (not_found, conflict, unauthorized, upstream)
+  - [x] 22.14 Integration test: transactional add writes both items; assert written attrs exactly `enabled` or `params`
+  - [ ] 22.15 E2E: toggle, verify immediate reflection; add repo timed under 30 s; toggle failure → revert visible — DEFERRED
+  - [x] 22.16 Run Tests: `pnpm --filter control-plane run test:unit -- actions && pnpm --filter control-plane run test:integration -- actions && pnpm --filter control-plane run test:e2e -- scope`
 
 - [ ] 23.0 Implement Story S-023: Repos list and per-repository run view — #30 https://github.com/llipe/dev-tasks-agent-fleet/issues/30
 

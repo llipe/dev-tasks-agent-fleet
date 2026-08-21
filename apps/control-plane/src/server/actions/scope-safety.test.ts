@@ -10,10 +10,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 
 describe("scope actions safety (22.10)", () => {
-  const scopeSource = readFileSync(
-    resolve(import.meta.dirname, "./scope.ts"),
-    "utf-8",
-  );
+  const scopeSource = readFileSync(resolve(import.meta.dirname, "./scope.ts"), "utf-8");
 
   it("does not contain any last_* attribute writes", () => {
     // Check for UpdateExpression or attribute names containing last_
@@ -60,9 +57,7 @@ describe("scope actions safety (22.10)", () => {
     // The scope actions source should only reference enabled and params for writes
     // Any line with "UpdateExpression" or "SET" should not contain last_
     const lines = scopeSource.split("\n");
-    const writeLines = lines.filter(
-      (l) => l.includes("UpdateExpression") || l.includes("SET "),
-    );
+    const writeLines = lines.filter((l) => l.includes("UpdateExpression") || l.includes("SET "));
     for (const line of writeLines) {
       expect(line).not.toContain("last_");
     }

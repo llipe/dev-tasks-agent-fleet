@@ -17,7 +17,7 @@ interface ReposTabProps {
 
 export async function ReposTab({ agentName }: ReposTabProps) {
   let repos: RepoRow[] = [];
-  let state: DataTableState = "ready";
+  let state: DataTableState;
 
   try {
     const result = await loadReposForAgent(agentName);

@@ -125,9 +125,7 @@ export function AddRepoForm({ agentName }: AddRepoFormProps) {
             {submitError}
           </span>
         )}
-        {success && (
-          <span className="text-xs text-status-success-fg">Repository added.</span>
-        )}
+        {success && <span className="text-xs text-status-success-fg">Repository added.</span>}
       </div>
       <button
         type="button"

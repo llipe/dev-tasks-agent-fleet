@@ -247,13 +247,7 @@ export async function addSubjectToAgent(input: unknown): Promise<ActionResult> {
   }
 
   // 5. Log the scope write
-  logScopeWrite(
-    "addSubjectToAgent",
-    subjectId,
-    agentName,
-    null,
-    { enabled, params: {} },
-  );
+  logScopeWrite("addSubjectToAgent", subjectId, agentName, null, { enabled, params: {} });
 
   // 6. Revalidate
   revalidatePath(`/agents/${agentName}`);

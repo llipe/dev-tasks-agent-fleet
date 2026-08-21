@@ -141,9 +141,7 @@ export function ParamsEditor({ subjectId, agentName }: ParamsEditorProps) {
           {submitError}
         </span>
       )}
-      {success && (
-        <span className="text-xs text-status-success-fg">Params saved.</span>
-      )}
+      {success && <span className="text-xs text-status-success-fg">Params saved.</span>}
       <div className="flex gap-2">
         <button
           type="button"

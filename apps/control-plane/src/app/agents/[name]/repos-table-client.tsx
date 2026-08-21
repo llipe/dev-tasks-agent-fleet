@@ -28,9 +28,7 @@ export function ReposTableClient({ agentName, repos, state }: ReposTableClientPr
       columnHelper.accessor("subjectId", {
         header: "Repo",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cell: (info: any) => (
-          <span className="font-mono text-xs">{info.getValue()}</span>
-        ),
+        cell: (info: any) => <span className="font-mono text-xs">{info.getValue()}</span>,
       }),
       columnHelper.display({
         id: "enabled",
@@ -49,7 +47,11 @@ export function ReposTableClient({ agentName, repos, state }: ReposTableClientPr
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         cell: (info: any) => {
           const value = info.getValue();
-          return value ? <RelativeTime dateTime={value} /> : <span className="text-text-muted">—</span>;
+          return value ? (
+            <RelativeTime dateTime={value} />
+          ) : (
+            <span className="text-text-muted">—</span>
+          );
         },
       }),
       columnHelper.accessor("lastStatus", {
@@ -85,10 +87,7 @@ export function ReposTableClient({ agentName, repos, state }: ReposTableClientPr
         header: "Params",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         cell: (info: any) => (
-          <ParamsEditor
-            subjectId={info.row.original.subjectId}
-            agentName={agentName}
-          />
+          <ParamsEditor subjectId={info.row.original.subjectId} agentName={agentName} />
         ),
       }),
     ],
