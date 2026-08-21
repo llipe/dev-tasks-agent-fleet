@@ -1,6 +1,13 @@
 # AgentCore Runtime requires linux/arm64.
-ARG TARGETPLATFORM=linux/arm64
-FROM --platform=${TARGETPLATFORM} python:3.13-slim-trixie
+#
+# IMPORTANT: build from the REPOSITORY ROOT, not this directory, because the
+# agent imports the generated shared contract from packages/shared/generated:
+#
+#   docker build --platform linux/arm64 \
+#     -f agents/dep-updater/Dockerfile \
+#     -t dep-updater:local .
+#
+FROM python:3.13-slim-trixie
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
@@ -9,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # ca/ always exists (contains .keep); *.crt files in it are gitignored and
 # only present on machines behind a TLS-intercepting proxy. In CodeBuild the
 # directory is effectively empty and this step is a no-op.
-COPY ca/ /tmp/ca/
+COPY agents/dep-updater/ca/ /tmp/ca/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && cp /tmp/ca/*.crt /usr/local/share/ca-certificates/ 2>/dev/null || true \
     && update-ca-certificates \
@@ -37,12 +44,28 @@ ENV PNPM_VERSION=11.21.0
 RUN npm install -g "pnpm@${PNPM_VERSION}" && pnpm --version
 
 # ── Python deps ───────────────────────────────────────────────────
-WORKDIR /app
-COPY pyproject.toml uv.lock ./
+# The repo layout is preserved inside the image so that the agent modules'
+# `parent.parent.parent / packages / shared / generated` path resolution
+# behaves identically in development and in the container.
+WORKDIR /app/agents/dep-updater
+COPY agents/dep-updater/pyproject.toml agents/dep-updater/uv.lock ./
 RUN pip install --no-cache-dir uv && uv export --no-dev --format requirements-txt \
     > requirements.txt && pip install --no-cache-dir -r requirements.txt
 
-COPY main.py ./
+# ── Generated shared contract ─────────────────────────────────────
+# Imported by payload.py, emission.py and outcome_store.py via sys.path.
+COPY packages/shared/generated/shared_contract.py /app/packages/shared/generated/
+
+# ── Agent source ──────────────────────────────────────────────────
+COPY agents/dep-updater/main.py \
+     agents/dep-updater/logging_json.py \
+     agents/dep-updater/payload.py \
+     agents/dep-updater/emission.py \
+     agents/dep-updater/outcome_store.py \
+     ./
+
+# Fail the build rather than the first invocation if an import is missing.
+RUN python -c "import main, logging_json, payload, emission, outcome_store"
 
 # AgentCore health-checks /ping and invokes /invocations on 8080.
 EXPOSE 8080

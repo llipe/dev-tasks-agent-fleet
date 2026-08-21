@@ -46,14 +46,34 @@ Deployment steps deferred during implementation. Each requires your explicit con
 **Manual steps required:**
 
 1. Start Docker daemon
-2. Build container:
+2. Build container — **must run from the repository root**, because the agent
+   imports the generated shared contract from `packages/shared/generated/`:
    ```bash
-   cd agents/dep-updater && docker build --platform linux/arm64 -t dep-updater:local .
+   docker build --platform linux/arm64 \
+     -f agents/dep-updater/Dockerfile \
+     -t dep-updater:local .
    ```
 3. Deploy to AgentCore:
    ```bash
    cd agents/dep-updater && agentcore deploy
    ```
+
+**If you are behind a TLS-intercepting proxy** (Netskope, Zscaler, corporate
+MITM), the build will fail with `curl: (60) SSL certificate problem:
+self-signed certificate in certificate chain`. Drop your proxy's root CA into
+`agents/dep-updater/ca/` as a `.crt` file — the Dockerfile installs anything it
+finds there. `ca/*.crt` is gitignored, so this stays local.
+
+For Netskope on macOS:
+
+```bash
+cp "/Library/Application Support/Netskope/STAgent/data/nscacert.pem" \
+   agents/dep-updater/ca/netskope-root-ca.crt
+cp "/Library/Application Support/Netskope/STAgent/data/nstenantcert.pem" \
+   agents/dep-updater/ca/netskope-tenant-ca.crt
+```
+
+In CI (no proxy) the directory is effectively empty and the step is a no-op.
 4. Trigger one run against a test repository to validate:
    - Pipeline behaviour unchanged (S-006 AC)
    - Logs continue past 5 min / run completes without idle timeout kill (S-007 AC)

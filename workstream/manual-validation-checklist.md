@@ -16,6 +16,7 @@ pnpm install
 
 # Set required env vars
 export AWS_ACCOUNT_ID=<your-account-id>
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 export AWS_REGION=us-east-1
 ```
 
@@ -60,12 +61,44 @@ pnpm --filter @fleet/infra run test:integration -- agent-writes
 
 ### 2.1 Build the Container
 
+Run from the **repository root** — the agent imports the generated shared
+contract from `packages/shared/generated/`, so that path must be in the build
+context.
+
 ```bash
-cd agents/dep-updater
-docker build --platform linux/arm64 -t dep-updater:local .
+docker build --platform linux/arm64 \
+  -f agents/dep-updater/Dockerfile \
+  -t dep-updater:local .
 ```
 
-**Expected:** Build succeeds, image < 1GB.
+**Expected:** Build succeeds. Verify:
+
+```bash
+docker image inspect dep-updater:local --format 'Arch: {{.Architecture}}/{{.Os}}'
+# Expected: arm64/linux
+
+docker run --rm --platform linux/arm64 --entrypoint sh dep-updater:local \
+  -c "python --version && node --version && pnpm --version && gh --version | head -1"
+# Expected: Python 3.13.x, v26.6.0, 11.21.0, gh version 2.97.0
+```
+
+The final build stage runs an import smoke check
+(`python -c "import main, logging_json, payload, emission, outcome_store"`), so
+a missing module fails the build rather than the first invocation.
+
+**Behind a TLS-intercepting proxy?** If the build fails with
+`curl: (60) SSL certificate problem: self-signed certificate in certificate
+chain`, install your proxy's root CA into `agents/dep-updater/ca/` as a `.crt`
+file. `ca/*.crt` is gitignored.
+
+Netskope on macOS:
+
+```bash
+cp "/Library/Application Support/Netskope/STAgent/data/nscacert.pem" \
+   agents/dep-updater/ca/netskope-root-ca.crt
+cp "/Library/Application Support/Netskope/STAgent/data/nstenantcert.pem" \
+   agents/dep-updater/ca/netskope-tenant-ca.crt
+```
 
 ### 2.2 Deploy to AgentCore
 

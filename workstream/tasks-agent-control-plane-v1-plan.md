@@ -293,7 +293,7 @@ S-001 (foundation)
   - [x] 6.4 Wire `ruff`, `mypy --strict`, `pytest` into package scripts
   - [x] 6.5 Port the agent CDK stack into `infra/lib/agent-stack.ts`
   - [x] 6.6 Write pytest coverage for pure helpers: `diff_packages`, `count_vulns`, `extract_advisories`, `_detect_pnpm_version`
-  - [x] 6.7 Build container for `linux/arm64`; verify it passes locally
+  - [x] 6.7 Build container for `linux/arm64`; verify it passes locally — VERIFIED: builds from repo root via `-f agents/dep-updater/Dockerfile`, image is arm64/linux, 238 MB
   - [x] 6.8 Deploy to AgentCore and trigger one run against a test repository — DEFER (requires manual deployment)
   - [x] 6.9 Verify AC: pipeline behaviour unchanged, run completes successfully — DEFER (requires deployment)
   - [x] 6.10 Record `lifecycleConfiguration` values (`maxLifetime`, `idleRuntimeSessionTimeout`)
