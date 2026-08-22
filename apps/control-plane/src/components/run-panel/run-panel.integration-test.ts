@@ -113,6 +113,12 @@ describe("RunPanel integration", () => {
     });
 
     it("fetchLogData calls filterLogsBySessionId with correct params", async () => {
+      // AGENT_LOG_GROUP has no default — the AgentCore-generated group name
+      // changes on every runtime recreation, so it must be configured. See
+      // run-panel-data.test.ts for the unset case.
+      process.env["AGENT_LOG_GROUP"] =
+        "/aws/bedrock-agentcore/runtimes/depupdater_dep_updater-M4gkuL4wSr-DEFAULT";
+
       const mockLogs = vi.fn<RunPanelDataDeps["filterLogsBySessionId"]>().mockResolvedValue({
         status: "ok",
         data: makeLogLines(),

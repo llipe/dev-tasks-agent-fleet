@@ -14,7 +14,10 @@ Base branch: `integration/acp-v1-control-plane`
 - `packages/shared/src/observability-config.test.ts` — regression test pinning the span log group
 - `docs/runbook-observability-setup.md` — span destination, retention and verification commands
 - `workstream/manual-validation-checklist.md` — log-group discovery instead of hardcoded names
-- `apps/control-plane/src/app/agents/[name]/run-panel-data.ts` — `AGENT_LOG_GROUP` fallback default
+- `apps/control-plane/src/app/agents/[name]/run-panel-data.ts` — `AGENT_LOG_GROUP` is now required, resolved per call, with no fictional default
+- `apps/control-plane/src/app/agents/[name]/run-panel-data.test.ts` — log-group resolution tests
+- `apps/control-plane/src/server/runs/insights-query.integration-test.ts` — uses `SPANS_LOG_GROUP` instead of a literal
+- `docs/runbook-deployment.md` — documents `AGENT_LOG_GROUP` discovery and when to refresh it
 - `agents/dep-updater/main.py` — configurable bot committer identity
 - `agents/dep-updater/tests/test_github_auth.py` — PAT / GitHub App token tests
 - `agents/dep-updater/agentcore/agentcore.json` — declarative `GITHUB_SECRET_ID` env var
@@ -35,22 +38,22 @@ Base branch: `integration/acp-v1-control-plane`
   - [x] 1.8 Verify Acceptance Criterion: secret access is scoped to `secret:dep-agent/github-*` with a tighten-after-cutover comment
   - [x] 1.9 Run Tests: vended jest suite + `pnpm --filter @fleet/infra run test`
 
-- [ ] 2.0 Implement Issue #56 — Task 2: fix `SPANS_LOG_GROUP` (D2)
+- [x] 2.0 Implement Issue #56 — Task 2: fix `SPANS_LOG_GROUP` (D2)
 
-  - [ ] 2.1 Write a failing regression test pinning `SPANS_LOG_GROUP` to `aws/spans`
-  - [ ] 2.2 Change the constant and its doc comment
-  - [ ] 2.3 Update `docs/runbook-observability-setup.md` §2 decision + config value, §3 retention command, §4 verification commands
-  - [ ] 2.4 Grep the repo for the old string and fix every remaining occurrence
-  - [ ] 2.5 Confirm `packages/shared/__fixtures__/` does not hardcode the old group name
-  - [ ] 2.6 Verify Acceptance Criterion: no occurrence of `/aws/vendedlogs/agentcore/dep-updater/spans` remains outside historical notes
-  - [ ] 2.7 Run Tests: `pnpm --filter @fleet/shared run test`, `pnpm --filter @fleet/control-plane run test`
+  - [x] 2.1 Write a failing regression test pinning `SPANS_LOG_GROUP` to `aws/spans`
+  - [x] 2.2 Change the constant and its doc comment
+  - [x] 2.3 Update `docs/runbook-observability-setup.md` §2 decision + config value, §3 retention command, §4 verification commands
+  - [x] 2.4 Grep the repo for the old string and fix every remaining occurrence
+  - [x] 2.5 Confirm `packages/shared/__fixtures__/` does not hardcode the old group name
+  - [x] 2.6 Verify Acceptance Criterion: no occurrence of `/aws/vendedlogs/agentcore/dep-updater/spans` remains outside historical notes
+  - [x] 2.7 Run Tests: `pnpm --filter @fleet/shared run test`, `pnpm --filter @fleet/control-plane run test`
 
-- [ ] 3.0 Implement Issue #56 — Task 3: stop hardcoding the app log group name (D3)
+- [x] 3.0 Implement Issue #56 — Task 3: stop hardcoding the app log group name (D3)
 
-  - [ ] 3.1 Replace hardcoded group names in `workstream/manual-validation-checklist.md` with discovery
-  - [ ] 3.2 Fix the `AGENT_LOG_GROUP` fallback default in the control plane and document where the value comes from
-  - [ ] 3.3 Verify Acceptance Criterion: no fictional `/aws/agentcore/dep-updater` reference remains
-  - [ ] 3.4 Run Tests: `pnpm --filter @fleet/control-plane run test`
+  - [x] 3.1 Replace hardcoded group names in `workstream/manual-validation-checklist.md` with discovery
+  - [x] 3.2 Fix the `AGENT_LOG_GROUP` fallback default in the control plane and document where the value comes from
+  - [x] 3.3 Verify Acceptance Criterion: no fictional `/aws/agentcore/dep-updater` reference remains
+  - [x] 3.4 Run Tests: `pnpm --filter @fleet/control-plane run test`
 
 - [ ] 4.0 Implement Issue #56 — Task 4: PAT → GitHub App migration
 
