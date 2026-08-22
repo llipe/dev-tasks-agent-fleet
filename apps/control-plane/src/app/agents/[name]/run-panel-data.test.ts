@@ -20,19 +20,19 @@ const ENV_KEY = "AGENT_LOG_GROUP";
 const REAL_GROUP = "/aws/bedrock-agentcore/runtimes/depupdater_dep_updater-M4gkuL4wSr-DEFAULT";
 
 describe("resolveAgentLogGroup", () => {
-  const original = process.env[ENV_KEY];
+  const original = process.env.AGENT_LOG_GROUP;
 
   beforeEach(() => {
-    delete process.env[ENV_KEY];
+    delete process.env.AGENT_LOG_GROUP;
   });
 
   afterEach(() => {
-    if (original === undefined) delete process.env[ENV_KEY];
-    else process.env[ENV_KEY] = original;
+    if (original === undefined) delete process.env.AGENT_LOG_GROUP;
+    else process.env.AGENT_LOG_GROUP = original;
   });
 
   it("returns the configured group name", () => {
-    process.env[ENV_KEY] = REAL_GROUP;
+    process.env.AGENT_LOG_GROUP = REAL_GROUP;
     expect(resolveAgentLogGroup()).toBe(REAL_GROUP);
   });
 
@@ -41,35 +41,35 @@ describe("resolveAgentLogGroup", () => {
   });
 
   it("treats an empty or whitespace-only value as unset", () => {
-    process.env[ENV_KEY] = "   ";
+    process.env.AGENT_LOG_GROUP = "   ";
     expect(resolveAgentLogGroup()).toBeNull();
   });
 
   it("trims surrounding whitespace", () => {
-    process.env[ENV_KEY] = `  ${REAL_GROUP}  `;
+    process.env.AGENT_LOG_GROUP = `  ${REAL_GROUP}  `;
     expect(resolveAgentLogGroup()).toBe(REAL_GROUP);
   });
 
   it("is read per call, not frozen at module load", () => {
-    process.env[ENV_KEY] = REAL_GROUP;
+    process.env.AGENT_LOG_GROUP = REAL_GROUP;
     expect(resolveAgentLogGroup()).toBe(REAL_GROUP);
-    process.env[ENV_KEY] = "other-group";
+    process.env.AGENT_LOG_GROUP = "other-group";
     expect(resolveAgentLogGroup()).toBe("other-group");
   });
 });
 
 describe("fetchLogData — log group configuration", () => {
-  const original = process.env[ENV_KEY];
+  const original = process.env.AGENT_LOG_GROUP;
   const from = new Date("2025-01-27T00:00:00.000Z");
   const to = new Date("2025-01-28T00:00:00.000Z");
 
   afterEach(() => {
-    if (original === undefined) delete process.env[ENV_KEY];
-    else process.env[ENV_KEY] = original;
+    if (original === undefined) delete process.env.AGENT_LOG_GROUP;
+    else process.env.AGENT_LOG_GROUP = original;
   });
 
   it("passes the configured group through to the adapter", async () => {
-    process.env[ENV_KEY] = REAL_GROUP;
+    process.env.AGENT_LOG_GROUP = REAL_GROUP;
     const filterLogsBySessionId = vi
       .fn()
       .mockResolvedValue({ status: "ok", data: [], correlationId: "c1" });
@@ -85,7 +85,7 @@ describe("fetchLogData — log group configuration", () => {
   });
 
   it("returns an actionable error and skips the query when unset", async () => {
-    delete process.env[ENV_KEY];
+    delete process.env.AGENT_LOG_GROUP;
     const filterLogsBySessionId = vi.fn();
 
     const result = await fetchLogData("session-abc", from, to, {
@@ -101,7 +101,7 @@ describe("fetchLogData — log group configuration", () => {
   });
 
   it("never falls back to the fictional /aws/agentcore/dep-updater group", async () => {
-    delete process.env[ENV_KEY];
+    delete process.env.AGENT_LOG_GROUP;
     const filterLogsBySessionId = vi
       .fn()
       .mockResolvedValue({ status: "ok", data: [], correlationId: "c1" });

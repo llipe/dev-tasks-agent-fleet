@@ -43,22 +43,22 @@ Do not reorder. Steps 1–5 make no change to the deployed agent; step 6 is the 
 
 GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**.
 
-| Field                    | Value                                                       |
-| ------------------------ | ----------------------------------------------------------- |
-| GitHub App name          | `dep-updater` (or `<org>-dep-updater` if the name is taken)  |
-| Homepage URL             | The repository URL — unused, but required                    |
-| Webhook                  | **Uncheck Active.** The agent polls; it receives no webhooks |
-| Where can it be installed | Only on this account                                        |
+| Field                     | Value                                                        |
+| ------------------------- | ------------------------------------------------------------ |
+| GitHub App name           | `dep-updater` (or `<org>-dep-updater` if the name is taken)  |
+| Homepage URL              | The repository URL — unused, but required                    |
+| Webhook                   | **Uncheck Active.** The agent polls; it receives no webhooks |
+| Where can it be installed | Only on this account                                         |
 
 ### Repository permissions
 
 Grant the minimum the pipeline needs, nothing more:
 
-| Permission        | Access         | Why                                                    |
-| ----------------- | -------------- | ------------------------------------------------------ |
-| Contents          | Read and write | Clone the repo, push the update branch                 |
-| Pull requests     | Read and write | Open the dependency-update PR                          |
-| Metadata          | Read-only      | Mandatory, granted automatically                        |
+| Permission    | Access         | Why                                    |
+| ------------- | -------------- | -------------------------------------- |
+| Contents      | Read and write | Clone the repo, push the update branch |
+| Pull requests | Read and write | Open the dependency-update PR          |
+| Metadata      | Read-only      | Mandatory, granted automatically       |
 
 Leave every other permission at **No access**. In particular the agent needs no Actions, Administration, Checks, Secrets or Workflows access — a `workflows` grant would let it rewrite CI definitions.
 

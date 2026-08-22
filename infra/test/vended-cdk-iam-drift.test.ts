@@ -53,7 +53,9 @@ function parseArrayExport(source: string, constName: string): string[] {
       `${constName} must be a flat literal array so this drift guard can parse it without a TS compiler`,
     );
   }
-  const values = [...body.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]!);
+  const values = [...body.matchAll(/['"]([^'"]+)['"]/g)]
+    .map((m) => m[1])
+    .filter((value): value is string => value !== undefined);
   expect(values.length, `${constName} must contain at least one entry`).toBeGreaterThan(0);
   return values;
 }
