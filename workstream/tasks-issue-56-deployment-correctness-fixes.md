@@ -23,17 +23,17 @@ Base branch: `integration/acp-v1-control-plane`
 
 ## Tasks
 
-- [ ] 1.0 Implement Issue #56 — Task 1: grant the AgentCore runtime role its data-plane permissions (D1)
+- [x] 1.0 Implement Issue #56 — Task 1: grant the AgentCore runtime role its data-plane permissions (D1)
 
-  - [ ] 1.1 Investigate whether the vended CDK app can import `AGENT_EXEC_WRITE_ATTRIBUTES` from `@fleet/shared`; record the finding
-  - [ ] 1.2 Write failing CDK assertion tests for all five statements on the runtime execution role
-  - [ ] 1.3 Write the failing drift guard that fails when the vended allowlist diverges from `@fleet/shared`
-  - [ ] 1.4 Implement the allowlist source for the vended app
-  - [ ] 1.5 Implement the five policy statements in `cdk-stack.ts` following the existing `addToPrincipalPolicy` pattern
-  - [ ] 1.6 Verify Acceptance Criterion: `UpdateItem` is allowed only under `ForAllValues:StringEquals` on `dynamodb:Attributes`
-  - [ ] 1.7 Verify Acceptance Criterion: `PutItem` is denied and `enabled` / `params` writes are denied
-  - [ ] 1.8 Verify Acceptance Criterion: secret access is scoped to `secret:dep-agent/github-*` with a tighten-after-cutover comment
-  - [ ] 1.9 Run Tests: vended jest suite + `pnpm --filter @fleet/infra run test`
+  - [x] 1.1 Investigate whether the vended CDK app can import `AGENT_EXEC_WRITE_ATTRIBUTES` from `@fleet/shared`; record the finding
+  - [x] 1.2 Write failing CDK assertion tests for all five statements on the runtime execution role
+  - [x] 1.3 Write the failing drift guard that fails when the vended allowlist diverges from `@fleet/shared`
+  - [x] 1.4 Implement the allowlist source for the vended app
+  - [x] 1.5 Implement the five policy statements in `cdk-stack.ts` following the existing `addToPrincipalPolicy` pattern
+  - [x] 1.6 Verify Acceptance Criterion: `UpdateItem` is allowed only under `ForAllValues:StringEquals` on `dynamodb:Attributes`
+  - [x] 1.7 Verify Acceptance Criterion: `PutItem` is denied and `enabled` / `params` writes are denied
+  - [x] 1.8 Verify Acceptance Criterion: secret access is scoped to `secret:dep-agent/github-*` with a tighten-after-cutover comment
+  - [x] 1.9 Run Tests: vended jest suite + `pnpm --filter @fleet/infra run test`
 
 - [ ] 2.0 Implement Issue #56 — Task 2: fix `SPANS_LOG_GROUP` (D2)
 
