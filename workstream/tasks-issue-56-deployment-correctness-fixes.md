@@ -26,6 +26,8 @@ Base branch: `integration/acp-v1-control-plane`
 - `workstream/pending-deployments.md` — D1/D2/D3 reconciled to fixed-in-code / pending-deploy, live-state evidence retained
 - `infra/test/vended-cdk-iam-drift.test.ts` — regex capture handling reworked to satisfy `no-non-null-assertion`
 - `apps/control-plane/src/app/agents/[name]/run-panel-data.test.ts` — env access by literal key to satisfy `no-dynamic-delete`
+- `.github/workflows/agent.yml` — installs the `uv` toolchain so the Python lint/format/typecheck/test steps can run
+- `.github/workflows/shared.yml` — installs the same `uv` toolchain so `pnpm -r run typecheck` can validate the `agents/dep-updater` consumer
 
 ## Tasks
 
@@ -76,6 +78,20 @@ Base branch: `integration/acp-v1-control-plane`
   - [x] 5.4 Documentation pass and drift validation
   - [x] 5.5 Post the verifier audit summary to the issue/PR
   - [x] 5.6 Convert the PR to Ready for Review (base `integration/acp-v1-control-plane`, no merge)
+
+- [ ] 6.0 Fix the missing `uv` toolchain in CI (discovered during planner review of PR #57)
+
+  > Note: `CI — Agent` and `CI — Shared` both failed on PR #57 because no workflow installs `uv`, while every `agents/dep-updater` script runs through it. Pre-existing and latent since S-006 — `git diff integration/acp-v1-control-plane...HEAD -- agents/dep-updater/package.json .github/` is empty. Issue #56 is simply the first change to touch `packages/shared/**` and `agents/**` in a way that surfaced it, so the Python CI gates have effectively never executed in CI.
+
+  - [ ] 6.1 Add `astral-sh/setup-uv` (exact pinned version, caching enabled) to `.github/workflows/agent.yml` after the pnpm/Node setup
+  - [ ] 6.2 Add the same block to `.github/workflows/shared.yml`, keeping the two workflows consistent
+  - [ ] 6.3 Provision Python 3.13 explicitly and sync the locked environment from `uv.lock` (`uv python install` + `uv sync --locked`)
+  - [ ] 6.4 Verify Acceptance Criterion: `agents/dep-updater` stays in `shared.yml`'s "Validate all consumers" scope — the toolchain is fixed, not the validation surface
+  - [ ] 6.5 Verify Acceptance Criterion: the AWS OIDC step and all trigger `paths:` filters are unchanged
+  - [ ] 6.6 Verify Acceptance Criterion: `CI — Agent` and `CI — Shared` are both green on PR #57
+  - [ ] 6.7 Run Tests: full local gate set (`pnpm test`, `lint`, `format:check`, `typecheck`, `audit`, `check-boundaries`, Python suite, vended CDK jest)
+  - [ ] 6.8 Update the PR #57 body with the toolchain fix and the "Python CI never executed before this change" fact
+  - [ ] 6.9 Open a follow-up issue for the 13 pre-existing `pnpm audit` advisories and reference it from PR #57
 
 ## Gate Results
 

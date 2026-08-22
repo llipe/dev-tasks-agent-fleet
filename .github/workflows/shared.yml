@@ -31,7 +31,35 @@ jobs:
           node-version-file: ".nvmrc"
           cache: "pnpm"
 
+      # "Validate all consumers" below runs `pnpm -r run typecheck`, which
+      # includes agents/dep-updater — a real consumer of packages/shared via
+      # generated/shared_contract.py. Its scripts shell into `uv`, so the
+      # Python toolchain has to be present. Keep identical to agent.yml.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.12.5"
+          # agents/dep-updater/pyproject.toml requires >=3.13; provision it
+          # explicitly instead of relying on uv's implicit download.
+          python-version: "3.13"
+          working-directory: agents/dep-updater
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
       - run: pnpm install --frozen-lockfile
+
+      # `python-version` above only sets UV_PYTHON; install the interpreter
+      # explicitly so provisioning is a visible, cacheable step rather than an
+      # implicit download inside the first `uv run`.
+      - name: Install Python
+        run: uv python install 3.13
+        working-directory: agents/dep-updater
+
+      # Materialise the environment from uv.lock so the consumer typecheck runs
+      # against locked versions and fails loudly if the lockfile is stale.
+      - name: Sync Python environment
+        run: uv sync --locked --all-groups
+        working-directory: agents/dep-updater
 
       - name: Lint
         run: pnpm --filter @fleet/shared run lint

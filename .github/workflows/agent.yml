@@ -33,7 +33,35 @@ jobs:
           node-version-file: ".nvmrc"
           cache: "pnpm"
 
+      # Every quality script in agents/dep-updater/package.json shells into
+      # `uv` (ruff, mypy, pytest), so the Python toolchain has to be present
+      # before any of the steps below run. Keep this block identical to the one
+      # in shared.yml, which runs the same scripts via `pnpm -r run typecheck`.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.12.5"
+          # agents/dep-updater/pyproject.toml requires >=3.13; provision it
+          # explicitly instead of relying on uv's implicit download.
+          python-version: "3.13"
+          working-directory: agents/dep-updater
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
       - run: pnpm install --frozen-lockfile
+
+      # `python-version` above only sets UV_PYTHON; install the interpreter
+      # explicitly so provisioning is a visible, cacheable step rather than an
+      # implicit download inside the first `uv run`.
+      - name: Install Python
+        run: uv python install 3.13
+        working-directory: agents/dep-updater
+
+      # Materialise the environment from uv.lock so the scripts below run
+      # against locked versions and fail loudly if the lockfile is stale.
+      - name: Sync Python environment
+        run: uv sync --locked --all-groups
+        working-directory: agents/dep-updater
 
       - name: Lint
         run: pnpm --filter @fleet/dep-updater run lint
