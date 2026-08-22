@@ -18,8 +18,8 @@ Base branch: `integration/acp-v1-control-plane`
 - `apps/control-plane/src/app/agents/[name]/run-panel-data.test.ts` — log-group resolution tests
 - `apps/control-plane/src/server/runs/insights-query.integration-test.ts` — uses `SPANS_LOG_GROUP` instead of a literal
 - `docs/runbook-deployment.md` — documents `AGENT_LOG_GROUP` discovery and when to refresh it
-- `agents/dep-updater/main.py` — configurable bot committer identity
-- `agents/dep-updater/tests/test_github_auth.py` — PAT / GitHub App token tests
+- `agents/dep-updater/main.py` — `resolve_committer_identity()` reads `GIT_COMMITTER_NAME` / `GIT_COMMITTER_EMAIL` with the PAT-era values as defaults
+- `agents/dep-updater/tests/test_github_auth.py` — PAT / GitHub App token tests and committer-identity tests (in-fixture RSA key, no network)
 - `agents/dep-updater/agentcore/agentcore.json` — declarative `GITHUB_SECRET_ID` env var
 - `infra/test/agentcore-config.test.ts` — asserts the env var contract
 - `docs/runbook-github-app.md` — GitHub App creation, secret shape, cutover and rollback
@@ -55,16 +55,16 @@ Base branch: `integration/acp-v1-control-plane`
   - [x] 3.3 Verify Acceptance Criterion: no fictional `/aws/agentcore/dep-updater` reference remains
   - [x] 3.4 Run Tests: `pnpm --filter @fleet/control-plane run test`
 
-- [ ] 4.0 Implement Issue #56 — Task 4: PAT → GitHub App migration
+- [x] 4.0 Implement Issue #56 — Task 4: PAT → GitHub App migration
 
-  - [ ] 4.1 Write failing unit tests for the PAT branch, App branch, JWT claims, RS256, token extraction and HTTP error paths
-  - [ ] 4.2 Write failing tests for the env-configurable committer identity
-  - [ ] 4.3 Implement the configurable committer identity with current values as defaults
-  - [ ] 4.4 Add `envVars: [{ name: "GITHUB_SECRET_ID", value: "dep-agent/github-app" }]` to the runtime entry
-  - [ ] 4.5 Extend `infra/test/agentcore-config.test.ts` to assert the env var contract
-  - [ ] 4.6 Write `docs/runbook-github-app.md` covering App creation, permissions, installation, key generation, secret command, cutover ordering and rollback
-  - [ ] 4.7 Verify Acceptance Criterion: no key material or real credentials committed; no network calls in tests
-  - [ ] 4.8 Run Tests: `cd agents/dep-updater && uv run pytest`, `pnpm --filter @fleet/infra run test`
+  - [x] 4.1 Write failing unit tests for the PAT branch, App branch, JWT claims, RS256, token extraction and HTTP error paths
+  - [x] 4.2 Write failing tests for the env-configurable committer identity
+  - [x] 4.3 Implement the configurable committer identity with current values as defaults
+  - [x] 4.4 Add `envVars: [{ name: "GITHUB_SECRET_ID", value: "dep-agent/github-app" }]` to the runtime entry
+  - [x] 4.5 Extend `infra/test/agentcore-config.test.ts` to assert the env var contract
+  - [x] 4.6 Write `docs/runbook-github-app.md` covering App creation, permissions, installation, key generation, secret command, cutover ordering and rollback
+  - [x] 4.7 Verify Acceptance Criterion: no key material or real credentials committed; no network calls in tests
+  - [x] 4.8 Run Tests: `cd agents/dep-updater && uv run pytest`, `pnpm --filter @fleet/infra run test`
 
 - [ ] 5.0 Completion gate
   - [ ] 5.1 Run quality gates: `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm audit`, `pnpm check-boundaries`
