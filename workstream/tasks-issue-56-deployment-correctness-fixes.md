@@ -69,13 +69,13 @@ Base branch: `integration/acp-v1-control-plane`
   - [x] 4.7 Verify Acceptance Criterion: no key material or real credentials committed; no network calls in tests
   - [x] 4.8 Run Tests: `cd agents/dep-updater && uv run pytest`, `pnpm --filter @fleet/infra run test`
 
-- [ ] 5.0 Completion gate
+- [x] 5.0 Completion gate
   - [x] 5.1 Run quality gates: `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm audit`, `pnpm check-boundaries`
   - [x] 5.2 Run Python gates: `uv run pytest`, `uv run ruff check .`, `uv run mypy --strict .`
   - [x] 5.3 Run the vended CDK jest suite
   - [x] 5.4 Documentation pass and drift validation
-  - [ ] 5.5 Post the verifier audit summary to the issue/PR
-  - [ ] 5.6 Convert the PR to Ready for Review (base `integration/acp-v1-control-plane`, no merge)
+  - [x] 5.5 Post the verifier audit summary to the issue/PR
+  - [x] 5.6 Convert the PR to Ready for Review (base `integration/acp-v1-control-plane`, no merge)
 
 ## Gate Results
 
