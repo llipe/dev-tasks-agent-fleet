@@ -5,6 +5,14 @@ verification. Each action requires explicit confirmation before executing.
 
 **Last verified against live AWS:** account `755641879575`, region `us-east-1`.
 
+> **Status update — issue #56 / PR #57.** Defects **D1, D2 and D3 are fixed in code** on
+> branch `issue/56-deployment-correctness-fixes` and are **pending deployment**. Nothing in
+> the live account has changed since the verification below: the runtime role still lacks
+> its data-plane permissions until `agentcore deploy` runs, so a run today still fails the
+> same way. The verified live-state and root-cause evidence in Parts 1–3 is retained
+> deliberately — it is the record the fixes were derived from, not a description of the
+> current code. Per-defect status is in Part 4; the deploy sequence is in Part 5.
+
 ---
 
 ## Part 1 — Verified Current State
@@ -18,7 +26,7 @@ Everything below was confirmed against live AWS, not inferred.
 | `AgentFleetIamStack`            | ✅ Deployed — but the agent role is **orphaned** (see D4)                     |
 | `AgentCore-depupdater-default`  | ✅ Deployed, runtime responds to `agentcore invoke`                           |
 | GitHub secret                   | ✅ **Already exists** at `dep-agent/github-pat`, contains key `token`         |
-| Runtime IAM role                | ⚠️ Missing 2 permissions — **the only thing blocking a successful run**       |
+| Runtime IAM role                | ⚠️ Missing 2 permissions — **the only thing blocking a successful run** (granted in code by #56; pending deploy) |
 | First pipeline run              | ❌ Failed at 0.27s (root cause below, confirmed from logs)                    |
 
 ### Confirmed working (from the first run's logs)
@@ -94,7 +102,17 @@ Granting the runtime plain `dynamodb:UpdateItem` would **silently discard the en
 write-separation control** that S-004 exists to enforce. The agent would be able to
 flip `enabled` or rewrite `params`. Any fix must replicate all three statements.
 
-### Option A — Codify in the vended CDK stack (RECOMMENDED)
+### Option A — Codify in the vended CDK stack (RECOMMENDED — **implemented in #56**)
+
+> **Landed.** All five statements are now in
+> `agents/dep-updater/agentcore/cdk/lib/cdk-stack.ts`, sourced from
+> `agents/dep-updater/agentcore/cdk/lib/fleet-iam-attributes.ts` — a mirror of the
+> `@fleet/shared` allowlists that `infra/test/vended-cdk-iam-drift.test.ts` fails CI on if
+> it drifts. The vended CDK app cannot import `@fleet/shared` (the AgentCore CLI stages it
+> as a standalone npm project outside the pnpm workspace), so the mirror plus the drift
+> guard is the enforcement mechanism. Covered by 17 assertions in
+> `agents/dep-updater/agentcore/cdk/test/cdk.test.ts`. **Still needs `agentcore deploy` to
+> take effect.**
 
 `agents/dep-updater/agentcore/cdk/lib/cdk-stack.ts` **is tracked in git** (confirmed via
 `git ls-files`), and it already uses the `env.runtime.role.addToPrincipalPolicy(...)`
@@ -120,7 +138,10 @@ Then redeploy:
 cd agents/dep-updater && agentcore deploy
 ```
 
-### Option B — Manual inline policy (smoke test only)
+### Option B — Manual inline policy (smoke test only, **no longer needed**)
+
+> Option A has landed in code, so this path exists only as a historical record. Prefer
+> `agentcore deploy`. Using it now would create the very IAM drift the fix removes.
 
 Use only to prove the pipeline end-to-end before Option A lands. It is **undocumented
 infrastructure drift** and must be removed once Option A is deployed.
@@ -201,14 +222,35 @@ aws iam delete-role-policy --role-name "$RUNTIME_ROLE" --policy-name "DepUpdater
 These are correctness bugs in committed code and docs, not deployment steps. Each needs a
 `developer` task.
 
+**Defect status at a glance**
+
+| Defect | Status                                                         |
+| ------ | -------------------------------------------------------------- |
+| D1     | ✅ Fixed in code (#56) — pending `agentcore deploy`             |
+| D2     | ✅ Fixed in code (#56) — takes effect on control-plane redeploy |
+| D3     | ✅ Fixed in code and docs (#56)                                |
+| D4     | 🟡 Open — decision needed (partially mitigated by D1's fix)     |
+| D5     | 🟡 Open — needs a real span record from a successful run         |
+| D6     | ⚪ Open — cosmetic, user-gated cleanup                          |
+
 ### D1 — Runtime role has no data-plane permissions (the blocker)
+
+> **Status: fixed in code (#56), pending deploy.** The five statements are in the vended
+> CDK stack (Part 3, Option A). The live role is unchanged until `agentcore deploy` runs.
 
 Covered in Part 3. Root cause: `agentcore.json` has no mechanism wiring the runtime to
 `agent-fleet-agent-exec-role`, and the vended CDK never grants equivalents.
 
 ### D2 — `SPANS_LOG_GROUP` points at a non-existent log group ⚠️ HIGH
 
-`packages/shared/src/observability-config.ts`:
+> **Status: fixed in code (#56).** `packages/shared/src/observability-config.ts` now reads
+> `aws/spans`, pinned by a regression test in `observability-config.test.ts`, and
+> `docs/runbook-observability-setup.md` records the corrected value with a historical note.
+> This was spec fidelity, not a new decision: the specification's resolution of PRD open
+> question #1 always said "Shared `aws/spans` log group". Takes effect for the runs view on
+> the next control-plane deploy.
+
+The original defect, for the record — `packages/shared/src/observability-config.ts` read:
 
 ```ts
 export const SPANS_LOG_GROUP = "/aws/vendedlogs/agentcore/dep-updater/spans" as const;
@@ -229,6 +271,13 @@ Fix: correct the constant to `aws/spans`, correct the runbook's "Span Destinatio
 
 ### D3 — Documented app log group name is fictional
 
+> **Status: fixed in code and docs (#56).** `workstream/manual-validation-checklist.md` now
+> discovers the group, and `apps/control-plane`'s `resolveAgentLogGroup()` requires
+> `AGENT_LOG_GROUP` and returns an actionable error when it is unset instead of falling back
+> to a guessed name. `docs/runbook-deployment.md` documents where the value comes from and
+> when to refresh it. **`AGENT_LOG_GROUP` must be set on the control-plane deploy** — this
+> is now a hard requirement, not a fallback.
+
 `workstream/manual-validation-checklist.md` (and the prior version of this file)
 reference `/aws/agentcore/dep-updater`. The real group is
 `/aws/bedrock-agentcore/runtimes/depupdater_dep_updater-M4gkuL4wSr-DEFAULT`.
@@ -246,6 +295,11 @@ Fix: update the S-008 verification steps to use discovery.
 
 ### D4 — `agent-fleet-agent-exec-role` is orphaned
 
+> **Status: open, partially mitigated by #56.** The second half of the proposed fix is done —
+> the vended CDK now derives its grants from a mirror of the same `@fleet/shared` allowlists,
+> with `infra/test/vended-cdk-iam-drift.test.ts` failing CI if the two diverge. What remains
+> is the decision on whether to wire the runtime to the orphaned role at all.
+
 `AgentFleetIamStack` creates it with the correct constrained policy, trusted by
 `bedrock-agentcore.amazonaws.com` — but AgentCore creates and uses its own role, so this
 one is never assumed by the agent. It still has value as the contract fixture the IAM
@@ -258,6 +312,9 @@ derive its grants from the same `@fleet/shared` allowlists, plus a test assertin
 stay identical.
 
 ### D5 — Two different session IDs for one run
+
+> **Status: open, out of scope for #56.** Choosing a canonical id needs a real span record
+> from a successful run, which does not exist yet.
 
 App logs are keyed by the **payload** `session_id` (`test-001`), while AgentCore's own
 lines and the span context carry the **runtime** session id
@@ -272,6 +329,8 @@ runtime id. Needs verification against a real span record before choosing.
 
 ### D6 — Stale runtime from an earlier deploy
 
+> **Status: open, out of scope for #56.** Deleting a live-ish runtime is a user-gated action.
+
 `/aws/bedrock-agentcore/runtimes/dependencyUpdateAgent_depUpdateAgent-D7WI0qFw6a-DEFAULT`
 is a leftover from a prior naming scheme. Confirm the runtime is no longer live before
 deleting anything. Cosmetic; not blocking.
@@ -280,9 +339,21 @@ deleting anything. Cosmetic; not blocking.
 
 ## Part 5 — Execution Sequence
 
-### Stage 1 — Unblock the agent (choose Option A or B from Part 3)
+### Stage 1 — Unblock the agent (deploy the D1 fix)
 
-Delegate D1 to `developer` (Option A), or apply Option B for a smoke test first.
+The grants are in code (Part 3, Option A). Deploy them:
+
+```bash
+cd agents/dep-updater
+agentcore deploy --dry-run   # validate + synth, no AWS changes
+agentcore deploy
+```
+
+If the GitHub App cutover is being done at the same time, follow
+`docs/runbook-github-app.md` **first** — `agentcore.json` now points
+`GITHUB_SECRET_ID` at `dep-agent/github-app`, which does not exist until that runbook
+has been followed. Rollback is flipping that value back to `dep-agent/github-pat`.
+Option B is no longer the path; it would reintroduce IAM drift.
 
 ### Stage 2 — First successful run
 
@@ -310,7 +381,7 @@ Acceptance checks for S-006 through S-011:
 | Pipeline behaviour unchanged (S-006)  | Logs show clone → install → audit → update → lint/format/typecheck → test |
 | No idle-timeout kill (S-007)          | Run exceeds 5 min and still completes                                      |
 | JSON logs filterable (S-008)          | Filter above returns only this run's lines                                 |
-| `llipe.*` span attributes (S-010)     | Query `aws/spans` — **not** the vendedlogs path (see D2)                    |
+| `llipe.*` span attributes (S-010)     | Query `aws/spans` — the corrected `SPANS_LOG_GROUP` value (D2)              |
 | Outcome stamped (S-011)               | `last_status` / `last_outcome_url` set; `enabled` / `params` untouched      |
 
 ```bash
@@ -338,7 +409,7 @@ aws logs put-retention-policy --log-group-name "$LG" --retention-in-days 30
 Then enable CloudWatch Transaction Search at 1% sampling (console only):
 CloudWatch → Settings → Traces and Metrics → Transaction Search → Edit.
 
-Blocked until D2 is fixed, since the recorded span destination is wrong.
+No longer blocked — D2's fix records the correct span destination (`aws/spans`).
 
 ### Stage 4 — Orchestrator Lambda (S-013)
 
@@ -359,13 +430,19 @@ the one the Lambda actually runs as. Verify before assuming.
 
 ### Stage 5 — Control Plane on Fly.io (S-024)
 
-See `docs/runbook-deployment.md`. Do not start until D2 is fixed — the runs view depends
-on the correct span log group.
+See `docs/runbook-deployment.md`. D2 is fixed, so the runs view now targets the real span
+group. Two environment variables are required on the Fly app: `SPANS_LOG_GROUP` resolves
+from `@fleet/shared`, but **`AGENT_LOG_GROUP` must be set explicitly** (D3) — the app no
+longer guesses it and will surface an actionable error if it is missing.
 
 ```bash
 flyctl apps create agent-fleet-control-plane --org <your-org>
 fly secrets set CF_ACCESS_TEAM_NAME="<team>" CF_ACCESS_AUD="<aud>" \
-  AWS_REGION="us-east-1" --app agent-fleet-control-plane
+  AWS_REGION="us-east-1" \
+  AGENT_LOG_GROUP="$(aws logs describe-log-groups \
+    --log-group-name-prefix /aws/bedrock-agentcore/runtimes/depupdater_dep_updater \
+    --query 'logGroups[0].logGroupName' --output text)" \
+  --app agent-fleet-control-plane
 flyctl deploy --config infra/control-plane.fly.toml --remote-only
 ```
 
@@ -376,23 +453,29 @@ policy.
 
 ## Part 6 — Status Board
 
+Legend: ✅ done and live · 🟢 fixed in code, pending deploy · 🟡 open · ⚪ cosmetic · 🔲 not started
+
 ```
 1.  ✅ AgentFleetDataStack (table + GSI)
 2.  ✅ Seed script
 3.  ✅ AgentFleetIamStack (deployed; role orphaned — D4)
 4.  ✅ Agent deploy (AgentCore-depupdater-default)
 5.  ✅ GitHub secret dep-agent/github-pat (already existed)
-6.  🔴 D1 — grant runtime role Secrets + constrained DynamoDB  ← ONLY BLOCKER
-7.  🔴 D2 — fix SPANS_LOG_GROUP to aws/spans (HIGH: breaks runs view)
-8.  🟡 D3 — fix fictional app log group name in validation docs
-9.  🟡 D4 — resolve orphaned agent-exec-role vs vended CDK grants
-10. 🟡 D5 — resolve dual session_id correlation
-11. ⚪ D6 — delete stale dependencyUpdateAgent runtime (cosmetic)
-12. 🔲 First successful run (validates S-006 … S-011)
-13. 🔲 App log group retention + Transaction Search (S-005)
-14. 🔲 AgentFleetOrchestrationStack (S-013)
-15. 🔲 Fly app + Cloudflare Access/Tunnel (S-024)
+6.  🟢 D1 — runtime role Secrets + constrained DynamoDB grants in vended CDK  ← DEPLOY TO UNBLOCK
+7.  🟢 D2 — SPANS_LOG_GROUP corrected to aws/spans (runs view fixed on redeploy)
+8.  🟢 D3 — AGENT_LOG_GROUP now required; validation docs discover the group
+9.  🟡 D4 — orphaned agent-exec-role: drift guard landed, wiring decision open
+10. 🟡 D5 — dual session_id correlation (needs a real span record)
+11. ⚪ D6 — delete stale dependencyUpdateAgent runtime (cosmetic, user-gated)
+12. 🟢 GitHub App migration — code + runbook ready; secret must be created before deploy
+13. 🔲 First successful run (validates S-006 … S-011)
+14. 🔲 App log group retention + Transaction Search (S-005)
+15. 🔲 AgentFleetOrchestrationStack (S-013)
+16. 🔲 Fly app + Cloudflare Access/Tunnel (S-024)
 ```
+
+Nothing on this board has been applied to live AWS by issue #56. Items 6, 7, 8 and 12 are
+code changes awaiting the user's gated deploy step.
 
 ---
 
