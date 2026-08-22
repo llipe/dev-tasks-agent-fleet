@@ -47,9 +47,7 @@ class TestResultToAttributeMapping:
         """pr_already_open → status=success, type=pr, url=<existing PR URL>."""
         from emission import map_result
 
-        result = map_result(
-            "pr_already_open", pr_url="https://github.com/org/repo/pull/10"
-        )
+        result = map_result("pr_already_open", pr_url="https://github.com/org/repo/pull/10")
         assert result.status == "success"
         assert result.outcome_type == "pr"
         assert result.outcome_url == "https://github.com/org/repo/pull/10"
@@ -270,9 +268,7 @@ class TestOtelIntegration:
                     # Attach the context containing the root span
                     token = context.attach(ctx)
                     try:
-                        result = RunResult(
-                            status="failed", outcome_type="none", outcome_url=""
-                        )
+                        result = RunResult(status="failed", outcome_type="none", outcome_url="")
                         emit_span_attributes(result=result, subject_id="owner/repo")
                     finally:
                         context.detach(token)

@@ -56,9 +56,7 @@ class TestJsonLogOutput:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("info msg")
         logger.warn("warn msg")
         logger.error("error msg")
@@ -73,9 +71,7 @@ class TestJsonLogOutput:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("with extra", exit_code=1, stream="stdout")
         parsed = json.loads(buf.getvalue().strip())
         assert parsed["exit_code"] == 1
@@ -86,9 +82,7 @@ class TestJsonLogOutput:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.subprocess_output("some output line", stream_name="stdout")
         parsed = json.loads(buf.getvalue().strip())
         assert parsed["stream"] == "stdout"
@@ -100,9 +94,7 @@ class TestJsonLogOutput:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("check ts")
         parsed = json.loads(buf.getvalue().strip())
         ts = parsed["ts"]
@@ -200,9 +192,7 @@ class TestSecretRedaction:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("token is ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456")
         parsed = json.loads(buf.getvalue().strip())
         assert "ghp_" not in parsed["msg"]
@@ -217,9 +207,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info('file "package.json" not found')
         output = buf.getvalue().strip()
         parsed = json.loads(output)
@@ -230,9 +218,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("line1\nline2\nline3")
         output = buf.getvalue()
         # Must be a single line (JSON with escaped newlines)
@@ -246,9 +232,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("path is C:\\Users\\test\\file.txt")
         parsed = json.loads(buf.getvalue().strip())
         assert parsed["msg"] == "path is C:\\Users\\test\\file.txt"
@@ -258,9 +242,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("emoji: \U0001f680 and accents: caf\u00e9")
         parsed = json.loads(buf.getvalue().strip())
         assert "\U0001f680" in parsed["msg"]
@@ -271,9 +253,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("data\x00with\x00nulls")
         output = buf.getvalue().strip()
         # Must still be valid JSON
@@ -285,9 +265,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         logger.info("tab\there\rand\x1b[31mcolor")
         output = buf.getvalue().strip()
         parsed = json.loads(output)
@@ -298,9 +276,7 @@ class TestSpecialCharacters:
         from logging_json import JsonLogger
 
         buf = io.StringIO()
-        logger = JsonLogger(
-            session_id="s1", agent="dep-updater", repo="o/r", stream=buf
-        )
+        logger = JsonLogger(session_id="s1", agent="dep-updater", repo="o/r", stream=buf)
         long_msg = "x" * 10000
         logger.info(long_msg)
         parsed = json.loads(buf.getvalue().strip())

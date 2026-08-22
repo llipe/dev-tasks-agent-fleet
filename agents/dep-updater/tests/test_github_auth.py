@@ -206,9 +206,7 @@ class TestInstallationToken:
         ):
             main._installation_token(app_secret(private_pem))
 
-    def test_missing_installation_id_raises_keyerror(
-        self, rsa_keypair: tuple[str, str]
-    ) -> None:
+    def test_missing_installation_id_raises_keyerror(self, rsa_keypair: tuple[str, str]) -> None:
         private_pem, _ = rsa_keypair
         secret = app_secret(private_pem)
         del secret["installation_id"]
