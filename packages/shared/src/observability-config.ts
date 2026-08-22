@@ -9,8 +9,19 @@
  * This is the real bound on how far back any view can look.
  */
 
-/** CloudWatch Logs group for agent spans (AgentCore default path) */
-export const SPANS_LOG_GROUP = "/aws/vendedlogs/agentcore/dep-updater/spans" as const;
+/**
+ * CloudWatch Logs group for agent spans.
+ *
+ * `aws/spans` is the group CloudWatch Transaction Search creates and the one
+ * spans actually land in — verified against the live account. It is shared by
+ * every agent, has no leading slash, and is not per-agent, which is why the
+ * queries filter by `llipe.agent` rather than by group name.
+ *
+ * This was previously `/aws/vendedlogs/agentcore/dep-updater/spans`, a group
+ * that does not exist; see issue #56 / defect D2. The specification's
+ * resolution of PRD open question #1 was always "Shared `aws/spans` log group".
+ */
+export const SPANS_LOG_GROUP = "aws/spans" as const;
 
 /** Retention period in days for the spans log group */
 export const SPANS_RETENTION_DAYS = 30 as const;

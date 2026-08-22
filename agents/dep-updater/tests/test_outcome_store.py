@@ -224,7 +224,8 @@ class TestErrorHandling:
             }
         }
         mock_table.update_item.side_effect = ClientError(
-            error_response, "UpdateItem"  # type: ignore[arg-type]
+            error_response,  # type: ignore[arg-type]
+            "UpdateItem",
         )
 
         with (

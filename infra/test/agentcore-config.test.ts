@@ -19,6 +19,11 @@ const REPO_ROOT = resolve(HERE, "../..");
 const AGENT_DIR = resolve(REPO_ROOT, "agents/dep-updater");
 const CONFIG_PATH = resolve(AGENT_DIR, "agentcore/agentcore.json");
 
+interface EnvVarEntry {
+  name: string;
+  value: string;
+}
+
 interface RuntimeEntry {
   name: string;
   build: string;
@@ -29,6 +34,7 @@ interface RuntimeEntry {
   runtimeVersion?: string;
   networkMode?: string;
   protocol?: string;
+  envVars?: EnvVarEntry[];
   lifecycleConfiguration?: {
     idleRuntimeSessionTimeout?: number;
     maxLifetime?: number;
@@ -95,6 +101,68 @@ describe("agentcore.json — discovery tags match @fleet/shared", () => {
     const tagName = depUpdaterRuntime().tags?.["agent:name"];
     expect(tagName).toBeDefined();
     expect(agentNameToSortKey(tagName ?? "")).toBe(`${PREFIXES.AGENT}dep-updater`);
+  });
+});
+
+describe("agentcore.json — GitHub credential env var", () => {
+  /**
+   * The runtime resolves its GitHub credential from `GITHUB_SECRET_ID`, declared
+   * here rather than baked into main.py so the PAT → GitHub App cutover and its
+   * rollback are both a config change plus a redeploy.
+   *
+   * CUTOVER ORDERING: this points at `dep-agent/github-app`, which does not exist
+   * until docs/runbook-github-app.md has been followed. The code default in
+   * main.py deliberately stays `dep-agent/github-pat` so a local or CLI
+   * invocation without this env var still works against the existing PAT.
+   */
+  function envVars(): EnvVarEntry[] {
+    return depUpdaterRuntime().envVars ?? [];
+  }
+
+  function envVar(name: string): EnvVarEntry | undefined {
+    return envVars().find((entry) => entry.name === name);
+  }
+
+  it("declares GITHUB_SECRET_ID", () => {
+    expect(envVar("GITHUB_SECRET_ID")).toBeDefined();
+  });
+
+  it("points GITHUB_SECRET_ID at the GitHub App secret", () => {
+    expect(envVar("GITHUB_SECRET_ID")?.value).toBe("dep-agent/github-app");
+  });
+
+  it("declares every env var as a { name, value } pair with non-empty strings", () => {
+    expect(envVars().length).toBeGreaterThan(0);
+    for (const entry of envVars()) {
+      expect(Object.keys(entry).sort()).toEqual(["name", "value"]);
+      expect(typeof entry.name).toBe("string");
+      expect(typeof entry.value).toBe("string");
+      expect(entry.name.length).toBeGreaterThan(0);
+      expect(entry.value.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("declares no duplicate env var names", () => {
+    const names = envVars().map((entry) => entry.name);
+    expect(names).toEqual([...new Set(names)]);
+  });
+
+  /**
+   * `envVars` reaches the runtime as plaintext in the CloudFormation template.
+   * Only the secret's *name* belongs here; the credential itself stays in
+   * Secrets Manager and is read at runtime.
+   */
+  it("carries no credential material, only the secret name", () => {
+    for (const entry of envVars()) {
+      expect(entry.value).not.toMatch(/^gh[pous]_/);
+      expect(entry.value).not.toContain("BEGIN RSA PRIVATE KEY");
+      expect(entry.value).not.toContain("BEGIN PRIVATE KEY");
+    }
+  });
+
+  it("keeps the main.py default on the PAT secret so cutover ordering holds", () => {
+    const mainPy = readFileSync(resolve(AGENT_DIR, "main.py"), "utf-8");
+    expect(mainPy).toContain('os.environ.get("GITHUB_SECRET_ID", "dep-agent/github-pat")');
   });
 });
 

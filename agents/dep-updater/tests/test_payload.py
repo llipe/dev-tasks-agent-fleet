@@ -245,11 +245,13 @@ class TestPromptShim:
         """CLI shim: payload wrapped in prompt key is unwrapped."""
         from payload import parse_payload
 
-        inner = json.dumps({
-            "session_id": "cli-session",
-            "repo": "owner/repo",
-            "params": {"allow_fixes": True, "max_fix_attempts": 2},
-        })
+        inner = json.dumps(
+            {
+                "session_id": "cli-session",
+                "repo": "owner/repo",
+                "params": {"allow_fixes": True, "max_fix_attempts": 2},
+            }
+        )
         raw: dict[str, Any] = {"prompt": inner}
         result = parse_payload(raw)
         assert result.session_id == "cli-session"
@@ -260,10 +262,12 @@ class TestPromptShim:
         """CLI shim supports legacy repo_url in wrapped payload."""
         from payload import parse_payload
 
-        inner = json.dumps({
-            "session_id": "cli-session",
-            "repo_url": "https://github.com/owner/repo",
-        })
+        inner = json.dumps(
+            {
+                "session_id": "cli-session",
+                "repo_url": "https://github.com/owner/repo",
+            }
+        )
         raw: dict[str, Any] = {"prompt": inner}
         result = parse_payload(raw)
         assert result.repo == "owner/repo"

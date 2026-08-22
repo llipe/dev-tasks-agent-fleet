@@ -44,6 +44,7 @@ _PARAM_DEFAULTS: dict[str, Any] = {
 
 # ─── Result type ──────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class ParsedPayload:
     """Validated and normalized invocation payload."""
@@ -55,6 +56,7 @@ class ParsedPayload:
 
 
 # ─── Params validation ────────────────────────────────────────────────────────
+
 
 def _validate_params(params: dict[str, Any]) -> dict[str, Any]:
     """Validate params against the dep-updater schema.
@@ -105,6 +107,7 @@ def _validate_params(params: dict[str, Any]) -> dict[str, Any]:
 
 
 # ─── Main parser ──────────────────────────────────────────────────────────────
+
 
 def parse_payload(raw: dict[str, Any]) -> ParsedPayload:
     """Parse and validate the control-plane invocation payload.

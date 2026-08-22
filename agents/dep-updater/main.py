@@ -26,6 +26,11 @@ MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 SECRET_ID = os.environ.get("GITHUB_SECRET_ID", "dep-agent/github-pat")
 TEST_TIMEOUT = int(os.environ.get("TEST_TIMEOUT", "600"))
 
+# The PAT-era bot identity. Kept as the default so behaviour is unchanged until
+# the GitHub App cutover sets the env vars — see docs/runbook-github-app.md.
+DEFAULT_COMMITTER_NAME = "dep-update-agent"
+DEFAULT_COMMITTER_EMAIL = "dep-update-agent@users.noreply.github.com"
+
 # Set per-invocation. Tools read it instead of taking a path argument,
 # so the model cannot wander outside the checkout.
 _workspace: str | None = None
@@ -205,6 +210,24 @@ def _run(
     )
 
 
+def resolve_committer_identity() -> tuple[str, str]:
+    """Resolve the git identity used for the agent's commits.
+
+    Read from the environment on every call so a redeploy that changes the bot
+    identity needs no code change. After the GitHub App cutover these should be
+    the App's bot account — `<app-slug>[bot]` and
+    `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com` — otherwise GitHub
+    attributes the commits to whichever account happens to own the email.
+
+    Blank or whitespace-only values are treated as unset rather than written
+    through, because `git config user.email ""` produces commits git later
+    refuses to describe.
+    """
+    name = os.environ.get("GIT_COMMITTER_NAME", "").strip() or DEFAULT_COMMITTER_NAME
+    email = os.environ.get("GIT_COMMITTER_EMAIL", "").strip() or DEFAULT_COMMITTER_EMAIL
+    return name, email
+
+
 def clone_repo(repo_url: str, workspace: str, token: str) -> None:
     """Clone with a token, then scrub the token out of .git/config."""
     authed = repo_url.replace("https://", f"https://x-access-token:{token}@")
@@ -212,11 +235,9 @@ def clone_repo(repo_url: str, workspace: str, token: str) -> None:
     # Never leave the credential on disk in the remote URL.
     _run(["git", "remote", "set-url", "origin", repo_url], cwd=workspace)
     # A container has no git identity; commit would fail without this.
-    _run(["git", "config", "user.name", "dep-update-agent"], cwd=workspace)
-    _run(
-        ["git", "config", "user.email", "dep-update-agent@users.noreply.github.com"],
-        cwd=workspace,
-    )
+    committer_name, committer_email = resolve_committer_identity()
+    _run(["git", "config", "user.name", committer_name], cwd=workspace)
+    _run(["git", "config", "user.email", committer_email], cwd=workspace)
 
 
 def _detect_pnpm_version(workspace: str) -> str | None:

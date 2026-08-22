@@ -83,9 +83,7 @@ class TestPingStatusDuringPipeline:
             f"Expected Healthy after completion, got {ping_data}"
         )
 
-    def test_ping_healthy_after_pipeline_exception(
-        self, agent_client: TestClient
-    ) -> None:
+    def test_ping_healthy_after_pipeline_exception(self, agent_client: TestClient) -> None:
         """After pipeline raises an exception, /ping should return Healthy."""
         completed = threading.Event()
 

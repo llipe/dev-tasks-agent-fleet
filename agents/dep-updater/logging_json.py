@@ -37,7 +37,9 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
     # AWS Secret Access Key / generic secret: 40+ chars of mixed-case alphanum
     # with /, +, = (base64-like). Must contain at least one uppercase, one
     # lowercase, and one digit or special to avoid matching plain repeated chars.
-    re.compile(r"(?<![A-Za-z0-9/+=])(?=[A-Za-z0-9/+=]*[A-Z])(?=[A-Za-z0-9/+=]*[a-z])[A-Za-z0-9/+=]{40,}(?![A-Za-z0-9/+=])"),
+    re.compile(
+        r"(?<![A-Za-z0-9/+=])(?=[A-Za-z0-9/+=]*[A-Z])(?=[A-Za-z0-9/+=]*[a-z])[A-Za-z0-9/+=]{40,}(?![A-Za-z0-9/+=])"
+    ),
 ]
 
 _REDACTED = "***REDACTED***"
@@ -121,9 +123,7 @@ class JsonLogger:
         """
         self._emit("info", msg, stream=stream_name, **extra)
 
-    def log_subprocess_lines(
-        self, output: str, stream_name: str, prefix: str = ""
-    ) -> None:
+    def log_subprocess_lines(self, output: str, stream_name: str, prefix: str = "") -> None:
         """Log multi-line subprocess output as individual JSON lines.
 
         Args:

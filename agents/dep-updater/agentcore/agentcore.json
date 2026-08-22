@@ -18,6 +18,12 @@
       "runtimeVersion": "PYTHON_3_13",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
+      "envVars": [
+        {
+          "name": "GITHUB_SECRET_ID",
+          "value": "dep-agent/github-app"
+        }
+      ],
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 300,
         "maxLifetime": 3600

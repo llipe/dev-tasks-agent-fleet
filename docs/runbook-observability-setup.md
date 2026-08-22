@@ -26,29 +26,31 @@ The agent fleet produces a small number of spans (one root span + child spans pe
 A single span log group is used for all agent spans:
 
 ```
-/aws/vendedlogs/agentcore/dep-updater/spans
+aws/spans
 ```
 
-This is the AgentCore default span destination for the `dep-updater` agent runtime.
+This is the group CloudWatch Transaction Search creates, and it is where AgentCore's ADOT sidecar actually delivers spans — verified against the live account (`755641879575`, `us-east-1`). Note there is **no leading slash**: the group name is literally `aws/spans`, and Logs Insights `StartQuery` rejects anything that does not match exactly.
 
 ### Rationale
 
 - Two span destinations would require two Logs Insights queries in the control plane, adding latency and complexity.
-- The AgentCore default path is predictable and requires zero additional configuration.
-- The path follows AWS vendored-logs conventions, which qualifies for standard CloudWatch pricing.
+- One shared group covers the whole fleet. Queries scope to a single agent by filtering on the `llipe.agent` resource attribute rather than by group name, so adding an agent needs no new group and no config change.
+- Transaction Search manages the group's lifecycle, so it requires no additional provisioning.
 
 ### Config Value
 
 The `SPANS_LOG_GROUP` configuration constant is set to:
 
 ```
-/aws/vendedlogs/agentcore/dep-updater/spans
+aws/spans
 ```
 
 This value is referenced by:
 
 - The control plane's Logs Insights query builder
 - The `SPAN_FIELDS` mapping in `packages/shared/src/span-fields.ts`
+
+> **Historical note.** This section and `packages/shared/src/observability-config.ts` both previously recorded `/aws/vendedlogs/agentcore/dep-updater/spans`, an AgentCore default path that does not exist in the account. Every control-plane Logs Insights query therefore targeted a nonexistent group and the runs view could only return nothing. Corrected in issue #56 (defect D2); the specification's resolution of PRD open question #1 was always "Shared `aws/spans` log group".
 
 ## 3. Log-Group Retention Period
 
@@ -65,12 +67,22 @@ This value is referenced by:
 
 ### Configuration
 
-Set via the AWS Console or CLI:
+`aws/spans` already carries 30-day retention in the live account, so this is a verification step rather than a change. Re-applying it is idempotent:
 
 ```bash
 aws logs put-retention-policy \
-  --log-group-name /aws/vendedlogs/agentcore/dep-updater/spans \
+  --log-group-name aws/spans \
   --retention-in-days 30
+```
+
+The agent's own **application** log group is separate, and AgentCore creates it with no retention set. Its name ends in an AgentCore-generated suffix that changes whenever the runtime is recreated, so discover it instead of hardcoding it:
+
+```bash
+LG=$(aws logs describe-log-groups \
+  --log-group-name-prefix /aws/bedrock-agentcore/runtimes/depupdater_dep_updater \
+  --query 'logGroups[0].logGroupName' --output text)
+
+aws logs put-retention-policy --log-group-name "$LG" --retention-in-days 30
 ```
 
 ## 4. Verification
@@ -78,6 +90,13 @@ aws logs put-retention-policy \
 After setup, verify:
 
 1. **Transaction Search active**: Console > CloudWatch > Settings shows "Transaction Search: On".
-2. **Span log group exists**: `aws logs describe-log-groups --log-group-name-prefix /aws/vendedlogs/agentcore/dep-updater/spans` returns the group.
+2. **Span log group exists**: `aws logs describe-log-groups --log-group-name-prefix aws/spans` returns the group.
 3. **Retention set**: The `retentionInDays` field shows `30`.
-4. **Spans arriving**: After one triggered agent run, `aws logs filter-log-events --log-group-name /aws/vendedlogs/agentcore/dep-updater/spans --limit 5` returns span records.
+4. **Spans arriving**: After one triggered agent run, `aws logs filter-log-events --log-group-name aws/spans --limit 5` returns span records.
+5. **Spans belong to the expected agent**: `aws/spans` is fleet-wide, so confirm the records carry the right agent attribute rather than assuming every record is the dep-updater's.
+
+   ```bash
+   aws logs filter-log-events --log-group-name aws/spans \
+     --filter-pattern '{ $.resource.attributes."llipe.agent" = "dep-updater" }' \
+     --limit 5
+   ```

@@ -67,6 +67,22 @@ fly secrets set AWS_REGION="us-east-1" --app agent-fleet-control-plane
 # fly secrets set AWS_SECRET_ACCESS_KEY="<secret>" --app agent-fleet-control-plane
 ```
 
+### Required non-secret configuration
+
+`AGENT_LOG_GROUP` — the agent's CloudWatch **application** log group, read by the run panel's log viewer. It has no default: AgentCore appends a generated suffix to the group name and regenerates it whenever the runtime is recreated, so any hardcoded value would silently return zero log lines. If it is unset the log viewer surfaces a configuration error instead of an empty result.
+
+Discover the current value and set it:
+
+```bash
+APP_LG=$(aws logs describe-log-groups \
+  --log-group-name-prefix /aws/bedrock-agentcore/runtimes/depupdater_dep_updater \
+  --query 'logGroups[0].logGroupName' --output text)
+
+fly secrets set AGENT_LOG_GROUP="$APP_LG" --app agent-fleet-control-plane
+```
+
+Re-run this after any `agentcore deploy` that recreates the runtime. The **spans** group is separate and needs no configuration — it is the fleet-wide `aws/spans`, pinned in `packages/shared/src/observability-config.ts`.
+
 List current secrets:
 
 ```bash
@@ -78,7 +94,8 @@ Verify no secrets leak into the image:
 ```bash
 # After deploy, inspect the image layers
 flyctl ssh console --app agent-fleet-control-plane -C "env" | grep -v FLY_
-# Should show only CF_ACCESS_TEAM_NAME, CF_ACCESS_AUD, AWS_REGION, and optionally AWS_* keys
+# Should show only CF_ACCESS_TEAM_NAME, CF_ACCESS_AUD, AWS_REGION, AGENT_LOG_GROUP,
+# and optionally AWS_* keys
 # No other sensitive values should appear
 ```
 
