@@ -147,41 +147,65 @@ agentcore invoke dep-updater \
   --payload '{"session_id":"manual-test__myorg-myrepo__2025-01-28T00-00-00Z","repo":"myorg/myrepo","params":{}}'
 ```
 
-### 2.4 Verify Non-Blocking Entrypoint (S-007)
+### 2.4 Discover the Log Group Names
+
+Both names must be resolved at validation time, never hardcoded:
+
+- The **application** log group ends in an AgentCore-generated suffix (for example `-M4gkuL4wSr-DEFAULT`) that changes whenever the runtime is recreated.
+- The **spans** group is the fleet-wide `aws/spans` created by CloudWatch Transaction Search. Note there is no leading slash.
+
+```bash
+APP_LG=$(aws logs describe-log-groups \
+  --log-group-name-prefix /aws/bedrock-agentcore/runtimes/depupdater_dep_updater \
+  --query 'logGroups[0].logGroupName' --output text)
+SPANS_LG=aws/spans
+
+echo "app:   $APP_LG"     # e.g. /aws/bedrock-agentcore/runtimes/depupdater_dep_updater-XXXXXXXXXX-DEFAULT
+echo "spans: $SPANS_LG"
+```
+
+**Expected:** `$APP_LG` is non-empty and not `None`. If it is empty the runtime has never run, or the runtime name changed — re-check `agentcore.json`.
+
+Export `AGENT_LOG_GROUP="$APP_LG"` in the control plane's environment; that is the value the runs view reads (see `apps/control-plane/src/app/agents/[name]/run-panel-data.ts`).
+
+### 2.5 Verify Non-Blocking Entrypoint (S-007)
 
 **Check:** Run continues past 5 minutes without being killed.
 
 ```bash
 # After triggering a run on a repo with a long pipeline:
 aws logs filter-log-events \
-  --log-group-name /aws/agentcore/dep-updater \
+  --log-group-name "$APP_LG" \
   --filter-pattern '{ $.session_id = "manual-test__myorg-myrepo__2025-01-28T00-00-00Z" }' \
-  --limit 50 | jq '.events[-1].message' 
+  --limit 50 | jq '.events[-1].message'
 # Look for completion message after >5 min from start
 ```
 
-### 2.5 Verify Structured JSON Logging (S-008)
+### 2.6 Verify Structured JSON Logging (S-008)
 
 ```bash
 aws logs filter-log-events \
-  --log-group-name /aws/agentcore/dep-updater \
+  --log-group-name "$APP_LG" \
   --filter-pattern '{ $.session_id = "<session-id>" }' \
   --limit 5
 ```
 
 **Expected:** Each line is valid JSON with `ts`, `level`, `msg`, `session_id`, `agent`, `repo` fields.
 
-### 2.6 Verify Span Attributes (S-010)
+### 2.7 Verify Span Attributes (S-010)
+
+`aws/spans` is fleet-wide, so filter by agent rather than assuming every record is the dep-updater's:
 
 ```bash
 aws logs filter-log-events \
-  --log-group-name /aws/vendedlogs/agentcore/dep-updater/spans \
+  --log-group-name "$SPANS_LG" \
+  --filter-pattern '{ $.resource.attributes."llipe.agent" = "dep-updater" }' \
   --limit 5
 ```
 
 **Expected:** Root span has `llipe.subject.id`, `llipe.run.status`, `llipe.outcome.type`, `llipe.outcome.url`.
 
-### 2.7 Verify DynamoDB Outcome Stamp (S-011)
+### 2.8 Verify DynamoDB Outcome Stamp (S-011)
 
 ```bash
 aws dynamodb get-item \
@@ -203,11 +227,17 @@ aws dynamodb get-item \
 3. Set indexing to **1% sampling**
 4. Confirm and save
 
-### 3.2 Set Span Log Group Retention
+### 3.2 Set Log Group Retention
+
+`aws/spans` already carries 30-day retention in the live account; re-applying is idempotent. The application group is created by AgentCore with no retention set, so it needs the policy applied.
 
 ```bash
 aws logs put-retention-policy \
-  --log-group-name /aws/vendedlogs/agentcore/dep-updater/spans \
+  --log-group-name "$SPANS_LG" \
+  --retention-in-days 30
+
+aws logs put-retention-policy \
+  --log-group-name "$APP_LG" \
   --retention-in-days 30
 ```
 
@@ -229,7 +259,7 @@ After one successful run with model calls:
 ```bash
 # Query root span with llipe.* attributes
 aws logs start-query \
-  --log-group-name /aws/vendedlogs/agentcore/dep-updater/spans \
+  --log-group-name "$SPANS_LG" \
   --start-time $(date -d '-24 hours' +%s) \
   --end-time $(date +%s) \
   --query-string 'fields @message | filter ispresent(resource.attributes.`llipe.run.status`) | limit 5'

@@ -21,13 +21,14 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import { _setClient, executeInsightsQuery } from "../aws/logs-insights-adapter.js";
 import { queryRuns, clearRunListCache } from "./run-query-service.js";
+import { SPANS_LOG_GROUP } from "@fleet/shared";
 import type { LogsInsightsQueryParams } from "../aws/logs-insights-adapter.js";
 
 const cwlMock = mockClient(CloudWatchLogsClient);
 
 function makeQueryParams(): LogsInsightsQueryParams {
   return {
-    logGroupName: "/aws/vendedlogs/agentcore/dep-updater/spans",
+    logGroupName: SPANS_LOG_GROUP,
     queryString: "fields @timestamp | limit 10",
     startTime: Math.floor(Date.now() / 1000) - 86400,
     endTime: Math.floor(Date.now() / 1000),
