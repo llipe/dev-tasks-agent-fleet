@@ -1,4 +1,4 @@
-app = "agent-fleet-control-plane"
+app = "dt-agent-fleet-control-plane"
 primary_region = "iad"
 
 [build]

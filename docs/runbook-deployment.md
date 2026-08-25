@@ -1,493 +1,743 @@
-# Deployment Runbook — Control Plane
+# Deployment Runbook — Agent Fleet
 
-This runbook documents the full deployment lifecycle for the Agent Fleet Control Plane on Fly.io, including Cloudflare Access and Tunnel configuration.
+Single consolidated deployment guide for the whole fleet: AWS infrastructure, the
+`dep-updater` agent, the orchestrator, and the control plane on Fly.io behind Cloudflare
+Access.
 
----
+**Verified against live infrastructure:** AWS account `755641879575`, region `us-east-1`;
+Fly org `personal`; Cloudflare account `6b28e7c684a09fb883843f96a34c76fc`.
+**Last verified:** 2026-08-25.
 
-## Table of Contents
+Related runbooks:
 
-1. [Prerequisites](#prerequisites)
-2. [Fly.io App Setup](#flyio-app-setup)
-3. [Secrets Management](#secrets-management)
-4. [Fly OIDC → AWS IAM Role](#fly-oidc--aws-iam-role)
-5. [Cloudflare Access Application](#cloudflare-access-application)
-6. [Cloudflare Tunnel Configuration](#cloudflare-tunnel-configuration)
-7. [Deploy](#deploy)
-8. [Rollback](#rollback)
-9. [Health Check Verification](#health-check-verification)
-10. [Origin Lockdown Verification](#origin-lockdown-verification)
-11. [HTTPS and HSTS Verification](#https-and-hsts-verification)
-12. [Monthly Cost Estimate](#monthly-cost-estimate)
-13. [Troubleshooting](#troubleshooting)
+- `docs/runbook-github-app.md` — GitHub App credential creation and rollback
+- `docs/runbook-observability-setup.md` — span destination and log configuration
 
 ---
 
-## Prerequisites
+## Contents
 
-- Fly CLI (`flyctl`) installed and authenticated
-- Cloudflare account with Zero Trust enabled
-- AWS IAM access for trust policy changes
-- `FLY_API_TOKEN` configured in GitHub repository secrets
+1. [Deployment order and current state](#1-deployment-order-and-current-state)
+2. [Prerequisites](#2-prerequisites)
+3. [Stage 1 — AWS infrastructure stacks](#3-stage-1--aws-infrastructure-stacks)
+4. [Stage 2 — dep-updater agent](#4-stage-2--dep-updater-agent)
+5. [Stage 3 — Observability](#5-stage-3--observability)
+6. [Stage 4 — Orchestrator](#6-stage-4--orchestrator)
+7. [Stage 5 — Control plane IAM (blocking)](#7-stage-5--control-plane-iam-blocking)
+8. [Stage 6 — Cloudflare Access](#8-stage-6--cloudflare-access)
+9. [Stage 7 — DNS and TLS](#9-stage-7--dns-and-tls)
+10. [Stage 8 — Fly deploy](#10-stage-8--fly-deploy)
+11. [Verification](#11-verification)
+12. [Rollback](#12-rollback)
+13. [Cost](#13-cost)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Corrections to earlier versions](#15-corrections-to-earlier-versions)
 
 ---
 
-## Fly.io App Setup
+## 1. Deployment order and current state
 
-Create the Fly app (one-time):
+Stages are ordered by dependency. Do not reorder — each stage assumes the previous one
+landed.
+
+| Stage | What                             | State                                     |
+| ----- | -------------------------------- | ----------------------------------------- |
+| 1     | Data + IAM CDK stacks            | ✅ Deployed                               |
+| 2     | `dep-updater` agent + GitHub App | ✅ Deployed and verified (PR memo-cli#49) |
+| 3     | Observability (retention)        | ✅ 30-day retention on both log groups    |
+| 4     | Orchestrator Lambda + schedule   | ✅ Deployed, invoked successfully         |
+| 5     | Control-plane IAM (OIDC + logs)  | ❌ **Blocked — code change required**     |
+| 6     | Cloudflare Access application    | ✅ App `fleet` exists, policy attached    |
+| 7     | DNS + TLS for `fleet.llipe.com`  | ⚠️ DNS proxied; Fly cert `Not verified`   |
+| 8     | Fly deploy                       | ❌ Not deployed (6 secrets staged only)   |
+
+Stage 5 blocks stage 8. See [Stage 5](#7-stage-5--control-plane-iam-blocking).
+
+### Canonical names
+
+Use these exact values. Earlier drafts of this runbook used placeholders and wrong names —
+see [§15](#15-corrections-to-earlier-versions).
+
+| Thing                  | Value                                                |
+| ---------------------- | ---------------------------------------------------- |
+| Fly app                | `dt-agent-fleet-control-plane`                       |
+| Public hostname        | `fleet.llipe.com`                                    |
+| Fly origin hostname    | `dt-agent-fleet-control-plane.fly.dev`               |
+| Control-plane IAM role | `agent-fleet-control-plane-role`                     |
+| Orchestrator IAM role  | `agent-fleet-orchestrator-role`                      |
+| DynamoDB table / GSI   | `agent-fleet-config` / `GSI1`                        |
+| Spans log group        | `aws/spans`                                          |
+| Agent app log group    | discover it — see [§5](#5-stage-3--observability)    |
+| Lambda                 | `agent-fleet-orchestrator`                           |
+| CF Access app          | `fleet` (self-hosted), destination `fleet.llipe.com` |
+
+---
+
+## 2. Prerequisites
+
+- `flyctl`, authenticated (`fly auth whoami`)
+- `aws` CLI v2 with credentials for account `755641879575`
+- `pnpm` (the repo is a pnpm workspace; do not use `npm`)
+- `agentcore` CLI (for the agent only)
+- Cloudflare Zero Trust enabled on the account
+- `jq`
+
+Uncommitted local changes that must be committed before a CI deploy, because CI deploys
+from the branch, not the working tree:
 
 ```bash
-flyctl apps create agent-fleet-control-plane --org <your-org>
+git status --short
+# infra/control-plane.fly.toml            — app name set to dt-agent-fleet-control-plane
+# agents/dep-updater/agentcore/agentcore.json — GitHub App secret id + bot committer identity
 ```
-
-The app configuration lives in `infra/control-plane.fly.toml`:
-
-- Region: `iad` (US East)
-- Single machine with auto-stop/auto-start
-- Internal port: 3000
-- Health check: `/healthz` every 30s
 
 ---
 
-## Secrets Management
+## 3. Stage 1 — AWS infrastructure stacks
 
-All secrets are managed via `fly secrets`. **No secrets in the image, repo, or build output.**
-
-Required secrets:
+Three stacks, defined in `infra/bin/app.ts`. All use `RemovalPolicy.RETAIN`; the DynamoDB
+table has deletion protection on.
 
 ```bash
-# Cloudflare Access validation
-fly secrets set CF_ACCESS_TEAM_NAME="<your-team-name>" --app agent-fleet-control-plane
-fly secrets set CF_ACCESS_AUD="<your-access-audience-tag>" --app agent-fleet-control-plane
-
-# AWS region for SDK clients
-fly secrets set AWS_REGION="us-east-1" --app agent-fleet-control-plane
-
-# AWS credentials (only if OIDC fallback is needed — see below)
-# fly secrets set AWS_ACCESS_KEY_ID="<key>" --app agent-fleet-control-plane
-# fly secrets set AWS_SECRET_ACCESS_KEY="<secret>" --app agent-fleet-control-plane
+cd infra
+pnpm run cdk deploy AgentFleetDataStack
+pnpm run cdk deploy AgentFleetIamStack
 ```
 
-### Required non-secret configuration
+`pnpm run cdk` wraps `cdk`, so pass the subcommand as part of the same argument — a bare
+`--` is consumed by `cdk` itself and prints usage:
 
-`AGENT_LOG_GROUP` — the agent's CloudWatch **application** log group, read by the run panel's log viewer. It has no default: AgentCore appends a generated suffix to the group name and regenerates it whenever the runtime is recreated, so any hardcoded value would silently return zero log lines. If it is unset the log viewer surfaces a configuration error instead of an empty result.
+```bash
+# Wrong — cdk receives `--` and prints help
+pnpm run cdk -- deploy AgentFleetOrchestrationStack
 
-Discover the current value and set it:
+# Correct
+pnpm run cdk deploy AgentFleetOrchestrationStack
+# or
+npx cdk deploy AgentFleetOrchestrationStack
+```
+
+Seed the scope config (idempotent, guarded by `attribute_not_exists`):
+
+```bash
+# from repo root
+pnpm run seed
+```
+
+### Write separation (do not weaken this)
+
+`infra/lib/iam-stack.ts` creates three roles that partition write access to
+`agent-fleet-config` by attribute. The allowlists live in
+`packages/shared/src/iam-attributes.ts` and are the single source of truth:
+
+| Role                             | May write                                       | Notably denied              |
+| -------------------------------- | ----------------------------------------------- | --------------------------- |
+| `agent-fleet-control-plane-role` | `enabled`, `params` (+ keys)                    | `InvokeAgentRuntime` (Deny) |
+| `agent-fleet-orchestrator-role`  | `last_session_id`, `last_run_at`, `last_status` | —                           |
+| `agent-fleet-agent-exec-role`    | `last_status`, `last_outcome_url` (+ keys)      | `PutItem` (Deny)            |
+
+Any deployment shortcut that grants a principal unconditional `dynamodb:UpdateItem`
+silently voids this control. Two such shortcuts have already been rejected on this
+project; do not reintroduce them.
+
+---
+
+## 4. Stage 2 — dep-updater agent
+
+Follow `docs/runbook-github-app.md` **first** and in full. `agentcore.json` points
+`GITHUB_SECRET_ID` at `dep-agent/github-app`, which does not exist until that runbook's
+step 4 creates it; deploying earlier fails every run with `ResourceNotFoundException`.
+
+Then:
+
+```bash
+cd agents/dep-updater
+agentcore deploy --dry-run   # validates envVars schema and synths; no AWS changes
+agentcore deploy
+```
+
+The runtime execution role's grants are codified in
+`agents/dep-updater/agentcore/cdk/lib/cdk-stack.ts`, derived from
+`lib/fleet-iam-attributes.ts` — a mirror of the `@fleet/shared` allowlists that
+`infra/test/vended-cdk-iam-drift.test.ts` fails CI on if it drifts. The vended CDK app
+cannot import `@fleet/shared` (the AgentCore CLI stages it as a standalone npm project
+outside the workspace), so the mirror plus the drift guard is the enforcement mechanism.
+
+`agentcore deploy` may recreate the runtime, which changes the generated suffix on the app
+log group. After any deploy, re-run the discovery in [§5](#5-stage-3--observability) and
+update `AGENT_LOG_GROUP` on Fly.
+
+Smoke test:
+
+```bash
+agentcore invoke '{"session_id": "smoke-001", "repo": "llipe/memo-cli"}'
+```
+
+Quote the JSON as a single argument or zsh will try to expand the braces. Expect 2–10
+minutes. A 0.27s "success" means the pipeline threw early and the `finally` block completed
+the async task — read the logs, do not trust the CLI's exit.
+
+---
+
+## 5. Stage 3 — Observability
+
+The agent's application log group name carries an AgentCore-generated suffix
+(`...-M4gkuL4wSr-DEFAULT`) that changes whenever the runtime is recreated. Always discover
+it; never hardcode it.
 
 ```bash
 APP_LG=$(aws logs describe-log-groups \
   --log-group-name-prefix /aws/bedrock-agentcore/runtimes/depupdater_dep_updater \
   --query 'logGroups[0].logGroupName' --output text)
 
-fly secrets set AGENT_LOG_GROUP="$APP_LG" --app agent-fleet-control-plane
+echo "$APP_LG"   # must be non-empty before continuing
 ```
 
-Re-run this after any `agentcore deploy` that recreates the runtime. The **spans** group is separate and needs no configuration — it is the fleet-wide `aws/spans`, pinned in `packages/shared/src/observability-config.ts`.
-
-List current secrets:
+If this prints nothing, the prefix does not match a live runtime. Widen the search rather
+than guessing:
 
 ```bash
-fly secrets list --app agent-fleet-control-plane
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore/runtimes/ \
+  --query 'logGroups[*].logGroupName' --output text
 ```
 
-Verify no secrets leak into the image:
+Set retention (spans already have 30 days):
 
 ```bash
-# After deploy, inspect the image layers
-flyctl ssh console --app agent-fleet-control-plane -C "env" | grep -v FLY_
-# Should show only CF_ACCESS_TEAM_NAME, CF_ACCESS_AUD, AWS_REGION, AGENT_LOG_GROUP,
-# and optionally AWS_* keys
-# No other sensitive values should appear
+aws logs put-retention-policy --log-group-name "$APP_LG" --retention-in-days 30
 ```
+
+Spans land in the fleet-wide `aws/spans`, pinned in
+`packages/shared/src/observability-config.ts`. It needs no configuration and no Fly secret.
+
+### CloudWatch Transaction Search is required, and is already enabled
+
+Per the
+[AgentCore observability docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html):
+"to view metrics, spans, and traces generated by the AgentCore service, you first need to
+complete a one-time setup to turn on Amazon CloudWatch Transaction Search." Transaction
+Search is what ingests AgentCore spans as structured logs into `aws/spans` — it is the
+mechanism, not an unrelated X-Ray feature.
+
+> An earlier revision of this runbook claimed Transaction Search was "not applicable
+> because no X-Ray segments are emitted". That was wrong, and is corrected here.
+
+It is already active on this account, enabled 2026-08-24:
+
+```bash
+aws xray get-trace-segment-destination
+# { "Destination": "CloudWatchLogs", "Status": "ACTIVE" }
+
+aws xray get-indexing-rules
+# Default: Probabilistic, DesiredSamplingPercentage: 100.0
+```
+
+Console path, if it ever needs re-checking: CloudWatch → **Application Signals (APM)** →
+**Transaction search**. The `CloudWatch → Settings → Traces and Metrics` path in older notes
+does not exist.
+
+**`aws/spans` is nevertheless still empty** — `storedBytes=0`, and its only stream has
+`lastEventTimestamp=None`. The cause is on the agent side: no OTLP exporter or ADOT distro
+is installed, so spans are created and attributed in-process and then dropped. Tracked as
+[#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62). Until that lands, the
+control plane's runs list and run detail views render empty regardless of IAM.
 
 ---
 
-## Fly OIDC → AWS IAM Role
+## 6. Stage 4 — Orchestrator
 
-### Primary: OIDC Token (Recommended)
+```bash
+cd infra
+pnpm run cdk diff AgentFleetOrchestrationStack
+pnpm run cdk deploy AgentFleetOrchestrationStack
+```
 
-Fly Machines expose an OIDC token at `FLY_OIDC_TOKEN_PATH`. The credentials module (`src/server/aws/credentials.ts`) uses `fromWebToken` with this path.
+The Lambda is wired to `agent-fleet-orchestrator-role` in `orchestration-stack.ts`
+(`role: orchestratorRole`), so unlike the agent runtime it genuinely runs under the
+constrained role the IAM tests assert against. Confirm after deploy:
 
-**IAM Trust Policy:**
+```bash
+aws lambda get-function-configuration --function-name agent-fleet-orchestrator \
+  --query Role --output text
+# arn:aws:iam::755641879575:role/agent-fleet-orchestrator-role
+```
+
+Invoke it. AWS CLI v2 requires base64 or `fileb://` for `--payload`; a raw JSON string
+fails with `Invalid base64`:
+
+```bash
+echo '{"agent":"dep-updater","scheduledAt":"2026-08-25T00:00:00Z"}' > /tmp/orch-payload.json
+
+aws lambda invoke --function-name agent-fleet-orchestrator \
+  --payload fileb:///tmp/orch-payload.json \
+  /tmp/orchestrator-output.json && cat /tmp/orchestrator-output.json
+
+rm -f /tmp/orch-payload.json /tmp/orchestrator-output.json
+```
+
+An EventBridge rule (`agent-fleet-dep-updater-schedule`) invokes it every 6 hours.
+
+---
+
+## 7. Stage 5 — Control-plane IAM (blocking)
+
+**The control plane cannot obtain AWS credentials today.** Three gaps, all verified against
+live AWS on 2026-08-25. All are code changes in `infra/lib/iam-stack.ts` and
+`apps/control-plane/src/server/aws/credentials.ts`, tracked in
+[#60](https://github.com/llipe/dev-tasks-agent-fleet/issues/60) — do not hand-patch the
+live role.
+
+### How Fly OIDC actually works
+
+Confirmed against [Fly's OIDC docs](https://fly.io/docs/security/openid-connect/) and
+[the announcement post](https://fly.io/blog/oidc-cloud-roles/). The mechanism is fully
+automatic and requires **no application code**:
+
+1. Fly's `init` detects the `AWS_ROLE_ARN` environment variable at machine boot.
+2. It requests an OIDC token from the Machines API over the `/.fly/api` unix socket
+   (`POST /v1/tokens/oidc`), with `aud` set to `sts.amazonaws.com`.
+3. It writes the token to `/.fly/oidc_token`.
+4. It sets `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` for every process it
+   launches.
+5. The AWS SDK's default credential provider chain finds
+   `AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN` and calls `AssumeRoleWithWebIdentity`
+   itself.
+
+Token claims, from the docs' example payload:
+
+| Claim | Value for this app                                     |
+| ----- | ------------------------------------------------------ |
+| `iss` | `https://oidc.fly.io/personal`                         |
+| `aud` | `sts.amazonaws.com`                                    |
+| `sub` | `personal:dt-agent-fleet-control-plane:<machine-name>` |
+
+`sub` is `<org-slug>:<app-name>:<machine-name>`, so it must be matched with `StringLike`
+and a trailing wildcard. The org slug is `personal`, confirmed with `fly orgs list`.
+
+### Gap 1 — role trust does not admit Fly
+
+```bash
+aws iam get-role --role-name agent-fleet-control-plane-role \
+  --query 'Role.AssumeRolePolicyDocument'
+# Principal: { "Service": "ecs-tasks.amazonaws.com" } only
+```
+
+No OIDC provider for Fly is registered either — the account has exactly one, for GitHub
+Actions:
+
+```bash
+aws iam list-open-id-connect-providers
+# token.actions.githubusercontent.com
+```
+
+So `AssumeRoleWithWebIdentity` from a Fly machine cannot succeed. The required provider is
+`https://oidc.fly.io/personal` with audience `sts.amazonaws.com`, and the trust policy is:
 
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/oidc.fly.io/<ORG_SLUG>"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "oidc.fly.io/<ORG_SLUG>:aud": "urn:fly:machine:<APP_NAME>",
-          "oidc.fly.io/<ORG_SLUG>:sub": "app:<APP_NAME>"
-        }
-      }
+  "Effect": "Allow",
+  "Principal": {
+    "Federated": "arn:aws:iam::755641879575:oidc-provider/oidc.fly.io/personal"
+  },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": { "oidc.fly.io/personal:aud": "sts.amazonaws.com" },
+    "StringLike": {
+      "oidc.fly.io/personal:sub": "personal:dt-agent-fleet-control-plane:*"
     }
-  ]
+  }
 }
 ```
 
-**Steps to configure:**
+### Gap 2 — role has no CloudWatch Logs or tagging permissions
 
-1. Register the Fly OIDC provider in IAM:
+`grep -n "logs:\|tag:" infra/lib/iam-stack.ts` returns nothing. The role's single inline
+policy grants DynamoDB only. Every AWS call the control plane makes outside DynamoDB is
+currently unauthorized:
 
-   ```bash
-   aws iam create-open-id-connect-provider \
-     --url "https://oidc.fly.io/<ORG_SLUG>" \
-     --client-id-list "urn:fly:machine:agent-fleet-control-plane" \
-     --thumbprint-list "<fly-oidc-thumbprint>"
-   ```
+| API                                          | Caller                             | Purpose                   |
+| -------------------------------------------- | ---------------------------------- | ------------------------- |
+| `StartQuery`, `GetQueryResults`, `StopQuery` | `server/aws/logs-insights-adapter` | Runs list and run detail  |
+| `FilterLogEvents`                            | `server/aws/filter-logs-adapter`   | Run log panel             |
+| `tag:GetResources`                           | `server/aws/tagging-adapter`       | Agent inventory discovery |
 
-2. Attach the trust policy above to the `control-plane-role` IAM role.
+Fixing the log group _names_ (defects D2/D3) never granted permission to _read_ them.
 
-3. Set the role ARN as a Fly secret:
-   ```bash
-   fly secrets set AWS_ROLE_ARN="arn:aws:iam::<ACCOUNT_ID>:role/control-plane-role" \
-     --app agent-fleet-control-plane
-   ```
+The tagging call is the one that fails first — `listManagedAgents()` discovers agents by the
+`agent:managed=true` tag filter, so without it the agents list is empty and nothing else
+renders. The tags are live and correct:
 
-### Fallback: Static Credentials
+```bash
+aws resourcegroupstaggingapi get-resources \
+  --tag-filters Key=agent:managed,Values=true \
+  --query 'ResourceTagMappingList[*].ResourceARN' --output text
+# arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/depupdater_dep_updater-M4gkuL4wSr ...
+```
 
-If Fly OIDC proves unworkable (provider not recognized, token format incompatible, etc.):
+`tag:GetResources` does not support resource-level permissions and must be granted on
+`Resource: "*"`. The `logs:` actions are scoped to the `aws/spans` and
+`/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*` group ARNs.
 
-1. Create an IAM user with the `control-plane-role` permissions attached directly.
-2. Generate access keys.
-3. Set them as Fly secrets:
-   ```bash
-   fly secrets set AWS_ACCESS_KEY_ID="<key>" --app agent-fleet-control-plane
-   fly secrets set AWS_SECRET_ACCESS_KEY="<secret>" --app agent-fleet-control-plane
-   ```
+The app does **not** call `DescribeLogGroups` — `resolveAgentLogGroup()` reads
+`AGENT_LOG_GROUP` and returns a configuration error when unset. Do not grant it.
 
-The credentials module (`src/server/aws/credentials.ts`) automatically falls back to `fromEnv()` when OIDC is unavailable.
+### Gap 3 — `credentials.ts` invented env var names Fly never sets
 
-**Note:** Static keys should be rotated every 90 days maximum. Set a calendar reminder.
+`apps/control-plane/src/server/aws/credentials.ts` reads `FLY_OIDC_TOKEN_PATH` and
+`FLY_AWS_ROLE_ARN`. **Neither is a real Fly variable.** Fly sets `AWS_ROLE_ARN` (operator
+supplied), `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` (both set by `init`).
+The custom `fromWebToken` branch therefore never activates, and the app silently falls
+through to the local-dev `fromEnv()` path with no credentials.
 
----
+The fix is a deletion, not an addition: drop `createCredentialsProvider()` and use the
+SDK's default chain, which already handles the web-identity file, environment variables and
+local profiles.
 
-## Cloudflare Access Application
+```ts
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 
-### Configuration Steps
+export const credentialsProvider: AwsCredentialIdentityProvider = fromNodeProviderChain();
+```
 
-1. Navigate to Cloudflare Zero Trust Dashboard → Access → Applications.
+This also fixes the refresh bug for free. The previous code called `readFileSync` once at
+module import and passed the result as a string, so the token was never re-read; Fly's OIDC
+tokens are short-lived and STS credentials expire in 15 minutes. The default chain re-reads
+the token file when it refreshes.
 
-2. Add a **Self-hosted** application:
-   - **Application name:** Agent Fleet Control Plane
-   - **Session duration:** 24h
-   - **Application domain:** `controlplane.yourdomain.com`
+> Residual risk to verify on the first deploy: `init` writes `/.fly/oidc_token` at boot. The
+> docs do not state whether it rewrites the file as the token ages. On a machine that stays
+> up longer than the token's lifetime, a credential refresh could read a stale token. With
+> `auto_stop_machines` enabled this may never surface. Watch `fly logs` for
+> `InvalidIdentityToken` after the machine has been up for over an hour.
 
-3. Create an Access Policy:
-   - **Policy name:** Authorized Operators
-   - **Action:** Allow
-   - **Include rules:** Email addresses or identity provider groups authorized for access
+### Why not static access keys
 
-4. Note the **Application Audience (AUD) Tag** — this is `CF_ACCESS_AUD`.
+`fromEnv()` is labelled "Local dev fallback" in `credentials.ts`. An IAM user with
+DynamoDB grants attached directly would bypass the attribute conditions and the
+`InvokeAgentRuntime` deny described in [§3](#write-separation-do-not-weaken-this) — the
+same class of mistake as granting the agent runtime plain `UpdateItem`. If a temporary
+static-credential path is ever needed, its policy must replicate every statement on the
+role, including both `Deny`s, and carry a removal ticket.
 
-5. The **Team Name** is your Zero Trust organization name — this is `CF_ACCESS_TEAM_NAME`.
+Six secrets are currently **staged** on Fly, two of them static AWS keys:
 
-6. Set both as Fly secrets (see [Secrets Management](#secrets-management)).
+```bash
+fly secrets list --app dt-agent-fleet-control-plane
+```
 
-### How It Works
+Remove the static keys once the OIDC path lands:
 
-- Cloudflare Access fronts the application domain.
-- Users authenticate via the configured identity provider.
-- Authenticated requests receive a signed JWT in the `Cf-Access-Jwt-Assertion` header.
-- The Next.js middleware validates this JWT using Cloudflare's public signing keys (JWKS endpoint).
-- Requests without a valid JWT are rejected with 401.
+```bash
+fly secrets unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
+  --app dt-agent-fleet-control-plane
+```
 
----
+### After the fix deploys
 
-## Cloudflare Tunnel Configuration
+```bash
+cd infra && pnpm run cdk deploy AgentFleetIamStack
+```
 
-### Overview
+`AWS_ROLE_ARN` is a role ARN, not a credential — set it in `[env]` in
+`infra/control-plane.fly.toml` rather than as a secret, so it is reviewable in git:
 
-A Cloudflare Tunnel provides a secure, outbound-only connection from Cloudflare's edge to the Fly.io origin. Direct access to `agent-fleet-control-plane.fly.dev` is refused because:
+```toml
+[env]
+NODE_ENV = "production"
+PORT = "3000"
+AWS_ROLE_ARN = "arn:aws:iam::755641879575:role/agent-fleet-control-plane-role"
+```
 
-1. The middleware requires a valid `Cf-Access-Jwt-Assertion` header.
-2. Direct requests to `.fly.dev` bypass Cloudflare and lack this header.
-3. The middleware returns 401 for any request without a valid CF Access JWT.
+Confirm the mechanism engaged on the running machine:
 
-### Setup Steps
+```bash
+fly ssh console --app dt-agent-fleet-control-plane -C "env" \
+  | grep -E "AWS_ROLE_ARN|AWS_WEB_IDENTITY_TOKEN_FILE|AWS_ROLE_SESSION_NAME"
+```
 
-1. Create a Cloudflare Tunnel:
-
-   ```bash
-   cloudflared tunnel create agent-fleet-cp
-   ```
-
-2. Configure the tunnel in the Cloudflare dashboard or via `config.yml`:
-
-   ```yaml
-   tunnel: <TUNNEL_ID>
-   credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
-
-   ingress:
-     - hostname: controlplane.yourdomain.com
-       service: https://agent-fleet-control-plane.fly.dev
-       originRequest:
-         noTLSVerify: false
-     - service: http_status:404
-   ```
-
-3. Route DNS: In Cloudflare DNS, create a CNAME:
-   - **Name:** `controlplane`
-   - **Target:** `<TUNNEL_ID>.cfargotunnel.com`
-   - **Proxy status:** Proxied (orange cloud)
-
-4. Run the tunnel (or configure it as a Cloudflare-managed tunnel in the dashboard):
-   ```bash
-   cloudflared tunnel run agent-fleet-cp
-   ```
-
-### Alternative: Cloudflare-Managed Tunnel (Recommended)
-
-Using the Zero Trust dashboard:
-
-1. Go to Networks → Tunnels → Create a tunnel.
-2. Name: `agent-fleet-control-plane`.
-3. Install the connector (or use dashboard-managed).
-4. Add public hostname: `controlplane.yourdomain.com` → `https://agent-fleet-control-plane.fly.dev`.
-5. The tunnel handles TLS termination and routes through Cloudflare's network.
+All three must be present. If only `AWS_ROLE_ARN` appears, `init` did not complete the
+token dance and the SDK has no credentials.
 
 ---
 
-## Deploy
+## 8. Stage 6 — Cloudflare Access
 
-### From CI (Automatic)
+The self-hosted application `fleet` already exists with destination `fleet.llipe.com` and
+policy "Usuarios Autorizados".
 
-Deploys automatically when code is pushed to `main` and the `validate` job passes:
+Collect two values:
 
-```yaml
-# .github/workflows/control-plane.yml — deploy job
+- **Team name** — Zero Trust → Settings; the hostname is `<team-name>.cloudflareaccess.com`
+- **Application Audience (AUD) tag** — open the `fleet` app → **Additional settings**. It is
+  not on the Applications list view and not in the page URL (that UUID is the application
+  id, not the AUD).
+
+Via API, if the dashboard is uncooperative:
+
+```bash
+curl -s "https://api.cloudflare.com/client/v4/accounts/6b28e7c684a09fb883843f96a34c76fc/access/apps" \
+  -H "Authorization: Bearer <cf-api-token>" | jq '.result[] | {name, aud}'
+```
+
+Set both on Fly:
+
+```bash
+fly secrets set \
+  CF_ACCESS_TEAM_NAME="<team-name>" \
+  CF_ACCESS_AUD="<aud-tag>" \
+  --app dt-agent-fleet-control-plane
+```
+
+How enforcement works: Cloudflare authenticates the user at the edge and injects a signed
+JWT in `Cf-Access-Jwt-Assertion`. `apps/control-plane/src/middleware.ts` verifies it
+against the team's JWKS and returns 401 otherwise. The matcher exempts `/healthz`,
+`/_next/static`, `/_next/image` and `/favicon.ico`; everything else requires a valid token.
+
+**Security note.** Cloudflare Access protects `fleet.llipe.com` only. The Fly hostname
+`dt-agent-fleet-control-plane.fly.dev` is publicly reachable and is not behind Access — the
+middleware is the sole control there. That is by design and is what
+[§11](#11-verification) tests, but it means any future route added outside the matcher is
+exposed to the internet unauthenticated.
+
+---
+
+## 9. Stage 7 — DNS and TLS
+
+Current live state: `fleet.llipe.com` resolves to Cloudflare edge IPs (proxied), and the
+Fly certificate is `Not verified`:
+
+```bash
+dig +short fleet.llipe.com          # 104.21.9.18, 172.67.140.245 → Cloudflare
+fly certs list --app dt-agent-fleet-control-plane
+```
+
+Public IPs are allocated (dedicated IPv4 `213.188.207.210`, $2/mo, plus IPv6).
+
+### Topology in use: Cloudflare proxy → Fly public hostname
+
+DNS record on `llipe.com`:
+
+| Type  | Name    | Target                                 | Proxy   |
+| ----- | ------- | -------------------------------------- | ------- |
+| CNAME | `fleet` | `dt-agent-fleet-control-plane.fly.dev` | Proxied |
+
+With Cloudflare SSL mode **Full (strict)**, the origin must present a certificate valid for
+`fleet.llipe.com`, so the Fly cert has to verify:
+
+```bash
+fly certs create fleet.llipe.com --app dt-agent-fleet-control-plane   # already done
+fly certs check fleet.llipe.com --app dt-agent-fleet-control-plane
+```
+
+If it stays `Not verified`, the orange-cloud proxy is intercepting the ACME challenge.
+Temporarily set the DNS record to **DNS-only** (grey cloud), re-run `fly certs check` until
+it reports issued, then re-enable the proxy. Certificate renewal needs the same treatment
+unless the record is left grey — leaving it grey exposes the origin IP and loses Access, so
+prefer re-proxying.
+
+`fly certs create` before IPs exist warns "Your app has no public IP addresses"; both are
+allocated now.
+
+### Alternative: Cloudflare Tunnel (hardening, not yet implemented)
+
+Running `cloudflared` inside the Fly machine pointed at `localhost:3000` would remove the
+public `.fly.dev` surface entirely, make origin lockdown structural rather than
+application-level, drop the Fly certificate requirement, and allow releasing the $2/mo
+dedicated IPv4. It requires Dockerfile and `fly.toml` process changes, so it is a code
+change and out of scope for this runbook. Do not run `cloudflared` from a laptop as a
+production connector.
+
+---
+
+## 10. Stage 8 — Fly deploy
+
+Blocked until [Stage 5](#7-stage-5--control-plane-iam-blocking) lands: without credentials
+the app builds and serves `/healthz` but every DynamoDB and CloudWatch call fails.
+
+App config is `infra/control-plane.fly.toml` (region `iad`, internal port 3000,
+`force_https`, auto-stop/auto-start, `/healthz` check every 30s). The image is built by
+`apps/control-plane/Dockerfile` — a multi-stage Next.js standalone build running as
+non-root `nextjs`.
+
+Required configuration. Secrets go in `fly secrets`; `AWS_ROLE_ARN` is a role ARN, not a
+credential, so it belongs in `[env]` in `infra/control-plane.fly.toml` where it is
+reviewable in git.
+
+| Name                  | Where             | Source                                             |
+| --------------------- | ----------------- | -------------------------------------------------- |
+| `CF_ACCESS_TEAM_NAME` | `fly secrets`     | [§8](#8-stage-6--cloudflare-access)                |
+| `CF_ACCESS_AUD`       | `fly secrets`     | [§8](#8-stage-6--cloudflare-access)                |
+| `AGENT_LOG_GROUP`     | `fly secrets`     | discovered in [§5](#5-stage-3--observability)      |
+| `AWS_REGION`          | `[env]` or secret | `us-east-1`                                        |
+| `AWS_ROLE_ARN`        | `[env]`           | after [§7](#7-stage-5--control-plane-iam-blocking) |
+
+`AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` are set by Fly's `init` when
+`AWS_ROLE_ARN` is present — never set them yourself.
+
+```bash
+APP_LG=$(aws logs describe-log-groups \
+  --log-group-name-prefix /aws/bedrock-agentcore/runtimes/depupdater_dep_updater \
+  --query 'logGroups[0].logGroupName' --output text)
+
+fly secrets set \
+  AWS_REGION="us-east-1" \
+  AGENT_LOG_GROUP="$APP_LG" \
+  --app dt-agent-fleet-control-plane
+
+fly secrets list --app dt-agent-fleet-control-plane   # confirm none left "Staged"
+```
+
+Deploy:
+
+```bash
 flyctl deploy --config infra/control-plane.fly.toml --remote-only
 ```
 
-### Manual Deploy
-
-```bash
-flyctl deploy --config infra/control-plane.fly.toml --remote-only --app agent-fleet-control-plane
-```
-
-### First Deploy
-
-```bash
-# Ensure secrets are set first
-fly secrets list --app agent-fleet-control-plane
-
-# Deploy
-flyctl deploy --config infra/control-plane.fly.toml --remote-only
-
-# Verify health check
-curl -s https://agent-fleet-control-plane.fly.dev/healthz
-# Expected: {"status":"ok"}
-```
+CI (`.github/workflows/control-plane.yml`) runs the same command on `main` after `validate`
+passes, using `FLY_API_TOKEN` from repository secrets.
 
 ---
 
-## Rollback
+## 11. Verification
 
-The control plane is **stateless** — all state lives in DynamoDB and CloudWatch. Rollback is a simple image swap.
+Run after the first successful deploy and record the output.
 
-### Rollback Steps
+```bash
+FLY_HOST=dt-agent-fleet-control-plane.fly.dev
 
-1. List recent deployments:
+# 1. Health check — public by design, exempt from the middleware matcher
+curl -s "https://$FLY_HOST/healthz"
+# {"status":"ok"}
 
-   ```bash
-   fly releases --app agent-fleet-control-plane
-   ```
+# 2. Protected route with no Access JWT
+curl -s -o /dev/null -w "%{http_code}\n" "https://$FLY_HOST/agents"
+# 401
 
-2. Identify the previous working image version from the releases list.
+# 3. Protected route with a forged JWT
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Cf-Access-Jwt-Assertion: invalid-token" "https://$FLY_HOST/agents"
+# 401
 
-3. Deploy the previous image:
+# 4. HTTPS redirect and HSTS
+curl -s -o /dev/null -w "%{http_code}\n" "http://$FLY_HOST/healthz"     # 301
+curl -s -I "https://$FLY_HOST/healthz" | grep -i strict-transport
+```
 
-   ```bash
-   flyctl deploy --image <previous-image-ref> --app agent-fleet-control-plane
-   ```
+Then, in a browser: `https://fleet.llipe.com/agents` must present the Cloudflare Access
+login, and after authenticating must list agents with live DynamoDB data.
 
-   Or roll back to the previous release:
+Two known deviations at this stage, neither an IAM failure:
 
-   ```bash
-   fly releases rollback --app agent-fleet-control-plane
-   ```
+- `dep-updater` appears **three times** — AgentCore tags three resources per agent and the
+  inventory does not dedupe. [#61](https://github.com/llipe/dev-tasks-agent-fleet/issues/61).
+- The **runs view is empty** — `aws/spans` has never received a record because no OTEL
+  exporter is installed. [#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62).
 
-4. Verify health:
+What _would_ indicate an IAM failure is an `AccessDeniedException` in `fly logs` for
+`StartQuery`, `GetQueryResults`, `FilterLogEvents` or `GetResources` — that points back to
+[Stage 5](#7-stage-5--control-plane-iam-blocking) Gap 2.
 
-   ```bash
-   curl -s https://agent-fleet-control-plane.fly.dev/healthz
-   # Expected: {"status":"ok"}
-   ```
+Credential path actually in use:
 
-5. Verify the app is functional (through Cloudflare Access):
-   - Navigate to `https://controlplane.yourdomain.com/agents`
-   - Confirm data loads correctly
+```bash
+fly ssh console --app dt-agent-fleet-control-plane -C "env" \
+  | grep -E "AWS_ROLE_ARN|AWS_WEB_IDENTITY_TOKEN_FILE|AWS_ROLE_SESSION_NAME"
+```
 
-### Stateless Recovery Verification
-
-After rollback:
-
-- No data loss occurs (all state is in DynamoDB).
-- No cache warm-up required (TTL cache rebuilds on demand).
-- Sessions are re-authenticated via Cloudflare Access (no server-side session state).
-- Agent runs continue unaffected (orchestrator is independent).
+All three must be present — the latter two are set by Fly's `init`. If only `AWS_ROLE_ARN`
+appears, the token dance did not run and the SDK has no credentials.
 
 ---
 
-## Health Check Verification
+## 12. Rollback
 
-The `/healthz` endpoint is excluded from authentication and returns 200 with `{"status":"ok"}`.
+**Control plane** is stateless — all state is in DynamoDB and CloudWatch, the TTL cache
+rebuilds on demand, and sessions are re-authenticated by Cloudflare Access.
 
 ```bash
-# Direct health check (always accessible, even without CF Access)
-curl -s https://agent-fleet-control-plane.fly.dev/healthz
-# Expected: {"status":"ok"}
-
-# Fly dashboard also shows health status via the configured check
-fly status --app agent-fleet-control-plane
+fly releases --app dt-agent-fleet-control-plane
+fly releases rollback --app dt-agent-fleet-control-plane
+curl -s https://dt-agent-fleet-control-plane.fly.dev/healthz
 ```
+
+**Agent credential** — see `docs/runbook-github-app.md` §8. Flip `GITHUB_SECRET_ID` back to
+`dep-agent/github-pat`, remove the `GIT_COMMITTER_*` entries, redeploy. Both secrets
+coexist and the IAM grant spans `secret:dep-agent/github-*`, so no IAM change is needed in
+either direction.
+
+**CDK stacks** — all resources are `RETAIN` and the table has deletion protection, so
+rollback is a redeploy of the previous template, never a destroy.
 
 ---
 
-## Origin Lockdown Verification
+## 13. Cost
 
-### Verification Steps
+| Item                          | Notes                                             |
+| ----------------------------- | ------------------------------------------------- |
+| Fly machine (`shared-cpu-1x`) | Auto-stop enabled; billed while running           |
+| Fly dedicated IPv4            | $2.00/mo — allocated 2026-08-25                   |
+| Fly dedicated IPv6            | No charge                                         |
+| Cloudflare Access + Tunnel    | $0 on the free tier (50 users)                    |
+| DynamoDB on-demand            | Negligible at dashboard volumes                   |
+| CloudWatch Logs Insights      | ~$0.005 per GB scanned                            |
+| CloudWatch Logs storage       | 30-day retention on `aws/spans` and the app group |
 
-Direct `.fly.dev` access must be refused for all authenticated routes:
-
-```bash
-# 1. Health check — should succeed (no auth required)
-curl -s -o /dev/null -w "%{http_code}" https://agent-fleet-control-plane.fly.dev/healthz
-# Expected: 200
-
-# 2. Data route without CF Access header — should be refused
-curl -s -o /dev/null -w "%{http_code}" https://agent-fleet-control-plane.fly.dev/agents
-# Expected: 401
-
-# 3. Data route with invalid CF Access header — should be refused
-curl -s -o /dev/null -w "%{http_code}" \
-  -H "Cf-Access-Jwt-Assertion: invalid-token" \
-  https://agent-fleet-control-plane.fly.dev/agents
-# Expected: 401
-
-# 4. Access through Cloudflare Tunnel (with valid session) — should succeed
-# Navigate to https://controlplane.yourdomain.com/agents in browser after authenticating
-# Expected: 200 with agents list
-```
-
-### Evidence Recording
-
-Document the results of the above commands after first deployment:
-
-```
-Date: YYYY-MM-DD
-Direct /healthz: 200 OK ✓
-Direct /agents (no header): 401 ✓
-Direct /agents (invalid header): 401 ✓
-Tunnel /agents (authenticated): 200 ✓
-Conclusion: Origin lockdown verified — direct access refused for all protected routes.
-```
+Target is under USD 10/month. `infra/control-plane.fly.toml` declares no `[[vm]]` block, so
+Fly's default machine size applies — confirm the actual size and RAM with
+`fly machines list` after the first deploy before treating any figure as final. The
+Dockerfile targets under 512 MB at runtime.
 
 ---
 
-## HTTPS and HSTS Verification
+## 14. Troubleshooting
 
-### HTTPS Enforcement
+**`describe-log-groups` returns nothing.** The prefix does not match a live runtime; the
+generated suffix changes when the runtime is recreated. Widen the prefix as shown in
+[§5](#5-stage-3--observability).
 
-`force_https = true` in `fly.toml` ensures all HTTP requests are redirected to HTTPS:
+**`aws lambda invoke` → `Invalid base64`.** CLI v2 requires `--payload fileb://<file>`.
 
-```bash
-# HTTP request should redirect to HTTPS
-curl -s -o /dev/null -w "%{http_code}" http://agent-fleet-control-plane.fly.dev/healthz
-# Expected: 301 (redirect to HTTPS)
-```
+**`pnpm run cdk -- deploy X` prints cdk usage.** Drop the `--`; see
+[§3](#3-stage-1--aws-infrastructure-stacks).
 
-### HSTS Header
+**`Since this app includes more than a single stack, specify which stacks`.** Name the
+stack explicitly; there are three.
 
-The `Strict-Transport-Security` header is set in `next.config.ts`:
+**Heredoc produces no file.** Pasting multi-line blocks into zsh can collapse the newline
+after `<< 'EOF'`, making the next token an argument to `cat`. Write the file with an editor
+instead of pasting a heredoc.
 
-```bash
-curl -s -I https://agent-fleet-control-plane.fly.dev/healthz | grep -i strict
-# Expected: strict-transport-security: max-age=63072000; includeSubDomains; preload
-```
+**Fly cert stuck `Not verified`.** Orange-cloud proxy intercepting the ACME challenge; see
+[§9](#9-stage-7--dns-and-tls).
 
----
+**Secrets show `Staged`.** They are not live until a deploy, or `fly secrets deploy`.
 
-## Monthly Cost Estimate
+**`AccessDeniedException` in the runs view.** Stage 5 Gap 2 — the role has no `logs:`
+grants.
 
-### Fly.io Pricing (as of 2024)
-
-| Resource               | Configuration            | Estimated Monthly Cost      |
-| ---------------------- | ------------------------ | --------------------------- |
-| Shared CPU 1x (256 MB) | auto-stop enabled        | ~$1.94 (prorated to uptime) |
-| Persistent bandwidth   | Minimal (API calls only) | ~$0.00 (included)           |
-| IPv4 address           | Shared                   | $2.00                       |
-| **Total**              |                          | **~$3.94 – $5.00**          |
-
-With auto-stop enabled and low traffic:
-
-- Machine stops after idle period → charged only while running.
-- Estimated active hours: ~2-4 hours/day with occasional access.
-- **Well under USD 10/month budget.**
-
-### Cloudflare
-
-- Cloudflare Access (free tier): 50 users included → $0
-- Cloudflare Tunnel: included in free/pro plans → $0
-
-### AWS (Control Plane usage)
-
-- DynamoDB on-demand reads: negligible for dashboard usage
-- CloudWatch Logs Insights queries: ~$0.005/GB scanned
-
-**Total estimated monthly cost: USD 4–6 (confirmed under USD 10).**
+**Agent run "succeeds" in under a second.** The pipeline threw and `finally` completed the
+async task. Read the app log group; do not trust the CLI result.
 
 ---
 
-## Troubleshooting
+## 15. Corrections to earlier versions
 
-### Deploy Fails
+Earlier revisions of this runbook contained instructions that do not work against this
+account. They are recorded here so the errors are not repeated.
 
-```bash
-# Check build logs
-fly logs --app agent-fleet-control-plane
-
-# Check machine status
-fly status --app agent-fleet-control-plane
-
-# Force a fresh deploy
-flyctl deploy --config infra/control-plane.fly.toml --remote-only --strategy immediate
-```
-
-### Health Check Failing
-
-```bash
-# SSH into the machine
-fly ssh console --app agent-fleet-control-plane
-
-# Check if the process is running
-ps aux | grep node
-
-# Check env vars are set
-echo $NODE_ENV $PORT
-```
-
-### OIDC Token Issues
-
-```bash
-# SSH and check token availability
-fly ssh console --app agent-fleet-control-plane -C "cat \$FLY_OIDC_TOKEN_PATH"
-
-# If empty or missing, fall back to static credentials
-fly secrets set AWS_ACCESS_KEY_ID="<key>" AWS_SECRET_ACCESS_KEY="<secret>" --app agent-fleet-control-plane
-```
-
-### Machine Not Starting
-
-```bash
-# Check machine events
-fly machines list --app agent-fleet-control-plane
-
-# Restart explicitly
-fly machines restart <machine-id> --app agent-fleet-control-plane
-```
+| Earlier text                                                      | Reality                                                                                                             |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| App `agent-fleet-control-plane`                                   | `dt-agent-fleet-control-plane`                                                                                      |
+| Hostname `controlplane.yourdomain.com`                            | `fleet.llipe.com`                                                                                                   |
+| Role `control-plane-role`                                         | `agent-fleet-control-plane-role`                                                                                    |
+| `fly secrets set AWS_ROLE_ARN=...`                                | Right variable, wrong home — it belongs in `[env]`, and `credentials.ts` reads neither it nor any real Fly variable |
+| "Attach the trust policy to the role"                             | Role trusts `ecs-tasks.amazonaws.com`; no Fly OIDC provider exists                                                  |
+| Static access keys as an acceptable fallback                      | Bypasses write separation; needs full statement replication + removal ticket                                        |
+| Logs permissions unmentioned                                      | Role has **no** `logs:` or `tag:GetResources` grants — agent list and runs view both fail                           |
+| `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` in `credentials.ts`    | Not Fly variables. Fly sets `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` from `AWS_ROLE_ARN`           |
+| CloudWatch Transaction Search at 1% sampling                      | Right requirement — it is the prerequisite that ingests AgentCore spans into `aws/spans`; already enabled at 100%   |
+| "Transaction Search is not applicable — no X-Ray segments"        | **Wrong**, written in an earlier revision of this file. It is exactly the ingestion mechanism for AgentCore spans   |
+| `CloudWatch → Settings → Traces and Metrics → Transaction Search` | Path does not exist. It is CloudWatch → Application Signals (APM) → Transaction search                              |
+| Tunnel `agent-fleet-cp` → `.fly.dev` from an operator workstation | Not a production connector; tunnel-in-machine is the hardening path                                                 |
+| Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                             |
+| App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                    |
