@@ -2,10 +2,11 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                    | Author           |
-| ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| Version | Date       | Summary                                                                                                                     | Author           |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.2     | 2026-08-25 | Updated §5 "Current State" and §12 "Open Questions" to reflect v1 delivery: all 24 stories merged, infra deployed, control plane live. | technical-writer |
 | 1.1     | 2026-08-19 | `incomplete` replaces the fixed-threshold `stale` assumption. `dep-updater` base repo identified, closing an open question. | product-engineer |
-| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)      | product-engineer |
+| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)                                                                       | product-engineer |
 
 ---
 
@@ -23,7 +24,7 @@ Operating agents on AgentCore today means using the AWS console, which is organi
 
 **Changing an agent's scope requires a deploy.** Adding a repository to the dependency-update agent's list is a code change, a commit, and a deploy — for what is fundamentally a configuration decision.
 
-**There is no per-repository view.** AWS has no concept of "the repository an agent acted on." The question *"what did all agents do to `fintrack-home` this month"* is not expressible against any AWS API. The repository axis has to be manufactured, which is what the emission contract exists to do.
+**There is no per-repository view.** AWS has no concept of "the repository an agent acted on." The question _"what did all agents do to `fintrack-home` this month"_ is not expressible against any AWS API. The repository axis has to be manufactured, which is what the emission contract exists to do.
 
 A third, quieter problem: there is no cheap signal for an agent that died mid-run. A run that never closed out looks identical to a run still in progress.
 
@@ -56,23 +57,27 @@ The implications are load-bearing rather than incidental:
 
 ## 5. Current State
 
-**Greenfield.** The repository contains the PRD and these foundation documents on a single commit. No application code, no infrastructure, no CI.
+**v1 implemented and deployed.** All 24 user stories (S-001 through S-024) are merged into the integration branch. The control plane is live at `fleet.llipe.com`, behind Cloudflare Access. Two post-plan deployment fix PRs (#57 for defect corrections, #63 for IAM) landed additionally.
 
 State of the surrounding world:
 
-| Item                                        | Status                                                     |
-| ------------------------------------------- | ---------------------------------------------------------- |
-| `dev-tasks-agent-fleet` repo scaffolding    | Not started — layout defined in PRD §16                    |
-| CloudWatch Transaction Search               | Not enabled (prerequisite)                                 |
-| Unified span destination                    | Not decided (per-runtime log group vs shared `aws/spans`)   |
-| Discovery tags on existing agents           | Not applied                                                |
-| Emission contract in agents                 | Not implemented                                            |
-| DynamoDB table + GSI1                       | Not created                                                |
-| Orchestrator Lambda                         | Not written                                                |
-| Control plane front end                     | Not started                                                |
-| `dep-updater` agent                         | Exists outside this repo; will be **rebuilt** here, not migrated |
+| Item                                     | Status                                                                                                     |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dev-tasks-agent-fleet` repo scaffolding | ✅ Complete — monorepo with `apps/`, `agents/`, `packages/shared/`, `infra/`                               |
+| CloudWatch Transaction Search            | ✅ Enabled at 100% sampling on account `755641879575`                                                      |
+| Unified span destination                 | ✅ Decided: shared `aws/spans` log group (PRD open question #1 resolved)                                   |
+| Discovery tags on existing agents        | ✅ Applied (`agent:managed`, `agent:name`, `agent:domain`)                                                 |
+| Emission contract in agents              | ✅ Implemented — `llipe.*` attributes emitted on root spans; no exporter yet ([#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62)) |
+| DynamoDB table + GSI1                    | ✅ Created (`agent-fleet-config` / `GSI1`), deletion protection on                                         |
+| Orchestrator Lambda                      | ✅ Deployed (`agent-fleet-orchestrator`), EventBridge schedule every 6 hours                                |
+| Control plane front end                  | ✅ Deployed to Fly.io, 2 machines, Cloudflare Access protecting `fleet.llipe.com`                          |
+| `dep-updater` agent                      | ✅ Rebuilt in-repo, deployed to AgentCore, GitHub App credential active (PR memo-cli#49 verified)          |
 
-The `dep-updater` rebuild is a deliberate choice. The existing implementation is available for reference and its behavioural details will be supplied when that work is scheduled; no migration path is assumed or documented.
+### Known gaps at v1 delivery
+
+- **Spans not arriving** — `aws/spans` has `storedBytes=0`. No OTLP exporter is installed in the agent; spans are created and attributed but dropped. Tracked as [#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62). Until resolved, the runs list and run detail views render empty.
+- **Agent appears three times** in the agents list — AgentCore tags three resources per runtime and the inventory does not deduplicate. [#61](https://github.com/llipe/dev-tasks-agent-fleet/issues/61).
+- **Origin lockdown not implemented** — `dt-agent-fleet-control-plane.fly.dev` is publicly reachable; middleware JWT validation is the sole control on that hostname. See `docs/technical-guidelines.md` §5.
 
 ---
 
@@ -98,12 +103,12 @@ The build order matters and is not negotiable: the data has to exist before the 
 
 ## 7. Success Metrics
 
-| Metric                                                       | Target                  |
-| ------------------------------------------------------------ | ----------------------- |
-| Time to add a repository to an agent's scope                 | Under 30 seconds, zero deploys |
-| Clicks from the run list to the logs of a failed run         | Under 3                 |
-| AWS console visits to check on agents, in steady state       | Zero                    |
-| Monthly infrastructure cost of the control plane             | Under USD 10            |
+| Metric                                                 | Target                         |
+| ------------------------------------------------------ | ------------------------------ |
+| Time to add a repository to an agent's scope           | Under 30 seconds, zero deploys |
+| Clicks from the run list to the logs of a failed run   | Under 3                        |
+| AWS console visits to check on agents, in steady state | Zero                           |
+| Monthly infrastructure cost of the control plane       | Under USD 10                   |
 
 These are operator-experience metrics, measured by the operator. There is no analytics instrumentation in v1 and none is planned — adding telemetry to a single-user tool to measure the single user would cost more than asking him.
 
@@ -141,9 +146,9 @@ These are operator-experience metrics, measured by the operator. There is no ana
 
 ## 10. Key Stakeholders
 
-| Stakeholder | Role                                                          |
-| ----------- | ------------------------------------------------------------- |
-| @llipe      | Owner, sole operator, sole decision-maker, PRD author         |
+| Stakeholder | Role                                                  |
+| ----------- | ----------------------------------------------------- |
+| @llipe      | Owner, sole operator, sole decision-maker, PRD author |
 
 No approval chain, no external stakeholders. Scope decisions are made by one person and recorded in the PRD.
 
@@ -164,14 +169,14 @@ No approval chain, no external stakeholders. Scope decisions are made by one per
 
 ## 12. Open Questions
 
-| # | Question                                                                                                              | Owner   | Blocks                        |
-| - | --------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------- |
-| 1 | Span destination: per-runtime log group or shared `aws/spans`? Picking one is a prerequisite, and the choice shapes the query layer. | @llipe  | Phase 1, and the run read path |
-| 2 | Does Fly Machines OIDC → AWS `AssumeRoleWithWebIdentity` work without friction, or is the static-key fallback needed?   | @llipe  | Phase 1 IAM                   |
-| 3 | Origin lockdown mechanism: Cloudflare Tunnel or Cloudflare IP allowlist?                                              | @llipe  | Phase 5 deployment            |
-| 4 | `dep-updater` rebuild: behavioural scope, current parameter shape, and prompt content — to be supplied from the existing repo when scheduled. | @llipe  | Phase 3                       |
-| 5 | Pricing-table update cadence and who notices when a model's price changes.                                            | @llipe  | Cost accuracy, not delivery   |
-| 6 | Log retention period on the span destination — this sets the real limit on how far back any view can look.            | @llipe  | Phase 1, and metric framing   |
+| #   | Question                                                                                                                             | Owner  | Status                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------ |
+| 1   | Span destination: per-runtime log group or shared `aws/spans`?                                                                       | @llipe | ✅ Resolved: shared `aws/spans` (see `runbook-observability-setup.md`)                                  |
+| 2   | Does Fly Machines OIDC → AWS `AssumeRoleWithWebIdentity` work without friction, or is the static-key fallback needed?                | @llipe | ✅ Resolved: OIDC works, static keys withdrawn ([ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md)) |
+| 3   | Origin lockdown mechanism: Cloudflare Tunnel or Cloudflare IP allowlist?                                                             | @llipe | ⚠️ Open: Tunnel-in-machine is the path, but not yet implemented                                       |
+| 4   | `dep-updater` rebuild: behavioural scope, current parameter shape, and prompt content.                                               | @llipe | ✅ Resolved: agent rebuilt in `agents/dep-updater/`, deployed and verified                              |
+| 5   | Pricing-table update cadence and who notices when a model's price changes.                                                           | @llipe | ⚠️ Open: hand-maintained `pricing/pricing-v1.json` with no automated staleness check                  |
+| 6   | Log retention period on the span destination — this sets the real limit on how far back any view can look.                            | @llipe | ✅ Resolved: 30 days on both `aws/spans` and the agent app log group                                   |
 
 ---
 

@@ -1,0 +1,35 @@
+{
+  "name": "@fleet/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./params-schemas": {
+      "types": "./src/params-schemas.ts",
+      "default": "./src/params-schemas.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:integration": "echo 'No integration tests configured yet'",
+    "test:e2e": "echo 'No e2e tests configured yet'",
+    "codegen": "tsx scripts/codegen.ts",
+    "audit": "pnpm audit --prod",
+    "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

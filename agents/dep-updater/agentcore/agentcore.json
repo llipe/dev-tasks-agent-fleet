@@ -1,0 +1,49 @@
+{
+  "name": "depupdater",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "depupdater"
+  },
+  "runtimes": [
+    {
+      "name": "dep_updater",
+      "description": "Autonomous dependency updater agent",
+      "build": "Container",
+      "entrypoint": "main.py",
+      "codeLocation": ".",
+      "buildContextPath": "../..",
+      "dockerfile": "Dockerfile.dep-updater",
+      "runtimeVersion": "PYTHON_3_13",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "envVars": [
+        { "name": "GITHUB_SECRET_ID", "value": "dep-agent/github-app" },
+        { "name": "GIT_COMMITTER_NAME", "value": "devtasks-agent-fleet[bot]" },
+        { "name": "GIT_COMMITTER_EMAIL", "value": "4687256+devtasks-agent-fleet[bot]@users.noreply.github.com" }
+      ],
+      "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 300,
+        "maxLifetime": 3600
+      },
+      "tags": {
+        "agent:managed": "true",
+        "agent:name": "dep-updater",
+        "agent:domain": "security"
+      }
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "payments": []
+}

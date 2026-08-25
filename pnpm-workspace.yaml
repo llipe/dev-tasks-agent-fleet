@@ -1,0 +1,6 @@
+packages:
+  - "apps/*"
+  - "agents/*"
+  - "packages/*"
+  - "infra"
+  - "infra/orchestrator"

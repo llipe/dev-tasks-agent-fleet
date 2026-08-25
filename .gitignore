@@ -1,0 +1,37 @@
+node_modules
+dist
+.next
+next-env.d.ts
+coverage
+*.tsbuildinfo
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+
+# AgentCore deployment targets: contains the AWS account ID, and this repo is
+# public. The CLI regenerates it from ambient AWS credentials on first
+# `agentcore deploy`, so committing it buys nothing.
+agents/*/agentcore/aws-targets.json
+
+# CDK build artifacts (may contain account IDs, ARNs)
+cdk.out
+cdk.context.json
+
+# AWS credentials and config (should never be in repo)
+.aws/
+credentials
+*.pem
+*.key
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+packages/shared/generated/__pycache__
+
+# Scratch bodies passed to `gh --body-file`. GitHub is the source of truth for
+# issue and PR prose, so these drafts stay local.
+workstream/.pr-body-*.md

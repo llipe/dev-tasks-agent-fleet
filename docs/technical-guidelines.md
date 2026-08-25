@@ -2,10 +2,12 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                | Author           |
-| ------- | ---------- | ------------------------------------------------------ | ---------------- |
-| 1.1     | 2026-08-19 | IaC changed from Terraform to AWS CDK (TypeScript). Agent Python 3.13. Added the agent-liveness / non-blocking-entrypoint constraint. `stale` → `incomplete` bounded by `maxLifetime`. | product-engineer |
-| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)   | product-engineer |
+| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                                               | Author           |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.3     | 2026-08-25 | §9 code structure corrected: `src/server/mappers/` → `src/server/runs/`; added `infra/orchestrator/` and `infra/seed/`; `src/lib/` note expanded to include `auth`. | technical-writer |
+| 1.2     | 2026-08-25 | Static AWS keys removed as an approved credential fallback; Fly OIDC is the only path ([ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md)). `build` added to the `validate` gate ([ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md)). `fly.toml` moved to the repo root. Origin lockdown recorded as an open deviation. | technical-writer |
+| 1.1     | 2026-08-19 | IaC changed from Terraform to AWS CDK (TypeScript). Agent Python 3.13. Added the agent-liveness / non-blocking-entrypoint constraint. `stale` → `incomplete` bounded by `maxLifetime`.                                                                                                                                                                                | product-engineer |
+| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)                                                                                                                                                                                                                                                                                                                 | product-engineer |
 
 ---
 
@@ -28,41 +30,41 @@ Guiding principles:
 
 ### Workspace
 
-| Concern         | Choice                                                                 |
-| --------------- | ---------------------------------------------------------------------- |
-| Package manager | **pnpm** with workspaces (`pnpm-workspace.yaml`). Required, not preferred. |
+| Concern         | Choice                                                                         |
+| --------------- | ------------------------------------------------------------------------------ |
+| Package manager | **pnpm** with workspaces (`pnpm-workspace.yaml`). Required, not preferred.     |
 | Node runtime    | Pinned exactly in `.nvmrc` and `engines`, matched to the container base image. |
-| Language (JS)   | TypeScript, `strict: true`, no implicit `any`, `noUncheckedIndexedAccess`. |
-| Monorepo tasks  | pnpm workspace scripts. Add a task runner only if build times justify it. |
+| Language (JS)   | TypeScript, `strict: true`, no implicit `any`, `noUncheckedIndexedAccess`.     |
+| Monorepo tasks  | pnpm workspace scripts. Add a task runner only if build times justify it.      |
 
 ### Control plane — `apps/control-plane`
 
-| Concern     | Choice                                                    |
-| ----------- | --------------------------------------------------------- |
-| Framework   | Next.js App Router, `output: 'standalone'`                 |
-| UI          | shadcn/ui + Tailwind CSS                                   |
-| Tables      | TanStack Table                                             |
-| AWS access  | AWS SDK for JavaScript v3, modular clients only            |
-| Validation  | Zod — every external input and every AWS response boundary |
-| State       | Server components plus an in-process TTL cache. No client store. |
+| Concern    | Choice                                                           |
+| ---------- | ---------------------------------------------------------------- |
+| Framework  | Next.js App Router, `output: 'standalone'`                       |
+| UI         | shadcn/ui + Tailwind CSS                                         |
+| Tables     | TanStack Table                                                   |
+| AWS access | AWS SDK for JavaScript v3, modular clients only                  |
+| Validation | Zod — every external input and every AWS response boundary       |
+| State      | Server components plus an in-process TTL cache. No client store. |
 
 ### Agents — `agents/*`
 
-| Concern      | Choice                                                                 |
-| ------------ | ---------------------------------------------------------------------- |
+| Concern      | Choice                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------- |
 | Language     | **Python 3.13**, matching the reference agent and where the AgentCore SDK ecosystem lives |
-| Dependencies | `uv` with a committed lockfile, exact pins                             |
-| Contract     | Generated Python module produced from `packages/shared` — never hand-written |
-| Lint / types | `ruff` + `mypy --strict`                                               |
-| Concurrency  | **The entrypoint must never block.** See "Agent liveness" below.        |
+| Dependencies | `uv` with a committed lockfile, exact pins                                                |
+| Contract     | Generated Python module produced from `packages/shared` — never hand-written              |
+| Lint / types | `ruff` + `mypy --strict`                                                                  |
+| Concurrency  | **The entrypoint must never block.** See "Agent liveness" below.                          |
 
 ### Orchestrator and infrastructure
 
-| Concern     | Choice                                                                     |
-| ----------- | -------------------------------------------------------------------------- |
-| Orchestrator | **TypeScript** Lambda. It reads GSI1 and builds `session_id` — both contract-bound, so native import of `packages/shared` matters more here than SDK breadth. |
-| IaC         | **AWS CDK (TypeScript).** Same language as the orchestrator, the control plane, and `packages/shared`, so infrastructure imports the same constants it deploys — table name, GSI name, tag keys, agent names. Also what the reference agent already uses. |
-| Hosting     | Fly.io, single machine, single container                                    |
+| Concern      | Choice                                                                                                                                                                                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Orchestrator | **TypeScript** Lambda. It reads GSI1 and builds `session_id` — both contract-bound, so native import of `packages/shared` matters more here than SDK breadth.                                                                                             |
+| IaC          | **AWS CDK (TypeScript).** Same language as the orchestrator, the control plane, and `packages/shared`, so infrastructure imports the same constants it deploys — table name, GSI name, tag keys, agent names. Also what the reference agent already uses. |
+| Hosting      | Fly.io, single machine, single container                                                                                                                                                                                                                  |
 
 ### Cross-language contract flow
 
@@ -104,16 +106,16 @@ Agent on AgentCore
 
 ### Key decisions and rationale
 
-| Decision                                    | Rationale                                                                                                  |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| No database in the control plane            | Everything displayed already lives in an AWS API. A local store would be a cache with a consistency problem. |
-| In-process memory cache, 5-minute TTL       | Logs Insights is slow and metered. The cache exists to make navigation tolerable, not to be a source of truth. |
-| Server components instead of an HTTP API    | No second surface to authenticate, no client-side AWS credentials, no API contract to version.               |
-| `session_id` generated by the orchestrator  | Fire-and-forget returns no identifier. Pre-generating it is the only way the DynamoDB row and the logs correlate. |
-| DynamoDB single table + inverted GSI1       | Two access patterns, mirror images of each other. `GSI1: PK = SK, SK = PK` serves the second for free.       |
-| `incomplete` derived at read time           | Nobody can write "I died." Comparing `last_run_at` against the agent's `maxLifetime` from `GetAgentRuntime` turns that silence into a determinate fact. |
-| Bounded fan-out pool of 3–5                 | Serial stacks latency; unbounded hits GitHub and Bedrock rate limits.                                        |
-| Monorepo, separate deploys                  | Shared contracts justify one repo. Different deploy targets and cadences justify path-gated CI.               |
+| Decision                                   | Rationale                                                                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No database in the control plane           | Everything displayed already lives in an AWS API. A local store would be a cache with a consistency problem.                                            |
+| In-process memory cache, 5-minute TTL      | Logs Insights is slow and metered. The cache exists to make navigation tolerable, not to be a source of truth.                                          |
+| Server components instead of an HTTP API   | No second surface to authenticate, no client-side AWS credentials, no API contract to version.                                                          |
+| `session_id` generated by the orchestrator | Fire-and-forget returns no identifier. Pre-generating it is the only way the DynamoDB row and the logs correlate.                                       |
+| DynamoDB single table + inverted GSI1      | Two access patterns, mirror images of each other. `GSI1: PK = SK, SK = PK` serves the second for free.                                                  |
+| `incomplete` derived at read time          | Nobody can write "I died." Comparing `last_run_at` against the agent's `maxLifetime` from `GetAgentRuntime` turns that silence into a determinate fact. |
+| Bounded fan-out pool of 3–5                | Serial stacks latency; unbounded hits GitHub and Bedrock rate limits.                                                                                   |
+| Monorepo, separate deploys                 | Shared contracts justify one repo. Different deploy targets and cadences justify path-gated CI.                                                         |
 
 ### Agent liveness — the entrypoint must not block
 
@@ -149,11 +151,11 @@ A run's terminal state must be written from a `finally` block — both the Dynam
 
 Writes use **Server Actions**, one per intent:
 
-| Action                | Purpose                                    |
-| --------------------- | ------------------------------------------ |
-| `setSubjectEnabled`   | Toggle `enabled` on a `SUBJECT#…/AGENT#…` item |
-| `setSubjectParams`    | Replace validated `params` on that item     |
-| `addSubjectToAgent`   | `PutItem` a new subject/agent pair          |
+| Action              | Purpose                                        |
+| ------------------- | ---------------------------------------------- |
+| `setSubjectEnabled` | Toggle `enabled` on a `SUBJECT#…/AGENT#…` item |
+| `setSubjectParams`  | Replace validated `params` on that item        |
+| `addSubjectToAgent` | `PutItem` a new subject/agent pair             |
 
 Rules for Server Actions:
 
@@ -183,9 +185,29 @@ Cloudflare Access sits in front of the app. **Both halves are mandatory** and ne
 
 These are two independent controls against the same threat, and the app must not ship with only one. Validation without origin lockdown means anyone who finds the origin bypasses Cloudflare entirely; origin lockdown without validation means anyone who can route through Cloudflare is trusted.
 
-**Authorization:** none. Roles and permissions are out of scope, and a single-operator tool does not need them. That is a scope decision about *what distinctions exist among authenticated users* — it is not permission to skip authentication. Every request is still identified.
+> ⚠️ **Open deviation as of 2026-08-25 — control 2 is not implemented.** The deployed control
+> plane satisfies control 1 only. `dt-agent-fleet-control-plane.fly.dev` is publicly
+> reachable and `apps/control-plane/src/middleware.ts` is the sole control there; Cloudflare
+> Access protects `fleet.llipe.com` but not the origin hostname. This is a real gap against
+> this guideline, not a reinterpretation of it, and it is recorded here rather than resolved
+> by weakening the rule. Two consequences: any route added outside the middleware matcher is
+> exposed unauthenticated, and the matcher's exemptions (`/healthz`, `/_next/static`,
+> `/_next/image`, `/favicon.ico`) are internet-facing. The hardening path — running
+> `cloudflared` inside the Fly machine against `localhost:3000` — is described in
+> `docs/runbook-deployment.md` §9 and needs Dockerfile and `fly.toml` process changes.
 
-**Machine identity:** the control plane assumes an AWS role via Fly Machines OIDC (`AssumeRoleWithWebIdentity`). Static access keys in Fly secrets are the documented fallback, carrying the same minimal permissions. If the fallback is used, keys must be rotatable without a redeploy and must never appear in the repo, logs, or build output.
+**Authorization:** none. Roles and permissions are out of scope, and a single-operator tool does not need them. That is a scope decision about _what distinctions exist among authenticated users_ — it is not permission to skip authentication. Every request is still identified.
+
+**Machine identity:** the control plane assumes an AWS role via Fly Machines OIDC (`AssumeRoleWithWebIdentity`), and that is the **only** supported path. See [ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md).
+
+Static access keys are **not** an approved fallback. An earlier version of this document listed them as one "carrying the same minimal permissions" — that is not achievable. The control plane's authority is defined by conditions on a _role_: `dynamodb:UpdateItem` constrained by `dynamodb:Attributes`, an explicit `Deny` on `InvokeAgentRuntime`, and an explicit `Deny` on `last_*` writes. An IAM user with policies attached directly reproduces the action list but not the conditions, which voids the scope boundary in §6 with no test failing. If a static path is ever genuinely needed it requires a new ADR, must replicate every statement including both `Deny`s, and must carry a removal ticket.
+
+Mechanics that follow from this, and that are easy to get wrong:
+
+- `AWS_ROLE_ARN` goes in `[env]` in `fly.toml`, not in `fly secrets`. It is a role ARN, not a credential, and belongs where review can see it.
+- `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` are set by Fly's `init` when `AWS_ROLE_ARN` is present. Never set them by hand.
+- Application code must not implement its own web-identity provider. `credentials.ts` delegates to `fromNodeProviderChain()`; a hand-rolled provider that reads the token file once at import never refreshes it.
+- The OIDC issuer slug is the real org slug from a live token's `iss` claim, **not** the alias `fly orgs list` prints. Discovery resolves for both, so only the token proves it.
 
 ---
 
@@ -195,11 +217,11 @@ These are two independent controls against the same threat, and the app must not
 
 **Write separation, enforced by policy.** Three writers touch the DynamoDB table with disjoint attribute sets:
 
-| Writer       | May write                                                | Mechanism                     |
-| ------------ | -------------------------------------------------------- | ----------------------------- |
-| Control plane | `enabled`, `params`                                       | `PutItem` / `UpdateItem`      |
-| Orchestrator | `last_session_id`, `last_run_at`, `last_status="running"` | `UpdateItem`                  |
-| Agent        | `last_status`, `last_outcome_url`                         | `UpdateExpression` only, **never `PutItem`** |
+| Writer        | May write                                                 | Mechanism                                    |
+| ------------- | --------------------------------------------------------- | -------------------------------------------- |
+| Control plane | `enabled`, `params`                                       | `PutItem` / `UpdateItem`                     |
+| Orchestrator  | `last_session_id`, `last_run_at`, `last_status="running"` | `UpdateItem`                                 |
+| Agent         | `last_status`, `last_outcome_url`                         | `UpdateExpression` only, **never `PutItem`** |
 
 The agent execution role is constrained with `dynamodb:Attributes` to those two attributes. `PutItem` from an agent would silently erase `enabled` and `params`, which is why the policy forbids it rather than the code merely avoiding it.
 
@@ -234,11 +256,11 @@ GSI1: PK = SK, SK = PK   (inverted)
 
 ### Access patterns
 
-| Need                          | Query                                                    |
-| ----------------------------- | -------------------------------------------------------- |
-| Repositories for an agent     | `Query GSI1 PK = AGENT#<name>`, filter `enabled = true`   |
-| Agents for a repository       | `Query PK = SUBJECT#<repo>`                               |
-| Add a repository to scope     | Single `PutItem`                                          |
+| Need                      | Query                                                   |
+| ------------------------- | ------------------------------------------------------- |
+| Repositories for an agent | `Query GSI1 PK = AGENT#<name>`, filter `enabled = true` |
+| Agents for a repository   | `Query PK = SUBJECT#<repo>`                             |
+| Add a repository to scope | Single `PutItem`                                        |
 
 ### Conventions
 
@@ -254,16 +276,16 @@ GSI1: PK = SK, SK = PK   (inverted)
 
 ## 8. Integration Methods
 
-| Integration              | Surface                                                       | Notes                                                        |
-| ------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------ |
-| Resource Groups Tagging  | `tag:GetResources`, filter `agent:managed=true`                | The only discovery filter. Untagged agents are invisible by design. |
-| AgentCore Control        | `GetAgentRuntime`, `ListAgentRuntimes`                         | Read-only. Runtime detail, 5-minute cache.                    |
-| CloudWatch Logs Insights | `StartQuery` → poll `GetQueryResults`                          | The run list. Async, seconds-scale, quota-limited.            |
-| CloudWatch Logs          | `FilterLogEvents` by `session_id`                              | Execution logs. Uncached — read when something is wrong.      |
-| DynamoDB                 | `GetItem`, `Query`, `PutItem`, `UpdateItem`, `DeleteItem`        | Table and GSI1 only.                                          |
-| AgentCore Runtime        | `InvokeAgentRuntime`                                           | **Orchestrator role only.** Never the control plane.          |
-| GitHub                   | GitHub App installation tokens                                 | Agent-side. Scoped per repository, short-lived.               |
-| Cloudflare Access        | `Cf-Access-Jwt-Assertion` + team JWKS                          | Validated in middleware, fail closed.                         |
+| Integration              | Surface                                                   | Notes                                                               |
+| ------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------- |
+| Resource Groups Tagging  | `tag:GetResources`, filter `agent:managed=true`           | The only discovery filter. Untagged agents are invisible by design. |
+| AgentCore Control        | `GetAgentRuntime`, `ListAgentRuntimes`                    | Read-only. Runtime detail, 5-minute cache.                          |
+| CloudWatch Logs Insights | `StartQuery` → poll `GetQueryResults`                     | The run list. Async, seconds-scale, quota-limited.                  |
+| CloudWatch Logs          | `FilterLogEvents` by `session_id`                         | Execution logs. Uncached — read when something is wrong.            |
+| DynamoDB                 | `GetItem`, `Query`, `PutItem`, `UpdateItem`, `DeleteItem` | Table and GSI1 only.                                                |
+| AgentCore Runtime        | `InvokeAgentRuntime`                                      | **Orchestrator role only.** Never the control plane.                |
+| GitHub                   | GitHub App installation tokens                            | Agent-side. Scoped per repository, short-lived.                     |
+| Cloudflare Access        | `Cf-Access-Jwt-Assertion` + team JWKS                     | Validated in middleware, fail closed.                               |
 
 **Adapter pattern.** One thin module per external service, in the control plane's server layer. Adapters return typed domain objects; no AWS SDK type escapes into a component. This keeps the mapping logic — spans to `Run`, items to configuration — pure and directly testable.
 
@@ -284,10 +306,10 @@ dev-tasks-agent-fleet/
 │       ├── src/server/
 │       │   ├── aws/              # one adapter per service
 │       │   ├── repository/       # DynamoDB access, key builders
-│       │   ├── mappers/          # span → Run, item → config (pure)
+│       │   ├── runs/             # span → Run mapping, query building, merge logic (pure)
 │       │   ├── cache/            # in-process TTL cache
 │       │   └── actions/          # Server Actions
-│       ├── src/lib/              # cost estimation, formatting, status derivation
+│       ├── src/lib/              # cost estimation, formatting, status derivation, auth
 │       ├── pricing/              # versioned pricing table, indexed by model_id
 │       └── middleware.ts         # Access JWT validation
 ├── agents/
@@ -296,9 +318,17 @@ dev-tasks-agent-fleet/
 │   └── shared/                   # DynamoDB schema + llipe.* contract, key builders,
 │                                 # status enums, thresholds; JSON Schema + generated Python
 └── infra/
-    ├── control-plane.fly.toml
-    └── agents/                   # CDK: table, GSI1, scheduler, orchestrator, IAM, tags
+    ├── lib/                      # CDK: table, GSI1, scheduler, orchestrator, IAM, tags,
+    │                             # Fly OIDC provider + control-plane role trust
+    ├── orchestrator/             # TypeScript Lambda source + tests
+    ├── seed/                     # DynamoDB seed script
+    └── bin/app.ts                # three stacks: Data, Iam, Orchestration
 ```
+
+`fly.toml` lives at the **repo root**, not under `infra/`. Fly resolves `[build].dockerfile`
+relative to the toml's own directory and no CLI flag overrides it, so a toml under `infra/`
+looked for `infra/apps/control-plane/Dockerfile`. The Dockerfile's `COPY` paths need the repo
+root as build context, so the toml has to sit there too.
 
 ### Dependency rules
 
@@ -332,13 +362,13 @@ dev-tasks-agent-fleet/
 
 **Test-first is the default.** Acceptance criteria and test scenarios are designed before implementation, per repository convention.
 
-| Layer                | Tool                        | Scope                                                             |
-| -------------------- | --------------------------- | ----------------------------------------------------------------- |
-| Unit (TS)            | Vitest                      | Mappers, cost estimation, status derivation, key builders, `params` validation |
-| Integration (TS)     | Vitest + `aws-sdk-client-mock` | Adapters and repository against mocked AWS clients                |
-| E2E                  | Playwright                  | The four views, filters, toggle, side panel; stubbed auth header, fixture data |
-| Unit (Python)        | pytest                      | Agent logic, payload parsing                                       |
-| **Contract**         | pytest + Vitest             | Emitted root-span attributes and DynamoDB item shape match `packages/shared` |
+| Layer            | Tool                           | Scope                                                                          |
+| ---------------- | ------------------------------ | ------------------------------------------------------------------------------ |
+| Unit (TS)        | Vitest                         | Mappers, cost estimation, status derivation, key builders, `params` validation |
+| Integration (TS) | Vitest + `aws-sdk-client-mock` | Adapters and repository against mocked AWS clients                             |
+| E2E              | Playwright                     | The four views, filters, toggle, side panel; stubbed auth header, fixture data |
+| Unit (Python)    | pytest                         | Agent logic, payload parsing                                                   |
+| **Contract**     | pytest + Vitest                | Emitted root-span attributes and DynamoDB item shape match `packages/shared`   |
 
 The contract test is the one that earns its keep. It asserts that what an agent actually emits satisfies the schema the control plane reads, and that the generated Python module matches its TypeScript source. Everything else in the repo can be re-derived; a drifted contract fails silently and corrupts the repository axis with no error anywhere.
 
@@ -357,14 +387,14 @@ Prefer meaningful assertions over a coverage number. No coverage threshold is ma
 
 ## 12. Code Quality & Standards
 
-| Concern            | Tool                                                              |
-| ------------------ | ----------------------------------------------------------------- |
-| Lint (TS)          | ESLint, Next.js and TypeScript configs                            |
-| Format             | Prettier, single shared config                                    |
-| Types (TS)         | `tsc --noEmit`, `strict: true`                                     |
-| Lint / format (Py) | `ruff`                                                            |
-| Types (Py)         | `mypy --strict`                                                   |
-| Vulnerabilities    | `pnpm audit`, plus Python dependency scanning                      |
+| Concern            | Tool                                          |
+| ------------------ | --------------------------------------------- |
+| Lint (TS)          | ESLint, Next.js and TypeScript configs        |
+| Format             | Prettier, single shared config                |
+| Types (TS)         | `tsc --noEmit`, `strict: true`                |
+| Lint / format (Py) | `ruff`                                        |
+| Types (Py)         | `mypy --strict`                               |
+| Vulnerabilities    | `pnpm audit`, plus Python dependency scanning |
 
 ### Canonical scripts
 
@@ -375,16 +405,22 @@ lint            lint:fix
 format          format:check
 typecheck
 test            test:unit    test:integration    test:e2e
+build
 audit
-validate        # aggregate quality gate: lint + format:check + typecheck + test + audit
+validate        # aggregate quality gate, in order:
+                # lint → format:check → typecheck → test → build → check-boundaries → audit
 ```
 
 `validate` is what CI runs and what should pass locally before a PR.
 
+**`build` is part of the gate** — see [ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md). `tsc --noEmit` does not prove the app bundles. Three defect classes found during #60 were invisible to type-checking and surfaced only at `next build`: ESM `.js` specifiers that webpack cannot resolve without `resolve.extensionAlias`, a `"use client"` component pulling `node:crypto` in through a barrel re-export, and a missing build-time-only PostCSS package. The first two are undetectable by `tsc` by construction, because it has no concept of a bundle boundary.
+
+One gap `build` does **not** close: assets read from the filesystem at runtime rather than imported. Next.js standalone output traces static imports only, so any `readFileSync` of a repo-relative path needs a matching `COPY` in the Dockerfile and is a manual review obligation. `src/lib/cost.ts` reading `pricing/pricing-v1.json` is the live example.
+
 ### Review and documentation
 
 - Human PR review is the actual gate. Automated checks are necessary, not sufficient.
-- Comments explain *why*, not *what*. The non-obvious decisions here — orchestrator-generated `session_id`, read-time `incomplete`, agent `UpdateExpression`-only writes — each deserve a comment pointing at the PRD section, because all three look like mistakes to someone who doesn't know the constraint.
+- Comments explain _why_, not _what_. The non-obvious decisions here — orchestrator-generated `session_id`, read-time `incomplete`, agent `UpdateExpression`-only writes — each deserve a comment pointing at the PRD section, because all three look like mistakes to someone who doesn't know the constraint.
 - Document at the module level: what an adapter is responsible for and what it deliberately does not do.
 
 ---
@@ -405,12 +441,12 @@ Bootstrap the CDK environment once per account/region. Stacks are split by deplo
 
 **Path-gated CI.** GitHub Actions, filtered so unrelated work does not trigger unrelated deploys:
 
-| Path                     | Triggers                                    |
-| ------------------------ | ------------------------------------------- |
-| `apps/control-plane/**`  | validate → build → deploy to Fly            |
-| `agents/<name>/**`       | validate → deploy that agent to AgentCore   |
-| `infra/**`               | `cdk diff` → gated `cdk deploy`             |
-| `packages/shared/**`     | validate **all** consumers, verify generated artifacts match |
+| Path                    | Triggers                                                     |
+| ----------------------- | ------------------------------------------------------------ |
+| `apps/control-plane/**` | validate → build → deploy to Fly                             |
+| `agents/<name>/**`      | validate → deploy that agent to AgentCore                    |
+| `infra/**`              | `cdk diff` → gated `cdk deploy`                              |
+| `packages/shared/**`    | validate **all** consumers, verify generated artifacts match |
 
 A change to `packages/shared` must fan out to everything that depends on it. That is the one path where narrow gating would be wrong.
 
@@ -426,6 +462,8 @@ A change to `packages/shared` must fan out to everything that depends on it. Tha
 
 1. CloudWatch Transaction Search enabled. 1% indexing is sufficient — all spans are ingested as logs, and the indexing rate affects only X-Ray trace summaries.
 2. One unified span destination across the fleet. Two destinations means two queries in the read path.
+
+> **Current state as of 2026-08-25: prerequisite 1 is satisfied but no span has ever arrived.** Transaction Search is `ACTIVE` at 100% sampling and the destination is `aws/spans`, yet that group has `storedBytes=0`. `agents/dep-updater` declares only `opentelemetry-api` and `opentelemetry-sdk` — `uv.lock` resolves no exporter package and no `aws-opentelemetry-distro` — so spans are created and attributed in-process and then dropped. Tracked as [#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62). Until it lands the runs list and run detail views are empty regardless of IAM, and the `llipe.*` contract below is unverified against a real record.
 
 **Structured logging is contractual.** Application logs are JSON, one object per line, with **`session_id` on every line**. With three to five repositories running in parallel, a time-window filter interleaves runs into something unreadable; `session_id` is the only thing that separates them. A log line without it is effectively lost.
 
@@ -454,8 +492,8 @@ Tokens, latency, and model come from AgentCore's automatic instrumentation and r
 
 Scale is fixed and small: one operator, a handful of agents, a few dozen repositories.
 
-| Path                       | Expectation                                                       |
-| -------------------------- | ----------------------------------------------------------------- |
+| Path                       | Expectation                                                        |
+| -------------------------- | ------------------------------------------------------------------ |
 | Cached view render         | Fast enough to feel immediate — cache hit, no AWS round trip       |
 | Cold run list              | Seconds. Logs Insights is start-query-and-poll; this is the floor. |
 | Log fetch in the run panel | Uncached by design. Show a loading state, never a blank panel.     |
@@ -504,20 +542,20 @@ Scale is fixed and small: one operator, a handful of agents, a few dozen reposit
 
 ## 18. Known Constraints & Trade-offs
 
-| Constraint                                                       | Consequence accepted                                                                                 |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| No run ledger, no local database                                 | Run history is bounded by CloudWatch log retention. Once logs expire, those runs are gone. Chosen to keep cost under USD 10/month and to avoid a second source of truth. |
-| 5-minute cache TTL                                               | The run list can be five minutes stale. Acceptable because nothing here is real-time.                  |
-| Logs Insights as the read path                                   | Cold queries take seconds and are quota-limited. No front-end work changes this.                        |
-| Token-derived cost estimate                                      | Excludes runtime compute. Displayed as an estimate. Reconciling a bill needs Cost Explorer, out of scope. |
-| Hand-maintained pricing table                                    | Goes stale silently when a model's price changes. Versioned in-repo so at least the drift is auditable.  |
-| Fire-and-forget invocation                                       | No completion signal except the agent's own write. An agent that dies before writing is only detectable via `incomplete`. |
-| `incomplete` bounded by `maxLifetime` + grace                    | Depends on `GetAgentRuntime` being reachable; falls back to the 8 h service default, which over-waits for agents configured shorter. |
-| Emission contract as a hard dependency                           | An agent that does not emit `llipe.subject.id` is invisible in the repository view, with no error to explain why. The contract test is the mitigation. |
-| Tag-based opt-in discovery                                       | A new agent silently absent until tagged. Intentional, but a predictable source of "why isn't it showing up." |
-| Single account, single region                                    | No failover story. Appropriate for a personal tool.                                                     |
-| No authorization model                                           | Anyone past Cloudflare Access has full write capability over scope configuration. Bounded by the perimeter being the only control. |
-| Static AWS keys as the OIDC fallback                             | Long-lived credentials in Fly secrets if OIDC proves difficult. Weaker; rotate deliberately if used.     |
+| Constraint                                    | Consequence accepted                                                                                                                                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No run ledger, no local database              | Run history is bounded by CloudWatch log retention. Once logs expire, those runs are gone. Chosen to keep cost under USD 10/month and to avoid a second source of truth.                         |
+| 5-minute cache TTL                            | The run list can be five minutes stale. Acceptable because nothing here is real-time.                                                                                                            |
+| Logs Insights as the read path                | Cold queries take seconds and are quota-limited. No front-end work changes this.                                                                                                                 |
+| Token-derived cost estimate                   | Excludes runtime compute. Displayed as an estimate. Reconciling a bill needs Cost Explorer, out of scope.                                                                                        |
+| Hand-maintained pricing table                 | Goes stale silently when a model's price changes. Versioned in-repo so at least the drift is auditable.                                                                                          |
+| Fire-and-forget invocation                    | No completion signal except the agent's own write. An agent that dies before writing is only detectable via `incomplete`.                                                                        |
+| `incomplete` bounded by `maxLifetime` + grace | Depends on `GetAgentRuntime` being reachable; falls back to the 8 h service default, which over-waits for agents configured shorter.                                                             |
+| Emission contract as a hard dependency        | An agent that does not emit `llipe.subject.id` is invisible in the repository view, with no error to explain why. The contract test is the mitigation.                                           |
+| Tag-based opt-in discovery                    | A new agent silently absent until tagged. Intentional, but a predictable source of "why isn't it showing up."                                                                                    |
+| Single account, single region                 | No failover story. Appropriate for a personal tool.                                                                                                                                              |
+| No authorization model                        | Anyone past Cloudflare Access has full write capability over scope configuration. Bounded by the perimeter being the only control.                                                               |
+| Origin lockdown not implemented (§5)          | `dt-agent-fleet-control-plane.fly.dev` is publicly reachable; middleware JWT validation is the sole control on that hostname. An open deviation, not an accepted design — see the warning in §5. |
 
 ---
 
@@ -526,3 +564,7 @@ Scale is fixed and small: one operator, a handful of agents, a few dozen reposit
 - PRD: [`docs/requirements/PRD-agent-control-plane-v1-en.md`](./requirements/PRD-agent-control-plane-v1-en.md) — v1.1, scope closed
 - Product context: [`docs/product-context.md`](./product-context.md)
 - Design contract: [`../DESIGN.md`](../DESIGN.md)
+- Decision records: [`docs/adr/`](./adr/)
+  - [ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md) — Fly OIDC is the only AWS credential path for the control plane
+  - [ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md) — `build` is part of the `validate` quality gate
+- Deployment: [`docs/runbook-deployment.md`](./runbook-deployment.md)

@@ -1,0 +1,68 @@
+[project]
+name = "dep-updater"
+version = "0.1.0"
+description = "Autonomous dependency updater on AWS AgentCore Runtime"
+requires-python = ">=3.13"
+dependencies = [
+    "bedrock-agentcore>=1.21.0",
+    "boto3>=1.43.72",
+    "opentelemetry-api>=1.20.0",
+    # [crypto] is required for RS256 — plain pyjwt fails
+    "pyjwt[crypto]>=2.13.0",
+    "requests>=2.34.2",
+    "strands-agents>=1.52.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "opentelemetry-sdk>=1.20.0",
+    "pytest>=8.0.0",
+    "ruff>=0.11.0",
+    # Type stubs
+    "boto3-stubs[secretsmanager]>=1.43.0",
+    "types-requests>=2.32.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+# The AgentCore CLI stages a copy of the Docker build context under
+# agentcore/cdk/cdk.out on every synth. It is gitignored build output, but it
+# contains a full copy of this package, so exclude it from all Python tooling.
+extend-exclude = ["agentcore"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "N", "S", "B", "A", "C4", "SIM", "TCH", "PLW", "RUF"]
+ignore = [
+    "S603",  # subprocess call - this is the agent's core function
+    "S607",  # partial path to executable
+    "S602",  # subprocess with shell=True - required for fix agent tool
+    "S108",  # /tmp usage - agent runs in ephemeral containers
+    "S301",  # pickle - not used
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105"]  # assert and hardcoded test credentials are fine in tests
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+# See the ruff note above: agentcore/cdk/cdk.out holds a staged copy of this
+# package, which mypy would otherwise report as duplicate modules.
+exclude = ["agentcore/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "bedrock_agentcore.*",
+    "strands.*",
+    "shared_contract",
+    "opentelemetry.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
