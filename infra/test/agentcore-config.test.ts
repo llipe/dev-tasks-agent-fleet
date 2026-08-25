@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEP_UPDATER_TAGS, agentNameToSortKey, PREFIXES, SPANS_LOG_GROUP } from "@fleet/shared";
+import { DEP_UPDATER_TAGS, agentNameToSortKey, PREFIXES } from "@fleet/shared";
 
 /**
  * Contract tests for the AgentCore CLI project config.
@@ -187,8 +187,8 @@ describe("agentcore.json — observability / span delivery contract", () => {
    * 3. Spans then arrived, but in the agent's own log group rather than
    *    `aws/spans`. AgentCore now defaults newly created agents to a per-agent
    *    span destination. `SPANS_LOG_GROUP` in @fleet/shared — and the
-   *    control plane's fleet-wide runs query built on it — assume one shared
-   *    group, so the default is explicitly opted out of here.
+   *    control plane's fleet-wide runs query built on it — now point at the
+   *    per-agent log group, and the opt-in is pinned here.
    *
    * See docs/runbook-observability-setup.md for the full sequence.
    */
@@ -204,15 +204,16 @@ describe("agentcore.json — observability / span delivery contract", () => {
     expect(envVar("AGENT_OBSERVABILITY_ENABLED")?.value).toBe("true");
   });
 
-  it("opts out of the per-agent span destination so spans land in the shared group", () => {
-    expect(envVar("UNIFIED_TRACES_DESTINATION_ENABLED")?.value).toBe("false");
+  it("opts into the per-agent span destination (unified traces)", () => {
+    expect(envVar("UNIFIED_TRACES_DESTINATION_ENABLED")?.value).toBe("true");
   });
 
-  it("keeps the opt-out consistent with the shared SPANS_LOG_GROUP constant", () => {
-    // If SPANS_LOG_GROUP ever becomes a per-agent group, the opt-out above is
-    // wrong and this test is the place that says so.
-    expect(SPANS_LOG_GROUP).toBe("aws/spans");
-    expect(envVar("UNIFIED_TRACES_DESTINATION_ENABLED")?.value).toBe("false");
+  it("keeps the opt-in consistent with the per-agent log group used by the control plane", () => {
+    // The control plane queries spans from each agent's own log group, not
+    // the shared aws/spans group. aws/spans is an AWS-reserved name whose
+    // lifecycle we don't control — it was deleted from the account and cannot
+    // be recreated. Per-agent delivery is the robust path.
+    expect(envVar("UNIFIED_TRACES_DESTINATION_ENABLED")?.value).toBe("true");
   });
 
   /**
