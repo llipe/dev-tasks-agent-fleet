@@ -36,9 +36,22 @@ export class IamStack extends cdk.Stack {
     const gsiArn = `${tableArn}/index/*`;
 
     // ─── Control-Plane Role ───────────────────────────────────────────────
+    // Fly OIDC provider — enables AssumeRoleWithWebIdentity from Fly Machines
+    const flyOidcProvider = new iam.OpenIdConnectProvider(this, "FlyOidcProvider", {
+      url: "https://oidc.fly.io/personal",
+      clientIds: ["sts.amazonaws.com"],
+    });
+
     this.controlPlaneRole = new iam.Role(this, "ControlPlaneRole", {
       roleName: "agent-fleet-control-plane-role",
-      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+      assumedBy: new iam.WebIdentityPrincipal(flyOidcProvider.openIdConnectProviderArn, {
+        StringEquals: {
+          "oidc.fly.io/personal:aud": "sts.amazonaws.com",
+        },
+        StringLike: {
+          "oidc.fly.io/personal:sub": "personal:dt-agent-fleet-control-plane:*",
+        },
+      }),
       description:
         "Control plane role: read all, write scope config (enabled, params), no InvokeAgentRuntime",
     });
@@ -74,6 +87,34 @@ export class IamStack extends cdk.Stack {
         sid: "DenyInvokeAgentRuntime",
         effect: iam.Effect.DENY,
         actions: ["bedrock-agentcore:InvokeAgentRuntime"],
+        resources: ["*"],
+      }),
+    );
+
+    // CloudWatch Logs — read spans and agent application logs for the runs view
+    this.controlPlaneRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "CloudWatchLogsRead",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:StartQuery",
+          "logs:GetQueryResults",
+          "logs:StopQuery",
+          "logs:FilterLogEvents",
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans:*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*:*`,
+        ],
+      }),
+    );
+
+    // Resource Groups Tagging — discover agents by tag
+    this.controlPlaneRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "TaggingRead",
+        effect: iam.Effect.ALLOW,
+        actions: ["tag:GetResources"],
         resources: ["*"],
       }),
     );

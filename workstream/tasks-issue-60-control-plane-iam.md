@@ -43,8 +43,8 @@ whole custom branch and fixes the token-refresh bug as a side effect.
 
   > Note: Write separation is the controlling constraint. DynamoDB writes must stay conditioned on `CONTROL_PLANE_WRITE_ATTRIBUTES` and `bedrock-agentcore:InvokeAgentRuntime` must stay explicitly denied. Granting anything broader repeats the mistake rejected in #56.
 
-  - [ ] 1.1 Write failing assertions in `infra/test/iam-stack.test.ts` for the Fly OIDC provider: URL `https://oidc.fly.io/personal`, client ID `sts.amazonaws.com`
-  - [ ] 1.2 Write failing assertions for the control-plane role trust policy: `Federated` principal on that provider, `sts:AssumeRoleWithWebIdentity`, `StringEquals` on `oidc.fly.io/personal:aud`, `StringLike` on `oidc.fly.io/personal:sub`
+  - [x] 1.1 Write failing assertions in `infra/test/iam-stack.test.ts` for the Fly OIDC provider: URL `https://oidc.fly.io/personal`, client ID `sts.amazonaws.com`
+  - [x] 1.2 Write failing assertions for the control-plane role trust policy: `Federated` principal on that provider, `sts:AssumeRoleWithWebIdentity`, `StringEquals` on `oidc.fly.io/personal:aud`, `StringLike` on `oidc.fly.io/personal:sub`
   - [ ] 1.3 Write failing assertions for the `logs:` statement: exactly `StartQuery`, `GetQueryResults`, `StopQuery`, `FilterLogEvents`, scoped to the `aws/spans` and `/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*` group ARNs
   - [ ] 1.4 Write failing assertions for `tag:GetResources` on `Resource: "*"` (the API does not support resource-level permissions)
   - [ ] 1.5 Write failing negative assertions: no `logs:DescribeLogGroups`, no unconditioned `dynamodb:UpdateItem`, `DenyInvokeAgentRuntime` still present, DynamoDB write condition still references `CONTROL_PLANE_WRITE_ATTRIBUTES`, and `ecs-tasks.amazonaws.com` no longer trusted

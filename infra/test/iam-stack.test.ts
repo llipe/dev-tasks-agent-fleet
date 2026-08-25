@@ -46,10 +46,20 @@ function getPolicyStatements(template: Template, roleName: string): Array<Record
 }
 
 describe("IamStack", () => {
-  describe("role creation", () => {
-    it("creates three IAM roles", () => {
+  describe("Fly OIDC provider", () => {
+    it("creates an OpenIDConnect provider for oidc.fly.io/personal", () => {
       const template = createTemplate();
-      template.resourceCountIs("AWS::IAM::Role", 3);
+      template.hasResourceProperties("Custom::AWSCDKOpenIdConnectProvider", {
+        Url: "https://oidc.fly.io/personal",
+        ClientIDList: ["sts.amazonaws.com"],
+      });
+    });
+  });
+
+  describe("role creation", () => {
+    it("creates three application IAM roles (plus one for the OIDC custom resource)", () => {
+      const template = createTemplate();
+      template.resourceCountIs("AWS::IAM::Role", 4);
     });
 
     it("creates control-plane-role with correct name", () => {
@@ -75,6 +85,52 @@ describe("IamStack", () => {
   });
 
   describe("control-plane-role", () => {
+    it("trusts the Fly OIDC provider via AssumeRoleWithWebIdentity", () => {
+      const template = createTemplate();
+      template.hasResourceProperties("AWS::IAM::Role", {
+        RoleName: "agent-fleet-control-plane-role",
+        AssumeRolePolicyDocument: {
+          Statement: [
+            {
+              Effect: "Allow",
+              Action: "sts:AssumeRoleWithWebIdentity",
+              Condition: {
+                StringEquals: {
+                  "oidc.fly.io/personal:aud": "sts.amazonaws.com",
+                },
+                StringLike: {
+                  "oidc.fly.io/personal:sub": "personal:dt-agent-fleet-control-plane:*",
+                },
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    it("does NOT trust ecs-tasks.amazonaws.com", () => {
+      const template = createTemplate();
+      const roles = template.findResources("AWS::IAM::Role", {
+        Properties: { RoleName: "agent-fleet-control-plane-role" },
+      });
+      const roleKey = Object.keys(roles)[0];
+      expect(roleKey).toBeDefined();
+      if (!roleKey) return;
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guarded by the check above
+      const role = roles[roleKey]!;
+      const trustDoc = role.Properties.AssumeRolePolicyDocument;
+      const statements = trustDoc.Statement as Array<Record<string, unknown>>;
+      for (const stmt of statements) {
+        const principal = stmt.Principal as Record<string, unknown>;
+        if (principal.Service) {
+          const services = Array.isArray(principal.Service)
+            ? principal.Service
+            : [principal.Service];
+          expect(services).not.toContain("ecs-tasks.amazonaws.com");
+        }
+      }
+    });
+
     it("has DynamoDB read actions", () => {
       const template = createTemplate();
       const stmts = getPolicyStatements(template, "ControlPlaneRole");
@@ -120,6 +176,60 @@ describe("IamStack", () => {
         const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
         expect(actions).not.toContain("bedrock-agentcore:InvokeAgentRuntime");
       }
+    });
+
+    it("has CloudWatch Logs read actions scoped to the two log group ARN patterns", () => {
+      const template = createTemplate();
+      const stmts = getPolicyStatements(template, "ControlPlaneRole");
+      const logsStmt = stmts.find((s) => (s.Sid as string) === "CloudWatchLogsRead");
+      expect(logsStmt).toBeDefined();
+      if (!logsStmt) return;
+      expect(logsStmt.Effect).toBe("Allow");
+      expect(logsStmt.Action).toEqual(
+        expect.arrayContaining([
+          "logs:StartQuery",
+          "logs:GetQueryResults",
+          "logs:StopQuery",
+          "logs:FilterLogEvents",
+        ]),
+      );
+      // Scoped to exactly two ARN patterns
+      const resources = Array.isArray(logsStmt.Resource) ? logsStmt.Resource : [logsStmt.Resource];
+      // We check the resolved ARNs contain both patterns via Join/Sub references or literal strings
+      expect(resources.length).toBe(2);
+    });
+
+    it("has tag:GetResources permission", () => {
+      const template = createTemplate();
+      const stmts = getPolicyStatements(template, "ControlPlaneRole");
+      const tagStmt = stmts.find((s) => (s.Sid as string) === "TaggingRead");
+      expect(tagStmt).toBeDefined();
+      if (!tagStmt) return;
+      expect(tagStmt.Effect).toBe("Allow");
+      expect(tagStmt.Action).toContain("tag:GetResources");
+      expect(tagStmt.Resource).toBe("*");
+    });
+
+    it("does NOT have logs:DescribeLogGroups in any statement", () => {
+      const template = createTemplate();
+      const stmts = getPolicyStatements(template, "ControlPlaneRole");
+      for (const stmt of stmts) {
+        const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
+        expect(actions).not.toContain("logs:DescribeLogGroups");
+      }
+    });
+
+    it("DynamoDB write condition still references CONTROL_PLANE_WRITE_ATTRIBUTES", () => {
+      const template = createTemplate();
+      const stmts = getPolicyStatements(template, "ControlPlaneRole");
+      const writeStmt = stmts.find((s) => (s.Sid as string) === "DynamoDBWriteScopeConfig");
+      expect(writeStmt).toBeDefined();
+      if (!writeStmt) return;
+      const condition = writeStmt.Condition as Record<string, Record<string, string[]>>;
+      const attrs = condition["ForAllValues:StringEquals"]?.["dynamodb:Attributes"];
+      // Must contain all and only CONTROL_PLANE_WRITE_ATTRIBUTES
+      expect(attrs).toEqual(expect.arrayContaining([...CONTROL_PLANE_WRITE_ATTRIBUTES]));
+      expect(attrs?.length).toBe(CONTROL_PLANE_WRITE_ATTRIBUTES.length);
     });
   });
 
