@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import boto3
 import requests
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from opentelemetry import trace
 from strands import Agent, tool
 
 from emission import emit_span_attributes, map_result
@@ -25,6 +26,15 @@ from payload import PayloadError, parse_payload
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 SECRET_ID = os.environ.get("GITHUB_SECRET_ID", "dep-agent/github-pat")
 TEST_TIMEOUT = int(os.environ.get("TEST_TIMEOUT", "600"))
+
+# Name of the span that carries the llipe.* attributes for a run.
+#
+# The pipeline needs a span of its own. AgentCore ends the `POST /invocations`
+# SERVER span as soon as the non-blocking entrypoint returns (~3 ms), long before
+# the pipeline finishes, and attributes written to an ended span are dropped
+# silently — which is why aws/spans carried no llipe.* attributes at all. See
+# tests/test_pipeline_span.py.
+PIPELINE_SPAN_NAME = "dep-update-pipeline"
 
 # The PAT-era bot identity. Kept as the default so behaviour is unchanged until
 # the GitHub App cutover sets the env vars — see docs/runbook-github-app.md.
@@ -594,6 +604,27 @@ app = BedrockAgentCoreApp()
 
 
 def _run_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg]
+    """Open the run span, then execute the pipeline inside it.
+
+    The span must be opened here rather than relied upon from the ambient
+    context. `opentelemetry-instrumentation-threading` does copy the invocation
+    context into this worker thread, but the span it carries — the
+    `POST /invocations` SERVER span — has already ended by the time the pipeline
+    starts, because the entrypoint returns immediately by design (S-007).
+    Attributes set on an ended span are discarded, so `emission.py` had nothing
+    live to write to and the `llipe.*` contract never reached CloudWatch.
+
+    Starting the span as current keeps it recording for the whole run, so the
+    `finally` block in `_execute_pipeline` writes to an open span that is then
+    exported. Because the invocation context is ambient, this span joins the
+    invocation's trace instead of orphaning itself into a new one.
+    """
+    tracer = trace.get_tracer(__name__)
+    with tracer.start_as_current_span(PIPELINE_SPAN_NAME):
+        _execute_pipeline(payload, task_id)
+
+
+def _execute_pipeline(payload: dict, task_id: int) -> None:  # type: ignore[type-arg]
     """Execute the full dependency-update pipeline on a worker thread.
 
     Wrapped in try/finally to guarantee app.complete_async_task is called,
