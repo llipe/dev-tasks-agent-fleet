@@ -50,7 +50,7 @@ export { DEP_UPDATER_TAGS, agentNameToSortKey, sortKeyToAgentName } from "./agen
 export type { AgentTagSet } from "./agent-tags.js";
 
 // Observability configuration
-export { SPANS_LOG_GROUP, SPANS_RETENTION_DAYS } from "./observability-config.js";
+export { SPANS_LOG_GROUP, SPANS_LOG_STREAM, SPANS_RETENTION_DAYS } from "./observability-config.js";
 
 // IAM attribute allowlists for write separation
 export {

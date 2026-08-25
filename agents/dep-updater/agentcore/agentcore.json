@@ -23,7 +23,7 @@
         { "name": "GIT_COMMITTER_NAME", "value": "devtasks-agent-fleet[bot]" },
         { "name": "GIT_COMMITTER_EMAIL", "value": "4687256+devtasks-agent-fleet[bot]@users.noreply.github.com" },
         { "name": "AGENT_OBSERVABILITY_ENABLED", "value": "true" },
-        { "name": "UNIFIED_TRACES_DESTINATION_ENABLED", "value": "false" }
+        { "name": "UNIFIED_TRACES_DESTINATION_ENABLED", "value": "true" }
       ],
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 300,
