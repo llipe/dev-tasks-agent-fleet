@@ -481,8 +481,20 @@ Collect two values:
   validates the JWT `iss` against `https://<team-name>.cloudflareaccess.com`, so a wrong value
   yields a 401 _after_ a successful Cloudflare login, which reads like a permissions bug.
 - **Application Audience (AUD) tag** — open the `fleet` app → **Additional settings**. It is
-  not on the Applications list view and not in the page URL (that UUID is the application
-  id, not the AUD).
+  not on the Applications list view, and it is **not** the UUID in the dashboard URL — that
+  is the application id. Confusing the two is the most likely misconfiguration.
+
+  The reliable way to read it, no dashboard needed, is the Access login redirect itself. It
+  is public information:
+
+  ```bash
+  curl -s -o /dev/null -w "%{redirect_url}" https://fleet.llipe.com/agents
+  # .../cdn-cgi/access/login/fleet.llipe.com?kid=<AUD>&meta=<jwt>...
+  ```
+
+  The `kid` query parameter is the AUD tag, and decoding the `meta` JWT's payload shows the
+  same value in its `aud` claim. For this account it is
+  `3e104ede813452a73e7d350bad65ba9230c462c737add7ac963183a844a075f9`.
 
 Via API, if the dashboard is uncooperative:
 
@@ -783,6 +795,18 @@ drags `node:crypto` into the browser bundle. Import a narrow subpath instead
 **Build fails with `Cannot find module '@tailwindcss/postcss'`.** In Tailwind v4 the PostCSS
 plugin ships as a package separate from `tailwindcss`; both must be declared in
 `apps/control-plane/package.json`.
+
+**`{"error":"unauthorized","reason":"unexpected \"aud\" claim value"}` after a successful
+Cloudflare login.** `CF_ACCESS_AUD` does not match the Access application's audience tag.
+`jose` validates signature and issuer before audience, so this specific message is proof that
+`CF_ACCESS_TEAM_NAME` is correct and the JWKS fetch succeeded — only the audience is wrong.
+Read the real value from the login redirect's `kid` parameter (see
+[§8](#8-stage-6--cloudflare-access)) and re-set the secret. The usual cause is using the
+application UUID from the dashboard URL instead of the AUD tag.
+
+The sibling failure, `unexpected "iss" claim value`, means `CF_ACCESS_TEAM_NAME` is wrong
+instead. `missing or empty token` means the request never went through Cloudflare — expected
+on the `.fly.dev` hostname.
 
 **`fly ssh console` fails with `websocket: ... got 502`.** The SSH tunnel is being blocked,
 typically by a corporate proxy or a network that disallows Fly's WireGuard/WebSocket
