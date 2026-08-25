@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  SPANS_LOG_GROUP,
-  SPANS_LOG_STREAM,
-  SPANS_RETENTION_DAYS,
-} from "./observability-config.js";
+import { SPANS_LOG_GROUP, SPANS_LOG_STREAM, SPANS_RETENTION_DAYS } from "./observability-config.js";
 
 /**
  * REGRESSION GUARD (issue #62).
