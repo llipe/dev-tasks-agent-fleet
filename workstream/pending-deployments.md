@@ -557,8 +557,8 @@ Four gaps, all verified against live AWS:
 1. `agent-fleet-control-plane-role` trusts only `ecs-tasks.amazonaws.com` — a leftover from
    an ECS-hosted design. No Fly OIDC provider is registered in the account (only GitHub
    Actions), so `AssumeRoleWithWebIdentity` cannot succeed. Required provider is
-   `https://oidc.fly.io/personal`, audience `sts.amazonaws.com`, `sub` pattern
-   `personal:dt-agent-fleet-control-plane:*`.
+   `https://oidc.fly.io/felipe-mallea`, audience `sts.amazonaws.com`, `sub` pattern
+   `felipe-mallea:dt-agent-fleet-control-plane:*`.
 2. The role has **no `logs:` grants at all**. D2 and D3 fixed _which_ log groups are
    queried; nothing ever granted permission to read them. The runs view and log panel fail
    with `AccessDeniedException` even once trust is fixed.

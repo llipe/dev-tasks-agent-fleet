@@ -19,9 +19,9 @@ Concrete values for this app (org slug confirmed with `fly orgs list`):
 
 | Item          | Value                                                  |
 | ------------- | ------------------------------------------------------ |
-| Provider URL  | `https://oidc.fly.io/personal`                         |
+| Provider URL  | `https://oidc.fly.io/felipe-mallea`                         |
 | Audience      | `sts.amazonaws.com`                                    |
-| `sub` pattern | `personal:dt-agent-fleet-control-plane:*` (StringLike) |
+| `sub` pattern | `felipe-mallea:dt-agent-fleet-control-plane:*` (StringLike) |
 
 Consequence: `credentials.ts` is **deleted down**, not extended. `FLY_OIDC_TOKEN_PATH` and
 `FLY_AWS_ROLE_ARN` are invented names Fly never sets; `fromNodeProviderChain()` replaces the
@@ -43,8 +43,8 @@ whole custom branch and fixes the token-refresh bug as a side effect.
 
   > Note: Write separation is the controlling constraint. DynamoDB writes must stay conditioned on `CONTROL_PLANE_WRITE_ATTRIBUTES` and `bedrock-agentcore:InvokeAgentRuntime` must stay explicitly denied. Granting anything broader repeats the mistake rejected in #56.
 
-  - [x] 1.1 Write failing assertions in `infra/test/iam-stack.test.ts` for the Fly OIDC provider: URL `https://oidc.fly.io/personal`, client ID `sts.amazonaws.com`
-  - [x] 1.2 Write failing assertions for the control-plane role trust policy: `Federated` principal on that provider, `sts:AssumeRoleWithWebIdentity`, `StringEquals` on `oidc.fly.io/personal:aud`, `StringLike` on `oidc.fly.io/personal:sub`
+  - [x] 1.1 Write failing assertions in `infra/test/iam-stack.test.ts` for the Fly OIDC provider: URL `https://oidc.fly.io/felipe-mallea`, client ID `sts.amazonaws.com`
+  - [x] 1.2 Write failing assertions for the control-plane role trust policy: `Federated` principal on that provider, `sts:AssumeRoleWithWebIdentity`, `StringEquals` on `oidc.fly.io/felipe-mallea:aud`, `StringLike` on `oidc.fly.io/felipe-mallea:sub`
   - [x] 1.3 Write failing assertions for the `logs:` statement: exactly `StartQuery`, `GetQueryResults`, `StopQuery`, `FilterLogEvents`, scoped to the `aws/spans` and `/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*` group ARNs
   - [x] 1.4 Write failing assertions for `tag:GetResources` on `Resource: "*"` (the API does not support resource-level permissions)
   - [x] 1.5 Write failing negative assertions: no `logs:DescribeLogGroups`, no unconditioned `dynamodb:UpdateItem`, `DenyInvokeAgentRuntime` still present, DynamoDB write condition still references `CONTROL_PLANE_WRITE_ATTRIBUTES`, and `ecs-tasks.amazonaws.com` no longer trusted
@@ -56,7 +56,7 @@ whole custom branch and fixes the token-refresh bug as a side effect.
   - [x] 1.11 Deploy: `cd infra && pnpm run cdk deploy AgentFleetIamStack`
   - [x] 1.12 Remove the staged static keys: `fly secrets unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY --app dt-agent-fleet-control-plane`
   - [x] 1.13 Delete the inert investigation artifact: IAM user `fleet-control-plane-reader` (no policies, no keys)
-  - [x] 1.14 Verify Acceptance Criterion 1: `aws iam get-role --role-name agent-fleet-control-plane-role` shows the `Federated` principal for `oidc.fly.io/personal` with both claim conditions, and no `ecs-tasks` principal
+  - [x] 1.14 Verify Acceptance Criterion 1: `aws iam get-role --role-name agent-fleet-control-plane-role` shows the `Federated` principal for `oidc.fly.io/felipe-mallea` with both claim conditions, and no `ecs-tasks` principal
   - [x] 1.15 Verify Acceptance Criterion 2: role grants exactly the four Logs actions on the two ARN patterns, plus `tag:GetResources`, and no `DescribeLogGroups`
   - [x] 1.16 Verify Acceptance Criterion 3: DynamoDB writes still attribute-conditioned; `InvokeAgentRuntime` still denied — confirm on the live role, not only in the template
   - [x] 1.17 Verify Acceptance Criterion 4: `pnpm run test` in `infra` passes and fails if any grant is reverted (mutate locally to confirm, then revert)

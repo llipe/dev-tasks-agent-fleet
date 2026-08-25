@@ -47,12 +47,28 @@ function getPolicyStatements(template: Template, roleName: string): Array<Record
 
 describe("IamStack", () => {
   describe("Fly OIDC provider", () => {
-    it("creates an OpenIDConnect provider for oidc.fly.io/personal", () => {
+    it("creates an OpenIDConnect provider for the real Fly org slug, not the `personal` alias", () => {
       const template = createTemplate();
       template.hasResourceProperties("Custom::AWSCDKOpenIdConnectProvider", {
-        Url: "https://oidc.fly.io/personal",
+        Url: "https://oidc.fly.io/felipe-mallea",
         ClientIDList: ["sts.amazonaws.com"],
       });
+    });
+
+    it("does not register the `personal` org alias as the issuer", () => {
+      // `fly orgs list` reports "personal" for a personal org, but tokens are issued by
+      // https://oidc.fly.io/<real-slug>. Registering the alias makes STS reject every token
+      // with InvalidIdentityTokenException. Guard against the regression.
+      const template = createTemplate();
+      const providers = template.findResources("Custom::AWSCDKOpenIdConnectProvider");
+      for (const [, resource] of Object.entries(providers)) {
+        const url = (resource.Properties as { Url?: string }).Url ?? "";
+        expect(url).not.toBe("https://oidc.fly.io/personal");
+      }
+      const roles = template.findResources("AWS::IAM::Role", {
+        Properties: { RoleName: "agent-fleet-control-plane-role" },
+      });
+      expect(JSON.stringify(roles)).not.toContain("oidc.fly.io/personal");
     });
   });
 
@@ -96,10 +112,10 @@ describe("IamStack", () => {
               Action: "sts:AssumeRoleWithWebIdentity",
               Condition: {
                 StringEquals: {
-                  "oidc.fly.io/personal:aud": "sts.amazonaws.com",
+                  "oidc.fly.io/felipe-mallea:aud": "sts.amazonaws.com",
                 },
                 StringLike: {
-                  "oidc.fly.io/personal:sub": "personal:dt-agent-fleet-control-plane:*",
+                  "oidc.fly.io/felipe-mallea:sub": "felipe-mallea:dt-agent-fleet-control-plane:*",
                 },
               },
             },

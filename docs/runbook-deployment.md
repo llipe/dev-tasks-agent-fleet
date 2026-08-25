@@ -311,16 +311,45 @@ automatic and requires **no application code**:
    `AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN` and calls `AssumeRoleWithWebIdentity`
    itself.
 
-Token claims, from the docs' example payload:
+Token claims, read from a live token on a running machine:
 
-| Claim | Value for this app                                     |
-| ----- | ------------------------------------------------------ |
-| `iss` | `https://oidc.fly.io/personal`                         |
-| `aud` | `sts.amazonaws.com`                                    |
-| `sub` | `personal:dt-agent-fleet-control-plane:<machine-name>` |
+| Claim | Value for this app                                          |
+| ----- | ----------------------------------------------------------- |
+| `iss` | `https://oidc.fly.io/felipe-mallea`                         |
+| `aud` | `sts.amazonaws.com`                                         |
+| `sub` | `felipe-mallea:dt-agent-fleet-control-plane:<machine-name>` |
 
 `sub` is `<org-slug>:<app-name>:<machine-name>`, so it must be matched with `StringLike`
-and a trailing wildcard. The org slug is `personal`, confirmed with `fly orgs list`.
+and a trailing wildcard.
+
+### The org slug is not what `fly orgs list` reports
+
+This is the easiest way to get the setup wrong, and it costs a full debugging cycle.
+
+```bash
+$ fly orgs list
+personal    Felipe Mallea      # ← an alias, NOT the OIDC slug
+```
+
+The real slug for this account is **`felipe-mallea`**, confirmed from a live token's `iss`
+and `sub`. Fly's docs allude to this: _"If you're setting this up for your personal org the
+slug is a little harder to find but you can find it in the url when you click on 'Apps' on
+the dashboard."_
+
+Registering the alias creates a provider for `oidc.fly.io/personal` while tokens are issued
+by `https://oidc.fly.io/felipe-mallea`. STS then finds no provider matching the issuer and
+rejects every call with `InvalidIdentityTokenException` — a message that mentions nothing
+about issuers, sending you to audiences and thumbprints instead.
+
+Discovery resolves for **both** values, so a 200 from the well-known endpoint proves nothing:
+
+```bash
+curl -s https://oidc.fly.io/<slug>/.well-known/openid-configuration | jq .issuer
+```
+
+The authoritative source is a real token's `iss` claim — see the credential diagnostic in
+[§14](#14-troubleshooting). `infra/test/iam-stack.test.ts` has a regression test asserting
+the `personal` alias never reappears in the provider URL or the trust policy.
 
 ### Gap 1 — role trust does not admit Fly
 
@@ -339,19 +368,19 @@ aws iam list-open-id-connect-providers
 ```
 
 So `AssumeRoleWithWebIdentity` from a Fly machine cannot succeed. The required provider is
-`https://oidc.fly.io/personal` with audience `sts.amazonaws.com`, and the trust policy is:
+`https://oidc.fly.io/felipe-mallea` with audience `sts.amazonaws.com`, and the trust policy is:
 
 ```json
 {
   "Effect": "Allow",
   "Principal": {
-    "Federated": "arn:aws:iam::755641879575:oidc-provider/oidc.fly.io/personal"
+    "Federated": "arn:aws:iam::755641879575:oidc-provider/oidc.fly.io/felipe-mallea"
   },
   "Action": "sts:AssumeRoleWithWebIdentity",
   "Condition": {
-    "StringEquals": { "oidc.fly.io/personal:aud": "sts.amazonaws.com" },
+    "StringEquals": { "oidc.fly.io/felipe-mallea:aud": "sts.amazonaws.com" },
     "StringLike": {
-      "oidc.fly.io/personal:sub": "personal:dt-agent-fleet-control-plane:*"
+      "oidc.fly.io/felipe-mallea:sub": "felipe-mallea:dt-agent-fleet-control-plane:*"
     }
   }
 }
@@ -808,6 +837,38 @@ The sibling failure, `unexpected "iss" claim value`, means `CF_ACCESS_TEAM_NAME`
 instead. `missing or empty token` means the request never went through Cloudflare — expected
 on the `.fly.dev` hostname.
 
+**`InvalidIdentityTokenException: The web identity token provided could not be validated`.**
+STS rejected the Fly OIDC token. The message names no cause, and the call is **not recorded
+in CloudTrail** (there is no authenticated identity to attribute it to), so the only reliable
+evidence is the token's own claims. `credentials.ts` logs them at startup — `iss`, `aud`,
+`sub`, `iat`, `exp` and the token length, never the token itself:
+
+```bash
+fly logs --app dt-agent-fleet-control-plane | grep -A 12 "\[credentials\]"
+```
+
+Compare against the live role and provider:
+
+```bash
+aws iam get-role --role-name agent-fleet-control-plane-role \
+  --query 'Role.AssumeRolePolicyDocument.Statement[0]'
+aws iam list-open-id-connect-providers
+```
+
+In order of likelihood:
+
+1. **`iss` does not match any registered provider** — the org-slug trap above. This was the
+   actual cause here.
+2. **`aud` is not in the provider's `ClientIDList`.** Fly's `init` requests
+   `sts.amazonaws.com`; a token showing `https://fly.io/<org>` instead means something else
+   fetched it.
+3. **`exp` already passed.** `init` writes `/.fly/oidc_token` at boot with roughly a
+   10-minute life. If failures start only after a machine has been up a while, this is it.
+4. Thumbprint mismatch — least likely, since CDK's custom resource fetches it from inside AWS.
+
+If the diagnostic reports `AWS_ROLE_ARN is set but AWS_WEB_IDENTITY_TOKEN_FILE is not`, then
+`init` never completed the dance and the problem is on the Fly side, not in IAM.
+
 **`fly ssh console` fails with `websocket: ... got 502`.** The SSH tunnel is being blocked,
 typically by a corporate proxy or a network that disallows Fly's WireGuard/WebSocket
 transport. Machine `env` cannot be inspected this way. `AWS_ROLE_ARN` is still verifiable
@@ -846,5 +907,7 @@ account. They are recorded here so the errors are not repeated.
 | `CloudWatch → Settings → Traces and Metrics → Transaction Search` | Path does not exist. It is CloudWatch → Application Signals (APM) → Transaction search                                                                                                                                                      |
 | Tunnel `agent-fleet-cp` → `.fly.dev` from an operator workstation | Not a production connector; tunnel-in-machine is the hardening path                                                                                                                                                                         |
 | "Grey-cloud the DNS record so ACME can validate"                  | Unnecessary and harmful — it exposes the origin IP and drops Access. The `_acme-challenge` CNAME plus the `_fly-ownership` TXT validate fine behind the proxy; the real fault was a certificate order created before the app had public IPs |
+| Fly org slug `personal` (from `fly orgs list`)                    | An alias. The OIDC issuer uses the real slug `felipe-mallea`; registering the alias makes STS reject every token with `InvalidIdentityTokenException`                                                                                       |
+| "Watch for `InvalidIdentityToken` as a token-refresh symptom"     | It appeared 2 minutes after boot, so refresh was never the cause — the issuer was wrong. Token lifetime is ~10 min and refresh remains an open question                                                                                     |
 | Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                                                                                                                                                     |
 | App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                                                                                                                                            |

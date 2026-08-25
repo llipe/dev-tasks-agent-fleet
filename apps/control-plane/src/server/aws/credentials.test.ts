@@ -32,13 +32,16 @@ describe("credentials module", () => {
     expect(source).not.toContain("FLY_AWS_ROLE_ARN");
   });
 
-  it("does not use readFileSync for token reading", async () => {
+  it("does not hand-roll the credential provider with fromWebToken", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const dir = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(resolve(dir, "credentials.ts"), "utf-8");
-    expect(source).not.toContain("readFileSync");
+    // readFileSync is allowed for startup diagnostics, but the token must never be passed
+    // to fromWebToken — the SDK default chain owns credential resolution and refresh.
+    expect(source).not.toContain("fromWebToken");
+    expect(source).not.toContain("webIdentityToken:");
   });
 
   it("uses fromNodeProviderChain (the SDK default chain)", async () => {
