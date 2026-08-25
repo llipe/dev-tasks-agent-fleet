@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEP_UPDATER_TAGS, agentNameToSortKey, PREFIXES } from "@fleet/shared";
+import { DEP_UPDATER_TAGS, agentNameToSortKey, PREFIXES, SPANS_LOG_GROUP } from "@fleet/shared";
 
 /**
  * Contract tests for the AgentCore CLI project config.
@@ -163,6 +163,104 @@ describe("agentcore.json — GitHub credential env var", () => {
   it("keeps the main.py default on the PAT secret so cutover ordering holds", () => {
     const mainPy = readFileSync(resolve(AGENT_DIR, "main.py"), "utf-8");
     expect(mainPy).toContain('os.environ.get("GITHUB_SECRET_ID", "dep-agent/github-pat")');
+  });
+});
+
+describe("agentcore.json — observability / span delivery contract", () => {
+  /**
+   * REGRESSION GUARD (issue #62, defect D9).
+   *
+   * `aws/spans` had never received a record. Three separate causes, each
+   * verified against live AWS, each pinned by a test below:
+   *
+   * 1. No OTLP exporter was installed. `pyproject.toml` declared only
+   *    `opentelemetry-api` / `opentelemetry-sdk`, so `opentelemetry-instrument`
+   *    started, `emission.py` set the attributes, and the SDK dropped the span
+   *    because it had nowhere to export it. Fixed by adding ADOT.
+   *
+   * 2. The first fix over-configured. `OTEL_PYTHON_DISTRO`,
+   *    `OTEL_PYTHON_CONFIGURATOR` and `OTEL_EXPORTER_OTLP_PROTOCOL` are
+   *    documented for agents hosted *outside* the AgentCore runtime. On a
+   *    runtime-hosted agent they override the endpoint the runtime injects and
+   *    point the exporter at a local collector that does not exist. Removed.
+   *
+   * 3. Spans then arrived, but in the agent's own log group rather than
+   *    `aws/spans`. AgentCore now defaults newly created agents to a per-agent
+   *    span destination. `SPANS_LOG_GROUP` in @fleet/shared — and the
+   *    control plane's fleet-wide runs query built on it — assume one shared
+   *    group, so the default is explicitly opted out of here.
+   *
+   * See docs/runbook-observability-setup.md for the full sequence.
+   */
+  function envVars(): EnvVarEntry[] {
+    return depUpdaterRuntime().envVars ?? [];
+  }
+
+  function envVar(name: string): EnvVarEntry | undefined {
+    return envVars().find((entry) => entry.name === name);
+  }
+
+  it("enables agent observability", () => {
+    expect(envVar("AGENT_OBSERVABILITY_ENABLED")?.value).toBe("true");
+  });
+
+  it("opts out of the per-agent span destination so spans land in the shared group", () => {
+    expect(envVar("UNIFIED_TRACES_DESTINATION_ENABLED")?.value).toBe("false");
+  });
+
+  it("keeps the opt-out consistent with the shared SPANS_LOG_GROUP constant", () => {
+    // If SPANS_LOG_GROUP ever becomes a per-agent group, the opt-out above is
+    // wrong and this test is the place that says so.
+    expect(SPANS_LOG_GROUP).toBe("aws/spans");
+    expect(envVar("UNIFIED_TRACES_DESTINATION_ENABLED")?.value).toBe("false");
+  });
+
+  /**
+   * These are the non-runtime variables. Setting any of them on a
+   * runtime-hosted agent is what silently broke span export the first time.
+   */
+  it.each([
+    "OTEL_PYTHON_DISTRO",
+    "OTEL_PYTHON_CONFIGURATOR",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+    "OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+  ])("does not set %s, which is for non-runtime-hosted agents only", (name) => {
+    expect(envVar(name)).toBeUndefined();
+  });
+
+  it("declares the ADOT distro as a production dependency", () => {
+    const pyproject = readFileSync(resolve(AGENT_DIR, "pyproject.toml"), "utf-8");
+    expect(pyproject).toMatch(/aws-opentelemetry-distro>=/);
+  });
+
+  /**
+   * The docs are explicit: ADOT below 0.18.0 ignores span-destination
+   * configuration. The opt-out above is inert on an older version.
+   */
+  it("requires ADOT >= 0.18.0 so the span destination setting is honoured", () => {
+    const pyproject = readFileSync(resolve(AGENT_DIR, "pyproject.toml"), "utf-8");
+    const match = /aws-opentelemetry-distro>=(\d+)\.(\d+)\.(\d+)/.exec(pyproject);
+    expect(match, "aws-opentelemetry-distro must carry an explicit floor").not.toBeNull();
+    if (!match) throw new Error("unreachable");
+    const [major, minor] = [Number(match[1]), Number(match[2])];
+    expect(major > 0 || minor >= 18).toBe(true);
+  });
+
+  it("resolves an OTLP exporter in the lockfile", () => {
+    const lock = readFileSync(resolve(AGENT_DIR, "uv.lock"), "utf-8");
+    expect(lock).toContain("opentelemetry-exporter-otlp-proto-http");
+    expect(lock).toContain("aws-opentelemetry-distro");
+  });
+
+  /**
+   * Auto-instrumentation is what loads the distro. Dropping the wrapper from
+   * CMD disables span export just as completely as removing the dependency.
+   */
+  it("runs the agent under opentelemetry-instrument", () => {
+    const dockerfile = readFileSync(resolve(REPO_ROOT, "Dockerfile.dep-updater"), "utf-8");
+    expect(dockerfile).toMatch(/CMD \["opentelemetry-instrument", "python", "main\.py"\]/);
   });
 });
 
