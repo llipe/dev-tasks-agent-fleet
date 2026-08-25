@@ -4,8 +4,10 @@ Single consolidated deployment guide for the whole fleet: AWS infrastructure, th
 `dep-updater` agent, the orchestrator, and the control plane on Fly.io behind Cloudflare
 Access.
 
-**Verified against live infrastructure:** AWS account `755641879575`, region `us-east-1`;
-Fly org `personal`; Cloudflare account `6b28e7c684a09fb883843f96a34c76fc`.
+**Last verified against live infrastructure:** AWS account `755641879575`, region `us-east-1`;
+Fly org slug `felipe-mallea` (the OIDC issuer slug — **not** the `personal` alias that
+`fly orgs list` prints, see [§7](#7-stage-5--control-plane-iam)); Cloudflare account
+`6b28e7c684a09fb883843f96a34c76fc`, Zero Trust team `round-mouse-afcf`.
 **Last verified:** 2026-08-25.
 
 Related runbooks:
@@ -23,7 +25,7 @@ Related runbooks:
 4. [Stage 2 — dep-updater agent](#4-stage-2--dep-updater-agent)
 5. [Stage 3 — Observability](#5-stage-3--observability)
 6. [Stage 4 — Orchestrator](#6-stage-4--orchestrator)
-7. [Stage 5 — Control plane IAM (blocking)](#7-stage-5--control-plane-iam-blocking)
+7. [Stage 5 — Control-plane IAM](#7-stage-5--control-plane-iam)
 8. [Stage 6 — Cloudflare Access](#8-stage-6--cloudflare-access)
 9. [Stage 7 — DNS and TLS](#9-stage-7--dns-and-tls)
 10. [Stage 8 — Fly deploy](#10-stage-8--fly-deploy)
@@ -287,13 +289,19 @@ An EventBridge rule (`agent-fleet-dep-updater-schedule`) invokes it every 6 hour
 
 ---
 
-## 7. Stage 5 — Control-plane IAM (blocking)
+## 7. Stage 5 — Control-plane IAM
 
-**The control plane cannot obtain AWS credentials today.** Three gaps, all verified against
-live AWS on 2026-08-25. All are code changes in `infra/lib/iam-stack.ts` and
-`apps/control-plane/src/server/aws/credentials.ts`, tracked in
-[#60](https://github.com/llipe/dev-tasks-agent-fleet/issues/60) — do not hand-patch the
-live role.
+**Status: deployed 2026-08-25 ([#60](https://github.com/llipe/dev-tasks-agent-fleet/issues/60)).**
+The control plane authenticates to AWS with Fly Machines OIDC and can read logs and tags. The
+decision is recorded in
+[ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md).
+
+This section keeps the mechanism and the two traps that cost a debugging cycle each, because
+both will recur on any new app or org. Four gaps were closed; they are described in past tense
+below and the live-state checks still apply.
+
+Never hand-patch the live role — everything here is `infra/lib/iam-stack.ts` and
+`apps/control-plane/src/server/aws/credentials.ts`.
 
 ### How Fly OIDC actually works
 
@@ -351,24 +359,21 @@ The authoritative source is a real token's `iss` claim — see the credential di
 [§14](#14-troubleshooting). `infra/test/iam-stack.test.ts` has a regression test asserting
 the `personal` alias never reappears in the provider URL or the trust policy.
 
-### Gap 1 — role trust does not admit Fly
+### Gap 1 (closed) — role trust did not admit Fly
+
+The role trusted `ecs-tasks.amazonaws.com` only, a leftover from an abandoned ECS-hosted
+design, and the account had exactly one OIDC provider — for GitHub Actions. So
+`AssumeRoleWithWebIdentity` from a Fly machine could not succeed. Verify the current state:
 
 ```bash
 aws iam get-role --role-name agent-fleet-control-plane-role \
-  --query 'Role.AssumeRolePolicyDocument'
-# Principal: { "Service": "ecs-tasks.amazonaws.com" } only
-```
-
-No OIDC provider for Fly is registered either — the account has exactly one, for GitHub
-Actions:
-
-```bash
+  --query 'Role.AssumeRolePolicyDocument.Statement[0]'
 aws iam list-open-id-connect-providers
-# token.actions.githubusercontent.com
+# must now include oidc.fly.io/felipe-mallea alongside token.actions.githubusercontent.com
 ```
 
-So `AssumeRoleWithWebIdentity` from a Fly machine cannot succeed. The required provider is
-`https://oidc.fly.io/felipe-mallea` with audience `sts.amazonaws.com`, and the trust policy is:
+The provider is `https://oidc.fly.io/felipe-mallea` with audience `sts.amazonaws.com`, and the
+trust policy is:
 
 ```json
 {
@@ -386,11 +391,11 @@ So `AssumeRoleWithWebIdentity` from a Fly machine cannot succeed. The required p
 }
 ```
 
-### Gap 2 — role has no CloudWatch Logs or tagging permissions
+### Gap 2 (closed) — role had no CloudWatch Logs or tagging permissions
 
-`grep -n "logs:\|tag:" infra/lib/iam-stack.ts` returns nothing. The role's single inline
-policy grants DynamoDB only. Every AWS call the control plane makes outside DynamoDB is
-currently unauthorized:
+The role's single inline policy granted DynamoDB only, so every AWS call outside DynamoDB was
+unauthorized. Fixing the log group _names_ (defects D2/D3) never granted permission to _read_
+them. Two statements were added, `CloudWatchLogsRead` and `TaggingRead`:
 
 | API                                          | Caller                             | Purpose                   |
 | -------------------------------------------- | ---------------------------------- | ------------------------- |
@@ -400,7 +405,7 @@ currently unauthorized:
 
 Fixing the log group _names_ (defects D2/D3) never granted permission to _read_ them.
 
-The tagging call is the one that fails first — `listManagedAgents()` discovers agents by the
+The tagging call was the one that failed first — `listManagedAgents()` discovers agents by the
 `agent:managed=true` tag filter, so without it the agents list is empty and nothing else
 renders. The tags are live and correct:
 
@@ -418,17 +423,26 @@ aws resourcegroupstaggingapi get-resources \
 The app does **not** call `DescribeLogGroups` — `resolveAgentLogGroup()` reads
 `AGENT_LOG_GROUP` and returns a configuration error when unset. Do not grant it.
 
-### Gap 3 — `credentials.ts` invented env var names Fly never sets
+Confirm the grants resolve, without waiting for a browser:
 
-`apps/control-plane/src/server/aws/credentials.ts` reads `FLY_OIDC_TOKEN_PATH` and
-`FLY_AWS_ROLE_ARN`. **Neither is a real Fly variable.** Fly sets `AWS_ROLE_ARN` (operator
-supplied), `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` (both set by `init`).
-The custom `fromWebToken` branch therefore never activates, and the app silently falls
-through to the local-dev `fromEnv()` path with no credentials.
+```bash
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::755641879575:role/agent-fleet-control-plane-role \
+  --action-names tag:GetResources logs:StartQuery logs:FilterLogEvents dynamodb:Query \
+  --query 'EvaluationResults[*].[EvalActionName,EvalDecision]' --output text
+# every row must read "allowed"
+```
 
-The fix is a deletion, not an addition: drop `createCredentialsProvider()` and use the
-SDK's default chain, which already handles the web-identity file, environment variables and
-local profiles.
+### Gap 3 (closed) — `credentials.ts` invented env var names Fly never sets
+
+`credentials.ts` read `FLY_OIDC_TOKEN_PATH` and `FLY_AWS_ROLE_ARN`. **Neither is a real Fly
+variable.** Fly sets `AWS_ROLE_ARN` (operator supplied), `AWS_WEB_IDENTITY_TOKEN_FILE` and
+`AWS_ROLE_SESSION_NAME` (both set by `init`). The custom `fromWebToken` branch therefore never
+activated, and the app silently fell through to the local-dev `fromEnv()` path with no
+credentials — so it looked like a deliberate OIDC implementation while having none.
+
+The fix was a deletion, not an addition: `createCredentialsProvider()` is gone and the SDK's
+default chain handles the web-identity file, environment variables and local profiles.
 
 ```ts
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
@@ -449,34 +463,34 @@ the token file when it refreshes.
 
 ### Why not static access keys
 
-`fromEnv()` is labelled "Local dev fallback" in `credentials.ts`. An IAM user with
-DynamoDB grants attached directly would bypass the attribute conditions and the
-`InvokeAgentRuntime` deny described in [§3](#write-separation-do-not-weaken-this) — the
-same class of mistake as granting the agent runtime plain `UpdateItem`. If a temporary
-static-credential path is ever needed, its policy must replicate every statement on the
-role, including both `Deny`s, and carry a removal ticket.
+Recorded as a decision in
+[ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md), and no longer an
+approved fallback in `docs/technical-guidelines.md` §5.
 
-Six secrets are currently **staged** on Fly, two of them static AWS keys:
+`fromEnv()` is labelled "Local dev fallback" in `credentials.ts`. An IAM user with DynamoDB
+grants attached directly bypasses the attribute conditions and the `InvokeAgentRuntime` deny
+described in [§3](#write-separation-do-not-weaken-this) — the same class of mistake as granting
+the agent runtime plain `UpdateItem`. If a temporary static-credential path is ever needed it
+requires a new ADR, its policy must replicate every statement on the role including both
+`Deny`s, and it must carry a removal ticket.
+
+Both cleanups are **done**, 2026-08-25: the static AWS keys were unset from Fly, and the inert
+IAM user `fleet-control-plane-reader` created during investigation (no policies, no access
+keys) was deleted. Confirm no static keys have returned:
 
 ```bash
 fly secrets list --app dt-agent-fleet-control-plane
+# must show no AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, and nothing left "Staged"
 ```
 
-Remove the static keys once the OIDC path lands:
-
-```bash
-fly secrets unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
-  --app dt-agent-fleet-control-plane
-```
-
-### After the fix deploys
+### Deploying a change to this stage
 
 ```bash
 cd infra && pnpm run cdk deploy AgentFleetIamStack
 ```
 
-`AWS_ROLE_ARN` is a role ARN, not a credential — set it in `[env]` in
-`fly.toml` rather than as a secret, so it is reviewable in git:
+`AWS_ROLE_ARN` is a role ARN, not a credential — it lives in `[env]` in `fly.toml`, not in
+`fly secrets`, so it is reviewable in git:
 
 ```toml
 [env]
@@ -494,6 +508,14 @@ fly ssh console --app dt-agent-fleet-control-plane -C "env" \
 
 All three must be present. If only `AWS_ROLE_ARN` appears, `init` did not complete the
 token dance and the SDK has no credentials.
+
+If `fly ssh console` is unavailable — it fails with a WebSocket 502 behind corporate TLS
+interception — the startup diagnostic in `credentials.ts` reports the same three variables plus
+the token's claims, which is how they were confirmed on this app:
+
+```bash
+fly logs --app dt-agent-fleet-control-plane --no-tail | grep -A 12 "\[credentials\]"
+```
 
 ---
 
@@ -641,25 +663,30 @@ production connector.
 
 ## 10. Stage 8 — Fly deploy
 
-Blocked until [Stage 5](#7-stage-5--control-plane-iam-blocking) lands: without credentials
-the app builds and serves `/healthz` but every DynamoDB and CloudWatch call fails.
+**Status: deployed 2026-08-25**, two `shared-cpu-1x:256MB` machines healthy in `iad`.
+Requires [Stage 5](#7-stage-5--control-plane-iam) — without credentials the app builds and
+serves `/healthz` but every DynamoDB and CloudWatch call fails.
 
-App config is `fly.toml` (region `iad`, internal port 3000,
+App config is `fly.toml` **at the repo root** (region `iad`, internal port 3000,
 `force_https`, auto-stop/auto-start, `/healthz` check every 30s). The image is built by
 `apps/control-plane/Dockerfile` — a multi-stage Next.js standalone build running as
 non-root `nextjs`.
+
+The toml's location is load-bearing, not cosmetic: Fly resolves `[build].dockerfile` relative
+to the toml's own directory and no CLI flag overrides it, and the Dockerfile's `COPY` paths
+need the repo root as build context. Run deploys from the repo root.
 
 Required configuration. Secrets go in `fly secrets`; `AWS_ROLE_ARN` is a role ARN, not a
 credential, so it belongs in `[env]` in `fly.toml` where it is
 reviewable in git.
 
-| Name                  | Where             | Source                                             |
-| --------------------- | ----------------- | -------------------------------------------------- |
-| `CF_ACCESS_TEAM_NAME` | `fly secrets`     | [§8](#8-stage-6--cloudflare-access)                |
-| `CF_ACCESS_AUD`       | `fly secrets`     | [§8](#8-stage-6--cloudflare-access)                |
-| `AGENT_LOG_GROUP`     | `fly secrets`     | discovered in [§5](#5-stage-3--observability)      |
-| `AWS_REGION`          | `[env]` or secret | `us-east-1`                                        |
-| `AWS_ROLE_ARN`        | `[env]`           | after [§7](#7-stage-5--control-plane-iam-blocking) |
+| Name                  | Where             | Source                                        |
+| --------------------- | ----------------- | --------------------------------------------- |
+| `CF_ACCESS_TEAM_NAME` | `fly secrets`     | [§8](#8-stage-6--cloudflare-access)           |
+| `CF_ACCESS_AUD`       | `fly secrets`     | [§8](#8-stage-6--cloudflare-access)           |
+| `AGENT_LOG_GROUP`     | `fly secrets`     | discovered in [§5](#5-stage-3--observability) |
+| `AWS_REGION`          | `[env]` or secret | `us-east-1`                                   |
+| `AWS_ROLE_ARN`        | `[env]`           | after [§7](#7-stage-5--control-plane-iam)     |
 
 `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` are set by Fly's `init` when
 `AWS_ROLE_ARN` is present — never set them yourself.
@@ -677,14 +704,41 @@ fly secrets set \
 fly secrets list --app dt-agent-fleet-control-plane   # confirm none left "Staged"
 ```
 
-Deploy:
+Deploy — **from the repo root**:
 
 ```bash
 flyctl deploy --remote-only
 ```
 
-CI (`.github/workflows/control-plane.yml`) runs the same command on `main` after `validate`
-passes, using `FLY_API_TOKEN` from repository secrets.
+If the remote builder is unreliable on your network, build locally and push the image
+instead. This is what was used for every deploy of this app:
+
+```bash
+flyctl deploy --local-only    # requires a running local Docker daemon
+```
+
+Fly creates **two** machines on a first deploy for high availability, regardless of
+`min_machines_running = 0` — that setting governs idle stop, not the HA pair. Pass `--ha=false`
+if one machine is wanted; see [§13](#13-cost).
+
+CI (`.github/workflows/control-plane.yml`) runs `validate` — which now includes `build`, see
+[ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md) — then deploys on `main`
+using `FLY_API_TOKEN` from repository secrets.
+
+### Runtime assets the build does not trace
+
+Next.js standalone output traces static imports only. Anything read from disk at runtime must
+be copied into the image explicitly, and nothing in `validate` will catch its absence — the
+build succeeds and the request fails. There is one such asset today:
+
+```dockerfile
+COPY --from=builder --chown=nextjs:nodejs /app/apps/control-plane/pricing ./apps/control-plane/pricing
+```
+
+`src/lib/cost.ts` reads `pricing/pricing-v1.json` with `readFileSync`. Omitting the `COPY`
+produced `ENOENT` at request time, which surfaced as "Failed to load runs" on the repo detail
+view and `30d Cost: unknown` on the agents list — one cause, two unrelated-looking symptoms.
+Adding another filesystem-read asset means adding another `COPY`.
 
 ---
 
@@ -725,7 +779,7 @@ Two known deviations at this stage, neither an IAM failure:
 
 What _would_ indicate an IAM failure is an `AccessDeniedException` in `fly logs` for
 `StartQuery`, `GetQueryResults`, `FilterLogEvents` or `GetResources` — that points back to
-[Stage 5](#7-stage-5--control-plane-iam-blocking) Gap 2.
+[Stage 5](#7-stage-5--control-plane-iam) Gap 2.
 
 Credential path actually in use:
 
@@ -825,6 +879,30 @@ drags `node:crypto` into the browser bundle. Import a narrow subpath instead
 plugin ships as a package separate from `tailwindcss`; both must be declared in
 `apps/control-plane/package.json`.
 
+**A page shows "Failed to load …" but the build was green, and `fly logs` reports
+`ENOENT ... pricing/pricing-v1.json`.** A runtime filesystem read whose asset is not in the
+image. Next.js standalone traces static imports only, so `readFileSync` targets need an explicit
+Dockerfile `COPY` — see [§10](#10-stage-8--fly-deploy). This one masqueraded as two different
+bugs: the repo runs view failed outright while the agents list showed `30d Cost: unknown`,
+because `agents-data.ts` catches the cost failure by design and falls back to `null`. Check for
+this class of cause before suspecting IAM or missing spans.
+
+**A repo URL contains `%252F` and lookups silently return nothing.** Double-encoded path
+segment. The repo detail route is a catch-all (`[...repo]`), so the segment must be decoded on
+read — `repo.map(decodeURIComponent).join("/")`, not `repo.join("/")` — because
+`repo-run-filters.tsx` re-encodes `repoId` on every filter navigation. Leaving it raw makes each
+click add another encoding layer. The symptom is an empty result, not an error, since
+`llipe%2Fmemo-cli` is a syntactically valid partition key that matches no item.
+
+**A page renders an error state and the cause is invisible.** Several server components
+previously swallowed exceptions in bare `catch` blocks, which made failures undiagnosable from
+logs. Error logging was added to the agents list, repos list and repo detail pages; the
+diagnostic lines are prefixed `[agents-page]`, `[repos-page]` and `[repo-detail]`:
+
+```bash
+fly logs --app dt-agent-fleet-control-plane --no-tail | grep -E "\[repo-detail\]|\[agents-page\]|\[repos-page\]"
+```
+
 **`{"error":"unauthorized","reason":"unexpected \"aud\" claim value"}` after a successful
 Cloudflare login.** `CF_ACCESS_AUD` does not match the Access application's audience tag.
 `jose` validates signature and issuer before audience, so this specific message is proof that
@@ -878,8 +956,10 @@ observable from inside the machine — re-run the check from an unproxied networ
 
 **Secrets show `Staged`.** They are not live until a deploy, or `fly secrets deploy`.
 
-**`AccessDeniedException` in the runs view.** Stage 5 Gap 2 — the role has no `logs:`
-grants.
+**`AccessDeniedException` in the runs view.** Was Stage 5 Gap 2, now granted. If it recurs,
+compare the failing action against the `CloudWatchLogsRead` / `TaggingRead` statements with
+`aws iam simulate-principal-policy` (see [§7](#7-stage-5--control-plane-iam)). Note that an
+_empty_ runs view is not this — that is #62.
 
 **Agent run "succeeds" in under a second.** The pipeline threw and `finally` completed the
 async task. Read the app log group; do not trust the CLI result.
@@ -911,3 +991,7 @@ account. They are recorded here so the errors are not repeated.
 | "Watch for `InvalidIdentityToken` as a token-refresh symptom"     | It appeared 2 minutes after boot, so refresh was never the cause — the issuer was wrong. Token lifetime is ~10 min and refresh remains an open question                                                                                     |
 | Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                                                                                                                                                     |
 | App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                                                                                                                                            |
+| `validate` = lint + format + typecheck + test + audit             | `build` is now part of the gate ([ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md)). Three bundling defects reached a deploy attempt because `tsc --noEmit` cannot see a bundle boundary                               |
+| Static access keys as a documented OIDC fallback                  | Withdrawn ([ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md)). It cannot carry "the same minimal permissions" — an IAM user reproduces the action list but not the role's attribute conditions or its two `Deny`s |
+| `flyctl deploy --remote-only` as the only documented path         | Correct, but the remote builder is unreliable on some networks. Every deploy of this app used `--local-only` with a local Docker daemon                                                                                                     |
+| Dockerfile copies `.next/standalone`, `.next/static`, `public`    | Also needs `pricing/`. Standalone output traces static imports only, so `cost.ts`'s `readFileSync` target was missing from the image and threw `ENOENT` at request time                                                                     |

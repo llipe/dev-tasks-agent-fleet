@@ -309,7 +309,7 @@ Explicit list. None of this ships in v1:
 
 ### 11.1 UI/UX
 
-Refer to [`/DESIGN.md`](../DESIGN.md) for the full design contract. Key points:
+Refer to [`/DESIGN.md`](../../DESIGN.md) for the full design contract. Key points:
 
 - The run is the only entity. All views are a table of runs with different groupings.
 - Dense, scannable tables. The table is the product.

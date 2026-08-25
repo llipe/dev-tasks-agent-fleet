@@ -5,24 +5,38 @@ verification. Each action requires explicit confirmation before executing.
 
 **Last verified against live AWS:** account `755641879575`, region `us-east-1`.
 
-> **Status update — 2026-08-25.** The agent is **operational for its core pipeline**: D1
-> deployed via `agentcore deploy`, GitHub App cutover complete (§12), first successful run
-> produced PR llipe/memo-cli#49, log retention set, orchestrator deployed and invoked. Three
-> open blockers remain, all filed: **D7** (#60) blocks the control-plane deploy, **D9** (#62)
-> means `aws/spans` is empty so the runs views have no data at all, and **D8** (#61) makes the
-> agents list show every agent three times. `docs/runbook-deployment.md` is now the single
-> source of truth for deployment steps; the sequences in Part 5 below are retained only where
-> still accurate. Post-cutover PAT cleanup tracked in #59. The verified live-state and
+> **Status update — 2026-08-25 (second pass).** **All eight deployment stages are live.** The
+> agent pipeline was already operational (D1 deployed, GitHub App cutover complete, first
+> successful run produced PR llipe/memo-cli#49, orchestrator deployed and invoked). **D7 (#60)
+> is now closed**: the control-plane role trusts Fly OIDC, has `logs:` and `tag:GetResources`
+> grants, the dead credential code is deleted, and the app is deployed at `fleet.llipe.com`
+> behind Cloudflare Access with an issued certificate. Decisions recorded in
+> [ADR-001](../docs/adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md) and
+> [ADR-002](../docs/adr/ADR-002-build-is-part-of-the-validate-quality-gate.md).
+>
+> **What is still open:** **D9** (#62) — `aws/spans` has never received a record, so the runs
+> views are empty shells; **D8** (#61) — every agent renders three times, which also affects
+> the per-repo agent count; **D4**, **D5**, **D6**, **#59**; and a **new item 20** — the origin
+> lockdown required by `docs/technical-guidelines.md` §5 was never implemented, so
+> `.fly.dev` is reachable with middleware as the sole control.
+>
+> `docs/runbook-deployment.md` is the single source of truth for deployment steps; the
+> sequences in Part 5 below are retained only where still accurate. The verified live-state and
 > root-cause evidence in Parts 1–3 is retained as historical record.
 >
-> **Recommended order:** #60 + #61 + the DNS/TLS cert together (they gate a verifiable
-> control-plane deploy), then #62, then D5 (which #62 unblocks), then D4, #59 and D6.
+> **Recommended order:** #62 (unblocks D5 and makes the runs views real), then #61, then item
+> 20 / D4, then #59 and D6.
 
 ---
 
 ## Part 1 — Verified Current State
 
 Everything below was confirmed against live AWS, not inferred.
+
+> **Note on this section.** It records the state at first-run verification (2026-08-24). The
+> two ⚠️/❌ rows have since been resolved — see the status update at the top of this file and
+> the Part 6 status board for current state. Retained because Part 2's root-cause analysis
+> depends on it.
 
 | Item                            | State                                                                       |
 | ------------------------------- | --------------------------------------------------------------------------- |
@@ -31,8 +45,8 @@ Everything below was confirmed against live AWS, not inferred.
 | `AgentFleetIamStack`            | ✅ Deployed — but the agent role is **orphaned** (see D4)                     |
 | `AgentCore-depupdater-default`  | ✅ Deployed, runtime responds to `agentcore invoke`                           |
 | GitHub secret                   | ✅ **Already exists** at `dep-agent/github-pat`, contains key `token`         |
-| Runtime IAM role                | ⚠️ Missing 2 permissions — **the only thing blocking a successful run** (granted in code by #56; pending deploy) |
-| First pipeline run              | ❌ Failed at 0.27s (root cause below, confirmed from logs)                    |
+| Runtime IAM role                | ⚠️ At the time: missing 2 permissions — the only thing blocking a successful run. Granted in code by #56 and **since deployed** |
+| First pipeline run              | ❌ Failed at 0.27s (root cause below). **A later run succeeded** — PR llipe/memo-cli#49 |
 
 ### Confirmed working (from the first run's logs)
 
@@ -231,13 +245,13 @@ These are correctness bugs in committed code and docs, not deployment steps. Eac
 
 | Defect | Status                                                         |
 | ------ | -------------------------------------------------------------- |
-| D1     | ✅ Fixed in code (#56) — pending `agentcore deploy`             |
-| D2     | ✅ Fixed in code (#56) — takes effect on control-plane redeploy |
-| D3     | ✅ Fixed in code and docs (#56)                                |
+| D1     | ✅ Fixed in code (#56) and deployed via `agentcore deploy`      |
+| D2     | ✅ Fixed in code (#56), live since the control-plane deploy     |
+| D3     | ✅ Fixed in code and docs (#56); `AGENT_LOG_GROUP` set on Fly   |
 | D4     | 🟡 Open — decision needed (partially mitigated by D1's fix)     |
-| D5     | 🟡 Open — needs a real span record from a successful run         |
+| D5     | 🟡 Open — needs a real span record from a successful run; blocked by D9 |
 | D6     | ⚪ Open — cosmetic, user-gated cleanup                          |
-| D7     | 🔴 Open — **blocks the control-plane deploy**, tracked in #60    |
+| D7     | ✅ Resolved 2026-08-25 (#60) — OIDC trust, `logs:`/`tag:` grants, dead code deleted |
 | D8     | 🟡 Open — duplicate agent inventory entries, tracked in #61      |
 | D9     | 🔴 Open — `aws/spans` empty, no OTEL exporter, tracked in #62    |
 
@@ -499,16 +513,17 @@ the one the Lambda actually runs as. Verify before assuming.
 
 ### Stage 5 — Control Plane on Fly.io (S-024)
 
-**Blocked by D7 (#60).** The full corrected sequence now lives in
-`docs/runbook-deployment.md` — that is the single source of truth for deployment steps.
-The commands previously listed here used the wrong app name
-(`agent-fleet-control-plane`, actually `dt-agent-fleet-control-plane`), the wrong role
-name, and the wrong credential env var (`AWS_ROLE_ARN`, actually `FLY_AWS_ROLE_ARN`), and
-omitted the missing `logs:` grants entirely. Do not follow them.
+**Deployed 2026-08-25.** D7 (#60) is closed. The full corrected sequence lives in
+`docs/runbook-deployment.md` — that is the single source of truth for deployment steps. The
+commands previously listed here used the wrong app name (`agent-fleet-control-plane`, actually
+`dt-agent-fleet-control-plane`), the wrong role name, and the wrong credential env var
+(`FLY_AWS_ROLE_ARN`, actually `AWS_ROLE_ARN` — Fly's `init` derives the rest), and omitted the
+missing `logs:` grants entirely. Do not follow them.
 
-Required environment on the Fly app: `CF_ACCESS_TEAM_NAME`, `CF_ACCESS_AUD`, `AWS_REGION`,
-`AGENT_LOG_GROUP` (no default — D3), and `FLY_AWS_ROLE_ARN` once #60 lands.
-`SPANS_LOG_GROUP` resolves from `@fleet/shared` and needs no secret.
+Required environment on the Fly app: `CF_ACCESS_TEAM_NAME`, `CF_ACCESS_AUD`, `AWS_REGION` and
+`AGENT_LOG_GROUP` (no default — D3) as secrets, plus `AWS_ROLE_ARN` in `[env]` in the
+repo-root `fly.toml`, where it is reviewable in git. `SPANS_LOG_GROUP` resolves from
+`@fleet/shared` and needs no secret.
 
 ---
 
@@ -523,36 +538,49 @@ Legend: ✅ done and live · 🟢 fixed in code, pending deploy · 🟡 open · 
 4.  ✅ Agent deploy (AgentCore-depupdater-default)
 5.  ✅ GitHub secret dep-agent/github-pat (already existed)
 6.  ✅ D1 — runtime role Secrets + constrained DynamoDB grants deployed via agentcore deploy
-7.  🟢 D2 — SPANS_LOG_GROUP corrected to aws/spans (runs view fixed on control-plane redeploy)
-8.  🟢 D3 — AGENT_LOG_GROUP now required; validation docs discover the group (control-plane redeploy)
+7.  ✅ D2 — SPANS_LOG_GROUP corrected to aws/spans (live since the control-plane deploy)
+8.  ✅ D3 — AGENT_LOG_GROUP required and set on Fly; validation docs discover the group
 9.  🟡 D4 — orphaned agent-exec-role: drift guard landed, wiring decision open
-10. 🟡 D5 — dual session_id correlation (needs a real span record)
+10. 🟡 D5 — dual session_id correlation (needs a real span record; blocked by D9)
 11. ⚪ D6 — delete two stale runtimes: dependencyUpdateAgent + harness (cosmetic, user-gated)
 12. ✅ GitHub App migration — deployed and verified (PR #49 on memo-cli authored by bot)
 13. ✅ First successful run — PR llipe/memo-cli#49, S-006…S-009 + S-011 validated
 14. ✅ App log group retention set to 30 days; Transaction Search confirmed ACTIVE (S-005)
 15. ✅ AgentFleetOrchestrationStack deployed (S-013)
-16. 🔴 Fly app + Cloudflare Access (S-024) — BLOCKED by D7, see #60
-17. 🔴 D7 — control-plane role: no Fly OIDC trust, no logs:/tag: grants, dead credential code (#60)
+16. ✅ Fly app + Cloudflare Access (S-024) — deployed 2026-08-25, cert issued, 2 machines healthy
+17. ✅ D7 — control-plane role: Fly OIDC trust + logs:/tag: grants deployed; dead credential code deleted (#60)
 18. 🟡 D8 — agent inventory returns 3 duplicate entries per agent (#61)
 19. 🔴 D9 — aws/spans empty: no OTEL exporter installed; runs views have no data (#62)
+20. 🟡 Origin lockdown not implemented — .fly.dev reachable, middleware is the sole control there
 ```
 
-Items 6, 12, 13 confirmed live on 2026-08-24. Remaining items 7–8 take effect on
-control-plane deploy (Stage 5). Post-cutover PAT cleanup tracked in #59.
+Items 6, 12, 13 confirmed live on 2026-08-24; items 7, 8, 16, 17 on 2026-08-25. Post-cutover
+PAT cleanup tracked in #59.
 
-**Item 16 partial state (verified 2026-08-25):** Fly app `dt-agent-fleet-control-plane`
-created, dedicated IPv4 + IPv6 allocated, 6 secrets **staged but not deployed**, no release
-yet. Cloudflare Access app `fleet` exists with destination `fleet.llipe.com` and a policy
-attached. DNS for `fleet.llipe.com` is proxied through Cloudflare; the Fly certificate is
-`Not verified` because the orange-cloud proxy intercepts the ACME challenge. Full corrected
-sequence is in `docs/runbook-deployment.md`.
+**Item 16 final state (verified 2026-08-25):** Fly app `dt-agent-fleet-control-plane` deployed
+from `fly.toml` at the repo root, two `shared-cpu-1x:256MB` machines healthy in `iad`, dedicated
+IPv4 + IPv6 allocated. All secrets deployed, none staged, and the two static AWS keys removed.
+Cloudflare Access app `fleet` enforcing on `fleet.llipe.com` with a verified Let's Encrypt
+certificate at the Fly origin. The cert had been stuck `Not verified` because the order was
+created before the app had public IPs — not because of the Cloudflare proxy, which validates
+fine given the `_acme-challenge` CNAME and `_fly-ownership` TXT records. `docs/runbook-deployment.md`
+is the single source of truth for the sequence.
 
-### D7 — Control-plane role cannot authenticate and cannot read logs 🔴 BLOCKING
+**Item 20 (new, 2026-08-25):** `docs/technical-guidelines.md` §5 requires two independent
+controls — JWT validation *and* origin lockdown — and states the app must not ship with only
+one. It shipped with only JWT validation. Recorded as an open deviation in the guidelines and
+in §18's trade-off table rather than resolved by relaxing the rule. Needs an issue and a
+decision: Cloudflare Tunnel in the machine, or a Cloudflare IP allowlist on the Fly service.
 
-> **Status: open, tracked in #60 with task list `workstream/tasks-issue-60-control-plane-iam.md`.**
+### D7 — Control-plane role cannot authenticate and cannot read logs ✅ RESOLVED 2026-08-25
 
-Four gaps, all verified against live AWS:
+> **Status: closed, delivered in [#60](https://github.com/llipe/dev-tasks-agent-fleet/issues/60)**
+> (task list `workstream/tasks-issue-60-control-plane-iam.md`). Decision recorded in
+> [ADR-001](../docs/adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md). The four
+> gaps below are kept as the historical record; the fix and the two traps that cost a debugging
+> cycle each are documented in `docs/runbook-deployment.md` §7.
+
+Four gaps, all verified against live AWS, all now closed:
 
 1. `agent-fleet-control-plane-role` trusts only `ecs-tasks.amazonaws.com` — a leftover from
    an ECS-hosted design. No Fly OIDC provider is registered in the account (only GitHub
@@ -574,11 +602,31 @@ Four gaps, all verified against live AWS:
 Mechanism, claim values and the corrected fix are documented in
 `docs/runbook-deployment.md` §7, verified against Fly's OIDC docs.
 
+**Resolution, 2026-08-25.** All four closed. `infra/lib/iam-stack.ts` registers an
+`iam.OpenIdConnectProvider` for `https://oidc.fly.io/felipe-mallea` and the role is assumed by
+an `iam.WebIdentityPrincipal` conditioned on `:aud` and `:sub`; `CloudWatchLogsRead` and
+`TaggingRead` statements were added; `credentials.ts` now delegates to
+`fromNodeProviderChain()` with a startup diagnostic that logs the token's claims but never the
+token. The org-slug trap (gap 1) was the actual cause of the `InvalidIdentityTokenException`
+seen during rollout — `fly orgs list` prints the alias `personal` while tokens are issued by
+`felipe-mallea`, and discovery resolves for both, so only a live token's `iss` claim settles it.
+`infra/test/iam-stack.test.ts` carries a regression test against the alias reappearing.
+
+Two verifications remain incomplete, neither blocking:
+
+- `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` were confirmed via the startup
+  diagnostic but not via `fly ssh console -C env`, which fails with a WebSocket 502 behind
+  corporate TLS interception. Re-run from an unproxied network.
+- Token refresh over long uptime is unobserved. Fly's docs do not say whether `init` rewrites
+  `/.fly/oidc_token` as the token ages; watch `fly logs` for `InvalidIdentityToken` after more
+  than an hour of uptime. With `auto_stop_machines` enabled it may never surface.
+
 Rejected workaround: an IAM user with access keys. Attaching DynamoDB grants directly to a
 user bypasses the attribute conditions and the `InvokeAgentRuntime` deny, which is the same
-class of mistake as granting the agent runtime plain `UpdateItem` (Part 3). An inert IAM
-user `fleet-control-plane-reader` was created during investigation — no policies, no access
-keys — and is scheduled for deletion in #60 sub-task 1.13.
+class of mistake as granting the agent runtime plain `UpdateItem` (Part 3). The inert IAM
+user `fleet-control-plane-reader` created during investigation — no policies, no access
+keys — **was deleted on 2026-08-25**, and the two static AWS keys were unset from Fly. Static
+keys are no longer a documented fallback anywhere; see ADR-001.
 
 ---
 
