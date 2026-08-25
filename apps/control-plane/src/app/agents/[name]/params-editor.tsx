@@ -6,10 +6,14 @@
  * Client-side JSON validation before enabling Save.
  * Shows inline error naming the failing key.
  * Uses paramsSchemaFor from @fleet/shared for validation.
+ *
+ * Imports the narrow `@fleet/shared/params-schemas` subpath rather than the package
+ * barrel: the barrel re-exports `buildSessionId`, which imports `node:crypto` and
+ * cannot be bundled for the browser.
  */
 
 import { useState, useCallback, useTransition } from "react";
-import { paramsSchemaFor } from "@fleet/shared";
+import { paramsSchemaFor } from "@fleet/shared/params-schemas";
 import { setSubjectParams } from "@/server/actions/scope.js";
 
 interface ParamsEditorProps {

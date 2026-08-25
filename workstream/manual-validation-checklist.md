@@ -391,7 +391,7 @@ Follow `docs/runbook-deployment.md` for full steps. Quick summary:
 ```bash
 flyctl apps create agent-fleet-control-plane --org <your-org>
 fly secrets set CF_ACCESS_TEAM_NAME="<team>" CF_ACCESS_AUD="<aud>" AWS_REGION="us-east-1"
-flyctl deploy --config infra/control-plane.fly.toml --remote-only
+flyctl deploy --remote-only
 ```
 
 ### 6.2 Verify Origin Lockdown

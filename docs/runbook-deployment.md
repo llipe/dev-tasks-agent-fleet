@@ -87,7 +87,7 @@ from the branch, not the working tree:
 
 ```bash
 git status --short
-# infra/control-plane.fly.toml            — app name set to dt-agent-fleet-control-plane
+# fly.toml                                — app name set to dt-agent-fleet-control-plane
 # agents/dep-updater/agentcore/agentcore.json — GitHub App secret id + bot committer identity
 ```
 
@@ -439,7 +439,7 @@ cd infra && pnpm run cdk deploy AgentFleetIamStack
 ```
 
 `AWS_ROLE_ARN` is a role ARN, not a credential — set it in `[env]` in
-`infra/control-plane.fly.toml` rather than as a secret, so it is reviewable in git:
+`fly.toml` rather than as a secret, so it is reviewable in git:
 
 ```toml
 [env]
@@ -554,13 +554,13 @@ production connector.
 Blocked until [Stage 5](#7-stage-5--control-plane-iam-blocking) lands: without credentials
 the app builds and serves `/healthz` but every DynamoDB and CloudWatch call fails.
 
-App config is `infra/control-plane.fly.toml` (region `iad`, internal port 3000,
+App config is `fly.toml` (region `iad`, internal port 3000,
 `force_https`, auto-stop/auto-start, `/healthz` check every 30s). The image is built by
 `apps/control-plane/Dockerfile` — a multi-stage Next.js standalone build running as
 non-root `nextjs`.
 
 Required configuration. Secrets go in `fly secrets`; `AWS_ROLE_ARN` is a role ARN, not a
-credential, so it belongs in `[env]` in `infra/control-plane.fly.toml` where it is
+credential, so it belongs in `[env]` in `fly.toml` where it is
 reviewable in git.
 
 | Name                  | Where             | Source                                             |
@@ -590,7 +590,7 @@ fly secrets list --app dt-agent-fleet-control-plane   # confirm none left "Stage
 Deploy:
 
 ```bash
-flyctl deploy --config infra/control-plane.fly.toml --remote-only
+flyctl deploy --remote-only
 ```
 
 CI (`.github/workflows/control-plane.yml`) runs the same command on `main` after `validate`
@@ -682,7 +682,7 @@ rollback is a redeploy of the previous template, never a destroy.
 | CloudWatch Logs Insights      | ~$0.005 per GB scanned                            |
 | CloudWatch Logs storage       | 30-day retention on `aws/spans` and the app group |
 
-Target is under USD 10/month. `infra/control-plane.fly.toml` declares no `[[vm]]` block, so
+Target is under USD 10/month. `fly.toml` declares no `[[vm]]` block, so
 Fly's default machine size applies — confirm the actual size and RAM with
 `fly machines list` after the first deploy before treating any figure as final. The
 Dockerfile targets under 512 MB at runtime.
@@ -710,6 +710,26 @@ instead of pasting a heredoc.
 **Fly cert stuck `Not verified`.** Orange-cloud proxy intercepting the ACME challenge; see
 [§9](#9-stage-7--dns-and-tls).
 
+**Deploy fails with `dockerfile ... not found`.** Fly resolves `[build].dockerfile` relative
+to the `fly.toml` directory, not the working directory, and no CLI flag overrides it. The
+toml lives at the repo root for this reason — the Dockerfile's `COPY` paths
+(`package.json`, `apps/control-plane/`, `packages/shared/`) need the repo root as build
+context. Run `flyctl deploy --remote-only` from the repo root.
+
+**Build fails with `Module not found: Can't resolve './x.js'`.** The codebase uses
+TypeScript ESM-style `.js` specifiers, which webpack only maps onto `.ts`/`.tsx` via
+`resolve.extensionAlias` — configured in `apps/control-plane/next.config.ts`. Webpack
+truncates this error list at five, so the named files are rarely the whole set.
+
+**Build fails with `UnhandledSchemeError: Reading from "node:crypto"`.** A `"use client"`
+component is importing the `@fleet/shared` barrel, which re-exports `buildSessionId` and so
+drags `node:crypto` into the browser bundle. Import a narrow subpath instead
+(`@fleet/shared/params-schemas`), adding an `exports` entry to the shared package if needed.
+
+**Build fails with `Cannot find module '@tailwindcss/postcss'`.** In Tailwind v4 the PostCSS
+plugin ships as a package separate from `tailwindcss`; both must be declared in
+`apps/control-plane/package.json`.
+
 **Secrets show `Staged`.** They are not live until a deploy, or `fly secrets deploy`.
 
 **`AccessDeniedException` in the runs view.** Stage 5 Gap 2 — the role has no `logs:`
@@ -725,19 +745,20 @@ async task. Read the app log group; do not trust the CLI result.
 Earlier revisions of this runbook contained instructions that do not work against this
 account. They are recorded here so the errors are not repeated.
 
-| Earlier text                                                      | Reality                                                                                                             |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| App `agent-fleet-control-plane`                                   | `dt-agent-fleet-control-plane`                                                                                      |
-| Hostname `controlplane.yourdomain.com`                            | `fleet.llipe.com`                                                                                                   |
-| Role `control-plane-role`                                         | `agent-fleet-control-plane-role`                                                                                    |
-| `fly secrets set AWS_ROLE_ARN=...`                                | Right variable, wrong home — it belongs in `[env]`, and `credentials.ts` reads neither it nor any real Fly variable |
-| "Attach the trust policy to the role"                             | Role trusts `ecs-tasks.amazonaws.com`; no Fly OIDC provider exists                                                  |
-| Static access keys as an acceptable fallback                      | Bypasses write separation; needs full statement replication + removal ticket                                        |
-| Logs permissions unmentioned                                      | Role has **no** `logs:` or `tag:GetResources` grants — agent list and runs view both fail                           |
-| `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` in `credentials.ts`    | Not Fly variables. Fly sets `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` from `AWS_ROLE_ARN`           |
-| CloudWatch Transaction Search at 1% sampling                      | Right requirement — it is the prerequisite that ingests AgentCore spans into `aws/spans`; already enabled at 100%   |
-| "Transaction Search is not applicable — no X-Ray segments"        | **Wrong**, written in an earlier revision of this file. It is exactly the ingestion mechanism for AgentCore spans   |
-| `CloudWatch → Settings → Traces and Metrics → Transaction Search` | Path does not exist. It is CloudWatch → Application Signals (APM) → Transaction search                              |
-| Tunnel `agent-fleet-cp` → `.fly.dev` from an operator workstation | Not a production connector; tunnel-in-machine is the hardening path                                                 |
-| Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                             |
-| App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                    |
+| Earlier text                                                      | Reality                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| App `agent-fleet-control-plane`                                   | `dt-agent-fleet-control-plane`                                                                                                                                                                                           |
+| Hostname `controlplane.yourdomain.com`                            | `fleet.llipe.com`                                                                                                                                                                                                        |
+| Role `control-plane-role`                                         | `agent-fleet-control-plane-role`                                                                                                                                                                                         |
+| `fly secrets set AWS_ROLE_ARN=...`                                | Right variable, wrong home — it belongs in `[env]`, and `credentials.ts` reads neither it nor any real Fly variable                                                                                                      |
+| `flyctl deploy --config infra/control-plane.fly.toml`             | Fly resolves `[build].dockerfile` relative to the toml's directory, so this looked for `infra/apps/control-plane/Dockerfile`. The toml now lives at the repo root as `fly.toml`, matching the Dockerfile's build context |
+| "Attach the trust policy to the role"                             | Role trusts `ecs-tasks.amazonaws.com`; no Fly OIDC provider exists                                                                                                                                                       |
+| Static access keys as an acceptable fallback                      | Bypasses write separation; needs full statement replication + removal ticket                                                                                                                                             |
+| Logs permissions unmentioned                                      | Role has **no** `logs:` or `tag:GetResources` grants — agent list and runs view both fail                                                                                                                                |
+| `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` in `credentials.ts`    | Not Fly variables. Fly sets `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` from `AWS_ROLE_ARN`                                                                                                                |
+| CloudWatch Transaction Search at 1% sampling                      | Right requirement — it is the prerequisite that ingests AgentCore spans into `aws/spans`; already enabled at 100%                                                                                                        |
+| "Transaction Search is not applicable — no X-Ray segments"        | **Wrong**, written in an earlier revision of this file. It is exactly the ingestion mechanism for AgentCore spans                                                                                                        |
+| `CloudWatch → Settings → Traces and Metrics → Transaction Search` | Path does not exist. It is CloudWatch → Application Signals (APM) → Transaction search                                                                                                                                   |
+| Tunnel `agent-fleet-cp` → `.fly.dev` from an operator workstation | Not a production connector; tunnel-in-machine is the hardening path                                                                                                                                                      |
+| Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                                                                                                                                  |
+| App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                                                                                                                         |

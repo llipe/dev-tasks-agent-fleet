@@ -33,7 +33,7 @@ whole custom branch and fixes the token-refresh bug as a side effect.
 - `infra/test/iam-stack.test.ts` - Assertions for trust policy and new grants, plus negative assertions
 - `apps/control-plane/src/server/aws/credentials.ts` - Replace custom provider with `fromNodeProviderChain()`
 - `apps/control-plane/src/server/aws/credentials.test.ts` - New; asserts the default chain is used
-- `infra/control-plane.fly.toml` - Add `AWS_ROLE_ARN` to `[env]`
+- `fly.toml` - Add `AWS_ROLE_ARN` to `[env]` (relocated from `infra/control-plane.fly.toml` so the Dockerfile build context resolves)
 - `docs/runbook-deployment.md` - Remove the §7 blocking notice once deployed
 - `workstream/pending-deployments.md` - Status board items 16 and 17 (D7)
 
@@ -51,7 +51,7 @@ whole custom branch and fixes the token-refresh bug as a side effect.
   - [x] 1.6 Implement in `infra/lib/iam-stack.ts`: add `iam.OpenIdConnectProvider`, change `assumedBy` to `iam.WebIdentityPrincipal` with both conditions, add the `logs:` and `tag:` statements. Run `pnpm run test` in `infra` until 1.1–1.5 pass
   - [x] 1.7 Write a failing test in `apps/control-plane/src/server/aws/credentials.test.ts` asserting the exported provider resolves via the SDK default chain (web-identity file honoured, no reference to `FLY_*` variables)
   - [x] 1.8 Replace `createCredentialsProvider()` in `credentials.ts` with `fromNodeProviderChain()`; delete the `readFileSync` import and the `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` reads
-  - [x] 1.9 Add `AWS_ROLE_ARN = "arn:aws:iam::755641879575:role/agent-fleet-control-plane-role"` to `[env]` in `infra/control-plane.fly.toml`
+  - [x] 1.9 Add `AWS_ROLE_ARN = "arn:aws:iam::755641879575:role/agent-fleet-control-plane-role"` to `[env]` in `fly.toml`
   - [x] 1.10 Run `pnpm run cdk diff AgentFleetIamStack` and review: the diff must add one OIDC provider, replace the control-plane role trust, and add two policy statements — nothing else
   - [x] 1.11 Deploy: `cd infra && pnpm run cdk deploy AgentFleetIamStack`
   - [x] 1.12 Remove the staged static keys: `fly secrets unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY --app dt-agent-fleet-control-plane`
