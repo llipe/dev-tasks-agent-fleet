@@ -4,6 +4,7 @@
 
 | Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                                               | Author           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.3     | 2026-08-25 | §9 code structure corrected: `src/server/mappers/` → `src/server/runs/`; added `infra/orchestrator/` and `infra/seed/`; `src/lib/` note expanded to include `auth`. | technical-writer |
 | 1.2     | 2026-08-25 | Static AWS keys removed as an approved credential fallback; Fly OIDC is the only path ([ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md)). `build` added to the `validate` gate ([ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md)). `fly.toml` moved to the repo root. Origin lockdown recorded as an open deviation. | technical-writer |
 | 1.1     | 2026-08-19 | IaC changed from Terraform to AWS CDK (TypeScript). Agent Python 3.13. Added the agent-liveness / non-blocking-entrypoint constraint. `stale` → `incomplete` bounded by `maxLifetime`.                                                                                                                                                                                | product-engineer |
 | 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)                                                                                                                                                                                                                                                                                                                 | product-engineer |
@@ -305,10 +306,10 @@ dev-tasks-agent-fleet/
 │       ├── src/server/
 │       │   ├── aws/              # one adapter per service
 │       │   ├── repository/       # DynamoDB access, key builders
-│       │   ├── mappers/          # span → Run, item → config (pure)
+│       │   ├── runs/             # span → Run mapping, query building, merge logic (pure)
 │       │   ├── cache/            # in-process TTL cache
 │       │   └── actions/          # Server Actions
-│       ├── src/lib/              # cost estimation, formatting, status derivation
+│       ├── src/lib/              # cost estimation, formatting, status derivation, auth
 │       ├── pricing/              # versioned pricing table, indexed by model_id
 │       └── middleware.ts         # Access JWT validation
 ├── agents/
@@ -319,6 +320,8 @@ dev-tasks-agent-fleet/
 └── infra/
     ├── lib/                      # CDK: table, GSI1, scheduler, orchestrator, IAM, tags,
     │                             # Fly OIDC provider + control-plane role trust
+    ├── orchestrator/             # TypeScript Lambda source + tests
+    ├── seed/                     # DynamoDB seed script
     └── bin/app.ts                # three stacks: Data, Iam, Orchestration
 ```
 

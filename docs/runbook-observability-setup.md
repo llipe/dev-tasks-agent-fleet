@@ -10,14 +10,17 @@ CloudWatch Transaction Search enables querying spans from the OpenTelemetry data
 
 ### Steps to Enable
 
-1. Open the AWS Console > CloudWatch > Settings > Traces and Metrics.
-2. Under "Transaction Search", click **Edit**.
-3. Set indexing to **1% sampling** (sufficient for our low-volume agent fleet; each agent runs at most once daily per repo).
+> **Already enabled on this account (2026-08-24) at 100% sampling.** The steps below are
+> retained for reference; no action is needed.
+
+1. Open the AWS Console > CloudWatch > **Application Signals (APM)** > **Transaction search**.
+2. Enable Transaction Search if not already active.
+3. Sampling is set to **100%** on this account (the PRD assumed 1% would suffice; 100% is also fine given low volume and only affects X-Ray trace summary indexing, not log ingestion).
 4. Confirm and save.
 
-### Why 1%
+### Why 100% is acceptable
 
-The agent fleet produces a small number of spans (one root span + child spans per run). Even at 1% indexing, all spans are retained in the log group — Transaction Search indexing only affects the indexed/searchable subset via the console's trace explorer. Our Logs Insights queries operate on the log group directly and see 100% of spans regardless of this setting.
+The agent fleet produces a small number of spans (one root span + child spans per run). Even at 100% indexing, cost is negligible given volume. All spans are retained in the log group regardless of the indexing rate — Transaction Search indexing only affects the indexed/searchable subset via the console's trace explorer. Our Logs Insights queries operate on the log group directly and see 100% of spans regardless of this setting.
 
 ## 2. Span Destination
 
@@ -89,10 +92,15 @@ aws logs put-retention-policy --log-group-name "$LG" --retention-in-days 30
 
 After setup, verify:
 
-1. **Transaction Search active**: Console > CloudWatch > Settings shows "Transaction Search: On".
+1. **Transaction Search active**: Console > CloudWatch > Application Signals (APM) > Transaction search shows active status.
 2. **Span log group exists**: `aws logs describe-log-groups --log-group-name-prefix aws/spans` returns the group.
 3. **Retention set**: The `retentionInDays` field shows `30`.
 4. **Spans arriving**: After one triggered agent run, `aws logs filter-log-events --log-group-name aws/spans --limit 5` returns span records.
+
+   > **As of 2026-08-25, spans are NOT arriving.** `aws/spans` has `storedBytes=0`. The agent
+   > declares `opentelemetry-api` and `opentelemetry-sdk` but no exporter package, so spans are
+   > created in-process and dropped. Tracked as [#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62).
+   > This verification step will pass only after an OTLP exporter is installed.
 5. **Spans belong to the expected agent**: `aws/spans` is fleet-wide, so confirm the records carry the right agent attribute rather than assuming every record is the dep-updater's.
 
    ```bash

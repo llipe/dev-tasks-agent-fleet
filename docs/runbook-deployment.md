@@ -131,7 +131,7 @@ Seed the scope config (idempotent, guarded by `attribute_not_exists`):
 
 ```bash
 # from repo root
-pnpm run seed
+cd infra && pnpm run seed
 ```
 
 ### Write separation (do not weaken this)
