@@ -24,8 +24,11 @@ export default async function RepoDetailPage({ params, searchParams }: RepoDetai
   const { repo } = await params;
   const rawParams = await searchParams;
 
-  // Parse catch-all route segments into owner/repo
-  const repoId = repo.join("/");
+  // Parse catch-all route segments into owner/repo.
+  // The Repos list links to /repos/<owner>%2F<repo>, so the slash arrives percent-encoded
+  // inside a single segment. Next.js does not decode it, so without this the id stays
+  // "owner%2Frepo" and every subject lookup and Logs Insights query uses a wrong key.
+  const repoId = repo.map((segment) => decodeURIComponent(segment)).join("/");
 
   // Normalize searchParams to simple string values
   const normalizedParams: Record<string, string> = {};
@@ -49,7 +52,16 @@ export default async function RepoDetailPage({ params, searchParams }: RepoDetai
       state = "empty";
     }
   } catch (error: unknown) {
-    const errorObj = error as Error & { code?: string };
+    const errorObj = error as Error & { code?: string; name?: string };
+    // Log before classifying: without this the table renders a generic message and the
+    // underlying failure leaves no trace in fly logs.
+    console.error("[repo-detail] Failed to load runs", {
+      repoId,
+      name: errorObj.name,
+      code: errorObj.code,
+      message: errorObj.message,
+      stack: errorObj.stack,
+    });
     if (errorObj.code === "TIMEOUT" || errorObj.message?.includes("timeout")) {
       state = "timeout";
     } else {

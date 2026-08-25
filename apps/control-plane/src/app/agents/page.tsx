@@ -54,7 +54,15 @@ export default async function AgentsPage() {
       state = "empty";
     }
   } catch (error: unknown) {
-    const errorObj = error as Error & { code?: string };
+    const errorObj = error as Error & { code?: string; name?: string };
+    // Log before classifying: without this the page renders a generic message and the
+    // underlying failure (credentials, permissions, network) leaves no trace in fly logs.
+    console.error("[agents-page] Failed to build agent rows", {
+      name: errorObj.name,
+      code: errorObj.code,
+      message: errorObj.message,
+      stack: errorObj.stack,
+    });
     if (errorObj.code === "TIMEOUT" || errorObj.message?.includes("timeout")) {
       state = "timeout";
     } else {

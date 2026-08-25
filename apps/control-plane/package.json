@@ -18,7 +18,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "echo 'No e2e tests configured yet'",
     "audit": "pnpm audit --prod",
-    "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test"
+    "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.1114.0",
@@ -38,6 +38,7 @@
   "devDependencies": {
     "@aws-sdk/types": "^3.974.4",
     "@smithy/types": "^4.17.2",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.5",

@@ -46,6 +46,11 @@ ENV HOSTNAME="0.0.0.0"
 COPY --from=builder --chown=nextjs:nodejs /app/apps/control-plane/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/control-plane/.next/static ./apps/control-plane/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/control-plane/public ./apps/control-plane/public
+# `src/lib/cost.ts` reads pricing/pricing-v1.json at runtime via readFileSync. Next.js
+# standalone output only traces static imports, so a filesystem-read asset is not included
+# automatically and must be copied explicitly. Without this, loadPricingTable() throws
+# ENOENT: the repo runs view fails outright and the agents list shows "unknown" 30d cost.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/control-plane/pricing ./apps/control-plane/pricing
 
 USER nextjs
 

@@ -36,9 +36,35 @@ export class IamStack extends cdk.Stack {
     const gsiArn = `${tableArn}/index/*`;
 
     // ─── Control-Plane Role ───────────────────────────────────────────────
+    // Fly OIDC provider — enables AssumeRoleWithWebIdentity from Fly Machines.
+    //
+    // FLY_ORG_SLUG is the *real* org slug, which appears in the token's `iss` and as the
+    // first segment of `sub`. It is NOT what `fly orgs list` prints: for a personal org that
+    // command reports the alias "personal", while tokens are issued by
+    // https://oidc.fly.io/<real-slug>. Registering the alias makes STS reject every token
+    // with InvalidIdentityTokenException, because no provider matches the issuer.
+    //
+    // To confirm the value, read `iss` from a token on a running machine, or check that
+    // https://oidc.fly.io/<slug>/.well-known/openid-configuration returns that issuer.
+    const flyOrgSlug = "felipe-mallea";
+    const flyAppName = "dt-agent-fleet-control-plane";
+
+    const flyOidcProvider = new iam.OpenIdConnectProvider(this, "FlyOidcProvider", {
+      url: `https://oidc.fly.io/${flyOrgSlug}`,
+      clientIds: ["sts.amazonaws.com"],
+    });
+
     this.controlPlaneRole = new iam.Role(this, "ControlPlaneRole", {
       roleName: "agent-fleet-control-plane-role",
-      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+      assumedBy: new iam.WebIdentityPrincipal(flyOidcProvider.openIdConnectProviderArn, {
+        StringEquals: {
+          [`oidc.fly.io/${flyOrgSlug}:aud`]: "sts.amazonaws.com",
+        },
+        // sub is `<org-slug>:<app-name>:<machine-name>`, so the machine segment is a wildcard.
+        StringLike: {
+          [`oidc.fly.io/${flyOrgSlug}:sub`]: `${flyOrgSlug}:${flyAppName}:*`,
+        },
+      }),
       description:
         "Control plane role: read all, write scope config (enabled, params), no InvokeAgentRuntime",
     });
@@ -74,6 +100,34 @@ export class IamStack extends cdk.Stack {
         sid: "DenyInvokeAgentRuntime",
         effect: iam.Effect.DENY,
         actions: ["bedrock-agentcore:InvokeAgentRuntime"],
+        resources: ["*"],
+      }),
+    );
+
+    // CloudWatch Logs — read spans and agent application logs for the runs view
+    this.controlPlaneRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "CloudWatchLogsRead",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:StartQuery",
+          "logs:GetQueryResults",
+          "logs:StopQuery",
+          "logs:FilterLogEvents",
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans:*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*:*`,
+        ],
+      }),
+    );
+
+    // Resource Groups Tagging — discover agents by tag
+    this.controlPlaneRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "TaggingRead",
+        effect: iam.Effect.ALLOW,
+        actions: ["tag:GetResources"],
         resources: ["*"],
       }),
     );

@@ -33,7 +33,13 @@ export default async function ReposPage() {
       state = "empty";
     }
   } catch (error: unknown) {
-    const errorObj = error as Error & { code?: string };
+    const errorObj = error as Error & { code?: string; name?: string };
+    console.error("[repos-page] Failed to load repos", {
+      name: errorObj.name,
+      code: errorObj.code,
+      message: errorObj.message,
+      stack: errorObj.stack,
+    });
     if (errorObj.code === "TIMEOUT" || errorObj.message?.includes("timeout")) {
       state = "timeout";
     } else {

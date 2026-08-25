@@ -1,4 +1,4 @@
-app = "agent-fleet-control-plane"
+app = "dt-agent-fleet-control-plane"
 primary_region = "iad"
 
 [build]
@@ -20,3 +20,4 @@ grace_period = "10s"
 [env]
 NODE_ENV = "production"
 PORT = "3000"
+AWS_ROLE_ARN = "arn:aws:iam::755641879575:role/agent-fleet-control-plane-role"
