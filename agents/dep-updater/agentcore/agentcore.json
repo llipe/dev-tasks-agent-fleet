@@ -21,7 +21,12 @@
       "envVars": [
         { "name": "GITHUB_SECRET_ID", "value": "dep-agent/github-app" },
         { "name": "GIT_COMMITTER_NAME", "value": "devtasks-agent-fleet[bot]" },
-        { "name": "GIT_COMMITTER_EMAIL", "value": "4687256+devtasks-agent-fleet[bot]@users.noreply.github.com" }
+        { "name": "GIT_COMMITTER_EMAIL", "value": "4687256+devtasks-agent-fleet[bot]@users.noreply.github.com" },
+        { "name": "AGENT_OBSERVABILITY_ENABLED", "value": "true" },
+        { "name": "OTEL_PYTHON_DISTRO", "value": "aws_distro" },
+        { "name": "OTEL_PYTHON_CONFIGURATOR", "value": "aws_configurator" },
+        { "name": "OTEL_EXPORTER_OTLP_PROTOCOL", "value": "http/protobuf" },
+        { "name": "OTEL_RESOURCE_ATTRIBUTES", "value": "service.name=dep-updater" }
       ],
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 300,
