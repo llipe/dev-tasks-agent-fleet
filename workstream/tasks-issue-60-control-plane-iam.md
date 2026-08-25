@@ -45,26 +45,26 @@ whole custom branch and fixes the token-refresh bug as a side effect.
 
   - [x] 1.1 Write failing assertions in `infra/test/iam-stack.test.ts` for the Fly OIDC provider: URL `https://oidc.fly.io/personal`, client ID `sts.amazonaws.com`
   - [x] 1.2 Write failing assertions for the control-plane role trust policy: `Federated` principal on that provider, `sts:AssumeRoleWithWebIdentity`, `StringEquals` on `oidc.fly.io/personal:aud`, `StringLike` on `oidc.fly.io/personal:sub`
-  - [ ] 1.3 Write failing assertions for the `logs:` statement: exactly `StartQuery`, `GetQueryResults`, `StopQuery`, `FilterLogEvents`, scoped to the `aws/spans` and `/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*` group ARNs
-  - [ ] 1.4 Write failing assertions for `tag:GetResources` on `Resource: "*"` (the API does not support resource-level permissions)
-  - [ ] 1.5 Write failing negative assertions: no `logs:DescribeLogGroups`, no unconditioned `dynamodb:UpdateItem`, `DenyInvokeAgentRuntime` still present, DynamoDB write condition still references `CONTROL_PLANE_WRITE_ATTRIBUTES`, and `ecs-tasks.amazonaws.com` no longer trusted
-  - [ ] 1.6 Implement in `infra/lib/iam-stack.ts`: add `iam.OpenIdConnectProvider`, change `assumedBy` to `iam.WebIdentityPrincipal` with both conditions, add the `logs:` and `tag:` statements. Run `pnpm run test` in `infra` until 1.1–1.5 pass
-  - [ ] 1.7 Write a failing test in `apps/control-plane/src/server/aws/credentials.test.ts` asserting the exported provider resolves via the SDK default chain (web-identity file honoured, no reference to `FLY_*` variables)
-  - [ ] 1.8 Replace `createCredentialsProvider()` in `credentials.ts` with `fromNodeProviderChain()`; delete the `readFileSync` import and the `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` reads
-  - [ ] 1.9 Add `AWS_ROLE_ARN = "arn:aws:iam::755641879575:role/agent-fleet-control-plane-role"` to `[env]` in `infra/control-plane.fly.toml`
-  - [ ] 1.10 Run `pnpm run cdk diff AgentFleetIamStack` and review: the diff must add one OIDC provider, replace the control-plane role trust, and add two policy statements — nothing else
-  - [ ] 1.11 Deploy: `cd infra && pnpm run cdk deploy AgentFleetIamStack`
-  - [ ] 1.12 Remove the staged static keys: `fly secrets unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY --app dt-agent-fleet-control-plane`
-  - [ ] 1.13 Delete the inert investigation artifact: IAM user `fleet-control-plane-reader` (no policies, no keys)
-  - [ ] 1.14 Verify Acceptance Criterion 1: `aws iam get-role --role-name agent-fleet-control-plane-role` shows the `Federated` principal for `oidc.fly.io/personal` with both claim conditions, and no `ecs-tasks` principal
-  - [ ] 1.15 Verify Acceptance Criterion 2: role grants exactly the four Logs actions on the two ARN patterns, plus `tag:GetResources`, and no `DescribeLogGroups`
-  - [ ] 1.16 Verify Acceptance Criterion 3: DynamoDB writes still attribute-conditioned; `InvokeAgentRuntime` still denied — confirm on the live role, not only in the template
-  - [ ] 1.17 Verify Acceptance Criterion 4: `pnpm run test` in `infra` passes and fails if any grant is reverted (mutate locally to confirm, then revert)
+  - [x] 1.3 Write failing assertions for the `logs:` statement: exactly `StartQuery`, `GetQueryResults`, `StopQuery`, `FilterLogEvents`, scoped to the `aws/spans` and `/aws/bedrock-agentcore/runtimes/depupdater_dep_updater*` group ARNs
+  - [x] 1.4 Write failing assertions for `tag:GetResources` on `Resource: "*"` (the API does not support resource-level permissions)
+  - [x] 1.5 Write failing negative assertions: no `logs:DescribeLogGroups`, no unconditioned `dynamodb:UpdateItem`, `DenyInvokeAgentRuntime` still present, DynamoDB write condition still references `CONTROL_PLANE_WRITE_ATTRIBUTES`, and `ecs-tasks.amazonaws.com` no longer trusted
+  - [x] 1.6 Implement in `infra/lib/iam-stack.ts`: add `iam.OpenIdConnectProvider`, change `assumedBy` to `iam.WebIdentityPrincipal` with both conditions, add the `logs:` and `tag:` statements. Run `pnpm run test` in `infra` until 1.1–1.5 pass
+  - [x] 1.7 Write a failing test in `apps/control-plane/src/server/aws/credentials.test.ts` asserting the exported provider resolves via the SDK default chain (web-identity file honoured, no reference to `FLY_*` variables)
+  - [x] 1.8 Replace `createCredentialsProvider()` in `credentials.ts` with `fromNodeProviderChain()`; delete the `readFileSync` import and the `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` reads
+  - [x] 1.9 Add `AWS_ROLE_ARN = "arn:aws:iam::755641879575:role/agent-fleet-control-plane-role"` to `[env]` in `infra/control-plane.fly.toml`
+  - [x] 1.10 Run `pnpm run cdk diff AgentFleetIamStack` and review: the diff must add one OIDC provider, replace the control-plane role trust, and add two policy statements — nothing else
+  - [x] 1.11 Deploy: `cd infra && pnpm run cdk deploy AgentFleetIamStack`
+  - [x] 1.12 Remove the staged static keys: `fly secrets unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY --app dt-agent-fleet-control-plane`
+  - [x] 1.13 Delete the inert investigation artifact: IAM user `fleet-control-plane-reader` (no policies, no keys)
+  - [x] 1.14 Verify Acceptance Criterion 1: `aws iam get-role --role-name agent-fleet-control-plane-role` shows the `Federated` principal for `oidc.fly.io/personal` with both claim conditions, and no `ecs-tasks` principal
+  - [x] 1.15 Verify Acceptance Criterion 2: role grants exactly the four Logs actions on the two ARN patterns, plus `tag:GetResources`, and no `DescribeLogGroups`
+  - [x] 1.16 Verify Acceptance Criterion 3: DynamoDB writes still attribute-conditioned; `InvokeAgentRuntime` still denied — confirm on the live role, not only in the template
+  - [x] 1.17 Verify Acceptance Criterion 4: `pnpm run test` in `infra` passes and fails if any grant is reverted (mutate locally to confirm, then revert)
   - [ ] 1.18 Verify Acceptance Criterion 5: deploy the Fly app, then confirm `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` are all present via `fly ssh console -C env`
   - [ ] 1.19 Verify Acceptance Criterion 6: `https://fleet.llipe.com/agents` renders the agents list and **no `AccessDeniedException`** appears in `fly logs` for `StartQuery`, `GetQueryResults`, `FilterLogEvents` or `GetResources`. This AC verifies authorization, not data presence — an empty-but-successful runs view passes. Expect `dep-updater` three times until #61 lands, and an empty runs view until #62 lands; neither is an IAM failure
-  - [ ] 1.20 Verify Acceptance Criterion 7: `fly secrets list` shows no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
-  - [ ] 1.21 Run Tests: `pnpm run test` (unit + integration, workspace root)
-  - [ ] 1.22 Run quality gates and record results: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run audit`, `pnpm run validate`
+  - [x] 1.20 Verify Acceptance Criterion 7: `fly secrets list` shows no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+  - [x] 1.21 Run Tests: `pnpm run test` (unit + integration, workspace root)
+  - [x] 1.22 Run quality gates and record results: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run audit`, `pnpm run validate`
   - [ ] 1.23 Observe the machine for over an hour and check `fly logs` for `InvalidIdentityToken` — the docs do not state whether `init` rewrites `/.fly/oidc_token` as it ages. Record the finding; open a follow-up issue if refresh is needed
   - [ ] 1.24 Update `docs/runbook-deployment.md`: remove the §7 blocking notice, fold the resolved gaps into §15, update item 16 state in §1
   - [ ] 1.25 Update `workstream/pending-deployments.md` status board items 16 and 17
