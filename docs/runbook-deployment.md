@@ -40,18 +40,21 @@ Related runbooks:
 Stages are ordered by dependency. Do not reorder — each stage assumes the previous one
 landed.
 
-| Stage | What                             | State                                     |
-| ----- | -------------------------------- | ----------------------------------------- |
-| 1     | Data + IAM CDK stacks            | ✅ Deployed                               |
-| 2     | `dep-updater` agent + GitHub App | ✅ Deployed and verified (PR memo-cli#49) |
-| 3     | Observability (retention)        | ✅ 30-day retention on both log groups    |
-| 4     | Orchestrator Lambda + schedule   | ✅ Deployed, invoked successfully         |
-| 5     | Control-plane IAM (OIDC + logs)  | ❌ **Blocked — code change required**     |
-| 6     | Cloudflare Access application    | ✅ App `fleet` exists, policy attached    |
-| 7     | DNS + TLS for `fleet.llipe.com`  | ⚠️ DNS proxied; Fly cert `Not verified`   |
-| 8     | Fly deploy                       | ❌ Not deployed (6 secrets staged only)   |
+| Stage | What                             | State                                      |
+| ----- | -------------------------------- | ------------------------------------------ |
+| 1     | Data + IAM CDK stacks            | ✅ Deployed                                |
+| 2     | `dep-updater` agent + GitHub App | ✅ Deployed and verified (PR memo-cli#49)  |
+| 3     | Observability (retention)        | ✅ 30-day retention on both log groups     |
+| 4     | Orchestrator Lambda + schedule   | ✅ Deployed, invoked successfully          |
+| 5     | Control-plane IAM (OIDC + logs)  | ✅ Deployed 2026-08-25 (#60)               |
+| 6     | Cloudflare Access application    | ✅ App `fleet` exists, policy attached     |
+| 7     | DNS + TLS for `fleet.llipe.com`  | ⚠️ DNS proxied; Fly cert `Not verified`    |
+| 8     | Fly deploy                       | ✅ Deployed 2026-08-25, 2 machines healthy |
 
-Stage 5 blocks stage 8. See [Stage 5](#7-stage-5--control-plane-iam-blocking).
+Stage 7 is the remaining gap: Cloudflare Access only fronts `fleet.llipe.com`, and its Fly
+certificate has not been issued, so no authenticated session is possible yet. The app is
+reachable and correct on `dt-agent-fleet-control-plane.fly.dev`, where `/healthz` returns 200
+and every protected route returns 401 as designed.
 
 ### Canonical names
 
@@ -672,20 +675,25 @@ rollback is a redeploy of the previous template, never a destroy.
 
 ## 13. Cost
 
-| Item                          | Notes                                             |
-| ----------------------------- | ------------------------------------------------- |
-| Fly machine (`shared-cpu-1x`) | Auto-stop enabled; billed while running           |
-| Fly dedicated IPv4            | $2.00/mo — allocated 2026-08-25                   |
-| Fly dedicated IPv6            | No charge                                         |
-| Cloudflare Access + Tunnel    | $0 on the free tier (50 users)                    |
-| DynamoDB on-demand            | Negligible at dashboard volumes                   |
-| CloudWatch Logs Insights      | ~$0.005 per GB scanned                            |
-| CloudWatch Logs storage       | 30-day retention on `aws/spans` and the app group |
+| Item                                     | Notes                                             |
+| ---------------------------------------- | ------------------------------------------------- |
+| Fly machines (2 × `shared-cpu-1x:256MB`) | Auto-stop enabled; billed while running           |
+| Fly dedicated IPv4                       | $2.00/mo — allocated 2026-08-25                   |
+| Fly dedicated IPv6                       | No charge                                         |
+| Cloudflare Access + Tunnel               | $0 on the free tier (50 users)                    |
+| DynamoDB on-demand                       | Negligible at dashboard volumes                   |
+| CloudWatch Logs Insights                 | ~$0.005 per GB scanned                            |
+| CloudWatch Logs storage                  | 30-day retention on `aws/spans` and the app group |
 
-Target is under USD 10/month. `fly.toml` declares no `[[vm]]` block, so
-Fly's default machine size applies — confirm the actual size and RAM with
-`fly machines list` after the first deploy before treating any figure as final. The
-Dockerfile targets under 512 MB at runtime.
+Target is under USD 10/month. `fly.toml` declares no `[[vm]]` block, so Fly's default size
+applies — the first deploy provisioned `shared-cpu-1x:256MB`, confirmed with
+`fly machines list`. The Dockerfile targets under 512 MB at runtime.
+
+**Note the machine count.** Fly created **two** machines on the first deploy for high
+availability, despite `min_machines_running = 0` — that setting governs idle stop, not the HA
+pair. Both bill while running, so the machine line roughly doubles. Pass `--ha=false` on
+deploy, or remove one with `fly machine destroy <id>`, if a single machine is preferred.
+With `auto_stop_machines = "stop"` and low traffic the practical difference is small.
 
 ---
 
@@ -729,6 +737,13 @@ drags `node:crypto` into the browser bundle. Import a narrow subpath instead
 **Build fails with `Cannot find module '@tailwindcss/postcss'`.** In Tailwind v4 the PostCSS
 plugin ships as a package separate from `tailwindcss`; both must be declared in
 `apps/control-plane/package.json`.
+
+**`fly ssh console` fails with `websocket: ... got 502`.** The SSH tunnel is being blocked,
+typically by a corporate proxy or a network that disallows Fly's WireGuard/WebSocket
+transport. Machine `env` cannot be inspected this way. `AWS_ROLE_ARN` is still verifiable
+without SSH via `fly machine status <id> --display-config`, but the two variables Fly's
+`init` injects at runtime (`AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_ROLE_SESSION_NAME`) are only
+observable from inside the machine — re-run the check from an unproxied network.
 
 **Secrets show `Staged`.** They are not live until a deploy, or `fly secrets deploy`.
 
