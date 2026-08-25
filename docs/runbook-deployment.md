@@ -48,13 +48,18 @@ landed.
 | 4     | Orchestrator Lambda + schedule   | ✅ Deployed, invoked successfully          |
 | 5     | Control-plane IAM (OIDC + logs)  | ✅ Deployed 2026-08-25 (#60)               |
 | 6     | Cloudflare Access application    | ✅ App `fleet` exists, policy attached     |
-| 7     | DNS + TLS for `fleet.llipe.com`  | ⚠️ DNS proxied; Fly cert `Not verified`    |
+| 7     | DNS + TLS for `fleet.llipe.com`  | ✅ Certificate issued 2026-08-25           |
 | 8     | Fly deploy                       | ✅ Deployed 2026-08-25, 2 machines healthy |
 
-Stage 7 is the remaining gap: Cloudflare Access only fronts `fleet.llipe.com`, and its Fly
-certificate has not been issued, so no authenticated session is possible yet. The app is
-reachable and correct on `dt-agent-fleet-control-plane.fly.dev`, where `/healthz` returns 200
-and every protected route returns 401 as designed.
+All eight stages are deployed. `https://fleet.llipe.com/agents` redirects to the Cloudflare
+Access login, and on `dt-agent-fleet-control-plane.fly.dev` `/healthz` returns 200 while every
+protected route returns 401 as designed.
+
+What remains is verification that needs a human in a browser: complete an Access login and
+confirm the agents list renders with no `AccessDeniedException` in `fly logs`. Expect
+`dep-updater` listed three times ([#61](https://github.com/llipe/dev-tasks-agent-fleet/issues/61))
+and an empty runs view ([#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62));
+neither is an IAM failure.
 
 ### Canonical names
 
@@ -470,7 +475,11 @@ policy "Usuarios Autorizados".
 
 Collect two values:
 
-- **Team name** — Zero Trust → Settings; the hostname is `<team-name>.cloudflareaccess.com`
+- **Team name** — Zero Trust → Settings; the hostname is `<team-name>.cloudflareaccess.com`.
+  For this account it is **`round-mouse-afcf`**, confirmed from the Access login redirect on
+  `https://fleet.llipe.com/agents`. `CF_ACCESS_TEAM_NAME` must match exactly — the middleware
+  validates the JWT `iss` against `https://<team-name>.cloudflareaccess.com`, so a wrong value
+  yields a 401 _after_ a successful Cloudflare login, which reads like a permissions bug.
 - **Application Audience (AUD) tag** — open the `fleet` app → **Additional settings**. It is
   not on the Applications list view and not in the page URL (that UUID is the application
   id, not the AUD).
@@ -506,40 +515,77 @@ exposed to the internet unauthenticated.
 
 ## 9. Stage 7 — DNS and TLS
 
-Current live state: `fleet.llipe.com` resolves to Cloudflare edge IPs (proxied), and the
-Fly certificate is `Not verified`:
-
-```bash
-dig +short fleet.llipe.com          # 104.21.9.18, 172.67.140.245 → Cloudflare
-fly certs list --app dt-agent-fleet-control-plane
-```
-
-Public IPs are allocated (dedicated IPv4 `213.188.207.210`, $2/mo, plus IPv6).
+**Status: certificate issued and verified 2026-08-25.** `fleet.llipe.com` serves through
+Cloudflare Access with a Let's Encrypt certificate at the Fly origin, expiring in two months
+and auto-renewing.
 
 ### Topology in use: Cloudflare proxy → Fly public hostname
 
-DNS record on `llipe.com`:
+No Cloudflare Tunnel is involved. Three DNS records on `llipe.com` are required, and all
+three must be present — the two underscore records are what make validation work while the
+apex record stays proxied:
 
-| Type  | Name    | Target                                 | Proxy   |
-| ----- | ------- | -------------------------------------- | ------- |
-| CNAME | `fleet` | `dt-agent-fleet-control-plane.fly.dev` | Proxied |
+| Type  | Name                    | Value                                  | Proxy    |
+| ----- | ----------------------- | -------------------------------------- | -------- |
+| CNAME | `fleet`                 | `dt-agent-fleet-control-plane.fly.dev` | Proxied  |
+| CNAME | `_acme-challenge.fleet` | `fleet.llipe.com.<id>.flydns.net`      | DNS only |
+| TXT   | `_fly-ownership.fleet`  | `app-<id>`                             | DNS only |
 
-With Cloudflare SSL mode **Full (strict)**, the origin must present a certificate valid for
-`fleet.llipe.com`, so the Fly cert has to verify:
+Get the exact values, including the app-specific `<id>`, from:
 
 ```bash
-fly certs create fleet.llipe.com --app dt-agent-fleet-control-plane   # already done
+fly certs setup fleet.llipe.com --app dt-agent-fleet-control-plane
+```
+
+The **ownership TXT record is mandatory here.** Fly's own wording: "Required if your app
+doesn't have an IPv6 address, or if traffic is routed through a CDN or proxy." Traffic is
+proxied through Cloudflare, so Fly cannot see its own IPs on the hostname and uses this
+record to prove ownership instead.
+
+Verify all three from outside:
+
+```bash
+dig +short fleet.llipe.com                          # Cloudflare edge IPs (proxied)
+dig +short _acme-challenge.fleet.llipe.com CNAME    # must return the flydns target
+dig +short _fly-ownership.fleet.llipe.com TXT       # must return "app-<id>"
+
 fly certs check fleet.llipe.com --app dt-agent-fleet-control-plane
 ```
 
-If it stays `Not verified`, the orange-cloud proxy is intercepting the ACME challenge.
-Temporarily set the DNS record to **DNS-only** (grey cloud), re-run `fly certs check` until
-it reports issued, then re-enable the proxy. Certificate renewal needs the same treatment
-unless the record is left grey — leaving it grey exposes the origin IP and loses Access, so
-prefer re-proxying.
+### If the certificate stays `Not verified`
 
-`fly certs create` before IPs exist warns "Your app has no public IP addresses"; both are
-allocated now.
+**Do not grey-cloud the record.** An earlier revision of this runbook advised temporarily
+disabling the Cloudflare proxy to let the ACME challenge through. That is unnecessary when
+the two underscore records exist, and it exposes the origin IP and drops Access protection
+while in effect.
+
+The real failure mode seen on this app: the certificate was created **before** the app had
+public IPs, so `fly certs create` warned "Your app has no public IP addresses", the order
+failed, and Fly never retried it. DNS was correct the whole time. Recreating the order fixed
+it in under a minute:
+
+```bash
+fly certs delete fleet.llipe.com --app dt-agent-fleet-control-plane --yes
+fly certs create fleet.llipe.com --app dt-agent-fleet-control-plane
+fly certs check  fleet.llipe.com --app dt-agent-fleet-control-plane
+```
+
+This is safe while the certificate is unissued — nothing is being served on the hostname
+yet, and the app stays reachable on `dt-agent-fleet-control-plane.fly.dev` throughout.
+Allocate IPs first (`fly ips allocate-v4`, `fly ips allocate-v6`) so a fresh order has
+something to validate against.
+
+An empty `dig +short fleet.llipe.com.<id>.flydns.net TXT` means Fly is not running a
+challenge — a stale order, not a DNS problem.
+
+### `/healthz` is gated by Access on this hostname
+
+Cloudflare Access fronts the entire hostname, so `https://fleet.llipe.com/healthz` returns a
+302 to the Access login page rather than 200. The middleware's `/healthz` exemption only
+applies at the origin. Fly's own health checks are unaffected — they hit the machine
+directly on the internal network, bypassing Cloudflare. Only external uptime monitoring is
+affected; probe `https://dt-agent-fleet-control-plane.fly.dev/healthz`, or add an Access
+bypass policy scoped to `/healthz`, if external probing is wanted.
 
 ### Alternative: Cloudflare Tunnel (hardening, not yet implemented)
 
@@ -760,20 +806,21 @@ async task. Read the app log group; do not trust the CLI result.
 Earlier revisions of this runbook contained instructions that do not work against this
 account. They are recorded here so the errors are not repeated.
 
-| Earlier text                                                      | Reality                                                                                                                                                                                                                  |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| App `agent-fleet-control-plane`                                   | `dt-agent-fleet-control-plane`                                                                                                                                                                                           |
-| Hostname `controlplane.yourdomain.com`                            | `fleet.llipe.com`                                                                                                                                                                                                        |
-| Role `control-plane-role`                                         | `agent-fleet-control-plane-role`                                                                                                                                                                                         |
-| `fly secrets set AWS_ROLE_ARN=...`                                | Right variable, wrong home — it belongs in `[env]`, and `credentials.ts` reads neither it nor any real Fly variable                                                                                                      |
-| `flyctl deploy --config infra/control-plane.fly.toml`             | Fly resolves `[build].dockerfile` relative to the toml's directory, so this looked for `infra/apps/control-plane/Dockerfile`. The toml now lives at the repo root as `fly.toml`, matching the Dockerfile's build context |
-| "Attach the trust policy to the role"                             | Role trusts `ecs-tasks.amazonaws.com`; no Fly OIDC provider exists                                                                                                                                                       |
-| Static access keys as an acceptable fallback                      | Bypasses write separation; needs full statement replication + removal ticket                                                                                                                                             |
-| Logs permissions unmentioned                                      | Role has **no** `logs:` or `tag:GetResources` grants — agent list and runs view both fail                                                                                                                                |
-| `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` in `credentials.ts`    | Not Fly variables. Fly sets `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` from `AWS_ROLE_ARN`                                                                                                                |
-| CloudWatch Transaction Search at 1% sampling                      | Right requirement — it is the prerequisite that ingests AgentCore spans into `aws/spans`; already enabled at 100%                                                                                                        |
-| "Transaction Search is not applicable — no X-Ray segments"        | **Wrong**, written in an earlier revision of this file. It is exactly the ingestion mechanism for AgentCore spans                                                                                                        |
-| `CloudWatch → Settings → Traces and Metrics → Transaction Search` | Path does not exist. It is CloudWatch → Application Signals (APM) → Transaction search                                                                                                                                   |
-| Tunnel `agent-fleet-cp` → `.fly.dev` from an operator workstation | Not a production connector; tunnel-in-machine is the hardening path                                                                                                                                                      |
-| Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                                                                                                                                  |
-| App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                                                                                                                         |
+| Earlier text                                                      | Reality                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App `agent-fleet-control-plane`                                   | `dt-agent-fleet-control-plane`                                                                                                                                                                                                              |
+| Hostname `controlplane.yourdomain.com`                            | `fleet.llipe.com`                                                                                                                                                                                                                           |
+| Role `control-plane-role`                                         | `agent-fleet-control-plane-role`                                                                                                                                                                                                            |
+| `fly secrets set AWS_ROLE_ARN=...`                                | Right variable, wrong home — it belongs in `[env]`, and `credentials.ts` reads neither it nor any real Fly variable                                                                                                                         |
+| `flyctl deploy --config infra/control-plane.fly.toml`             | Fly resolves `[build].dockerfile` relative to the toml's directory, so this looked for `infra/apps/control-plane/Dockerfile`. The toml now lives at the repo root as `fly.toml`, matching the Dockerfile's build context                    |
+| "Attach the trust policy to the role"                             | Role trusts `ecs-tasks.amazonaws.com`; no Fly OIDC provider exists                                                                                                                                                                          |
+| Static access keys as an acceptable fallback                      | Bypasses write separation; needs full statement replication + removal ticket                                                                                                                                                                |
+| Logs permissions unmentioned                                      | Role has **no** `logs:` or `tag:GetResources` grants — agent list and runs view both fail                                                                                                                                                   |
+| `FLY_OIDC_TOKEN_PATH` / `FLY_AWS_ROLE_ARN` in `credentials.ts`    | Not Fly variables. Fly sets `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` from `AWS_ROLE_ARN`                                                                                                                                   |
+| CloudWatch Transaction Search at 1% sampling                      | Right requirement — it is the prerequisite that ingests AgentCore spans into `aws/spans`; already enabled at 100%                                                                                                                           |
+| "Transaction Search is not applicable — no X-Ray segments"        | **Wrong**, written in an earlier revision of this file. It is exactly the ingestion mechanism for AgentCore spans                                                                                                                           |
+| `CloudWatch → Settings → Traces and Metrics → Transaction Search` | Path does not exist. It is CloudWatch → Application Signals (APM) → Transaction search                                                                                                                                                      |
+| Tunnel `agent-fleet-cp` → `.fly.dev` from an operator workstation | Not a production connector; tunnel-in-machine is the hardening path                                                                                                                                                                         |
+| "Grey-cloud the DNS record so ACME can validate"                  | Unnecessary and harmful — it exposes the origin IP and drops Access. The `_acme-challenge` CNAME plus the `_fly-ownership` TXT validate fine behind the proxy; the real fault was a certificate order created before the app had public IPs |
+| Span group `/aws/vendedlogs/agentcore/dep-updater/spans`          | `aws/spans` (defect D2)                                                                                                                                                                                                                     |
+| App group `/aws/agentcore/dep-updater`                            | Discover it; the suffix is generated (defect D3)                                                                                                                                                                                            |
