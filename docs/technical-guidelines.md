@@ -1,570 +1,247 @@
-# Technical Guidelines — dev-tasks-agent-fleet
+# Technical Guidelines — Agent Fleet Control Plane
 
 ## Changelog
 
-| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                                               | Author           |
-| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1.3     | 2026-08-25 | §9 code structure corrected: `src/server/mappers/` → `src/server/runs/`; added `infra/orchestrator/` and `infra/seed/`; `src/lib/` note expanded to include `auth`. | technical-writer |
-| 1.2     | 2026-08-25 | Static AWS keys removed as an approved credential fallback; Fly OIDC is the only path ([ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md)). `build` added to the `validate` gate ([ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md)). `fly.toml` moved to the repo root. Origin lockdown recorded as an open deviation. | technical-writer |
-| 1.1     | 2026-08-19 | IaC changed from Terraform to AWS CDK (TypeScript). Agent Python 3.13. Added the agent-liveness / non-blocking-entrypoint constraint. `stale` → `incomplete` bounded by `maxLifetime`.                                                                                                                                                                                | product-engineer |
-| 1.0     | 2026-08-19 | Initial version, derived from PRD v1.0 (scope closed)                                                                                                                                                                                                                                                                                                                 | product-engineer |
-
----
+| Version | Date       | Summary                                                                 | Author           |
+| ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
+| 1.0     | 2026-08-26 | Initial version. Reformatted from consolidated PRD, `001_schema.sql`, `002_seed.sql`, `agent_reporter.py`, and `credentials.ts` into foundation doc format. No scope or decision changes. | product-engineer |
+| 1.1     | 2026-08-26 | Translated to English. Aligned with two-phase delivery model. | product-engineer |
 
 ## 1. Overview
 
-This monorepo holds three kinds of software that share two contracts: a Next.js control plane deployed to Fly.io, a set of AI agents deployed to AWS Bedrock AgentCore, and the infrastructure that schedules and supports them. The two shared contracts are the **DynamoDB single-table schema** and the **`llipe.*` span attribute set**.
+The system has three pieces with different languages and runtimes, joined by Supabase as the *system of record*:
 
-Guiding principles:
+1. **Front-end / panel** — Next.js in TypeScript, deployed on Fly.io (Phase 2).
+2. **Agents** — containers in AWS Bedrock AgentCore, in Python, that report their own lifecycle (Phase 1).
+3. **Database** — PostgreSQL via Supabase, with Realtime for live log tailing and `pg_cron` for stale-execution detection (Phase 1).
 
-1. **The contract is code, in one place.** `packages/shared` is the only definition of the DynamoDB schema and the `llipe.*` attributes. Every other package consumes it. Two implementations of the same contract drift silently; that is the entire reason this is a monorepo.
-2. **The IAM policy is the scope boundary.** PRD §3 lists what v1 does not do. That list is enforced by omitting permissions, not by omitting UI buttons.
-3. **Server-first, no API layer.** AWS calls happen in React Server Components and Server Actions. An HTTP API between the browser and the server would be a second surface to authenticate and maintain for no gain.
-4. **Stateless by design.** No database in the control plane. A container restart clears the in-memory cache and loses nothing.
-5. **Test-first.** Tests and acceptance scenarios are designed before implementation. The contract test between emitted spans and `packages/shared` is the load-bearing one.
-6. **Small and finished over general and open.** v1 scope is closed. Resist abstraction for requirements listed in the backlog.
-
----
+Guiding principle: **the agent reports state explicitly**; nothing is reconstructed by inference over logs (see Problem Statement in `product-context.md`). Every decision in this document upholds that rule or resolves a consequence of it (timeouts, buffering, credentials).
 
 ## 2. Technology Stack
 
-### Workspace
-
-| Concern         | Choice                                                                         |
-| --------------- | ------------------------------------------------------------------------------ |
-| Package manager | **pnpm** with workspaces (`pnpm-workspace.yaml`). Required, not preferred.     |
-| Node runtime    | Pinned exactly in `.nvmrc` and `engines`, matched to the container base image. |
-| Language (JS)   | TypeScript, `strict: true`, no implicit `any`, `noUncheckedIndexedAccess`.     |
-| Monorepo tasks  | pnpm workspace scripts. Add a task runner only if build times justify it.      |
-
-### Control plane — `apps/control-plane`
-
-| Concern    | Choice                                                           |
-| ---------- | ---------------------------------------------------------------- |
-| Framework  | Next.js App Router, `output: 'standalone'`                       |
-| UI         | shadcn/ui + Tailwind CSS                                         |
-| Tables     | TanStack Table                                                   |
-| AWS access | AWS SDK for JavaScript v3, modular clients only                  |
-| Validation | Zod — every external input and every AWS response boundary       |
-| State      | Server components plus an in-process TTL cache. No client store. |
-
-### Agents — `agents/*`
-
-| Concern      | Choice                                                                                    |
-| ------------ | ----------------------------------------------------------------------------------------- |
-| Language     | **Python 3.13**, matching the reference agent and where the AgentCore SDK ecosystem lives |
-| Dependencies | `uv` with a committed lockfile, exact pins                                                |
-| Contract     | Generated Python module produced from `packages/shared` — never hand-written              |
-| Lint / types | `ruff` + `mypy --strict`                                                                  |
-| Concurrency  | **The entrypoint must never block.** See "Agent liveness" below.                          |
-
-### Orchestrator and infrastructure
-
-| Concern      | Choice                                                                                                                                                                                                                                                    |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Orchestrator | **TypeScript** Lambda. It reads GSI1 and builds `session_id` — both contract-bound, so native import of `packages/shared` matters more here than SDK breadth.                                                                                             |
-| IaC          | **AWS CDK (TypeScript).** Same language as the orchestrator, the control plane, and `packages/shared`, so infrastructure imports the same constants it deploys — table name, GSI name, tag keys, agent names. Also what the reference agent already uses. |
-| Hosting      | Fly.io, single machine, single container                                                                                                                                                                                                                  |
-
-### Cross-language contract flow
-
-`packages/shared` (TypeScript, source of truth) → JSON Schema → generated Python module.
-
-Generation is a build step with committed output and a CI check that fails when the generated artifact does not match the source. Hand-editing generated files is prohibited.
-
----
+| Layer | Technology | Notes |
+|---|---|---|
+| Front-end | Next.js (TypeScript) | Routes, JSON Schema-generated forms, live tail via Supabase Realtime (Phase 2) |
+| Front-end hosting | Fly.io | Node process persists after responding — enables fire-and-forget invocation without a durable queue (D7) |
+| Agent runtime | AWS Bedrock AgentCore | Containers; AgentCore controls the lifecycle and enforces the real timeout |
+| Agent SDK | Python, stdlib only (`urllib`, `logging`, `atexit`) | Single file [`agent_reporter.py`](reference/agent_reporter.py), copied per repo (D13), not a pip package |
+| Database | PostgreSQL via Supabase | System of record for executions. RLS deny-all from the first migration (D11) |
+| Realtime | Supabase Realtime on `run_events` and `runs` | Live log tail without polling |
+| Cron | `pg_cron` inside Supabase | Reaper for stale executions — does not depend on the front-end being alive (D10) |
+| Front-end AWS auth | Fly OIDC + STS `AssumeRoleWithWebIdentity` | No static keys in `fly secrets` (D12) |
+| GitHub App secrets | AWS Secrets Manager | Only the ARN lives in `github_installations`, never the key |
 
 ## 3. Architecture Patterns
 
-Single container, server-rendered, reading four AWS services and writing one.
+**Supabase as system of record, CloudWatch as infrastructure telemetry.** CloudWatch remains outside the panel's scope — it is an AgentCore implementation detail, not a source of business truth. However, if the API layer (PostgREST) is unreachable during Phase 1, the agent SDK falls back to writing payloads to stderr, which lands in CloudWatch as a safety net.
 
-```
-Browser
-  │  (Cloudflare Access → JWT validated in middleware)
-  ▼
-Next.js on Fly.io  ── server components / server actions
-  │
-  ├─ tag:GetResources ................ agent inventory      (5 min cache)
-  ├─ GetAgentRuntime ................. runtime detail       (5 min cache)
-  ├─ Logs Insights (StartQuery/Get) .. runs from spans      (5 min cache)
-  ├─ logs:FilterLogEvents ............ execution logs       (no cache)
-  └─ DynamoDB ........................ configuration        (no cache)
+**Separation of `status` / `outcome` (D3).** The lifecycle of an execution (`queued → running → succeeded|failed|canceled`, plus `timed_out` and `failed_to_start` injected by the reaper) is one column. The business result (`fixed`, `partial`, `no_vulnerabilities`, `needs_review`, `not_applicable`) is another. An execution that finishes successfully and finds no issues is not a failure.
 
-EventBridge Scheduler (one schedule per agent)
-  ▼
-Orchestrator Lambda
-  ├─ Query GSI1: AGENT#<name>, enabled=true → N repos
-  └─ per repo, bounded pool of 3–5:
-       session_id = "<agent>-<repo>-<yyyymmdd>-<hhmmss>"  (≥33 chars)
-       UpdateItem: last_session_id, last_run_at, last_status="running"
-       InvokeAgentRuntime(session_id, payload)   ← fire and forget
-  ▼
-Agent on AgentCore
-  ├─ emits root-span llipe.* attributes + JSON logs with session_id
-  └─ UpdateItem: last_status, last_outcome_url   (those two attributes only)
-```
+**Structured log, not blob (D4).** `run_events` is a table of rows, not a text field. Enables filtering by level and live tail via Realtime.
 
-### Key decisions and rationale
+**Snapshot over live reference.** Each `run` copies `agent_version`, `params`, `max_runtime_seconds`, `grace_seconds`, and `start_timeout_seconds` at dispatch time. If the configured timeout of an agent changes later, historical runs are not re-evaluated against the new value. There is no `agent_versions` table in v1 — the per-run snapshot covers auditability without the extra table.
 
-| Decision                                   | Rationale                                                                                                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No database in the control plane           | Everything displayed already lives in an AWS API. A local store would be a cache with a consistency problem.                                            |
-| In-process memory cache, 5-minute TTL      | Logs Insights is slow and metered. The cache exists to make navigation tolerable, not to be a source of truth.                                          |
-| Server components instead of an HTTP API   | No second surface to authenticate, no client-side AWS credentials, no API contract to version.                                                          |
-| `session_id` generated by the orchestrator | Fire-and-forget returns no identifier. Pre-generating it is the only way the DynamoDB row and the logs correlate.                                       |
-| DynamoDB single table + inverted GSI1      | Two access patterns, mirror images of each other. `GSI1: PK = SK, SK = PK` serves the second for free.                                                  |
-| `incomplete` derived at read time          | Nobody can write "I died." Comparing `last_run_at` against the agent's `maxLifetime` from `GetAgentRuntime` turns that silence into a determinate fact. |
-| Bounded fan-out pool of 3–5                | Serial stacks latency; unbounded hits GitHub and Bedrock rate limits.                                                                                   |
-| Monorepo, separate deploys                 | Shared contracts justify one repo. Different deploy targets and cadences justify path-gated CI.                                                         |
+**Repositories as a first-class entity (D6).** Not a string inside `params`: the GitHub App token is issued per `installation`, and modeling `repositories` separately enables queries like "all runs for repo X" and honors `is_enabled`/`archived_at`.
 
-### Agent liveness — the entrypoint must not block
+**Fire-and-forget from the route handler (D7).** The invocation to AgentCore happens directly from the Next.js handler on Fly, without a durable queue hop (SQS/Lambda). Justified because the Fly Node process does not die after responding. If this assumption stops holding, this pattern must be revisited.
 
-AgentCore decides whether a session is still alive by polling the agent's `/ping` endpoint. Per the [AgentCore long-running agents guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html), `/ping` must return `{"status": "HealthyBusy"}` while background work is in progress; a session reporting `Healthy` (idle) is terminated after the idle timeout, while one reporting `HealthyBusy` survives until `maxLifetime`.
+**Two clocks for two distinct failures (D8, D9).** `timed_out` (agent hung, clock = `started_at`) and `failed_to_start` (invocation that never started, clock = `queued_at`) are separate states and runbooks. They do not collapse into a single "did not respond."
 
-**The trap:** `/ping` is served by the same process as the entrypoint. An entrypoint that runs a long pipeline synchronously — subprocess calls to `git`, `pnpm install`, a test suite — blocks the ping thread, so the platform sees a session that has stopped answering, concludes it is idle, and terminates it mid-work. AWS documents this as a known issue, and the failure is silent: no error, no exception, the logs simply stop.
-
-Every agent in this repo therefore follows the same shape:
-
-```python
-@app.entrypoint
-def handler(payload, context):
-    task_id = app.add_async_task("pipeline")
-    threading.Thread(target=lambda: _run(payload, task_id), daemon=True).start()
-    return {"accepted": True, "session_id": payload["session_id"]}   # returns immediately
-```
-
-with `app.complete_async_task(task_id)` in a `finally` block. Two things fall out of this beyond staying alive: the entrypoint returning immediately is what makes the orchestrator's fire-and-forget invocation safe, and the SDK manages the ping status so no manual health bookkeeping is needed.
-
-Do not set `time_of_last_update` by hand. The AWS guidance warns that a timestamp advancing on every ping reads as continuous status change, which stops the idle timeout from ever firing and can exhaust the session quota. Let the SDK handle it.
-
-### Failure model
-
-Each repository is an independent run. One repository failing must not prevent the others from being invoked. The orchestrator logs the failure and continues; there is no all-or-nothing batch.
-
-A run's terminal state must be written from a `finally` block — both the DynamoDB outcome stamp and the `llipe.*` span attributes. An agent that crashes without writing is indistinguishable from one killed at `maxLifetime`, and both surface only as `incomplete`.
-
----
+**Two application layers for the reaper (see specification §6).** `pg_cron` materializes the state change and writes the explanatory `run_event` every minute (D10). The `v_runs` view computes `effective_status` at read time, so the UI never shows a run "running" that has already expired even if the reaper is one minute behind. The reaper materializes eventual truth; the view tells immediate truth.
 
 ## 4. API Design Standards
 
-**v1 exposes no public HTTP API.** No REST, no GraphQL, no route handlers for data access.
+**A single invocation endpoint per agent:** `POST /api/agents/{slug}/invoke`. Full flow (see specification §8):
 
-Writes use **Server Actions**, one per intent:
+1. The front-end validates `params` against `agents.params_schema` (JSON Schema) before calling AgentCore.
+2. The front-end, not the database or the agent, generates the `run_id` (uuid) and inserts the `runs` row in `queued` (D1) — so an invocation where the agent never starts still leaves a record of the failure.
+3. The front-end obtains/refreshes AWS credentials (see §5) and invokes `InvokeAgentRuntime` in a fire-and-forget manner.
+4. If the invocation throws, the server marks the run `failed_to_start` immediately — that detection is not delegated to the reaper.
+5. The server responds `202` with `run_id`; the front-end navigates to the detail view without waiting for the agent to finish.
 
-| Action              | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
-| `setSubjectEnabled` | Toggle `enabled` on a `SUBJECT#…/AGENT#…` item |
-| `setSubjectParams`  | Replace validated `params` on that item        |
-| `addSubjectToAgent` | `PutItem` a new subject/agent pair             |
+**The invocation form is not hand-coded per agent (D2).** It is rendered from `agents.params_schema`. Adding a new agent is a row in `agents`, not a front-end deploy (v1 acceptance criterion #5).
 
-Rules for Server Actions:
-
-- Validate every argument with a Zod schema as the first statement. A Server Action is a public endpoint, regardless of how it looks in the source.
-- Re-verify the Access JWT inside the action. Middleware protects navigation; it must not be the only check on a mutation.
-- Return a discriminated result (`{ ok: true }` / `{ ok: false, error }`) rather than throwing across the boundary. Never surface raw AWS error text to the client — log it server-side, return something classified.
-- Revalidate only the affected path.
-- Writes are confined to `enabled` and `params`. Any action touching `last_*` attributes is a bug.
-
-If an HTTP route ever becomes necessary (health check aside), it inherits the same JWT validation. There is no unauthenticated path.
-
----
+**The repository does not live inside `params_schema`.** It is a first-class field that the front-end renders separately when `agents.requires_repository = true`. The agent's schema covers only its own parameters.
 
 ## 5. Authentication & Authorization
 
-Cloudflare Access sits in front of the app. **Both halves are mandatory** and neither is a follow-on to the other:
+**No user authentication in v1** (explicit scope decision, not an accidental gap — see Risk R1 in the specification). The panel runs without login. Minimal mitigation required before exposing the app publicly: shared-secret header on `/api/agents/[slug]/invoke`, or keeping the app private on Fly.
 
-**1. Validate the JWT.** Middleware verifies `Cf-Access-Jwt-Assertion` on every request:
+**Front-end authentication against AWS — no static keys (D12).**
 
-- Fetch and cache the team JWKS; key ID must resolve to a known key.
-- Require `RS256`. Reject `none` and reject algorithm values taken from the token header without an allowlist check.
-- Verify `iss` against the team domain and `aud` against the Access application AUD tag.
-- Verify `exp` / `iat`.
-- A missing or unverifiable header is a rejection, not a fallback to anonymous. **Fail closed** — if the JWKS fetch fails, deny rather than allow.
+- **On Fly:** OIDC token issued by the Machine's local socket (`/.fly/api`, `aud=sts.amazonaws.com`) → `AssumeRoleWithWebIdentity` against an IAM Role with a trust policy scoped to the app's wildcard `sub` (`<org>:panel-agentes:*`) → 15-minute credentials, cached in memory with a 60-second refresh margin.
+- **Locally:** `fromNodeProviderChain()` — SSO profile, `~/.aws/credentials`, or environment variables. The SDK handles its own refresh.
+- Both branches live in a single module ([`credentials.ts`](reference/credentials.ts)), detected by `FLY_APP_NAME` + socket existence. Invocation code receives the credentials provider and does not know which branch it is on.
+- The IAM permission is scoped to `bedrock-agentcore:InvokeAgentRuntime` on the runtimes ARN, never `*`.
+- **Pending verification against the real Fly endpoint** (not yet validated): exact JSON response shape from the OIDC socket, literal claim name `sub` as normalized by AWS in the trust policy, and that `DurationSeconds: 900` is compatible with the role's `MaxSessionDuration`.
 
-**2. Lock down the origin.** Cloudflare Tunnel (preferred) or a Cloudflare IP allowlist on the Fly service. Without this, the `.fly.dev` origin is directly reachable and step 1 is the only thing standing between the internet and the app.
+**Agent credentials against Supabase — service role key from Secrets Manager (D15, R2).** The agent authenticates to PostgREST with the Supabase service role key, which grants full database access (bypasses RLS). The key is **not** stored as a plaintext environment variable in the AgentCore runtime config — the agent fetches it from AWS Secrets Manager at startup, alongside the GitHub App private key. This keeps the credential out of the runtime configuration visible in the AgentCore console and applies Secrets Manager's access controls (IAM policy on the agent's execution role) and audit trail (CloudTrail). The scope risk (full DB access vs. scoped writes) remains accepted for a single-tenant system (R2). The exit path is unchanged: when the fleet grows or untrusted code enters, mint a scoped JWT per run instead.
 
-These are two independent controls against the same threat, and the app must not ship with only one. Validation without origin lockdown means anyone who finds the origin bypasses Cloudflare entirely; origin lockdown without validation means anyone who can route through Cloudflare is trusted.
-
-> ⚠️ **Open deviation as of 2026-08-25 — control 2 is not implemented.** The deployed control
-> plane satisfies control 1 only. `dt-agent-fleet-control-plane.fly.dev` is publicly
-> reachable and `apps/control-plane/src/middleware.ts` is the sole control there; Cloudflare
-> Access protects `fleet.llipe.com` but not the origin hostname. This is a real gap against
-> this guideline, not a reinterpretation of it, and it is recorded here rather than resolved
-> by weakening the rule. Two consequences: any route added outside the middleware matcher is
-> exposed unauthenticated, and the matcher's exemptions (`/healthz`, `/_next/static`,
-> `/_next/image`, `/favicon.ico`) are internet-facing. The hardening path — running
-> `cloudflared` inside the Fly machine against `localhost:3000` — is described in
-> `docs/runbook-deployment.md` §9 and needs Dockerfile and `fly.toml` process changes.
-
-**Authorization:** none. Roles and permissions are out of scope, and a single-operator tool does not need them. That is a scope decision about _what distinctions exist among authenticated users_ — it is not permission to skip authentication. Every request is still identified.
-
-**Machine identity:** the control plane assumes an AWS role via Fly Machines OIDC (`AssumeRoleWithWebIdentity`), and that is the **only** supported path. See [ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md).
-
-Static access keys are **not** an approved fallback. An earlier version of this document listed them as one "carrying the same minimal permissions" — that is not achievable. The control plane's authority is defined by conditions on a _role_: `dynamodb:UpdateItem` constrained by `dynamodb:Attributes`, an explicit `Deny` on `InvokeAgentRuntime`, and an explicit `Deny` on `last_*` writes. An IAM user with policies attached directly reproduces the action list but not the conditions, which voids the scope boundary in §6 with no test failing. If a static path is ever genuinely needed it requires a new ADR, must replicate every statement including both `Deny`s, and must carry a removal ticket.
-
-Mechanics that follow from this, and that are easy to get wrong:
-
-- `AWS_ROLE_ARN` goes in `[env]` in `fly.toml`, not in `fly secrets`. It is a role ARN, not a credential, and belongs where review can see it.
-- `AWS_WEB_IDENTITY_TOKEN_FILE` and `AWS_ROLE_SESSION_NAME` are set by Fly's `init` when `AWS_ROLE_ARN` is present. Never set them by hand.
-- Application code must not implement its own web-identity provider. `credentials.ts` delegates to `fromNodeProviderChain()`; a hand-rolled provider that reads the token file once at import never refreshes it.
-- The OIDC issuer slug is the real org slug from a live token's `iss` claim, **not** the alias `fly orgs list` prints. Discovery resolves for both, so only the token proves it.
-
----
+**GitHub App secrets.** The private key never lives in the database — only its ARN in Secrets Manager (`github_installations.private_key_secret_arn`). The agent reads it at runtime to issue a short-lived installation token.
 
 ## 6. Security Requirements
 
-**Least privilege, as the scope boundary.** The control-plane role carries exactly the permissions in PRD §15 and no more. Specifically: **no `bedrock-agentcore:InvokeAgentRuntime`, no write action on runtimes at all.** Everything PRD §3 excludes is unreachable because the credential cannot express it.
-
-**Write separation, enforced by policy.** Three writers touch the DynamoDB table with disjoint attribute sets:
-
-| Writer        | May write                                                 | Mechanism                                    |
-| ------------- | --------------------------------------------------------- | -------------------------------------------- |
-| Control plane | `enabled`, `params`                                       | `PutItem` / `UpdateItem`                     |
-| Orchestrator  | `last_session_id`, `last_run_at`, `last_status="running"` | `UpdateItem`                                 |
-| Agent         | `last_status`, `last_outcome_url`                         | `UpdateExpression` only, **never `PutItem`** |
-
-The agent execution role is constrained with `dynamodb:Attributes` to those two attributes. `PutItem` from an agent would silently erase `enabled` and `params`, which is why the policy forbids it rather than the code merely avoiding it.
-
-**`params` is an injection boundary.** Operator-supplied JSON flows from a textarea into DynamoDB and then into the agent's invocation payload. Treat it as untrusted at both ends: validate against a Zod schema on write with an explicit key allowlist, and re-validate in the agent on read. Do not pass it to a shell, a template, or a prompt without escaping appropriate to the sink.
-
-**Secrets.** The GitHub App private key lives in AWS Secrets Manager, never in the repo or an environment variable baked into an image. Application configuration lives in Fly secrets. No secret is logged, echoed in an error message, or included in a span attribute. GitHub installation tokens are requested per-repository, short-lived, and never persisted or logged.
-
-**GitHub access.** A GitHub App installed on the org with `contents:write` and `pull_requests:write`. The repository allowlist is DynamoDB — agents must not discover repositories through the GitHub API. A repository enters scope only by explicit decision in the control plane.
-
-**Transport and data.** HTTPS only, HSTS enabled. No PII beyond repository names and GitHub URLs; nothing requiring a data-retention policy.
-
-**Dependencies.** Exact version pins, committed lockfiles, `pnpm audit` and `uv`-side scanning in CI.
-
----
+- **RLS enabled and deny-all from the first migration (D11).** Without explicit policies, only `service_role` can read/write (it bypasses RLS). Enabling RLS after having data is a more costly and risky migration — hence the rule to do it from day one.
+- **No long-lived AWS keys.** No IAM user with static keys in `fly secrets` (see §5).
+- **Param validation at two points.** The front-end validates against `params_schema` before invoking; the agent validates its own payload at startup and fails fast with `error_code = INVALID_PARAMS` if it does not match (mitigation for R4 — drift between the schema in the database and what the agent expects).
+- **Log messages truncated to 8 KB** (`run_events.message`) to bound row size and the risk of a malformed message degrading the table.
+- **4xx errors from the reporting SDK are not retried.** A contract error (invalid payload) does not improve with waiting; only transient errors (5xx, network) use 3-retry backoff.
 
 ## 7. Data & Database Guidelines
 
-Single-table design, on-demand capacity, point-in-time recovery enabled.
+Reference DDL: [`001_schema.sql`](reference/001_schema.sql) (full schema: tables, enums, indexes, view, reaper function, RLS). Reference seed: [`002_seed.sql`](reference/002_seed.sql) (idempotent via `on conflict`).
 
-### Key schema
+**Entities and relationships:**
 
 ```
-PK                      SK                  Attributes
-SUBJECT#fintrack-home   META                enabled
-SUBJECT#fintrack-home   AGENT#dep-updater   enabled, params{},
-                                            last_session_id, last_run_at,
-                                            last_status, last_outcome_url
-AGENT#dep-updater       CONFIG              global params
-
-GSI1: PK = SK, SK = PK   (inverted)
+github_installations 1──n repositories
+                     1──n runs
+agents               1──n runs
+repositories         1──n runs
+runs                 1──n run_steps
+                     1──n run_events
+                     1──n run_artifacts
+run_steps            1──n run_events
 ```
 
-### Access patterns
+**Main tables:**
 
-| Need                      | Query                                                   |
-| ------------------------- | ------------------------------------------------------- |
-| Repositories for an agent | `Query GSI1 PK = AGENT#<name>`, filter `enabled = true` |
-| Agents for a repository   | `Query PK = SUBJECT#<repo>`                             |
-| Add a repository to scope | Single `PutItem`                                        |
+| Table | Purpose | Design notes |
+|---|---|---|
+| `github_installations` | One row in v1. Not multi-tenancy — it is a requirement of the GitHub App token flow (token is issued per installation) | `private_key_secret_arn`, never the key |
+| `repositories` | Repos enabled to run agents | Unique `(installation_id, full_name)`; `archived_at` is soft delete that preserves historical runs |
+| `agents` | Catalog of configured agents | `params_schema` (JSON Schema) does not include the repo; `max_runtime_seconds` **must** reflect the real timeout configured in AgentCore |
+| `runs` | One row per execution, `id` generated by the front-end (D1) | Snapshot of timeouts and params; constraint `chk_runs_terminal_outcome` requires non-null `outcome` when `status = succeeded` |
+| `run_steps` | Named phases within an execution (`checkout`, `npm_audit`, `llm_fix`, `test`, `open_pr`) | `id` generated by the agent SDK (uuid4), not the database — avoids a read round-trip to associate events to the step |
+| `run_events` | The log, as rows, not a blob (D4) | `seq` is monotonic, assigned by the agent, not the database — with buffering, arrival order is not emission order; Realtime enabled, filtered by `run_id` |
+| `run_artifacts` | Execution artifacts (`pull_request`, `audit_report`, `diff`, `file`) | The generated PR lives here, not buried in `result jsonb`, so it can be rendered in the list without parsing JSON |
 
-### Conventions
+**State machine for `runs.status`:**
 
-- Key prefixes are `SUBJECT#` and `AGENT#`, uppercase, defined once in `packages/shared`. Never build a key by string concatenation at a call site — use the shared key builders so a prefix change is one edit.
-- **`Query` only. No `Scan`.** If a requirement seems to need a scan, the access pattern is wrong or the item needs a GSI.
-- Use condition expressions to make writes intentional: `addSubjectToAgent` should fail rather than silently overwrite an existing pair.
-- `last_status` persists only `running`, `success`, or `failed`. **`incomplete` is never written** — it is derived at read time from `last_status = running` and `last_run_at` older than the agent's `maxLifetime` plus a grace period. The grace and the service-default fallback are named constants in `packages/shared`; the lifetime itself is per-agent and comes from `GetAgentRuntime`.
-- Timestamps are ISO 8601 UTC strings.
-- Attribute names in the table are `snake_case`, matching the PRD. TypeScript-side field names may be camelCase, with the mapping confined to the repository layer.
-- No TTL. Configuration is small and retained indefinitely.
+```
+queued ──▶ running ──▶ succeeded | failed | canceled
+   │                       ▲
+   │                       └── timed_out        (reaper)
+   └────────────────────────── failed_to_start  (reaper)
+```
 
----
+**Key indexes:** `(agent_id, created_at desc)`, `(repository_id, created_at desc)`, partial on `status in ('queued','running')` for the reaper, partial unique on `idempotency_key`.
+
+**Stale execution detection** (see also §3 — two layers): two thresholds on two clocks.
+
+| Condition | New status |
+|---|---|
+| `status = running` and `now() > started_at + max_runtime_seconds + grace_seconds` | `timed_out` |
+| `status = queued` and `now() > queued_at + start_timeout_seconds` | `failed_to_start` |
+
+`last_heartbeat_at` is declared in the schema but not used for detection in v1 — it comes into play only if agents appear that hang well below their timeout (backlog).
+
+**Retention (declared risk, not resolved in v1 — R3).** `run_events` will be the largest table by two orders of magnitude. Policy pending: events older than 90 days get collapsed to an artifact in Supabase Storage and the rows are purged.
+
+**Separate environments (R7).** Local development invokes real AgentCore; to avoid mixing test runs with production runs, the recommended exit is a second Supabase project for development (free tier is sufficient, same schema).
 
 ## 8. Integration Methods
 
-| Integration              | Surface                                                   | Notes                                                               |
-| ------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| Resource Groups Tagging  | `tag:GetResources`, filter `agent:managed=true`           | The only discovery filter. Untagged agents are invisible by design. |
-| AgentCore Control        | `GetAgentRuntime`, `ListAgentRuntimes`                    | Read-only. Runtime detail, 5-minute cache.                          |
-| CloudWatch Logs Insights | `StartQuery` → poll `GetQueryResults`                     | The run list. Async, seconds-scale, quota-limited.                  |
-| CloudWatch Logs          | `FilterLogEvents` by `session_id`                         | Execution logs. Uncached — read when something is wrong.            |
-| DynamoDB                 | `GetItem`, `Query`, `PutItem`, `UpdateItem`, `DeleteItem` | Table and GSI1 only.                                                |
-| AgentCore Runtime        | `InvokeAgentRuntime`                                      | **Orchestrator role only.** Never the control plane.                |
-| GitHub                   | GitHub App installation tokens                            | Agent-side. Scoped per repository, short-lived.                     |
-| Cloudflare Access        | `Cf-Access-Jwt-Assertion` + team JWKS                     | Validated in middleware, fail closed.                               |
+**AWS Bedrock AgentCore.** The front-end invokes `InvokeAgentRuntime` in a fire-and-forget manner from the route handler (see §4). There is no automatic retry on the front-end side for startup failures — it marks `failed_to_start` and stops there; the reaper is the safety net for the case where the invocation was accepted but the container never reported.
 
-**Adapter pattern.** One thin module per external service, in the control plane's server layer. Adapters return typed domain objects; no AWS SDK type escapes into a component. This keeps the mapping logic — spans to `Run`, items to configuration — pure and directly testable.
+**Agent reporting contract ([`agent_reporter.py`](reference/agent_reporter.py), D13).** Single file copied to each agent repo, no external dependencies (`urllib`, not `supabase-py` or `httpx`). Hybrid interface (D14):
 
-**Retries.** Jittered exponential backoff on throttling and 5xx, with a bounded attempt count. Never retry a validation error. Logs Insights polling needs an explicit overall timeout and must surface "query timed out" as a distinct state rather than an empty result — an empty run list and a failed query must not look the same in the UI.
+- **Standard `logging.Handler`**, attached to the root logger — captures noise from third-party libraries (`boto3`, `httpx`), which is exactly what you want to see when something fails.
+- **Explicit lifecycle API** (`RunReporter.from_env()`, `run.step(...)`, `run.succeed(...)`, `run.fail(...)`, `run.artifact(...)`) — the lifecycle does not fit naturally in a `logger.info()`.
 
-**Partial failure.** Fan-out failures are per-repository and isolated. A view that cannot load logs still renders run metadata.
+The agent authenticates to PostgREST directly (D15) using the Supabase service role key fetched from AWS Secrets Manager at startup — not from an env var.
 
----
+Behavioral properties:
+
+| Property | Behavior |
+|---|---|
+| Write buffer (D5) | Inline flush every 50 events or 2 seconds; forced at step boundary open/close and on termination. No background thread — async worker adds queue, `join`, and `atexit` for ~200 ms |
+| Retries | 3 with exponential backoff. 4xx are not retried (contract error). If exhausted, the payload is written to stderr (lands in CloudWatch) and the agent continues — reporting never kills the agent |
+| Agent failure | The context manager marks `failed` with full traceback before re-raising; open steps are closed as `failed` |
+| Exit without `succeed()` | Closes with `outcome = not_applicable` to avoid leaving the run dangling |
+| Truncation | Messages to 8 KB |
+| Transport change | Isolated to the `_SupabaseClient` class (~40 lines) — no generic transport abstraction because today it does not pay for itself |
+
+**Per-execution write volume (R5, distinct from R3 which is growth over time).** Not actively mitigated in v1 — the chosen approach is "evaluate later" if an actual agent evidences the problem (e.g., one that tails builds or long test runs). First lever if it occurs: raise the minimum captured log level (`INFO+` instead of `DEBUG+`).
+
+**GitHub App.** The agent reads the private key and `installation_id` from Secrets Manager and issues a short-lived installation token to clone the repo and open the PR. Automatic repo sync from the GitHub App is backlog — v1 uses manual seed ([`002_seed.sql`](reference/002_seed.sql)).
 
 ## 9. Code Organization & Structure
 
-```
-dev-tasks-agent-fleet/
-├── apps/
-│   └── control-plane/            # Next.js, deploys to Fly.io
-│       ├── src/app/              # App Router: routes, layouts, server components
-│       ├── src/components/       # shadcn/ui compositions, tables, run panel
-│       ├── src/server/
-│       │   ├── aws/              # one adapter per service
-│       │   ├── repository/       # DynamoDB access, key builders
-│       │   ├── runs/             # span → Run mapping, query building, merge logic (pure)
-│       │   ├── cache/            # in-process TTL cache
-│       │   └── actions/          # Server Actions
-│       ├── src/lib/              # cost estimation, formatting, status derivation, auth
-│       ├── pricing/              # versioned pricing table, indexed by model_id
-│       └── middleware.ts         # Access JWT validation
-├── agents/
-│   └── dep-updater/              # Python, deploys to AgentCore
-├── packages/
-│   └── shared/                   # DynamoDB schema + llipe.* contract, key builders,
-│                                 # status enums, thresholds; JSON Schema + generated Python
-└── infra/
-    ├── lib/                      # CDK: table, GSI1, scheduler, orchestrator, IAM, tags,
-    │                             # Fly OIDC provider + control-plane role trust
-    ├── orchestrator/             # TypeScript Lambda source + tests
-    ├── seed/                     # DynamoDB seed script
-    └── bin/app.ts                # three stacks: Data, Iam, Orchestration
-```
+Artifacts already defined at design level (see specification §14):
 
-`fly.toml` lives at the **repo root**, not under `infra/`. Fly resolves `[build].dockerfile`
-relative to the toml's own directory and no CLI flag overrides it, so a toml under `infra/`
-looked for `infra/apps/control-plane/Dockerfile`. The Dockerfile's `COPY` paths need the repo
-root as build context, so the toml has to sit there too.
+| File/directory | Role |
+|---|---|
+| [`001_schema.sql`](reference/001_schema.sql) | Full DDL: tables, enums, indexes, `v_runs` view, `reap_stale_runs()` function, RLS |
+| [`002_seed.sql`](reference/002_seed.sql) | Idempotent seed: installation, repo list, `dependency-update` agent |
+| [`agent_reporter.py`](reference/agent_reporter.py) | Reporting SDK, copied to each agent repo |
+| [`credentials.ts`](reference/credentials.ts) | AWS credential provider with Fly OIDC / local branches |
+| Next.js front-end | Routes, schema-generated forms, live tail — pending implementation (Phase 2) |
+| `dependency-update` agent | AgentCore runtime — pending port from pre-reset version (Phase 1) |
 
-### Dependency rules
-
-- `packages/shared` imports **nothing** from `apps/` or `agents/`. It is a leaf.
-- `apps/control-plane` and `agents/*` both depend on `shared`. They never depend on each other.
-- Contract types, key prefixes, status values, and the stale threshold are defined **only** in `shared`. A duplicate definition elsewhere is the exact failure mode the monorepo exists to prevent, and CI should catch it.
-- Generated artifacts (JSON Schema, Python module) are committed and verified in CI, never hand-edited.
-
-### Naming
-
-- TypeScript files `kebab-case.ts`; React components `PascalCase.tsx`.
-- Python modules `snake_case.py`.
-- Types describe the domain (`Run`, `AgentSummary`, `SubjectAgentItem`), not the transport.
-- Server-only modules live under `src/server/` and are import-guarded so they cannot be pulled into a client bundle.
-
----
+The exact folder convention for the front-end (`app/`, `lib/`, etc.) is defined when Phase 2 implementation begins, not in this document — v1 does not impose a monorepo structure yet.
 
 ## 10. Design Patterns & Principles
 
-- **Server-first composition.** Fetch in server components, pass plain data down. Client components only where interaction demands it: toggles, filters, the side panel.
-- **Repository pattern** for DynamoDB. Callers express intent (`getAgentsForSubject`), not queries.
-- **Adapter per service** with a typed boundary, so AWS shapes stay at the edge.
-- **Pure mappers.** Span-to-`Run`, cost estimation, and status derivation are pure functions of their inputs. These hold the logic most likely to be subtly wrong, so they must be testable without AWS.
-- **Contract-first.** Change `packages/shared`, regenerate, then update consumers. Never the reverse.
-- **YAGNI, deliberately.** v1 scope is closed and the backlog is written down. Do not build extension points for Cost Explorer, webhooks, or prompt versioning now. When they arrive, they arrive with real requirements.
-- **KISS over configurability.** One operator, one account, one region. Do not parameterize what has exactly one value.
-
----
+- **Explicitness over inference.** Every observable state in the panel is written explicitly by the agent or the reaper; nothing is derived by parsing free text.
+- **YAGNI on transport and infrastructure abstractions.** No pip package for the SDK (D13), no durable queue for invocation (D7), no `agent_versions` table (snapshot in `runs` suffices). These decisions are explicitly revisable if the fleet grows (see backlog).
+- **Auditability by snapshot, not by referenced version.** Each `run` is self-contained regarding the parameters and thresholds it ran with, even if the agent's configuration changes later.
 
 ## 11. Testing Strategy
 
-**Test-first is the default.** Acceptance criteria and test scenarios are designed before implementation, per repository convention.
+No formalized test suite exists in the design artifacts (`docs/reference/`). Manual verification documented so far:
 
-| Layer            | Tool                           | Scope                                                                          |
-| ---------------- | ------------------------------ | ------------------------------------------------------------------------------ |
-| Unit (TS)        | Vitest                         | Mappers, cost estimation, status derivation, key builders, `params` validation |
-| Integration (TS) | Vitest + `aws-sdk-client-mock` | Adapters and repository against mocked AWS clients                             |
-| E2E              | Playwright                     | The four views, filters, toggle, side panel; stubbed auth header, fixture data |
-| Unit (Python)    | pytest                         | Agent logic, payload parsing                                                   |
-| **Contract**     | pytest + Vitest                | Emitted root-span attributes and DynamoDB item shape match `packages/shared`   |
+- `agent_reporter.py`: tested with a fake client — write sequence, monotonic `seq`, event-to-step association, exception propagation.
+- `credentials.ts`: compiles with `tsc --strict`; runtime branches against the real Fly OIDC socket are pending verification (see §5, "Pending verification").
 
-The contract test is the one that earns its keep. It asserts that what an agent actually emits satisfies the schema the control plane reads, and that the generated Python module matches its TypeScript source. Everything else in the repo can be re-derived; a drifted contract fails silently and corrupts the repository axis with no error anywhere.
-
-**Required coverage** — these must have tests before merge, regardless of aggregate percentage:
-
-- Cost estimation, including an unknown `model_id` (must degrade visibly, not silently show zero).
-- `incomplete` derivation at the `maxLifetime + grace` boundary in both directions, the fallback when `maxLifetime` is absent, and the distinction between `incomplete` and a genuinely running run.
-- JWT validation: valid, expired, wrong `aud`, wrong `iss`, missing header, unknown `kid`, unexpected `alg`, JWKS unavailable. Each must deny.
-- `params` validation: rejects unknown keys, rejects malformed JSON, round-trips valid input.
-- Fan-out partial failure: one repository failing does not stop the rest.
-- Write separation: an agent-shaped write cannot clear `enabled` or `params`.
-
-Prefer meaningful assertions over a coverage number. No coverage threshold is mandated; the required list above is.
-
----
+When front-end and agent implementation begins, this document should be updated with the chosen testing framework (Next.js/TS unit test framework, Python test framework) and coverage strategy, following the repository's default test-first approach.
 
 ## 12. Code Quality & Standards
 
-| Concern            | Tool                                          |
-| ------------------ | --------------------------------------------- |
-| Lint (TS)          | ESLint, Next.js and TypeScript configs        |
-| Format             | Prettier, single shared config                |
-| Types (TS)         | `tsc --noEmit`, `strict: true`                |
-| Lint / format (Py) | `ruff`                                        |
-| Types (Py)         | `mypy --strict`                               |
-| Vulnerabilities    | `pnpm audit`, plus Python dependency scanning |
-
-### Canonical scripts
-
-Every JS/TS package exposes the same names, and the root aggregates them:
-
-```
-lint            lint:fix
-format          format:check
-typecheck
-test            test:unit    test:integration    test:e2e
-build
-audit
-validate        # aggregate quality gate, in order:
-                # lint → format:check → typecheck → test → build → check-boundaries → audit
-```
-
-`validate` is what CI runs and what should pass locally before a PR.
-
-**`build` is part of the gate** — see [ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md). `tsc --noEmit` does not prove the app bundles. Three defect classes found during #60 were invisible to type-checking and surfaced only at `next build`: ESM `.js` specifiers that webpack cannot resolve without `resolve.extensionAlias`, a `"use client"` component pulling `node:crypto` in through a barrel re-export, and a missing build-time-only PostCSS package. The first two are undetectable by `tsc` by construction, because it has no concept of a bundle boundary.
-
-One gap `build` does **not** close: assets read from the filesystem at runtime rather than imported. Next.js standalone output traces static imports only, so any `readFileSync` of a repo-relative path needs a matching `COPY` in the Dockerfile and is a manual review obligation. `src/lib/cost.ts` reading `pricing/pricing-v1.json` is the live example.
-
-### Review and documentation
-
-- Human PR review is the actual gate. Automated checks are necessary, not sufficient.
-- Comments explain _why_, not _what_. The non-obvious decisions here — orchestrator-generated `session_id`, read-time `incomplete`, agent `UpdateExpression`-only writes — each deserve a comment pointing at the PRD section, because all three look like mistakes to someone who doesn't know the constraint.
-- Document at the module level: what an adapter is responsible for and what it deliberately does not do.
-
----
+No linter/formatter configured yet in the repo (no `package.json` at root at the time of this document). Will be defined when front-end implementation starts (Phase 2), following the standard of `pnpm` + canonical scripts (`lint`, `format:check`, `typecheck`, `test`, `audit`, `validate`) once there is TypeScript code to manage.
 
 ## 13. Deployment & DevOps
 
-**Environments.** Production only. A single-operator tool with no persistent state does not justify a staging tier; preview deploys cover the pre-merge case if needed.
-
-**Control plane.** Fly.io, single machine, `output: 'standalone'` in a minimal container. Config via Fly secrets. Origin locked to Cloudflare.
-
-**Agents.** Deployed to AgentCore per agent, independently.
-
-**Infrastructure.** AWS CDK in TypeScript. `cdk diff` on PR, `cdk deploy` gated on human approval. Everything in PRD §8, §9, §15 is CDK-managed: table and GSI1, EventBridge Scheduler rules, the orchestrator Lambda, the agent runtime and its `lifecycleConfiguration`, IAM roles including the `dynamodb:Attributes` constraint, discovery tags, and the OIDC trust policy.
-
-Constants that both infrastructure and application code depend on — the table name, `GSI1`, the `agent:*` tag keys, agent names — are imported from `packages/shared` by the CDK stacks rather than duplicated as strings. A stack that hardcodes `"GSI1"` while the query layer imports it from `shared` is two definitions of one fact.
-
-Bootstrap the CDK environment once per account/region. Stacks are split by deploy cadence: agent runtime, shared data (table + GSI1), and orchestration (scheduler + Lambda).
-
-**Path-gated CI.** GitHub Actions, filtered so unrelated work does not trigger unrelated deploys:
-
-| Path                    | Triggers                                                     |
-| ----------------------- | ------------------------------------------------------------ |
-| `apps/control-plane/**` | validate → build → deploy to Fly                             |
-| `agents/<name>/**`      | validate → deploy that agent to AgentCore                    |
-| `infra/**`              | `cdk diff` → gated `cdk deploy`                              |
-| `packages/shared/**`    | validate **all** consumers, verify generated artifacts match |
-
-A change to `packages/shared` must fan out to everything that depends on it. That is the one path where narrow gating would be wrong.
-
-**CI credentials.** GitHub OIDC to AWS. No long-lived AWS keys in Actions secrets.
-
-**Git discipline.** No agent pushes or merges to `main`. Conventional Commits. `gh issue`/`pr` bodies via `--body-file`, never inline `--body`.
-
----
+- **Front-end:** Fly.io. A prior app existed (`dt-agent-fleet-control-plane`, torn down in the reset — see `RESET-PLAN.md` Phase 2). Deployment is Phase 2.
+- **Agents:** AWS Bedrock AgentCore. The prior deploy used a CloudFormation stack (`AgentCore-depupdater-default`) managed by the AgentCore CLI — also torn down in the reset. Re-deployment is Phase 1.
+- **Supporting AWS infrastructure (IAM, OIDC provider, orchestration, config table):** the prior iteration used CDK (`AgentFleetIamStack`, `AgentFleetOrchestrationStack`, `AgentFleetDataStack` on DynamoDB). All destroyed in the reset. v2 replaces the DynamoDB config table with the Supabase tables described in §7 — no equivalent CDK stack is planned yet for v2; will be defined when the IAM setup from §5 is implemented (OIDC provider + role).
+- **Known note:** `cdk destroy` does not work under Node.js v26 with `aws-cdk-lib@2.266.0` (incompatibility documented in `RESET-PLAN.md`). If CDK is reintroduced in v2, validate the `aws-cdk-lib` version against the Node version in use before depending on `cdk destroy`/`cdk deploy`.
 
 ## 14. Monitoring, Logging & Observability
 
-**Prerequisites, without which the product has no data:**
-
-1. CloudWatch Transaction Search enabled. 1% indexing is sufficient — all spans are ingested as logs, and the indexing rate affects only X-Ray trace summaries.
-2. One unified span destination across the fleet. Two destinations means two queries in the read path.
-
-> **Current state as of 2026-08-25: prerequisite 1 is satisfied but no span has ever arrived.** Transaction Search is `ACTIVE` at 100% sampling and the destination is `aws/spans`, yet that group has `storedBytes=0`. `agents/dep-updater` declares only `opentelemetry-api` and `opentelemetry-sdk` — `uv.lock` resolves no exporter package and no `aws-opentelemetry-distro` — so spans are created and attributed in-process and then dropped. Tracked as [#62](https://github.com/llipe/dev-tasks-agent-fleet/issues/62). Until it lands the runs list and run detail views are empty regardless of IAM, and the `llipe.*` contract below is unverified against a real record.
-
-**Structured logging is contractual.** Application logs are JSON, one object per line, with **`session_id` on every line**. With three to five repositories running in parallel, a time-window filter interleaves runs into something unreadable; `session_id` is the only thing that separates them. A log line without it is effectively lost.
-
-Standard fields: `timestamp`, `level`, `session_id`, `agent`, `repo`, `message`, plus structured context. Never log secrets, tokens, or full payloads that might contain them.
-
-**Levels.** `error` for failed runs and unexpected exceptions; `warn` for retries, throttling, and degraded reads; `info` for run lifecycle boundaries; `debug` off in production.
-
-**Span attributes** on the root span of every run, from `packages/shared`:
-
-```
-llipe.subject.id    = "fintrack-home"
-llipe.run.status    = "success" | "failed"
-llipe.outcome.type  = "pr" | "report" | "none"
-llipe.outcome.url   = "https://github.com/myorg/fintrack-home/pull/42"
-```
-
-Tokens, latency, and model come from AgentCore's automatic instrumentation and require no agent code.
-
-**Alerting: none in v1.** Out of scope, and honestly so. The `incomplete` status is the manual substitute: it turns "an agent died quietly" into something visible on the next look. Nothing pages anyone. Missing-run detection against declared schedules is in the backlog.
-
-**Control-plane logs** go to Fly's log stream, JSON-formatted for consistency.
-
----
+- **CloudWatch** remains as infrastructure telemetry (container startup, crashes not captured by the SDK), outside the panel's functional scope (see §3). It also serves as a fallback destination when the agent SDK cannot reach the Supabase API — payloads are dumped to stderr, which lands in CloudWatch.
+- **Supabase Realtime** on `run_events` and `runs` is the business observability mechanism — live log tail without polling (Phase 2 enables the UI for this; Phase 1 writes the data).
+- **Captured log level** by the SDK's `logging.Handler` is configurable via `AGENT_LOG_LEVEL` (default `INFO`), first mitigation lever for R5 if an agent proves too verbose.
 
 ## 15. Performance & Scalability
 
-Scale is fixed and small: one operator, a handful of agents, a few dozen repositories.
-
-| Path                       | Expectation                                                        |
-| -------------------------- | ------------------------------------------------------------------ |
-| Cached view render         | Fast enough to feel immediate — cache hit, no AWS round trip       |
-| Cold run list              | Seconds. Logs Insights is start-query-and-poll; this is the floor. |
-| Log fetch in the run panel | Uncached by design. Show a loading state, never a blank panel.     |
-| DynamoDB reads             | Single-digit milliseconds                                          |
-
-**Caching.** In-process TTL cache, 5 minutes, keyed by the full query shape including time range and filters. Uncached: execution logs and DynamoDB configuration reads — both are read precisely when the operator needs current truth. Cache misses after a container restart are expected and harmless.
-
-**Because the cold path is seconds, streaming and skeleton states are functional requirements**, not polish. A view that blocks for four seconds with no feedback reads as broken.
-
-**Fan-out concurrency** is a pool of 3–5. The bound protects GitHub and Bedrock rate limits.
-
-**Not optimizing for:** horizontal scale, multi-user concurrency, sub-second cold queries, or run volumes beyond one operator's fleet. If those become real, they are new requirements with new architecture, not tuning.
-
----
+- Indexes on `runs` are designed for the most frequent listing queries: by agent and by repo, both ordered by `created_at desc` (§7).
+- The SDK write buffer (50 events / 2 seconds) is the only active performance lever in v1 for log write volume; see R5 for the analysis of why it is not adjusted preemptively.
+- No formalized latency or throughput targets — the expected scale in v1 is few agents with non-continuous executions (see `product-context.md` §11, Assumptions).
 
 ## 16. Dependency Management
 
-- **Exact version pins.** No `^`, no `~`, in either ecosystem. Lockfiles committed (`pnpm-lock.yaml`, `uv.lock`).
-- `pnpm` is required for JS/TS. `npm` only if `pnpm` is genuinely unavailable.
-- Prefer well-maintained, widely used packages. Scrutinize anything that looks like a typosquat, especially in the AWS and OTel namespaces where near-miss names are common.
-- AWS SDK v3: import individual clients, never the umbrella package.
-- Updates land as reviewed PRs with `validate` green. `pnpm audit` runs in CI.
-- Dependency additions to `packages/shared` need justification — it is imported by everything and should stay near-dependency-free.
-
----
+- **Agent:** zero external dependencies for the reporting SDK — Python stdlib only (explicit decision, D13). The rest of the agent's dependencies (`boto3`, audit tools, LLM client) are outside the scope of this document until `dependency-update` is ported.
+- **Front-end:** `@aws-sdk/client-sts`, `@aws-sdk/credential-providers`, `@aws-sdk/types` confirmed as dependencies of [`credentials.ts`](reference/credentials.ts). The rest of the front-end dependency tree is defined when Phase 2 implementation starts (Next.js, Supabase client, etc.), following this repository's `pnpm` standard.
 
 ## 17. Development Workflow
 
-**Branches.** `<type>/<short-description>`, e.g. `feat/run-side-panel`. Never commit to `main`; no agent pushes or merges to `main`.
-
-**Commits.** [Conventional Commits](https://www.conventionalcommits.org/), scoped to the affected package: `feat(control-plane):`, `fix(shared):`, `chore(infra):`.
-
-**Pull requests.**
-
-- Titles under 70 characters; detail goes in the body.
-- Bodies via `--body-file`, never inline `--body`.
-- Body states what changed, what was tested, and anything deliberately deferred.
-- `validate` green before review.
-- **Human review is the gate.** Automated hooks are best-effort.
-
-**Planning artifacts.** New PRDs go in `docs/requirements/`; specifications, user stories, and task lists in `/workstream/`. The v1 PRD sits at `docs/requirements/PRD-agent-control-plane-v1-en.md`. GitHub Issues and PRs are the source of truth for execution status.
-
-**Documents carry changelogs.** Updating a PRD, spec, or foundation document means adding a changelog row with an incremented version, the date, a summary, and an author.
-
----
+- **Active branch for this reset:** `chore/project-reset`, on `origin/main` without fast-forward pending merge as documented in `RESET-PLAN.md` Phase 3.
+- **Branch convention for new work:** `story/*` for user stories, `issue/*` for individual issues (naming observed in the repo's commit history, e.g., `issue/62-*`).
+- **Commits:** Conventional Commits (active repository rule, see git-guard notice). The history already follows this pattern (`fix(agent): ...`, `docs: ...`, `chore(workstream): ...`).
+- **PRs:** require `--body-file`, never inline `--body`, for GitHub issues and PRs (active repository rule).
+- **No agent may push or merge directly to `main`.**
 
 ## 18. Known Constraints & Trade-offs
 
-| Constraint                                    | Consequence accepted                                                                                                                                                                             |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| No run ledger, no local database              | Run history is bounded by CloudWatch log retention. Once logs expire, those runs are gone. Chosen to keep cost under USD 10/month and to avoid a second source of truth.                         |
-| 5-minute cache TTL                            | The run list can be five minutes stale. Acceptable because nothing here is real-time.                                                                                                            |
-| Logs Insights as the read path                | Cold queries take seconds and are quota-limited. No front-end work changes this.                                                                                                                 |
-| Token-derived cost estimate                   | Excludes runtime compute. Displayed as an estimate. Reconciling a bill needs Cost Explorer, out of scope.                                                                                        |
-| Hand-maintained pricing table                 | Goes stale silently when a model's price changes. Versioned in-repo so at least the drift is auditable.                                                                                          |
-| Fire-and-forget invocation                    | No completion signal except the agent's own write. An agent that dies before writing is only detectable via `incomplete`.                                                                        |
-| `incomplete` bounded by `maxLifetime` + grace | Depends on `GetAgentRuntime` being reachable; falls back to the 8 h service default, which over-waits for agents configured shorter.                                                             |
-| Emission contract as a hard dependency        | An agent that does not emit `llipe.subject.id` is invisible in the repository view, with no error to explain why. The contract test is the mitigation.                                           |
-| Tag-based opt-in discovery                    | A new agent silently absent until tagged. Intentional, but a predictable source of "why isn't it showing up."                                                                                    |
-| Single account, single region                 | No failover story. Appropriate for a personal tool.                                                                                                                                              |
-| No authorization model                        | Anyone past Cloudflare Access has full write capability over scope configuration. Bounded by the perimeter being the only control.                                                               |
-| Origin lockdown not implemented (§5)          | `dt-agent-fleet-control-plane.fly.dev` is publicly reachable; middleware JWT validation is the sole control on that hostname. An open deviation, not an accepted design — see the warning in §5. |
+Risks explicitly accepted in v1, with their declared exit path (full detail in the technical specification):
 
----
-
-## Reference
-
-- PRD: [`docs/requirements/PRD-agent-control-plane-v1-en.md`](./requirements/PRD-agent-control-plane-v1-en.md) — v1.1, scope closed
-- Product context: [`docs/product-context.md`](./product-context.md)
-- Design contract: [`../DESIGN.md`](../DESIGN.md)
-- Decision records: [`docs/adr/`](./adr/)
-  - [ADR-001](./adr/ADR-001-fly-oidc-sole-credential-path-for-control-plane.md) — Fly OIDC is the only AWS credential path for the control plane
-  - [ADR-002](./adr/ADR-002-build-is-part-of-the-validate-quality-gate.md) — `build` is part of the `validate` quality gate
-- Deployment: [`docs/runbook-deployment.md`](./runbook-deployment.md)
+| Risk | Accepted trade-off | Future exit |
+|---|---|---|
+| R1 — No authentication | The panel can invoke agents without login | Shared-secret header, or keep the app private, until Supabase Auth exists |
+| R2 — Agent uses Supabase `service role key` | Full database access from the agent container. Key stored in Secrets Manager, not in env vars (D15). | Dedicated Postgres role with scoped grants + signed JWT per run |
+| R3 — `run_events` growth | Largest table by two orders of magnitude, no active retention policy | Collapse to Storage + purge at 90 days |
+| R4 — `params_schema` without strong cross-validation | Drift between the schema in the database and what the agent expects is only detected at runtime | Agent validates its own payload at startup and fails with `INVALID_PARAMS` |
+| R5 — Write volume within a verbose execution | No preventive mitigation | Raise minimum captured level, logger allowlist, truncate per step, or increase batch — "evaluate later" is the chosen option today |
+| R6 — Drift between local and Fly environments (SSO permissions vs. scoped OIDC role) | Something that works locally may fail on Fly due to a missing permission | Assume the same role locally with a profile pointing to the Fly `role_arn` |
+| R7 — Test runs against the production database | Local development invokes real AgentCore and can write to the configured Supabase | Second Supabase project dedicated to development |
