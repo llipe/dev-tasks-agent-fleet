@@ -492,3 +492,32 @@ class TestRefreshTokenIfStale:
         out = main.refresh_token_if_stale(ctx, "org", secrets)
         assert out is fresh
         assert "new" in secrets
+
+
+class TestPullRequestErrorMapping:
+    """A PR push/create failure maps to failed/needs_review/<code>, not UNHANDLED_ERROR."""
+
+    def test_pull_request_error_carries_code(self):
+        from pull_request import PullRequestError
+
+        exc = PullRequestError("PUSH_FAILED", "git push failed")
+        assert exc.code == "PUSH_FAILED"
+
+    def test_handler_payload_shape_for_pr_error(self):
+        # Mirrors the `except PullRequestError` branch in main.invoke: the update
+        # itself succeeded, only the PR handoff failed → needs_review + the code.
+        import main
+        from pull_request import PullRequestError
+
+        exc = PullRequestError("PR_CREATE_FAILED", "gh pr create failed")
+        result = main.build_return_payload("failed", "needs_review", exc.code)
+        assert result["status"] == "failed"
+        assert result["outcome"] == "needs_review"
+        assert result["error_code"] == "PR_CREATE_FAILED"
+
+    def test_main_imports_pull_request_error_handler(self):
+        # Guard: main must import PullRequestError so the dedicated handler exists
+        # (otherwise a PR failure would fall through to the generic UNHANDLED_ERROR).
+        import main
+
+        assert hasattr(main, "PullRequestError")

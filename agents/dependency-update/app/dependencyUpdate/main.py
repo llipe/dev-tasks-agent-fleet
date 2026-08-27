@@ -37,7 +37,7 @@ from config import (
 )
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
 from fix_agent import _read_pkg_dependencies, run_fix_loop, verify_no_mandate_violation
-from pull_request import build_pr_body, open_pr_if_needed
+from pull_request import PullRequestError, build_pr_body, open_pr_if_needed
 from scrubber import scrub, scrub_process_error
 from toolchain import (
     ToolchainError,
@@ -721,6 +721,14 @@ async def invoke(payload: dict, context):
     except UpdaterError as exc:
         log.error("Updater error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
+        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+
+    except PullRequestError as exc:
+        # A push/PR-create failure after the workspace changes are staged.
+        # Map to the raised error_code and needs_review (the update itself
+        # succeeded — only the PR handoff failed) rather than UNHANDLED_ERROR.
+        log.error("Pull request error: %s", scrub(str(exc), secrets))
+        result = build_return_payload("failed", "needs_review", exc.code)
         yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
 
     except Exception:
