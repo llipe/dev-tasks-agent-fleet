@@ -210,7 +210,6 @@ def ensure_pnpm_version(workspace: str) -> None:
     _run(["npm", "install", "-g", f"pnpm@{required}"], cwd=workspace)
 
 
-
 def _resolve_variant(scripts: dict, variants: tuple[str, ...]) -> str | None:
     """Return the first variant present in ``scripts``, or None."""
     for name in variants:

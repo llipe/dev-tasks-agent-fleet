@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from config import TEST_TIMEOUT, TOOL_COMMAND_TIMEOUT
 from toolchain import ScriptContract
 
 
-class CheckStatus(str, Enum):
+class CheckStatus(StrEnum):
     """Outcome of a single validation check."""
 
     PASSED = "passed"
@@ -167,9 +167,7 @@ def run_typecheck(
         result.record("typecheck", CheckStatus.SKIPPED, "no typecheck script")
         return
     passed, output = _run_check(workspace, pm, scripts.typecheck, TOOL_COMMAND_TIMEOUT)
-    result.record(
-        "typecheck", CheckStatus.PASSED if passed else CheckStatus.FAILED, output
-    )
+    result.record("typecheck", CheckStatus.PASSED if passed else CheckStatus.FAILED, output)
 
 
 def run_tests(workspace: str, pm: str, scripts: ScriptContract, result: ValidationResult) -> None:

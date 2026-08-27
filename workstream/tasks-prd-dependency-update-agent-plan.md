@@ -54,21 +54,21 @@
   - [x] 1.11 Verify AC: NO_INSTALLATION on missing/disabled row
   - [x] 1.12 Run tests: `pytest -m unit tests/unit/test_credentials.py tests/unit/test_scrubber.py`
 
-- [ ] 2.0 Implement Issue #72 — https://github.com/llipe/dev-tasks-agent-fleet/issues/72: Toolchain Detection and Validation Runner
-  - [ ] 2.1 Implement `toolchain.py`: `detect_package_manager(workspace)` with precedence table
-  - [ ] 2.2 Implement `toolchain.py`: `detect_pnpm_version(workspace)` from packageManager/lockfileVersion
-  - [ ] 2.3 Implement `toolchain.py`: `ensure_pnpm_version(workspace)` to install correct major
-  - [ ] 2.4 Implement `toolchain.py`: `detect_scripts(workspace)` returning script contract struct
-  - [ ] 2.5 Implement `validator.py`: `ValidationResult` dataclass (per-check: passed/failed/skipped + output)
-  - [ ] 2.6 Implement `validator.py`: `run_lint()`, `run_format()`, `run_typecheck()`, `run_tests()` with fix-and-retry for lint/format
-  - [ ] 2.7 Implement `validator.py`: `run_validation()` orchestrating lint→format→typecheck→test
-  - [ ] 2.8 Create `tests/fixtures/` with temp dir fixtures (pnpm project, npm project, no lockfile, no test script)
-  - [ ] 2.9 Write `tests/unit/test_toolchain.py`: all detection cases, version mapping, script detection
-  - [ ] 2.10 Write `tests/unit/test_validator.py`: mock subprocess, pass/fail/skip/fix-retry scenarios
-  - [ ] 2.11 Verify AC: NO_PACKAGE_MANAGER on empty fixture
-  - [ ] 2.12 Verify AC: NO_TEST_SCRIPT on fixture without test
-  - [ ] 2.13 Verify AC: warn events for absent optional scripts
-  - [ ] 2.14 Run tests: `pytest -m unit tests/unit/test_toolchain.py tests/unit/test_validator.py`
+- [x] 2.0 Implement Issue #72 — https://github.com/llipe/dev-tasks-agent-fleet/issues/72: Toolchain Detection and Validation Runner
+  - [x] 2.1 Implement `toolchain.py`: `detect_package_manager(workspace)` with precedence table
+  - [x] 2.2 Implement `toolchain.py`: `detect_pnpm_version(workspace)` from packageManager/lockfileVersion
+  - [x] 2.3 Implement `toolchain.py`: `ensure_pnpm_version(workspace)` to install correct major
+  - [x] 2.4 Implement `toolchain.py`: `detect_scripts(workspace)` returning script contract struct
+  - [x] 2.5 Implement `validator.py`: `ValidationResult` dataclass (per-check: passed/failed/skipped + output)
+  - [x] 2.6 Implement `validator.py`: `run_lint()`, `run_format()`, `run_typecheck()`, `run_tests()` with fix-and-retry for lint/format
+  - [x] 2.7 Implement `validator.py`: `run_validation()` orchestrating lint→format→typecheck→test
+  - [x] 2.8 Create `tests/fixtures/` with temp dir fixtures (pnpm project, npm project, no lockfile, no test script)
+  - [x] 2.9 Write `tests/unit/test_toolchain.py`: all detection cases, version mapping, script detection
+  - [x] 2.10 Write `tests/unit/test_validator.py`: mock subprocess, pass/fail/skip/fix-retry scenarios
+  - [x] 2.11 Verify AC: NO_PACKAGE_MANAGER on empty fixture
+  - [x] 2.12 Verify AC: NO_TEST_SCRIPT on fixture without test
+  - [x] 2.13 Verify AC: warn events for absent optional scripts
+  - [x] 2.14 Run tests: `pytest -m unit tests/unit/test_toolchain.py tests/unit/test_validator.py`
 
 - [ ] 3.0 Implement Issue #73 — https://github.com/llipe/dev-tasks-agent-fleet/issues/73: Audit, Version Eligibility, and Advisory Classification
   - [ ] 3.1 Implement `eligibility.py`: `parse_semver()` with regex (spec §8.3)

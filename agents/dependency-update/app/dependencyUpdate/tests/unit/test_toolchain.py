@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from toolchain import (
-    ScriptContract,
     ToolchainError,
     detect_package_manager,
     detect_pnpm_version,
@@ -190,31 +189,23 @@ class TestDetectScripts:
         assert contract.missing_optional == []
 
     def test_detects_lint_fix_variant(self, tmp_path: Path):
-        _write_package_json(
-            tmp_path, {"scripts": {"test": "t", "lint": "l", "lint:fix": "lf"}}
-        )
+        _write_package_json(tmp_path, {"scripts": {"test": "t", "lint": "l", "lint:fix": "lf"}})
         contract = detect_scripts(str(tmp_path))
         assert contract.lint_fix == "lint:fix"
 
     def test_detects_format_check_variant(self, tmp_path: Path):
-        _write_package_json(
-            tmp_path, {"scripts": {"test": "t", "format:check": "fc"}}
-        )
+        _write_package_json(tmp_path, {"scripts": {"test": "t", "format:check": "fc"}})
         contract = detect_scripts(str(tmp_path))
         # format:check satisfies the "format" logical check
         assert contract.format == "format:check"
 
     def test_detects_format_fix_variant(self, tmp_path: Path):
-        _write_package_json(
-            tmp_path, {"scripts": {"test": "t", "format": "f", "format:fix": "ff"}}
-        )
+        _write_package_json(tmp_path, {"scripts": {"test": "t", "format": "f", "format:fix": "ff"}})
         contract = detect_scripts(str(tmp_path))
         assert contract.format_fix == "format:fix"
 
     def test_detects_type_check_hyphen_variant(self, tmp_path: Path):
-        _write_package_json(
-            tmp_path, {"scripts": {"test": "t", "type-check": "tsc --noEmit"}}
-        )
+        _write_package_json(tmp_path, {"scripts": {"test": "t", "type-check": "tsc --noEmit"}})
         contract = detect_scripts(str(tmp_path))
         assert contract.typecheck == "type-check"
 
@@ -233,3 +224,32 @@ class TestDetectScripts:
         )
         contract = detect_scripts(str(tmp_path))
         assert contract.format == "format"
+
+
+class TestAcceptanceCriteria:
+    """AC verification via the shared temp-dir project fixtures (conftest.py)."""
+
+    def test_ac_pnpm_project_detected(self, pnpm_project):
+        assert detect_package_manager(pnpm_project) == "pnpm"
+        assert detect_pnpm_version(pnpm_project) == 9
+
+    def test_ac_npm_project_detected(self, npm_project):
+        assert detect_package_manager(npm_project) == "npm"
+
+    def test_ac_no_package_manager_on_empty_fixture(self, no_lockfile_project):
+        # AC (2.11): NO_PACKAGE_MANAGER when no lockfile matches.
+        with pytest.raises(ToolchainError) as exc_info:
+            detect_package_manager(no_lockfile_project)
+        assert exc_info.value.code == "NO_PACKAGE_MANAGER"
+
+    def test_ac_no_test_script_fixture(self, no_test_project):
+        # AC (2.12): NO_TEST_SCRIPT when the test script is absent.
+        with pytest.raises(ToolchainError) as exc_info:
+            detect_scripts(no_test_project)
+        assert exc_info.value.code == "NO_TEST_SCRIPT"
+
+    def test_ac_absent_optional_scripts_surfaced_for_warnings(self, minimal_test_project):
+        # AC (2.13): the contract exposes absent optional scripts so the
+        # orchestrator can emit a warn event per missing script.
+        contract = detect_scripts(minimal_test_project)
+        assert set(contract.missing_optional) == {"lint", "format", "typecheck"}

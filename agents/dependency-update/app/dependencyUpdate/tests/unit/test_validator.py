@@ -152,9 +152,7 @@ class TestRunValidation:
     @patch("validator._run")
     def test_all_pass(self, mock_run):
         mock_run.return_value = _ok()
-        contract = ScriptContract(
-            test="test", lint="lint", format="format", typecheck="typecheck"
-        )
+        contract = ScriptContract(test="test", lint="lint", format="format", typecheck="typecheck")
         result = run_validation("/ws", "pnpm", contract)
         assert result.passed is True
         assert all(
@@ -197,9 +195,7 @@ class TestRunValidation:
             return _ok()
 
         mock_run.side_effect = side_effect
-        contract = ScriptContract(
-            test="test", lint="lint", format="format", typecheck="typecheck"
-        )
+        contract = ScriptContract(test="test", lint="lint", format="format", typecheck="typecheck")
         run_validation("/ws", "pnpm", contract)
         # lint before format before typecheck before test
         assert called_scripts.index("lint") < called_scripts.index("format")
