@@ -364,7 +364,6 @@ async def invoke(payload: dict, context):
         os.environ["RUN_PARAMS"] = json.dumps(payload)
 
         with RunReporter.from_env() as run:
-
             # --- Step: resolve_credentials ---
             with run.step("resolve_credentials"):
                 token_ctx = resolve_github_credentials(org)
@@ -448,9 +447,7 @@ async def invoke(payload: dict, context):
                     advisories_major_required=buckets["major_required"],
                     advisories_unknown=buckets["unknown"],
                 )
-                yield {
-                    "event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}
-                }
+                yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                 return
 
             # --- llm_fix mode continues below ---
@@ -477,9 +474,7 @@ async def invoke(payload: dict, context):
                         advisories_major_required=buckets["major_required"],
                         advisories_unknown=buckets["unknown"],
                     )
-                    yield {
-                        "event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}
-                    }
+                    yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                     return
 
                 # Reconcile lockfile (req 30)
@@ -544,9 +539,7 @@ async def invoke(payload: dict, context):
                     advisories_major_required=_bucket_counts(reclassified)["major_required"],
                     advisories_unknown=_bucket_counts(reclassified)["unknown"],
                 )
-                yield {
-                    "event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}
-                }
+                yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                 return
 
             # --- Step: open_pr ---
@@ -574,9 +567,9 @@ async def invoke(payload: dict, context):
                 _report_terminal(run, status, outcome, error_code)
 
             # Count fixed advisories
-            fixed_count = sum(
-                1 for a in classified if a.bucket == "in_range"
-            ) - sum(1 for a in reclassified if a.bucket == "in_range")
+            fixed_count = sum(1 for a in classified if a.bucket == "in_range") - sum(
+                1 for a in reclassified if a.bucket == "in_range"
+            )
             fixed_count = max(0, fixed_count)
 
             result = build_return_payload(
