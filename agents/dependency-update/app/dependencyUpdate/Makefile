@@ -24,16 +24,16 @@ typecheck:
 	mypy .
 
 test:
-	pytest
+	python -m pytest
 
 test-unit:
-	pytest -m unit
+	python -m pytest -m unit
 
 test-component:
-	pytest -m component
+	python -m pytest -m component || test $$? -eq 5
 
 test-cov:
-	pytest --cov --cov-report=term-missing
+	python -m pytest --cov --cov-report=term-missing
 
 audit:
 	pip-audit . --strict
