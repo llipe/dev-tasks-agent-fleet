@@ -6,6 +6,7 @@
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-08-26 | Initial version. Reformatted from consolidated PRD, `001_schema.sql`, `002_seed.sql`, `agent_reporter.py`, and `credentials.ts` into foundation doc format. No scope or decision changes. | product-engineer |
 | 1.1     | 2026-08-26 | Translated to English. Aligned with two-phase delivery model. | product-engineer |
+| 1.2     | 2026-08-27 | Documented the implemented LLM fix-agent escape hatch (issue #75): added the sandbox + mandate-backstop security rule to §6, replaced the stale §11 Testing Strategy with the implemented pytest layer taxonomy, and recorded Strands/Bedrock as a committed agent runtime dependency in §16. See [ADR-001](adr/ADR-001-llm-fix-agent-escape-hatch.md). | technical-writer |
 
 ## 1. Overview
 
@@ -86,6 +87,7 @@ Guiding principle: **the agent reports state explicitly**; nothing is reconstruc
 - **Param validation at two points.** The front-end validates against `params_schema` before invoking; the agent validates its own payload at startup and fails fast with `error_code = INVALID_PARAMS` if it does not match (mitigation for R4 — drift between the schema in the database and what the agent expects).
 - **Log messages truncated to 8 KB** (`run_events.message`) to bound row size and the risk of a malformed message degrading the table.
 - **4xx errors from the reporting SDK are not retried.** A contract error (invalid payload) does not improve with waiting; only transient errors (5xx, network) use 3-retry backoff.
+- **LLM fix agent — sandboxed tools + deterministic mandate backstop (ADR-001).** The `dependency-update` agent's optional LLM fix loop (`fix_agent.py`, reached only when validation fails after a dependency update in `llm_fix` mode) runs a Strands/Bedrock agent with **exactly five** tools (`shell`, `read_file`, `write_file`, `find_files`, `grep_code`). Every path-taking tool resolves against the workspace root via `_safe_path`, which rejects absolute paths, `../` traversal, and symlink escapes; `shell`/`find_files`/`grep_code` are confined to the workspace cwd. The system prompt forbids weakening tests, rolling back the update, widening semver ranges, major bumps, and dependency add/remove/lockfile edits — but the prompt is guidance, not the control. The enforceable control is `verify_no_mandate_violation`: after the loop, any change to a `package.json` dependency specifier (widened range, major bump, added/removed dependency) terminates the run `failed` / `needs_review` / `MANDATE_VIOLATION` and **blocks PR creation**. This mirrors the fleet's "explicitness over inference" and "human review is the real gate" posture — the model may propose, but a deterministic check disposes.
 
 ## 7. Data & Database Guidelines
 
@@ -177,7 +179,7 @@ Artifacts already defined at design level (see specification §14):
 | [`agent_reporter.py`](reference/agent_reporter.py) | Reporting SDK, copied to each agent repo |
 | [`credentials.ts`](reference/credentials.ts) | AWS credential provider with Fly OIDC / local branches |
 | Next.js front-end | Routes, schema-generated forms, live tail — pending implementation (Phase 2) |
-| `dependency-update` agent | AgentCore runtime — pending port from pre-reset version (Phase 1) |
+| `dependency-update` agent | AgentCore runtime under `agents/dependency-update/` — implemented (Phase 1): deterministic audit→classify→update→validate pipeline plus the bounded LLM fix loop (`fix_agent.py`, ADR-001). PR-creation/artifact emission and full `runs.metrics` persistence are deferred to issues #76/#77. |
 
 The exact folder convention for the front-end (`app/`, `lib/`, etc.) is defined when Phase 2 implementation begins, not in this document — v1 does not impose a monorepo structure yet.
 
@@ -189,12 +191,12 @@ The exact folder convention for the front-end (`app/`, `lib/`, etc.) is defined 
 
 ## 11. Testing Strategy
 
-No formalized test suite exists in the design artifacts (`docs/reference/`). Manual verification documented so far:
+The canonical testing contract lives in [`TESTING.md`](../TESTING.md) — this section summarizes the current state for the `dependency-update` agent (Phase 1) and points to it.
 
-- `agent_reporter.py`: tested with a fake client — write sequence, monotonic `seq`, event-to-step association, exception propagation.
-- `credentials.ts`: compiles with `tsc --strict`; runtime branches against the real Fly OIDC socket are pending verification (see §5, "Pending verification").
-
-When front-end and agent implementation begins, this document should be updated with the chosen testing framework (Next.js/TS unit test framework, Python test framework) and coverage strategy, following the repository's default test-first approach.
+- **Framework and layers (Python agent).** `pytest 8.3.5` with branch coverage via `pytest-cov`. Layer markers are auto-applied by directory in `tests/conftest.py`: `tests/unit/` → Layer 1 (`unit`, no I/O/network — all `boto3`/`requests`/`jwt`/`subprocess` boundaries mocked), `tests/component/` → Layer 2 (`component`, mocked externals + temp-dir project fixtures). The aggregate gate is `make validate` (lint + format:check + typecheck + test-cov + audit), enforced in CI (`.github/workflows/ci.yml`) on a Python 3.13 + 3.14 matrix for every push/PR to `main`.
+- **LLM fix agent test surface (issue #75).** The escape hatch adds a Layer 1 + Layer 2 surface exercised without invoking a real model: `tests/unit/test_safe_path.py` (workspace-escape guard — traversal, absolute, symlink, null-byte), `tests/unit/test_mandate_check.py` (`verify_no_mandate_violation` add/remove/change/malformed-JSON/missing-file), `tests/unit/test_fix_tools.py` (tool path-safety), and `tests/component/test_fix_agent.py` (5-tool surface, retry-budget exhaustion, early success, `max_attempts=0` → zero model calls, agent-exception resilience) with the Strands `Agent` mocked. `fix_agent.py` reports ~91% line coverage.
+- **Known gaps (tracked, non-blocking).** No Layer 3 product-evaluation/eval harness exists for the LLM path (semantic/groundedness), and the `main.py` orchestrator is coverage-excluded so the req-49→req-50→`open_pr` guard ordering is verified by inspection, not by an automated test. Security-negative coverage of the GitHub App / Supabase auth path in `credentials.py` is largely absent because the token endpoint is mocked. See `TESTING.md` (Coverage, Security-Negative Tests) for the ranked gap analysis.
+- **Front-end (Phase 2).** No JS/TS application test package exists yet (Next.js is Phase 2). The `agentcore/cdk/` package has a single CDK synth smoke test under `jest`. Framework and coverage strategy for the front-end are defined when Phase 2 implementation begins.
 
 ## 12. Code Quality & Standards
 
@@ -221,7 +223,8 @@ No linter/formatter configured yet in the repo (no `package.json` at root at the
 
 ## 16. Dependency Management
 
-- **Agent:** zero external dependencies for the reporting SDK — Python stdlib only (explicit decision, D13). The rest of the agent's dependencies (`boto3`, audit tools, LLM client) are outside the scope of this document until `dependency-update` is ported.
+- **Agent — reporting SDK:** zero external dependencies — Python stdlib only (explicit decision, D13). [`agent_reporter.py`](reference/agent_reporter.py) is copied byte-identical into the agent repo; because that verbatim copy trips one mypy check (`exit-return`) on mypy 2.3.1, a per-module override in `pyproject.toml` suppresses that single error code for `agent_reporter` only — the file is not modified and the rest of the codebase keeps full strictness (ADR-001).
+- **Agent — runtime (`dependency-update`):** pinned in `pyproject.toml`, `requires-python >=3.13`. Committed runtime dependencies: `bedrock-agentcore` (runtime harness), **`strands-agents` (the LLM fix agent, now activated by the issue #75 escape hatch — a real runtime dependency, no longer "outside scope")**, `boto3`, `requests`, `PyJWT`, `cryptography`. The Bedrock model is selected via `MODEL_ID` (default `us.anthropic.claude-sonnet-4-6`). Dev/quality tooling (also pinned, `[dev]` extra): `pytest`, `pytest-mock`, `pytest-cov`, `ruff`, `mypy`, `pip-audit`. The `audit` gate runs `pip-audit .` scoped to declared runtime deps, not the ambient venv.
 - **Front-end:** `@aws-sdk/client-sts`, `@aws-sdk/credential-providers`, `@aws-sdk/types` confirmed as dependencies of [`credentials.ts`](reference/credentials.ts). The rest of the front-end dependency tree is defined when Phase 2 implementation starts (Next.js, Supabase client, etc.), following this repository's `pnpm` standard.
 
 ## 17. Development Workflow

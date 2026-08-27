@@ -43,9 +43,45 @@ agents/dependency-update/
 6. Classify advisories (eligible / major_required / unknown)
 7. Apply eligible updates + reconcile lockfile
 8. Run validation (lint → format → typecheck → test)
-9. [Optional] LLM fix loop (bounded by `max_fix_attempts`)
+9. [Optional] LLM fix loop (`llm_fix` mode only — see below)
 10. Open PR (idempotent — skips if `deps/update-*` branch exists)
 11. Report outcome to Supabase
+
+### LLM fix loop (escape hatch)
+
+The LLM sits **outside** the deterministic path and is reachable from exactly
+one edge: when the validation suite fails after a dependency update, and only in
+`llm_fix` mode with `max_fix_attempts > 0`. It never judges vulnerabilities,
+picks versions, or writes the PR body — those stay deterministic.
+
+- **Runtime:** a Strands agent on Amazon Bedrock (`fix_agent.py`). The model is
+  configurable via `MODEL_ID` (default `us.anthropic.claude-sonnet-4-6`).
+- **Tool surface — exactly five, no more:** `shell`, `read_file`, `write_file`,
+  `find_files`, `grep_code`. Every path-taking tool resolves against the
+  workspace root through `_safe_path`, which refuses absolute paths, `../`
+  traversal, and symlink escapes; `shell`/`find_files`/`grep_code` are confined
+  to the workspace cwd.
+- **Mandate (system prompt):** the agent is instructed to adapt **source code
+  only**. It must not weaken/skip/disable tests, roll back the dependency
+  update, widen a semver range, perform a major bump, add/remove dependencies,
+  or edit lockfiles.
+- **Bounded loop:** up to `max_fix_attempts` (0–5, default 3). The full
+  validation suite is re-run after each attempt; the loop stops on the first
+  pass or when the budget is exhausted.
+- **Post-success re-check:** on success, lint/format/typecheck are re-run
+  (`rerun_static_checks_after_fix`) because the model may have edited files after
+  those checks last passed; the original `test` result is preserved.
+- **Deterministic backstop:** after the loop, `verify_no_mandate_violation`
+  compares `package.json` dependency specifiers against the post-update
+  snapshot. Any widened range, major bump, or added/removed dependency
+  terminates the run `failed` / `needs_review` / `MANDATE_VIOLATION` and **blocks
+  PR creation** — the prompt is guidance, this check is enforcement.
+
+> **Not yet wired (deferred):** recording the test-output tail as a
+> `run_artifact` on budget exhaustion is deferred to issue #76 (PR/artifact
+> plumbing); full persistence of `llm_used` / `fix_attempts` into `runs.metrics`
+> is deferred to issues #76/#77. The values are computed and returned in the
+> entrypoint payload today, but are not yet written to the `runs.metrics` column.
 
 ## Deployment
 
@@ -85,7 +121,9 @@ curl http://localhost:8080/ping
 | `RUN_ID` | Yes | Execution ID (passed by control plane at invocation) |
 | `RUN_PARAMS` | Yes | JSON payload with invocation parameters |
 | `AGENT_LOG_LEVEL` | No | Minimum log level captured (default: INFO) |
-| `MODEL_ID` | No | Bedrock model for LLM fix loop (default: Claude Sonnet) |
+| `MODEL_ID` | No | Bedrock model for the LLM fix loop (default: `us.anthropic.claude-sonnet-4-6`) |
+| `TOOL_COMMAND_TIMEOUT` | No | Per-command timeout for the fix agent's `shell` tool, in seconds (default: 180) |
+| `TEST_TIMEOUT` | No | Timeout for the validation test run, in seconds (default: 600) |
 
 ## Testing
 

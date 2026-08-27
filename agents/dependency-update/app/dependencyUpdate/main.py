@@ -36,6 +36,7 @@ from config import (
     SUPABASE_URL,
 )
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
+from fix_agent import _read_pkg_dependencies, run_fix_loop, verify_no_mandate_violation
 from scrubber import scrub, scrub_process_error
 from toolchain import (
     ToolchainError,
@@ -44,7 +45,13 @@ from toolchain import (
     ensure_pnpm_version,
 )
 from updater import UpdaterError, has_changes, install_deps, reconcile_lockfile, update_packages
-from validator import ValidationResult, run_validation
+from validator import (
+    ValidationResult,
+    run_format,
+    run_lint,
+    run_typecheck,
+    run_validation,
+)
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -190,6 +197,50 @@ def determine_outcome(
 
     # Fallback: no PR context — should not normally reach here
     return "succeeded", "no_vulnerabilities", None
+
+
+# ---------------------------------------------------------------------------
+# Post-fix re-validation and mandate gate (req 49, 50) — testable helpers
+# ---------------------------------------------------------------------------
+
+
+def rerun_static_checks_after_fix(
+    workspace: str, pm: str, scripts, val_result: ValidationResult
+) -> ValidationResult:
+    """
+    Re-run lint/format/typecheck after a successful LLM fix (req 49).
+
+    The model may have touched source files after those checks last passed, so
+    they are re-run. The original ``test`` result is preserved. ``llm_used`` and
+    ``fix_attempts`` carry over. This is only meaningful when the fix succeeded
+    (``val_result.passed and val_result.llm_used``); callers guard on that.
+    """
+    recheck = ValidationResult()
+    recheck.llm_used = val_result.llm_used
+    recheck.fix_attempts = val_result.fix_attempts
+    run_lint(workspace, pm, scripts, recheck)
+    run_format(workspace, pm, scripts, recheck)
+    run_typecheck(workspace, pm, scripts, recheck)
+    # Preserve the original test result
+    if "test" in val_result.checks:
+        recheck.checks["test"] = val_result.checks["test"]
+    return recheck
+
+
+def check_mandate(workspace: str, pkg_json_before: dict) -> str | None:
+    """
+    Run the package.json mandate check (req 50).
+
+    Returns a human-readable violation-details string when the LLM widened a
+    range, bumped a major, or added/removed a dependency; ``None`` when clean.
+    A non-None result MUST terminate the run ``failed`` / ``needs_review`` /
+    ``MANDATE_VIOLATION`` without opening a PR — this is the enforcement backstop
+    for the prompt constraints (req 47).
+    """
+    violations = verify_no_mandate_violation(workspace, pkg_json_before)
+    if not violations:
+        return None
+    return "; ".join(f"{v.package} ({v.field}): {v.reason}" for v in violations)
 
 
 # ---------------------------------------------------------------------------
@@ -509,17 +560,52 @@ async def invoke(payload: dict, context):
                 log.info("Validation: passed=%s", val_result.passed)
 
             # --- Step: llm_fix (only if validation failed and attempts > 0) ---
+            # Snapshot package.json before fix agent for mandate check (req 50)
+            pkg_json_before = _read_pkg_dependencies(os.path.join(workspace, "package.json"))
+
             if not val_result.passed and params["max_fix_attempts"] > 0:
                 with run.step("llm_fix"):
-                    # LLM fix agent is implemented in issue #75 — stub for now
                     log.info(
-                        "Validation failed — LLM fix agent would run "
-                        "(max_attempts=%d) — not yet implemented",
+                        "Validation failed — invoking LLM fix agent (max_attempts=%d)",
                         params["max_fix_attempts"],
                     )
-                    # When #75 is implemented, this becomes:
-                    # val_result = run_fix_loop(workspace, pm, scripts,
-                    #                           params["max_fix_attempts"], val_result)
+                    val_result = run_fix_loop(
+                        workspace,
+                        pm,
+                        scripts,
+                        params["max_fix_attempts"],
+                        val_result,
+                    )
+
+            # req 49: if fix succeeded, re-run lint/format/typecheck
+            if val_result.passed and val_result.llm_used:
+                log.info("Fix agent succeeded — re-running lint/format/typecheck")
+                val_result = rerun_static_checks_after_fix(workspace, pm, scripts, val_result)
+
+            # req 50: mandate check — package.json must be unchanged
+            if val_result.llm_used:
+                violation_details = check_mandate(workspace, pkg_json_before)
+                if violation_details is not None:
+                    log.error("Mandate violation detected: %s", violation_details)
+                    run.fail(
+                        error_code="MANDATE_VIOLATION",
+                        error_message=f"LLM modified package.json: {violation_details}",
+                        outcome="needs_review",
+                    )
+                    result = build_return_payload(
+                        status="failed",
+                        outcome="needs_review",
+                        error_code="MANDATE_VIOLATION",
+                        vuln_before=audit_before.total_vulns,
+                        vuln_after=audit_after.total_vulns,
+                        packages_changed=len(pkg_changes),
+                        fix_attempts=val_result.fix_attempts,
+                        llm_used=True,
+                        advisories_major_required=_bucket_counts(reclassified)["major_required"],
+                        advisories_unknown=_bucket_counts(reclassified)["unknown"],
+                    )
+                    yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+                    return
 
             # Check validation after potential fix
             if not val_result.passed:

@@ -72,6 +72,16 @@ ignore_missing_imports = true
 # Vendored SDK is not type-checked (copied verbatim from docs/reference/).
 exclude = ["agent_reporter\\.py", "tests/fixtures/", "\\.venv/"]
 
+# The `exclude` regex above only filters paths during directory recursion; on
+# mypy 2.3.1 the vendored SDK is still discovered by the `mypy .` scan and its
+# `__exit__` methods (declared `-> bool`, always returning False) trip the
+# `exit-return` check. The file MUST stay byte-identical to
+# docs/reference/agent_reporter.py (D13/D24), so we suppress that one error code
+# for this module only — the real source modules keep full strictness.
+[[tool.mypy.overrides]]
+module = "agent_reporter"
+disable_error_code = ["exit-return"]
+
 [tool.coverage.run]
 branch = true
 source = ["."]
