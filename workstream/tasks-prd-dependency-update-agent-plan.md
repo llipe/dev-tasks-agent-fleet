@@ -40,19 +40,19 @@
   - [x] 0.13 Verify: `agentcore dev` + `curl localhost:8080/ping` → 200
   - [x] 0.14 Verify: `diff docs/reference/agent_reporter.py agents/dependency-update/app/dependencyUpdate/agent_reporter.py` → no diff
 
-- [ ] 1.0 Implement Issue #71 — https://github.com/llipe/dev-tasks-agent-fleet/issues/71: Credential Resolution and GitHub App Auth
-  - [ ] 1.1 Implement `config.py`: SUPABASE_URL, SUPABASE_KEY_SECRET_ID env reads, MODEL_ID, TEST_TIMEOUT
-  - [ ] 1.2 Implement `scrubber.py`: `scrub(text, secrets)` and `scrub_process_error(exc, secrets)`
-  - [ ] 1.3 Implement `credentials.py`: `fetch_supabase_key()` reading from Secrets Manager
-  - [ ] 1.4 Implement `credentials.py`: PostgREST query for `github_installations` row
-  - [ ] 1.5 Implement `credentials.py`: `mint_installation_token()` (RS256 JWT → GitHub API exchange)
-  - [ ] 1.6 Implement `credentials.py`: `TokenContext` dataclass with `is_stale(threshold=45)`
-  - [ ] 1.7 Implement `credentials.py`: `refresh_if_stale()` re-minting logic
-  - [ ] 1.8 Write `tests/unit/test_scrubber.py`: token in string, CalledProcessError, multiple secrets, edge cases
-  - [ ] 1.9 Write `tests/unit/test_credentials.py`: mock boto3 + HTTP — happy path, no-installation, staleness
-  - [ ] 1.10 Verify AC: secret ID overridable via env var
-  - [ ] 1.11 Verify AC: NO_INSTALLATION on missing/disabled row
-  - [ ] 1.12 Run tests: `pytest -m unit tests/unit/test_credentials.py tests/unit/test_scrubber.py`
+- [x] 1.0 Implement Issue #71 — https://github.com/llipe/dev-tasks-agent-fleet/issues/71: Credential Resolution and GitHub App Auth
+  - [x] 1.1 Implement `config.py`: SUPABASE_URL, SUPABASE_KEY_SECRET_ID env reads, MODEL_ID, TEST_TIMEOUT
+  - [x] 1.2 Implement `scrubber.py`: `scrub(text, secrets)` and `scrub_process_error(exc, secrets)`
+  - [x] 1.3 Implement `credentials.py`: `fetch_supabase_key()` reading from Secrets Manager
+  - [x] 1.4 Implement `credentials.py`: PostgREST query for `github_installations` row
+  - [x] 1.5 Implement `credentials.py`: `mint_installation_token()` (RS256 JWT → GitHub API exchange)
+  - [x] 1.6 Implement `credentials.py`: `TokenContext` dataclass with `is_stale(threshold=45)`
+  - [x] 1.7 Implement `credentials.py`: `refresh_if_stale()` re-minting logic
+  - [x] 1.8 Write `tests/unit/test_scrubber.py`: token in string, CalledProcessError, multiple secrets, edge cases
+  - [x] 1.9 Write `tests/unit/test_credentials.py`: mock boto3 + HTTP — happy path, no-installation, staleness
+  - [x] 1.10 Verify AC: secret ID overridable via env var
+  - [x] 1.11 Verify AC: NO_INSTALLATION on missing/disabled row
+  - [x] 1.12 Run tests: `pytest -m unit tests/unit/test_credentials.py tests/unit/test_scrubber.py`
 
 - [ ] 2.0 Implement Issue #72 — https://github.com/llipe/dev-tasks-agent-fleet/issues/72: Toolchain Detection and Validation Runner
   - [ ] 2.1 Implement `toolchain.py`: `detect_package_manager(workspace)` with precedence table
