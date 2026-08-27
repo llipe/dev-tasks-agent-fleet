@@ -44,8 +44,44 @@ agents/dependency-update/
 7. Apply eligible updates + reconcile lockfile
 8. Run validation (lint → format → typecheck → test)
 9. [Optional] LLM fix loop (`llm_fix` mode only — see below)
-10. Open PR (idempotent — skips if `deps/update-*` branch exists)
+10. Open PR (idempotent — skips if a `deps/update-*` PR already exists)
 11. Report outcome to Supabase
+
+### Open PR step
+
+After a successful update (and validation), the agent opens a pull request
+against the base branch (default `main`; overridable via the `base_branch`
+param). The step is deterministic and idempotent:
+
+- **Branch:** a fresh `deps/update-YYYYMMDD-HHMMSS` branch (UTC). The agent
+  **never** commits to or pushes the default branch. Commit message is fixed:
+  `chore(deps): automated dependency update`.
+- **Idempotency:** before doing any work the agent runs `gh pr list` and, if an
+  open PR whose head branch starts with `deps/update-` already exists, it
+  short-circuits to `succeeded / not_applicable` and records the **existing** PR
+  URL as the artifact — no new branch, push, or PR.
+- **Token freshness:** the GitHub installation token is re-minted if it has aged
+  past 45 minutes before the push (`refresh_token_if_stale`), so long runs do
+  not push with an expired token.
+- **Secure push:** the token is supplied to `git push` via an ephemeral
+  credential helper for the duration of that single call — it never lands in the
+  remote URL or `.git/config`.
+- **PR body:** assembled from pipeline state and passed via `gh pr create
+  --body-file` (never inline `--body`). Sections: security summary (always),
+  fixed advisories, major-version-required advisories, unresolved advisories,
+  non-semver version changes, package changes (capped at 30 rows), validation
+  results (always), and — only when the LLM fix agent ran — an AI-assisted
+  modifications warning.
+- **Artifact:** the PR is recorded as a `run_artifacts` row of type
+  `pull_request` (for both newly created and pre-existing PRs).
+- **Major bump sequencing:** when an advisory can only be closed by a major
+  version bump, the PR carrying the fixed subset is opened **before** the run
+  terminates `failed / needs_review / MAJOR_UPDATE_REQUIRED`, so the reviewer
+  always has the partial fix in hand.
+- **Failure mapping:** a push or `gh` failure raises `PullRequestError`, which
+  the orchestrator maps to `failed / needs_review` with the specific error code
+  (`PR_LIST_FAILED`, `PUSH_FAILED`, `PR_CREATE_FAILED`, or `GIT_FAILED`) — the
+  update itself succeeded, only the PR handoff failed.
 
 ### LLM fix loop (escape hatch)
 
@@ -77,11 +113,13 @@ picks versions, or writes the PR body — those stay deterministic.
   terminates the run `failed` / `needs_review` / `MANDATE_VIOLATION` and **blocks
   PR creation** — the prompt is guidance, this check is enforcement.
 
-> **Not yet wired (deferred):** recording the test-output tail as a
-> `run_artifact` on budget exhaustion is deferred to issue #76 (PR/artifact
-> plumbing); full persistence of `llm_used` / `fix_attempts` into `runs.metrics`
-> is deferred to issues #76/#77. The values are computed and returned in the
-> entrypoint payload today, but are not yet written to the `runs.metrics` column.
+> **Wired as of issue #76:** the `open_pr` step, the `pull_request` run
+> artifact, and the PR body builder are implemented (see *Open PR step* above).
+> **Still deferred:** recording the test-output tail as a `run_artifact` on
+> fix-budget exhaustion, and full persistence of `llm_used` / `fix_attempts`
+> into the `runs.metrics` column, are deferred to issue #77. Those values are
+> computed and returned in the entrypoint payload today, but are not yet written
+> to `runs.metrics`.
 
 ## Deployment
 
