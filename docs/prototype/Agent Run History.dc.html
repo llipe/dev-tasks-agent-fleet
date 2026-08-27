@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/styles.css">
+<script src="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--st-ok:#74b58f;--st-fail:#d1706b;--st-timeout:#d1a45e;--rule:var(--color-divider);--muted:color-mix(in srgb, var(--color-text) 55%, transparent);--faint:color-mix(in srgb, var(--color-text) 38%, transparent);--mono:ui-monospace,Menlo,monospace}
+body{margin:0;background:color-mix(in srgb, var(--color-bg) 88%, #000);font-family:var(--font-body)}
+a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-400)}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid var(--rule);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px var(--mono);padding:3px 7px;background:var(--color-text);color:var(--color-bg);border-radius:4px;text-decoration:none}
+.dv-tname{font:500 13px/1.2 var(--font-heading);color:var(--color-text)}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:500 10.5px var(--mono);padding:3px 7px;background:var(--rule);color:var(--color-text);border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 var(--font-body);color:var(--muted)}
+.dv-card{background:var(--color-bg);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow-lg);overflow:hidden}
+.dv-opt:target .dv-oid{background:var(--color-accent);color:var(--color-bg)}
+.dv-next{margin:22px 0 0;font:12px/1.5 var(--font-body);color:var(--muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.hrow{display:grid;grid-template-columns:118px 122px minmax(0,1fr) 96px 78px 104px 30px;align-items:center;gap:14px;padding:9px 16px;border-bottom:1px solid var(--rule)}
+.hhd{font:500 10px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.st{display:inline-flex;align-items:center;gap:6px;font:500 11px var(--mono);letter-spacing:.02em;padding:2px 8px 2px 6px;border-radius:999px}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.mono{font:400 11.5px var(--mono)}
+.chip{display:inline-flex;align-items:center;gap:6px;font:400 11.5px var(--font-body);color:var(--color-text);padding:4px 9px;border:1px solid var(--rule);border-radius:var(--radius-md);background:transparent}
+</style></helmet>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Agent detail — run history</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>dependency-update · 82 runs, newest first</div>
+<div class="dv-card" style="width:1180px">
+
+  <div style="display:flex;align-items:center;gap:8px;padding:9px 16px;border-bottom:1px solid var(--rule);font:400 11.5px var(--mono);color:var(--faint)">
+    <a href="#2a" style="color:var(--muted)">agents</a><span>/</span><span style="color:var(--color-text)">dependency-update</span>
+  </div>
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-5);padding:18px 16px 16px">
+    <div style="min-width:0;max-width:620px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h1 style="margin:0;font:500 21px/1.2 var(--font-heading);color:var(--color-text)">Dependency Update</h1>
+        <span class="tag tag-accent" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">ENABLED</span>
+      </div>
+      <p style="margin:6px 0 0;font:400 12.5px/1.5 var(--font-body);color:var(--muted)">Runs npm audit against the lockfile, patches vulnerable transitive deps with an LLM fix pass, then opens one PR per repo with the audit report attached.</p>
+      <div style="display:flex;gap:16px;margin-top:10px;font:400 11.5px var(--mono);color:var(--faint)">
+        <span>4 params</span><span>p50 3m 12s</span><span>79% success · 7d</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex:none;align-items:center">
+      <button class="btn btn-ghost" style="min-height:32px;padding:0 12px;font-size:12px">Edit config</button>
+      <button class="btn btn-primary" style="min-height:32px;padding:0 18px;font-size:13px">Invoke ▸</button>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:0 16px 12px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;border:1px solid var(--rule);border-radius:var(--radius-md);overflow:hidden">
+        <span style="font:500 11px var(--font-body);color:var(--color-text);padding:5px 10px;background:var(--rule)">All</span>
+        <span style="font:400 11px var(--font-body);color:var(--muted);padding:5px 10px;border-left:1px solid var(--rule);display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--color-accent)"></span>Running <span style="color:var(--faint)">1</span></span>
+        <span style="font:400 11px var(--font-body);color:var(--muted);padding:5px 10px;border-left:1px solid var(--rule);display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--st-ok)"></span>Succeeded <span style="color:var(--faint)">65</span></span>
+        <span style="font:400 11px var(--font-body);color:var(--muted);padding:5px 10px;border-left:1px solid var(--rule);display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--st-fail)"></span>Failed <span style="color:var(--faint)">11</span></span>
+        <span style="font:400 11px var(--font-body);color:var(--muted);padding:5px 10px;border-left:1px solid var(--rule);display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--st-timeout)"></span>Timed out <span style="color:var(--faint)">6</span></span>
+      </div>
+      <span class="chip">Repository: <span class="mono" style="color:var(--color-accent-300)">all 20</span> <span style="color:var(--faint)">▾</span></span>
+      <span class="chip" style="border-color:color-mix(in srgb, var(--color-accent) 45%, transparent);color:var(--color-accent-300)">outcome: needs_review <span style="color:var(--muted)">✕</span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex:none">
+      <span style="font:400 11px var(--mono);color:var(--muted);display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--st-ok);animation:pulse 2s ease-in-out infinite"></span>live</span>
+      <input class="input" placeholder="repo or run id…" style="width:170px;min-height:30px;font-size:12px">
+    </div>
+  </div>
+
+  <div class="hrow hhd" style="padding-bottom:6px">
+    <span>Status</span><span>Outcome</span><span>Repository</span><span>Duration</span><span>Steps</span><span style="text-align:right">Started</span><span></span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--color-accent) 16%, transparent);color:var(--color-accent-300)"><span class="dot" style="background:var(--color-accent);animation:pulse 1.6s ease-in-out infinite"></span>running</span>
+    <span class="mono" style="color:var(--faint)">—</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/thinkfirst-api</span><span class="mono" style="color:var(--faint)">main</span></div>
+    <span class="mono" style="color:var(--color-accent-300)">1m 48s</span>
+    <span class="mono" style="color:var(--muted)">2/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">2 min ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--st-ok) 14%, transparent);color:var(--st-ok)"><span class="dot" style="background:var(--st-ok)"></span>succeeded</span>
+    <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;justify-self:start">FIXED</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/ripley-ingest</span><span class="mono" style="color:var(--faint)">main</span><a href="#2a" class="mono" style="font-size:11px">PR #412</a></div>
+    <span class="mono" style="color:var(--muted)">3m 04s</span>
+    <span class="mono" style="color:var(--muted)">4/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">14 min ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--st-ok) 14%, transparent);color:var(--st-ok)"><span class="dot" style="background:var(--st-ok)"></span>succeeded</span>
+    <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;justify-self:start">NO VULNS</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/notion-bridge</span><span class="mono" style="color:var(--faint)">main</span></div>
+    <span class="mono" style="color:var(--muted)">0m 41s</span>
+    <span class="mono" style="color:var(--muted)">3/3</span>
+    <span class="mono" style="color:var(--muted);text-align:right">38 min ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--st-fail) 14%, transparent);color:var(--st-fail)"><span class="dot" style="background:var(--st-fail)"></span>failed</span>
+    <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;justify-self:start">NEEDS REVIEW</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/fleet-console</span><span class="mono" style="color:var(--faint)">main</span><span class="mono" style="color:var(--st-fail);font-size:11px">npm_audit exit 1</span></div>
+    <span class="mono" style="color:var(--muted)">1m 12s</span>
+    <span class="mono" style="color:var(--st-fail)">2/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">1 hr ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--st-timeout) 14%, transparent);color:var(--st-timeout)"><span class="dot" style="background:var(--st-timeout)"></span>timed_out</span>
+    <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;justify-self:start">PARTIAL</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/monorepo-web</span><span class="mono" style="color:var(--faint)">release/24.8</span></div>
+    <span class="mono" style="color:var(--st-timeout)">15m 00s</span>
+    <span class="mono" style="color:var(--muted)">3/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">3 hr ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--st-ok) 14%, transparent);color:var(--st-ok)"><span class="dot" style="background:var(--st-ok)"></span>succeeded</span>
+    <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;justify-self:start">FIXED</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/agentcore-runtime</span><span class="mono" style="color:var(--faint)">main</span><a href="#2a" class="mono" style="font-size:11px">PR #98</a></div>
+    <span class="mono" style="color:var(--muted)">4m 27s</span>
+    <span class="mono" style="color:var(--muted)">4/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">5 hr ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:var(--rule);color:var(--muted)"><span class="dot" style="border:1px solid var(--muted)"></span>failed_to_start</span>
+    <span class="mono" style="color:var(--faint)">—</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/legacy-billing</span><span class="mono" style="color:var(--faint)">main</span><span class="mono" style="color:var(--muted);font-size:11px">AccessDenied: bedrock:InvokeAgent</span></div>
+    <span class="mono" style="color:var(--faint)">—</span>
+    <span class="mono" style="color:var(--faint)">0/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">6 hr ago</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div class="hrow">
+    <span class="st" style="background:color-mix(in srgb, var(--st-fail) 14%, transparent);color:var(--st-fail)"><span class="dot" style="background:var(--st-fail)"></span>failed</span>
+    <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;justify-self:start">NEEDS REVIEW</span>
+    <div style="min-width:0;display:flex;align-items:baseline;gap:8px"><span class="mono" style="color:var(--color-text);font-size:12.5px">llipe/thinkfirst-web</span><span class="mono" style="color:var(--faint)">main</span><span class="mono" style="color:var(--st-fail);font-size:11px">llm_fix produced no diff</span></div>
+    <span class="mono" style="color:var(--muted)">2m 55s</span>
+    <span class="mono" style="color:var(--st-fail)">3/4</span>
+    <span class="mono" style="color:var(--muted);text-align:right">yesterday</span>
+    <span style="color:var(--faint);text-align:right">›</span>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px">
+    <span style="font:400 11.5px var(--mono);color:var(--faint)">8 of 82 · sorted by started_at desc</span>
+    <button class="btn btn-secondary" style="min-height:28px;padding:0 12px;font-size:12px">Load 50 more</button>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="2b"><div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Empty state — configured, never invoked</div>
+<div class="dv-card" style="width:1180px">
+  <div style="display:flex;align-items:center;gap:8px;padding:9px 16px;border-bottom:1px solid var(--rule);font:400 11.5px var(--mono);color:var(--faint)">
+    <a href="#2b" style="color:var(--muted)">agents</a><span>/</span><span style="color:var(--color-text)">doc-sync</span>
+  </div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-5);padding:18px 16px 16px">
+    <div style="min-width:0;max-width:620px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h1 style="margin:0;font:500 21px/1.2 var(--font-heading);color:var(--color-text)">Doc Sync</h1>
+        <span class="tag tag-neutral" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">DISABLED</span>
+      </div>
+      <p style="margin:6px 0 0;font:400 12.5px/1.5 var(--font-body);color:var(--muted)">Regenerates the README API sections from exported types whenever a release tag lands on the default branch.</p>
+      <div style="display:flex;gap:16px;margin-top:10px;font:400 11.5px var(--mono);color:var(--faint)">
+        <span>3 params</span><span>no duration data</span><span>created 23d ago</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex:none;align-items:center">
+      <button class="btn btn-ghost" style="min-height:32px;padding:0 12px;font-size:12px">Edit config</button>
+      <button class="btn btn-primary" style="min-height:32px;padding:0 18px;font-size:13px">Invoke ▸</button>
+    </div>
+  </div>
+  <div class="hrow hhd" style="padding-bottom:6px;opacity:.5">
+    <span>Status</span><span>Outcome</span><span>Repository</span><span>Duration</span><span>Steps</span><span style="text-align:right">Started</span><span></span>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:44px 16px 48px">
+    <span style="font:400 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">No runs yet</span>
+    <p style="margin:0;max-width:440px;font:400 13px/1.55 var(--font-body);color:var(--muted)">This agent has never been invoked. Enable it to allow scheduled triggers, or invoke it once against a single repository to check the parameter schema resolves.</p>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-primary" style="min-height:30px;padding:0 14px;font-size:12px">Invoke on one repo</button>
+      <button class="btn btn-secondary" style="min-height:30px;padding:0 14px;font-size:12px">Enable agent</button>
+    </div>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "open the run detail with the live log viewer" · "show the Invoke form generated from the JSON Schema" · "add the repository filter dropdown open"</p>
+</section>
+
+</x-dc>
+</body>
+</html>

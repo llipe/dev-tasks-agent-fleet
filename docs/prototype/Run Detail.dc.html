@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/styles.css">
+<script src="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--st-ok:#74b58f;--st-fail:#d1706b;--st-timeout:#d1a45e;--rule:var(--color-divider);--muted:color-mix(in srgb, var(--color-text) 55%, transparent);--faint:color-mix(in srgb, var(--color-text) 38%, transparent);--mono:ui-monospace,Menlo,monospace}
+body{margin:0;background:color-mix(in srgb, var(--color-bg) 88%, #000);font-family:var(--font-body)}
+a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-400)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.mono{font:400 11.5px var(--mono)}
+.klabel{font:500 10px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.logline{display:grid;grid-template-columns:82px 46px 108px minmax(0,1fr);gap:12px;padding:1.5px 16px;font:400 12px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word}
+.logline:hover{background:color-mix(in srgb, var(--color-text) 4%, transparent)}
+</style></helmet>
+
+<div style="height:100dvh;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg)">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 16px;border-bottom:1px solid var(--rule);flex:none">
+    <div style="display:flex;align-items:center;gap:8px;font:400 11.5px var(--mono);color:var(--faint)">
+      <a href="#" style="color:var(--muted)">agents</a><span>/</span><a href="#" style="color:var(--muted)">dependency-update</a><span>/</span><span style="color:var(--color-text)">run_01J8XQ2F</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn btn-ghost" style="min-height:28px;padding:0 11px;font-size:12px">Copy run id</button>
+      <button class="btn btn-secondary" style="min-height:28px;padding:0 11px;font-size:12px">Re-run</button>
+      <button class="btn btn-secondary" style="min-height:28px;padding:0 11px;font-size:12px;border-color:color-mix(in srgb, var(--st-fail) 55%, transparent);color:var(--st-fail)">Cancel</button>
+    </div>
+  </div>
+
+  <div style="flex:none;padding:16px;border-bottom:1px solid var(--rule)">
+    <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px;align-items:start">
+
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="display:inline-flex;align-items:center;gap:7px;font:500 12px var(--mono);padding:3px 10px 3px 8px;border-radius:999px;background:color-mix(in srgb, var(--color-accent) 16%, transparent);color:var(--color-accent-300)"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);animation:pulse 1.6s ease-in-out infinite"></span>running</span>
+          <span class="klabel" style="letter-spacing:.06em">outcome</span>
+          <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;opacity:.5">pending</span>
+        </div>
+        <h1 style="margin:11px 0 0;font:500 20px/1.2 var(--font-heading);color:var(--color-text)">Dependency Update <span style="color:var(--faint);font-weight:400"> · </span><span class="mono" style="font-size:16px;color:var(--color-accent-300)">llipe/thinkfirst-api</span></h1>
+        <div style="display:flex;gap:22px;margin-top:14px;flex-wrap:wrap">
+          <div><div class="klabel">Duration</div><div class="mono" style="font-size:13px;color:var(--color-text);margin-top:3px">{{ elapsed }}</div></div>
+          <div><div class="klabel">Queued</div><div class="mono" style="color:var(--muted);margin-top:3px">14:02:07</div></div>
+          <div><div class="klabel">Started</div><div class="mono" style="color:var(--muted);margin-top:3px">14:02:11</div></div>
+          <div><div class="klabel">Finished</div><div class="mono" style="color:var(--faint);margin-top:3px">—</div></div>
+          <div><div class="klabel">Branch</div><div class="mono" style="color:var(--muted);margin-top:3px">main @ 4f9c1ab</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <span class="klabel">Artifacts</span>
+          <a href="#" style="display:inline-flex;align-items:center;gap:7px;font:400 11.5px var(--mono);padding:4px 10px;border:1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);border-radius:999px;color:var(--color-accent-300)">pull_request<span style="color:var(--muted)">·</span>#417 ↗</a>
+          <a href="#" style="display:inline-flex;align-items:center;gap:7px;font:400 11.5px var(--mono);padding:4px 10px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">audit_report<span style="color:var(--faint)">·</span>json ↓</a>
+          <span style="font:400 11px var(--mono);color:var(--faint)">2 of 3 · diff pending</span>
+        </div>
+      </div>
+
+      <div style="min-width:0;border-left:1px solid var(--rule);padding-left:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+          <span class="klabel">Steps</span>
+          <button class="btn btn-ghost" style="min-height:22px;padding:0 8px;font-size:10.5px" onClick="{{ clearFilter }}">Show all events</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1px">
+          <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+            <div onClick="{{ s.select }}" style="display:grid;grid-template-columns:16px minmax(0,1fr) 62px 54px;gap:10px;align-items:center;padding:6px 9px;border-radius:6px;cursor:pointer;background:{{ s.bg }};border-left:2px solid {{ s.mark }}">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ s.dot }};animation:{{ s.anim }};justify-self:center"></span>
+              <span style="min-width:0;font:500 12px var(--mono);color:{{ s.fg }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span>
+              <span style="font:400 11px var(--mono);color:var(--faint);text-align:right">{{ s.dur }}</span>
+              <span style="font:400 11px var(--mono);color:var(--faint);text-align:right">{{ s.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 16px;border-bottom:1px solid var(--rule);flex:none">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="klabel">Log</span>
+        <span style="font:400 11px var(--mono);color:var(--faint)">{{ shownCount }}</span>
+        <span style="display:{{ filterChipDisplay }};align-items:center;gap:7px;font:400 11px var(--mono);padding:3px 9px;border:1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);border-radius:999px;color:var(--color-accent-300)">step: {{ filterName }}<span onClick="{{ clearFilter }}" style="color:var(--muted);cursor:pointer">✕</span></span>
+        <div style="display:flex;border:1px solid var(--rule);border-radius:var(--radius-md);overflow:hidden">
+          <span style="font:400 11px var(--mono);color:var(--muted);padding:3px 9px">all</span>
+          <span style="font:400 11px var(--mono);color:var(--st-timeout);padding:3px 9px;border-left:1px solid var(--rule)">warn {{ warnCount }}</span>
+          <span style="font:400 11px var(--mono);color:var(--st-fail);padding:3px 9px;border-left:1px solid var(--rule)">error {{ errorCount }}</span>
+          <span style="font:400 11px var(--mono);color:var(--faint);padding:3px 9px;border-left:1px solid var(--rule)">debug</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;flex:none">
+        <input class="input" placeholder="grep…" style="width:150px;min-height:26px;font-size:11.5px;font-family:var(--mono)">
+        <button onClick="{{ toggleTail }}" style="display:inline-flex;align-items:center;gap:7px;font:500 11px var(--mono);padding:4px 10px;border-radius:999px;cursor:pointer;background:{{ tailBg }};color:{{ tailFg }};border:1px solid {{ tailBorder }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ tailFg }};animation:{{ tailAnim }}"></span>{{ tailLabel }}</button>
+      </div>
+    </div>
+
+    <div ref="{{ logRef }}" onScroll="{{ onScroll }}" style="flex:1;min-height:0;overflow-y:auto;background:color-mix(in srgb, var(--color-bg) 94%, #000);padding:8px 0 14px">
+      <sc-for list="{{ lines }}" as="l" hint-placeholder-count="18">
+        <div class="logline">
+          <span style="color:var(--faint)">{{ l.ts }}</span>
+          <span style="color:{{ l.lvlColor }};font-weight:500">{{ l.lvl }}</span>
+          <span onClick="{{ l.select }}" style="color:var(--faint);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.step }}</span>
+          <span style="color:{{ l.color }}">{{ l.msg }}</span>
+        </div>
+      </sc-for>
+      <div style="display:{{ cursorDisplay }};padding:3px 16px 0">
+        <span style="display:inline-block;width:7px;height:14px;background:var(--color-accent);animation:pulse 1s steps(2,end) infinite;vertical-align:middle"></span>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 16px;border-top:1px solid var(--rule);flex:none;font:400 11px var(--mono);color:var(--faint)">
+      <span>{{ totalCount }} events · realtime channel run:{{ runId }}</span>
+      <span>{{ tailHint }}</span>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:860}}">
+const STEPS = [
+  { name: 'checkout', status: 'succeeded', dur: '4s' },
+  { name: 'npm_audit', status: 'succeeded', dur: '22s' },
+  { name: 'llm_fix', status: 'running', dur: '1m 12s' },
+  { name: 'open_pr', status: 'pending', dur: '—' },
+];
+
+const SEED = [
+  ['checkout', 'info', 'resolving github.com/llipe/thinkfirst-api @ main'],
+  ['checkout', 'debug', 'git clone --depth=1 --branch main'],
+  ['checkout', 'info', 'HEAD at 4f9c1ab "chore: bump ci runner"'],
+  ['checkout', 'debug', 'workspace /tmp/agentcore/run_01J8XQ2F (ephemeral)'],
+  ['checkout', 'info', 'step finished in 4.11s'],
+  ['npm_audit', 'info', 'npm audit --json --audit-level=moderate'],
+  ['npm_audit', 'debug', 'lockfileVersion 3 · 1842 resolved packages'],
+  ['npm_audit', 'warn', 'GHSA-7f9x-3q2v moderate · tar-fs <2.1.2 (transitive via @aws-sdk/client-s3)'],
+  ['npm_audit', 'warn', 'GHSA-m5h6-hr3q high · fast-xml-parser <4.4.1 (transitive via @aws-sdk/client-bedrock)'],
+  ['npm_audit', 'error', 'GHSA-qw8p-2c4v critical · form-data <4.0.4 unsafe random boundary'],
+  ['npm_audit', 'info', '3 advisories · 1 critical, 1 high, 1 moderate'],
+  ['npm_audit', 'debug', 'no direct dependency owns form-data; patch must go through overrides'],
+  ['npm_audit', 'info', 'step finished in 22.40s'],
+  ['llm_fix', 'info', 'planning patch · model anthropic.claude-sonnet-4-5'],
+  ['llm_fix', 'debug', 'context: package.json, package-lock.json (truncated 42k tokens)'],
+  ['llm_fix', 'info', 'strategy: pin via npm "overrides" rather than bumping direct deps'],
+  ['llm_fix', 'debug', 'candidate: overrides.form-data ^4.0.4'],
+  ['llm_fix', 'debug', 'candidate: overrides.fast-xml-parser ^4.4.1'],
+  ['llm_fix', 'debug', 'candidate: overrides.tar-fs ^2.1.2'],
+  ['llm_fix', 'info', 'writing package.json (3 overrides added)'],
+  ['llm_fix', 'info', 'npm install --package-lock-only'],
+  ['llm_fix', 'debug', 'lockfile churn: 14 entries updated, 0 removed'],
+  ['llm_fix', 'warn', 'peer conflict: @aws-sdk/client-s3 expects tar-fs@^2.0.0 — satisfied by ^2.1.2, continuing'],
+  ['llm_fix', 'info', 're-running npm audit to verify'],
+  ['llm_fix', 'debug', 'audit exit code 0'],
+  ['llm_fix', 'info', '0 advisories remaining'],
+];
+
+const TAIL = [
+  ['llm_fix', 'debug', 'diff stat: 2 files changed, 31 insertions(+), 9 deletions(-)'],
+  ['llm_fix', 'info', 'running repo test command: npm run test --silent'],
+  ['llm_fix', 'debug', 'jest: 214 passed, 0 failed (38.2s)'],
+  ['llm_fix', 'info', 'patch verified · marking step succeeded'],
+  ['open_pr', 'info', 'creating branch agentcore/dependency-update-4f9c1ab'],
+  ['open_pr', 'debug', 'POST /repos/llipe/thinkfirst-api/git/refs'],
+  ['open_pr', 'info', 'commit "fix(deps): pin form-data, fast-xml-parser, tar-fs via overrides"'],
+  ['open_pr', 'warn', 'branch protection requires 1 review — PR will open as draft=false, unmerged'],
+  ['open_pr', 'info', 'pull request #417 opened'],
+  ['open_pr', 'debug', 'artifact recorded: pull_request → #417'],
+  ['open_pr', 'info', 'attaching audit_report.json (11.4 kB)'],
+  ['open_pr', 'info', 'step finished in 6.83s'],
+];
+
+const LVL = {
+  info: { color: 'color-mix(in srgb, var(--color-text) 88%, transparent)', tag: 'var(--muted)' },
+  warn: { color: 'var(--st-timeout)', tag: 'var(--st-timeout)' },
+  error: { color: 'var(--st-fail)', tag: 'var(--st-fail)' },
+  debug: { color: 'var(--faint)', tag: 'var(--faint)' },
+};
+
+class Component extends DCLogic {
+  logRef = React.createRef();
+  state = { n: SEED.length, filter: null, tail: true, elapsed: 96 };
+
+  componentDidMount() {
+    this.feed = setInterval(() => {
+      this.setState((s) => (s.n - SEED.length >= TAIL.length ? s : { n: s.n + 1 }));
+    }, 1400);
+    this.clock = setInterval(() => this.setState((s) => ({ elapsed: s.elapsed + 1 })), 1000);
+    this.scrollToEnd();
+  }
+  componentWillUnmount() { clearInterval(this.feed); clearInterval(this.clock); }
+  componentDidUpdate() { if (this.state.tail) this.scrollToEnd(); }
+  scrollToEnd() {
+    const el = this.logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+  onScroll = (e) => {
+    const el = e.currentTarget;
+    const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    if (atEnd !== this.state.tail) this.setState({ tail: atEnd });
+  };
+
+  allEvents() {
+    const rows = SEED.concat(TAIL).slice(0, this.state.n);
+    let t = 14 * 3600 + 2 * 60 + 11;
+    return rows.map(([step, lvl, msg], i) => {
+      t += 2 + ((i * 7) % 5);
+      const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+      const p = (v) => String(v).padStart(2, '0');
+      return { id: i, step, lvl, msg, ts: p(h) + ':' + p(m) + ':' + p(sec) };
+    });
+  }
+
+  fmt(sec) {
+    const m = Math.floor(sec / 60);
+    return m + 'm ' + String(sec % 60).padStart(2, '0') + 's';
+  }
+
+  renderVals() {
+    const { filter, tail } = this.state;
+    const events = this.allEvents();
+    const reached = new Set(events.map((e) => e.step));
+    const visible = filter ? events.filter((e) => e.step === filter) : events;
+
+    const steps = STEPS.map((s) => {
+      const done = s.status === 'succeeded';
+      const running = s.status === 'running';
+      const sel = filter === s.name;
+      const dot = done ? 'var(--st-ok)' : running ? 'var(--color-accent)' : 'transparent';
+      return {
+        name: s.name,
+        dur: s.dur,
+        count: reached.has(s.name) ? events.filter((e) => e.step === s.name).length + ' ev' : '—',
+        dot: s.status === 'pending' ? 'color-mix(in srgb, var(--color-text) 18%, transparent)' : dot,
+        anim: running ? 'pulse 1.6s ease-in-out infinite' : 'none',
+        fg: s.status === 'pending' ? 'var(--faint)' : 'var(--color-text)',
+        bg: sel ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
+        mark: sel ? 'var(--color-accent)' : 'transparent',
+        select: () => this.setState((st) => ({ filter: st.filter === s.name ? null : s.name })),
+      };
+    });
+
+    const lines = visible.map((e) => ({
+      ts: e.ts,
+      lvl: e.lvl,
+      step: e.step,
+      msg: e.msg,
+      color: LVL[e.lvl].color,
+      lvlColor: LVL[e.lvl].tag,
+      select: () => this.setState({ filter: e.step }),
+    }));
+
+    return {
+      steps, lines,
+      logRef: this.logRef,
+      onScroll: this.onScroll,
+      runId: '01J8XQ2F',
+      elapsed: this.fmt(this.state.elapsed),
+      totalCount: events.length,
+      shownCount: filter ? visible.length + ' of ' + events.length + ' lines' : events.length + ' lines',
+      warnCount: events.filter((e) => e.lvl === 'warn').length,
+      errorCount: events.filter((e) => e.lvl === 'error').length,
+      filterName: filter || '',
+      filterChipDisplay: filter ? 'inline-flex' : 'none',
+      cursorDisplay: this.state.n - SEED.length >= TAIL.length ? 'none' : 'block',
+      clearFilter: () => this.setState({ filter: null }),
+      toggleTail: () => this.setState({ tail: !tail }, () => { if (!tail) this.scrollToEnd(); }),
+      tailLabel: tail ? 'live tail' : 'paused',
+      tailFg: tail ? 'var(--st-ok)' : 'var(--muted)',
+      tailBg: tail ? 'color-mix(in srgb, var(--st-ok) 14%, transparent)' : 'transparent',
+      tailBorder: tail ? 'color-mix(in srgb, var(--st-ok) 45%, transparent)' : 'var(--rule)',
+      tailAnim: tail ? 'pulse 2s ease-in-out infinite' : 'none',
+      tailHint: tail ? 'following new events — scroll up to pause' : 'scrolled back · press live tail to resume',
+    };
+  }
+}
+
+</script>
+</body>
+</html>

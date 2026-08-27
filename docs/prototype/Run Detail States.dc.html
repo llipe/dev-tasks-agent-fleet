@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/styles.css">
+<script src="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--st-ok:#74b58f;--st-fail:#d1706b;--st-timeout:#d1a45e;--rule:var(--color-divider);--muted:color-mix(in srgb, var(--color-text) 55%, transparent);--faint:color-mix(in srgb, var(--color-text) 38%, transparent);--mono:ui-monospace,Menlo,monospace}
+body{margin:0;background:color-mix(in srgb, var(--color-bg) 88%, #000);font-family:var(--font-body)}
+a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-400)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mono{font:400 11.5px var(--mono)}
+.klabel{font:500 10px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.logline{display:grid;grid-template-columns:82px 46px 108px minmax(0,1fr);gap:12px;padding:1.5px 16px;font:400 12px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word}
+.logline:hover{background:color-mix(in srgb, var(--color-text) 4%, transparent)}
+.stateopt{font:400 11px var(--mono);padding:4px 11px;cursor:pointer;border-left:1px solid var(--rule)}
+</style></helmet>
+
+<div style="height:100dvh;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg)">
+
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:6px 16px;background:color-mix(in srgb, var(--color-bg) 80%, #000);border-bottom:1px solid var(--rule)">
+    <span class="klabel">Preview state</span>
+    <div style="display:flex;border:1px solid var(--rule);border-radius:var(--radius-md);overflow:hidden">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+        <span class="stateopt" onClick="{{ t.pick }}" style="background:{{ t.bg }};color:{{ t.fg }}">{{ t.label }}</span>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 16px;border-bottom:1px solid var(--rule)">
+    <div style="display:flex;align-items:center;gap:8px;font:400 11.5px var(--mono);color:var(--faint)">
+      <a href="#" style="color:var(--muted)">agents</a><span>/</span><a href="#" style="color:var(--muted)">dependency-update</a><span>/</span><span style="color:var(--color-text)">{{ runId }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn btn-ghost" style="min-height:28px;padding:0 11px;font-size:12px">Copy run id</button>
+      <button class="btn btn-secondary" style="min-height:28px;padding:0 11px;font-size:12px">Re-run</button>
+      <button class="btn btn-secondary" style="min-height:28px;padding:0 11px;font-size:12px;display:{{ cancelDisplay }};border-color:color-mix(in srgb, var(--st-fail) 55%, transparent);color:var(--st-fail)">Cancel</button>
+    </div>
+  </div>
+
+  <div style="display:{{ bannerDisplay }};flex:none;gap:13px;align-items:flex-start;padding:12px 16px;border-bottom:1px solid {{ bannerBorder }};background:{{ bannerBg }}">
+    <span style="width:7px;height:7px;border-radius:50%;background:{{ statusColor }};margin-top:6px;flex:none"></span>
+    <div style="min-width:0;flex:1">
+      <div style="font:500 12.5px var(--font-body);color:{{ statusColor }}">{{ bannerTitle }}</div>
+      <p style="margin:4px 0 0;font:400 12px/1.55 var(--font-body);color:var(--muted);max-width:760px">{{ bannerBody }}</p>
+      <div style="display:flex;gap:9px;margin-top:9px">
+        <a href="#" class="btn btn-secondary" style="min-height:26px;padding:0 11px;font-size:11.5px">{{ bannerAction }}</a>
+        <button class="btn btn-ghost" style="min-height:26px;padding:0 11px;font-size:11.5px">Re-run with same params</button>
+      </div>
+    </div>
+    <span class="mono" style="color:var(--faint);flex:none">{{ bannerMeta }}</span>
+  </div>
+
+  <div style="flex:none;padding:16px;border-bottom:1px solid var(--rule)">
+    <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px;align-items:start">
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="display:inline-flex;align-items:center;gap:7px;font:500 12px var(--mono);padding:3px 10px 3px 8px;border-radius:999px;background:{{ statusBg }};color:{{ statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ statusColor }};animation:{{ statusAnim }}"></span>{{ statusLabel }}</span>
+          <span class="klabel" style="letter-spacing:.06em">outcome</span>
+          <span class="tag tag-outline" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em;opacity:{{ outcomeOpacity }}">{{ outcomeLabel }}</span>
+        </div>
+        <h1 style="margin:11px 0 0;font:500 20px/1.2 var(--font-heading);color:var(--color-text)">Dependency Update <span style="color:var(--faint);font-weight:400"> · </span><span class="mono" style="font-size:16px;color:var(--color-accent-300)">llipe/thinkfirst-api</span></h1>
+        <div style="display:flex;gap:22px;margin-top:14px;flex-wrap:wrap">
+          <div><div class="klabel">Duration</div><div class="mono" style="font-size:13px;color:{{ durColor }};margin-top:3px">{{ duration }}</div></div>
+          <div><div class="klabel">Queued</div><div class="mono" style="color:var(--muted);margin-top:3px">{{ tQueued }}</div></div>
+          <div><div class="klabel">Started</div><div class="mono" style="color:{{ startedColor }};margin-top:3px">{{ tStarted }}</div></div>
+          <div><div class="klabel">Finished</div><div class="mono" style="color:{{ finishedColor }};margin-top:3px">{{ tFinished }}</div></div>
+          <div><div class="klabel">Branch</div><div class="mono" style="color:var(--muted);margin-top:3px">main @ 4f9c1ab</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <span class="klabel">Artifacts</span>
+          <a href="#" style="display:{{ artifactDisplay }};align-items:center;gap:7px;font:400 11.5px var(--mono);padding:4px 10px;border:1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);border-radius:999px;color:var(--color-accent-300)">pull_request<span style="color:var(--muted)">·</span>#417 ↗</a>
+          <a href="#" style="display:{{ reportDisplay }};align-items:center;gap:7px;font:400 11.5px var(--mono);padding:4px 10px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">audit_report<span style="color:var(--faint)">·</span>json ↓</a>
+          <span class="mono" style="color:var(--faint)">{{ artifactNote }}</span>
+        </div>
+      </div>
+
+      <div style="min-width:0;border-left:1px solid var(--rule);padding-left:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+          <span class="klabel">Steps</span>
+          <span class="mono" style="color:var(--faint)">{{ stepSummary }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1px">
+          <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+            <div onClick="{{ s.select }}" style="display:grid;grid-template-columns:16px minmax(0,1fr) 66px 54px;gap:10px;align-items:center;padding:6px 9px;border-radius:6px;cursor:pointer;background:{{ s.bg }};border-left:2px solid {{ s.mark }}">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ s.dot }};border:1px solid {{ s.ring }};animation:{{ s.anim }};justify-self:center"></span>
+              <span style="min-width:0;font:500 12px var(--mono);color:{{ s.fg }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span>
+              <span style="font:400 11px var(--mono);color:{{ s.noteColor }};text-align:right">{{ s.note }}</span>
+              <span style="font:400 11px var(--mono);color:var(--faint);text-align:right">{{ s.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 16px;border-bottom:1px solid var(--rule);flex:none">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="klabel">Log</span>
+        <span style="font:400 11px var(--mono);color:var(--faint)">{{ shownCount }}</span>
+        <span style="display:{{ filterChipDisplay }};align-items:center;gap:7px;font:400 11px var(--mono);padding:3px 9px;border:1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);border-radius:999px;color:var(--color-accent-300)">step: {{ filterName }}<span onClick="{{ clearFilter }}" style="color:var(--muted);cursor:pointer">✕</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;flex:none">
+        <input class="input" placeholder="grep…" style="width:150px;min-height:26px;font-size:11.5px;font-family:var(--mono)">
+        <button onClick="{{ toggleTail }}" style="display:{{ tailDisplay }};align-items:center;gap:7px;font:500 11px var(--mono);padding:4px 10px;border-radius:999px;cursor:pointer;background:{{ tailBg }};color:{{ tailFg }};border:1px solid {{ tailBorder }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ tailFg }};animation:{{ tailAnim }}"></span>{{ tailLabel }}</button>
+      </div>
+    </div>
+
+    <div ref="{{ logRef }}" onScroll="{{ onScroll }}" style="flex:1;min-height:0;overflow-y:auto;background:color-mix(in srgb, var(--color-bg) 94%, #000);padding:8px 0 14px">
+      <sc-for list="{{ lines }}" as="l" hint-placeholder-count="14">
+        <div class="logline" style="background:{{ l.bg }}">
+          <span style="color:var(--faint)">{{ l.ts }}</span>
+          <span style="color:{{ l.lvlColor }};font-weight:500">{{ l.lvl }}</span>
+          <span onClick="{{ l.select }}" style="color:var(--faint);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.step }}</span>
+          <span style="color:{{ l.color }}">{{ l.msg }}</span>
+        </div>
+      </sc-for>
+
+      <div style="display:{{ emptyDisplay }};flex-direction:column;align-items:center;gap:0;padding:64px 20px">
+        <span style="width:22px;height:22px;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--color-accent);animation:spin .9s linear infinite"></span>
+        <div style="margin-top:16px;font:400 13px var(--mono);color:var(--color-text)">{{ emptyTitle }}</div>
+        <p style="margin:7px 0 0;max-width:420px;text-align:center;font:400 12px/1.6 var(--font-body);color:var(--muted)">{{ emptyBody }}</p>
+        <div style="display:flex;gap:18px;margin-top:16px;font:400 11px var(--mono);color:var(--faint)">
+          <span>queue position 1</span><span>cold start ~20s</span><span>timeout 900s</span>
+        </div>
+      </div>
+
+      <div style="display:{{ cursorDisplay }};padding:3px 16px 0">
+        <span style="display:inline-block;width:7px;height:14px;background:var(--color-accent);animation:pulse 1s steps(2,end) infinite;vertical-align:middle"></span>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 16px;border-top:1px solid var(--rule);flex:none;font:400 11px var(--mono);color:var(--faint)">
+      <span>{{ totalCount }} events · realtime channel run:{{ runId }}</span>
+      <span>{{ footHint }}</span>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:880}}">
+const LVL = {
+  info: { color: 'color-mix(in srgb, var(--color-text) 88%, transparent)', tag: 'var(--muted)' },
+  warn: { color: 'var(--st-timeout)', tag: 'var(--st-timeout)' },
+  error: { color: 'var(--st-fail)', tag: 'var(--st-fail)' },
+  debug: { color: 'var(--faint)', tag: 'var(--faint)' },
+};
+
+const RUN_LOG = [
+  ['checkout', 'info', 'resolving github.com/llipe/thinkfirst-api @ main'],
+  ['checkout', 'debug', 'git clone --depth=1 --branch main'],
+  ['checkout', 'info', 'HEAD at 4f9c1ab "chore: bump ci runner"'],
+  ['checkout', 'info', 'step finished in 4.11s'],
+  ['npm_audit', 'info', 'npm audit --json --audit-level=moderate'],
+  ['npm_audit', 'debug', 'lockfileVersion 3 · 1842 resolved packages'],
+  ['npm_audit', 'warn', 'GHSA-m5h6-hr3q high · fast-xml-parser <4.4.1 (transitive)'],
+  ['npm_audit', 'error', 'GHSA-qw8p-2c4v critical · form-data <4.0.4 unsafe random boundary'],
+  ['npm_audit', 'info', '3 advisories · 1 critical, 1 high, 1 moderate'],
+  ['npm_audit', 'info', 'step finished in 22.40s'],
+  ['llm_fix', 'info', 'planning patch · model anthropic.claude-sonnet-4-5'],
+  ['llm_fix', 'debug', 'context: package.json, package-lock.json (truncated 42k tokens)'],
+  ['llm_fix', 'info', 'strategy: pin via npm "overrides" rather than bumping direct deps'],
+  ['llm_fix', 'info', 'writing package.json (3 overrides added)'],
+  ['llm_fix', 'info', 'npm install --package-lock-only'],
+  ['llm_fix', 'warn', 'peer conflict: @aws-sdk/client-s3 expects tar-fs@^2.0.0 — satisfied, continuing'],
+  ['llm_fix', 'debug', 'lockfile churn: 14 entries updated, 0 removed'],
+  ['llm_fix', 'info', 're-running npm audit to verify'],
+];
+
+const TIMEOUT_LOG = RUN_LOG.concat([
+  ['llm_fix', 'info', 'npm run test --silent'],
+  ['llm_fix', 'debug', 'jest still running at 600s (no output for 240s)'],
+  ['llm_fix', 'warn', 'no heartbeat from agent since 14:16:52'],
+  ['system', 'error', 'run exceeded max_duration_seconds=900 · reaper marked status=timed_out, no further events will arrive'],
+]);
+
+const FTS_LOG = [
+  ['system', 'info', 'run accepted · queued for agent dependency-update'],
+  ['system', 'debug', 'bedrock-agentcore:InvokeAgent sent · sessionId 01J8XQ5C'],
+  ['system', 'warn', 'no startup event after 60s (expected within 20s cold start)'],
+  ['system', 'error', 'agent never reported startup within 120s · status=failed_to_start, runtime produced no events'],
+];
+
+const STEPS = {
+  queued: [['checkout', 'pending'], ['npm_audit', 'pending'], ['llm_fix', 'pending'], ['open_pr', 'pending']],
+  running: [['checkout', 'succeeded', '4s'], ['npm_audit', 'succeeded', '22s'], ['llm_fix', 'running', '1m 12s'], ['open_pr', 'pending']],
+  timed_out: [['checkout', 'succeeded', '4s'], ['npm_audit', 'succeeded', '22s'], ['llm_fix', 'timed_out', '14m 34s'], ['open_pr', 'skipped']],
+  failed_to_start: [['checkout', 'never_ran'], ['npm_audit', 'never_ran'], ['llm_fix', 'never_ran'], ['open_pr', 'never_ran']],
+};
+
+const S = {
+  queued: {
+    label: 'queued', color: 'var(--color-accent)', anim: 'pulse 1.4s ease-in-out infinite',
+    runId: 'run_01J8XQ5C', outcome: 'pending', banner: null,
+    duration: '—', tQueued: '14:31:02', tStarted: '—', tFinished: '—',
+    log: [], artifacts: 0, cancel: true, tail: false,
+    emptyTitle: 'Waiting for agent to start…',
+    emptyBody: 'The run is accepted and sitting in the queue. Events begin streaming here as soon as AgentCore reports startup; nothing has been logged yet.',
+    foot: 'listening for the first event',
+  },
+  running: {
+    label: 'running', color: 'var(--color-accent)', anim: 'pulse 1.6s ease-in-out infinite',
+    runId: 'run_01J8XQ2F', outcome: 'pending', banner: null,
+    duration: '1m 48s', tQueued: '14:02:07', tStarted: '14:02:11', tFinished: '—',
+    log: RUN_LOG, artifacts: 1, cancel: true, tail: true, live: true,
+    foot: 'following new events — scroll up to pause',
+  },
+  timed_out: {
+    label: 'timed_out', color: 'var(--st-timeout)', anim: 'none',
+    runId: 'run_01J8XQ1A', outcome: 'PARTIAL',
+    banner: {
+      title: 'This run was marked as timed out by the system',
+      body: 'The agent stopped emitting events at 14:16:52 and passed max_duration_seconds=900 without finishing llm_fix. The reaper closed the run — the patch was written to the workspace but never verified, and no pull request was opened. The reaper\u2019s own event is the last line in the log below.',
+      action: 'Open reaper event ↓', meta: 'reaped 14:17:11',
+    },
+    duration: '15m 00s', tQueued: '13:56:41', tStarted: '13:56:44', tFinished: '14:17:11',
+    log: TIMEOUT_LOG, artifacts: 2, cancel: false, tail: false,
+    foot: 'stream closed by reaper',
+  },
+  failed_to_start: {
+    label: 'failed_to_start', color: 'var(--st-fail)', anim: 'none',
+    runId: 'run_01J8XQ0P', outcome: 'none',
+    banner: {
+      title: 'The agent never reported startup',
+      body: 'AgentCore accepted the invocation but no runtime process reported in, so no step ever ran. This is usually an IAM permission on bedrock:InvokeAgent, a missing agent alias, or a container image that fails before its entrypoint. Check the AgentCore runtime logs in CloudWatch for the session id — the panel only sees events the agent emits, and there were none.',
+      action: 'Open AgentCore logs ↗', meta: 'session 01J8XQ5C',
+    },
+    duration: '—', tQueued: '12:44:19', tStarted: '—', tFinished: '12:46:19',
+    log: FTS_LOG, artifacts: 0, cancel: false, tail: false,
+    foot: 'no runtime events received',
+  },
+};
+
+const ORDER = ['queued', 'running', 'timed_out', 'failed_to_start'];
+
+class Component extends DCLogic {
+  logRef = React.createRef();
+  state = { st: 'running', filter: null, tail: true, n: 12 };
+
+  componentDidMount() {
+    this.feed = setInterval(() => {
+      if (this.state.st !== 'running') return;
+      this.setState((s) => (s.n >= RUN_LOG.length ? { n: 12 } : { n: s.n + 1 }));
+    }, 1500);
+    this.scrollToEnd();
+  }
+  componentWillUnmount() { clearInterval(this.feed); }
+  componentDidUpdate() { if (this.state.tail) this.scrollToEnd(); }
+  scrollToEnd() { const el = this.logRef.current; if (el) el.scrollTop = el.scrollHeight; }
+  onScroll = (e) => {
+    const el = e.currentTarget;
+    const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    if (atEnd !== this.state.tail) this.setState({ tail: atEnd });
+  };
+
+  events(cfg) {
+    const rows = this.state.st === 'running' ? cfg.log.slice(0, this.state.n) : cfg.log;
+    let t = 14 * 3600 + 2 * 60 + 11;
+    const p = (v) => String(v).padStart(2, '0');
+    return rows.map(([step, lvl, msg], i) => {
+      t += 3 + ((i * 7) % 6);
+      return { step, lvl, msg, ts: p(Math.floor(t / 3600)) + ':' + p(Math.floor((t % 3600) / 60)) + ':' + p(t % 60), last: i === rows.length - 1 };
+    });
+  }
+
+  renderVals() {
+    const { st, filter, tail } = this.state;
+    const cfg = S[st];
+    const events = this.events(cfg);
+    const visible = filter ? events.filter((e) => e.step === filter) : events;
+    const terminal = st === 'timed_out' || st === 'failed_to_start';
+
+    const steps = STEPS[st].map(([name, status, dur]) => {
+      const sel = filter === name;
+      const map = {
+        succeeded: ['var(--st-ok)', 'transparent', 'ok ' + dur, 'var(--faint)'],
+        running: ['var(--color-accent)', 'transparent', dur, 'var(--color-accent-300)'],
+        timed_out: ['var(--st-timeout)', 'transparent', 'timed out', 'var(--st-timeout)'],
+        pending: ['transparent', 'var(--rule)', 'pending', 'var(--faint)'],
+        skipped: ['transparent', 'var(--rule)', 'skipped', 'var(--faint)'],
+        never_ran: ['transparent', 'var(--rule)', 'never ran', 'var(--faint)'],
+      }[status];
+      const count = events.filter((e) => e.step === name).length;
+      return {
+        name, select: () => this.setState((s) => ({ filter: s.filter === name ? null : name })),
+        dot: map[0], ring: map[1], note: map[2], noteColor: map[3],
+        anim: status === 'running' ? 'pulse 1.6s ease-in-out infinite' : 'none',
+        fg: status === 'succeeded' || status === 'running' || status === 'timed_out' ? 'var(--color-text)' : 'var(--faint)',
+        bg: sel ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
+        mark: sel ? 'var(--color-accent)' : 'transparent',
+        count: count ? count + ' ev' : '—',
+      };
+    });
+
+    const done = STEPS[st].filter((s) => s[1] === 'succeeded').length;
+    const b = cfg.banner;
+
+    return {
+      tabs: ORDER.map((k) => ({
+        label: k, pick: () => this.setState({ st: k, filter: null, tail: true, n: 12 }),
+        bg: k === st ? 'var(--rule)' : 'transparent',
+        fg: k === st ? 'var(--color-text)' : 'var(--muted)',
+      })),
+      steps,
+      lines: visible.map((e) => ({
+        ts: e.ts, lvl: e.lvl, step: e.step, msg: e.msg,
+        color: LVL[e.lvl].color, lvlColor: LVL[e.lvl].tag,
+        bg: e.last && terminal ? 'color-mix(in srgb, ' + cfg.color + ' 12%, transparent)' : 'transparent',
+        select: () => this.setState({ filter: e.step }),
+      })),
+      logRef: this.logRef, onScroll: this.onScroll,
+      runId: cfg.runId,
+      statusLabel: cfg.label, statusColor: cfg.color, statusAnim: cfg.anim,
+      statusBg: 'color-mix(in srgb, ' + cfg.color + ' 15%, transparent)',
+      outcomeLabel: cfg.outcome, outcomeOpacity: cfg.outcome === 'pending' || cfg.outcome === 'none' ? '0.5' : '1',
+      duration: cfg.duration, durColor: st === 'timed_out' ? 'var(--st-timeout)' : 'var(--color-text)',
+      tQueued: cfg.tQueued, tStarted: cfg.tStarted, tFinished: cfg.tFinished,
+      startedColor: cfg.tStarted === '—' ? 'var(--faint)' : 'var(--muted)',
+      finishedColor: cfg.tFinished === '—' ? 'var(--faint)' : 'var(--muted)',
+      artifactDisplay: cfg.artifacts > 0 ? 'inline-flex' : 'none',
+      reportDisplay: cfg.artifacts > 1 ? 'inline-flex' : 'none',
+      artifactNote: cfg.artifacts === 0 ? 'none produced' : cfg.artifacts + ' of 3',
+      cancelDisplay: cfg.cancel ? 'inline-flex' : 'none',
+      bannerDisplay: b ? 'flex' : 'none',
+      bannerTitle: b ? b.title : '', bannerBody: b ? b.body : '',
+      bannerAction: b ? b.action : '', bannerMeta: b ? b.meta : '',
+      bannerBg: 'color-mix(in srgb, ' + cfg.color + ' 10%, transparent)',
+      bannerBorder: 'color-mix(in srgb, ' + cfg.color + ' 35%, transparent)',
+      stepSummary: st === 'failed_to_start' ? '0 of 4 started' : done + ' of 4 done',
+      shownCount: events.length === 0 ? 'no events yet' : (filter ? visible.length + ' of ' + events.length + ' lines' : events.length + ' lines'),
+      filterChipDisplay: filter ? 'inline-flex' : 'none', filterName: filter || '',
+      clearFilter: () => this.setState({ filter: null }),
+      emptyDisplay: events.length === 0 ? 'flex' : 'none',
+      emptyTitle: cfg.emptyTitle || '', emptyBody: cfg.emptyBody || '',
+      cursorDisplay: cfg.live ? 'block' : 'none',
+      tailDisplay: cfg.tail ? 'inline-flex' : 'none',
+      tailLabel: tail ? 'live tail' : 'paused',
+      tailFg: tail ? 'var(--st-ok)' : 'var(--muted)',
+      tailBg: tail ? 'color-mix(in srgb, var(--st-ok) 14%, transparent)' : 'transparent',
+      tailBorder: tail ? 'color-mix(in srgb, var(--st-ok) 45%, transparent)' : 'var(--rule)',
+      tailAnim: tail ? 'pulse 2s ease-in-out infinite' : 'none',
+      toggleTail: () => this.setState({ tail: !tail }, () => { if (!tail) this.scrollToEnd(); }),
+      totalCount: events.length,
+      footHint: cfg.foot,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -295,14 +295,25 @@ Design notes encapsulated by the data model:
 
 ## 11. Design Considerations
 
-No `/DESIGN.md` exists in the repository at the time of this document. The panel is an internal operational tool (lists, JSON Schema-generated forms, log tail), without defined branding or visual identity requirements. When Phase 2 front-end implementation starts, if the project acquires its own UI/UX scope, a baseline `/DESIGN.md` should be created before or alongside that implementation.
+**`/DESIGN.md` now exists.** A high-fidelity prototype at `/docs/prototype/` (built on the Nocturne dark design system) was analyzed and codified into [`/DESIGN.md`](/DESIGN.md). That file is the visual source of truth for Phase 2 implementation, covering: design tokens (colors, typography, spacing, radius, shadows), component specifications (buttons, tags, status pills, inputs, log lines, nav items, toggles), layout architecture (sidebar + content shell, table/card grids, run detail full-height layout), interaction patterns (animations, hover states, keyboard shortcuts, live-tail scroll behavior), and data formatting conventions (timestamps, durations, counts, typography usage rules).
+
+The prototype defines 6 screens:
+1. **App Shell** — collapsible sidebar (212px/52px) + top breadcrumb bar + content area
+2. **Agents Dashboard** — three density variants (dense table, 2-col cards, ledger list)
+3. **Agent Run History** — filterable run table with status/outcome pills, repo + PR links
+4. **Run Detail** — full-height layout with summary, steps panel, and streaming log viewer
+5. **Run Detail States** — terminal-state banners (timed_out, failed_to_start, queued)
+6. **Invoke Agent** — schema-driven form dialog with toggle switches, select fields, success confirmation
 
 Functional UI considerations already decided at product level:
 
 - The invocation form is generated dynamically from `params_schema` (JSON Schema) — no forms are hand-coded per agent.
 - The repository selector is shown separately from the dynamic form, conditional on `agents.requires_repository`.
-- The log tail must feel live (no reload), consistent with Realtime on `run_events`.
-- The execution list must allow distinguishing `status` and `outcome` at a glance — they are separate concepts and must not be visually merged into a single "result."
+- The log tail must feel live (no reload), consistent with Realtime on `run_events`. Auto-scroll when within 24px of bottom; scroll-up pauses; click "live tail" resumes.
+- The execution list must allow distinguishing `status` and `outcome` at a glance — they are separate concepts: status is a colored pill with a dot, outcome is an outlined uppercase tag. They are never merged into a single visual element.
+- A `failed` run carrying a `pull_request` artifact (the `MAJOR_UPDATE_REQUIRED` case from the dependency-update agent PRD) must surface the artifact link alongside the red status — not hide it behind the failure color.
+- Status colors: `succeeded` = `#74b58f`, `failed` = `#d1706b`, `timed_out` = `#d1a45e`, `running` = accent (`#9184d9` with pulse animation and glow), `failed_to_start` = hollow dot (muted).
+- The design system is Nocturne (dark theme, Inter font, 0.7x density spacing, 8px base radius, blurple accent #9184d9 used as lines/glows never as floods).
 
 ## 12. Technical Considerations
 

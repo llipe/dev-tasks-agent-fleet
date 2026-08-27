@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/styles.css">
+<script src="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--st-ok:#74b58f;--st-fail:#d1706b;--st-timeout:#d1a45e;--rule:var(--color-divider);--muted:color-mix(in srgb, var(--color-text) 55%, transparent);--faint:color-mix(in srgb, var(--color-text) 38%, transparent);--mono:ui-monospace,Menlo,monospace}
+body{margin:0;background:color-mix(in srgb, var(--color-bg) 88%, #000);font-family:var(--font-body)}
+a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-400)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.mono{font:400 11.5px var(--mono)}
+.klabel{font:500 10px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.fieldrow{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:24px;align-items:start;padding:15px 0;border-top:1px solid var(--rule)}
+.ftype{font:400 10px var(--mono);padding:1px 6px;border:1px solid var(--rule);border-radius:4px;color:var(--faint)}
+select.input{appearance:none;background-image:none;cursor:pointer}
+</style></helmet>
+
+<div style="min-height:100dvh;display:flex;align-items:flex-start;justify-content:center;padding:52px 24px;background:radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 70%), color-mix(in srgb, var(--color-bg) 82%, #000)">
+
+<div style="width:100%;max-width:760px;background:var(--color-bg);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;border-bottom:1px solid var(--rule)">
+    <div style="display:flex;align-items:baseline;gap:9px">
+      <span style="font:500 14px var(--font-heading);color:var(--color-text)">Invoke agent</span>
+      <code class="mono" style="color:var(--color-accent-300)">dependency-update</code>
+    </div>
+    <span style="font:400 16px var(--mono);color:var(--faint);cursor:pointer">✕</span>
+  </div>
+
+  <div style="display:{{ formDisplay }};flex-direction:column">
+    <div style="padding:16px 20px 4px">
+      <p style="margin:0;font:400 12px/1.55 var(--font-body);color:var(--muted);max-width:560px">Fields below are generated from the agent's <code class="mono" style="color:var(--color-accent-300)">parameters_schema</code> — nothing here is hand-coded per agent. Editing the schema in AgentCore changes this form on the next load.</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
+        <button onClick="{{ toggleSchema }}" class="btn btn-ghost" style="min-height:22px;padding:0 8px;font-size:10.5px">{{ schemaToggleLabel }}</button>
+        <span class="mono" style="color:var(--faint)">draft 2020-12 · 2 properties · 1 required</span>
+      </div>
+      <pre style="display:{{ schemaDisplay }};margin:10px 0 0;padding:11px 13px;background:color-mix(in srgb, var(--color-bg) 94%, #000);border:1px solid var(--rule);border-radius:8px;font:400 11px/1.6 var(--mono);color:var(--muted);overflow-x:auto">{{ schemaText }}</pre>
+    </div>
+
+    <div style="padding:14px 20px 0">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:2px">
+        <span class="klabel">Target</span>
+        <span class="mono" style="color:var(--faint)">requires_repository: true</span>
+      </div>
+      <div class="fieldrow" style="border-top:none;padding-top:10px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font:500 13px var(--font-body);color:var(--color-text)">Repository</span><span style="color:var(--st-fail);font-size:12px">*</span></div>
+          <p style="margin:4px 0 0;font:400 11.5px/1.5 var(--font-body);color:var(--muted)">The agent clones this repo and opens its pull request there. 20 repos connected.</p>
+        </div>
+        <div>
+          <select class="input" value="{{ repo }}" onChange="{{ setRepo }}" style="width:100%;min-height:32px;font-size:12.5px;font-family:var(--mono)">
+            <option value="">Select a repository…</option>
+            <option value="llipe/thinkfirst-api">llipe/thinkfirst-api</option>
+            <option value="llipe/thinkfirst-web">llipe/thinkfirst-web</option>
+            <option value="llipe/ripley-ingest">llipe/ripley-ingest</option>
+            <option value="llipe/notion-bridge">llipe/notion-bridge</option>
+            <option value="llipe/agentcore-runtime">llipe/agentcore-runtime</option>
+            <option value="llipe/fleet-console">llipe/fleet-console</option>
+            <option value="llipe/monorepo-web">llipe/monorepo-web</option>
+          </select>
+          <div style="display:flex;justify-content:space-between;margin-top:5px">
+            <span class="mono" style="color:{{ repoHintColor }}">{{ repoHint }}</span>
+            <span class="mono" style="color:var(--faint)">branch: default</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:16px 20px 0">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span class="klabel">Parameters</span>
+        <span class="mono" style="color:var(--faint)">from parameters_schema</span>
+      </div>
+
+      <div class="fieldrow" style="margin-top:8px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <code style="font:500 13px var(--mono);color:var(--color-text)">fix_mode</code>
+            <span class="ftype">string · enum</span>
+            <span style="color:var(--st-fail);font-size:12px">*</span>
+          </div>
+          <p style="margin:4px 0 0;font:400 11.5px/1.5 var(--font-body);color:var(--muted)">{{ fixModeDesc }}</p>
+        </div>
+        <div>
+          <select class="input" value="{{ fixMode }}" onChange="{{ setFixMode }}" style="width:100%;min-height:32px;font-size:12.5px;font-family:var(--mono)">
+            <option value="audit_only">audit_only</option>
+            <option value="llm_fix">llm_fix</option>
+          </select>
+          <span class="mono" style="display:block;margin-top:5px;color:var(--faint)">default: llm_fix</span>
+        </div>
+      </div>
+
+      <div class="fieldrow">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <code style="font:500 13px var(--mono);color:var(--color-text)">fail_on_findings</code>
+            <span class="ftype">boolean</span>
+          </div>
+          <p style="margin:4px 0 0;font:400 11.5px/1.5 var(--font-body);color:var(--muted)">Mark the run failed when advisories remain after the fix pass, instead of reporting outcome <code class="mono">partial</code>.</p>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div onClick="{{ toggleFail }}" style="width:38px;height:21px;border-radius:999px;padding:2px;cursor:pointer;background:{{ toggleTrack }};border:1px solid {{ toggleBorder }};display:flex;justify-content:{{ toggleJustify }};align-items:center;transition:all .14s ease">
+            <span style="width:15px;height:15px;border-radius:50%;background:{{ toggleKnob }}"></span>
+          </div>
+          <span class="mono" style="color:{{ failColor }}">{{ failLabel }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;margin-top:16px;border-top:1px solid var(--rule);background:color-mix(in srgb, var(--color-bg) 96%, #000)">
+      <span class="mono" style="color:var(--faint)">POST /runs · agent dependency-update</span>
+      <div style="display:flex;align-items:center;gap:9px">
+        <button class="btn btn-ghost" style="min-height:32px;padding:0 12px;font-size:12px">Cancel</button>
+        <button onClick="{{ submit }}" class="btn btn-primary" style="min-height:32px;padding:0 20px;font-size:13px;opacity:{{ submitOpacity }}">{{ submitLabel }}</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:{{ queuedDisplay }};flex-direction:column;align-items:flex-start;gap:0;padding:34px 20px 30px;animation:rise .18s ease both">
+    <span style="display:inline-flex;align-items:center;gap:8px;font:500 12px var(--mono);padding:3px 11px 3px 8px;border-radius:999px;background:color-mix(in srgb, var(--color-accent) 16%, transparent);color:var(--color-accent-300)"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);animation:pulse 1.4s ease-in-out infinite"></span>queued</span>
+    <h2 style="margin:14px 0 0;font:500 19px/1.25 var(--font-heading);color:var(--color-text)">Run accepted</h2>
+    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 18px;margin-top:14px;font:400 12px var(--mono)">
+      <span style="color:var(--faint)">run id</span><span style="color:var(--color-text)">{{ newRunId }}</span>
+      <span style="color:var(--faint)">repository</span><span style="color:var(--color-text)">{{ repoOrDash }}</span>
+      <span style="color:var(--faint)">fix_mode</span><span style="color:var(--color-text)">{{ fixMode }}</span>
+      <span style="color:var(--faint)">fail_on_findings</span><span style="color:var(--color-text)">{{ failLabel }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:22px;width:100%">
+      <div style="flex:1;height:3px;border-radius:2px;background:var(--rule);overflow:hidden"><span style="display:block;height:100%;width:{{ progress }};background:var(--color-accent);transition:width .3s linear"></span></div>
+      <span class="mono" style="color:var(--muted);flex:none">{{ navHint }}</span>
+    </div>
+    <div style="display:flex;gap:9px;margin-top:18px">
+      <button class="btn btn-primary" style="min-height:30px;padding:0 14px;font-size:12px">Open run detail ▸</button>
+      <button onClick="{{ reset }}" class="btn btn-secondary" style="min-height:30px;padding:0 14px;font-size:12px">Invoke another</button>
+    </div>
+  </div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:880}}">
+const SCHEMA = `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["fix_mode"],
+  "properties": {
+    "fix_mode": {
+      "type": "string",
+      "enum": ["audit_only", "llm_fix"],
+      "default": "llm_fix",
+      "description": "audit_only reports advisories; llm_fix patches and opens a PR."
+    },
+    "fail_on_findings": { "type": "boolean", "default": false }
+  }
+}`;
+
+const MODE_DESC = {
+  audit_only: 'Runs npm audit and records the report as an artifact. No files are changed and no pull request is opened.',
+  llm_fix: 'Runs the audit, then lets the model patch the lockfile and open a pull request with the report attached.',
+};
+
+class Component extends DCLogic {
+  state = { repo: '', fixMode: 'llm_fix', failOnFindings: false, phase: 'form', schema: false, ticks: 0 };
+
+  componentWillUnmount() { clearInterval(this.nav); }
+
+  submit = () => {
+    if (!this.state.repo) { this.setState({ touched: true }); return; }
+    this.setState({ phase: 'queued', ticks: 0 });
+    clearInterval(this.nav);
+    this.nav = setInterval(() => this.setState((s) => (s.ticks >= 10 ? s : { ticks: s.ticks + 1 })), 260);
+  };
+
+  renderVals() {
+    const { repo, fixMode, failOnFindings, phase, schema, ticks, touched } = this.state;
+    const missing = touched && !repo;
+    return {
+      repo, fixMode,
+      formDisplay: phase === 'form' ? 'flex' : 'none',
+      queuedDisplay: phase === 'queued' ? 'flex' : 'none',
+      setRepo: (e) => this.setState({ repo: e.target.value }),
+      setFixMode: (e) => this.setState({ fixMode: e.target.value }),
+      toggleFail: () => this.setState({ failOnFindings: !failOnFindings }),
+      toggleSchema: () => this.setState({ schema: !schema }),
+      schemaToggleLabel: schema ? 'Hide schema' : 'View schema',
+      schemaDisplay: schema ? 'block' : 'none',
+      schemaText: SCHEMA,
+      fixModeDesc: MODE_DESC[fixMode],
+      repoHint: missing ? 'required — pick a repository' : repo ? 'default branch resolved · main' : 'no repository selected',
+      repoHintColor: missing ? 'var(--st-fail)' : 'var(--faint)',
+      failLabel: failOnFindings ? 'true' : 'false',
+      failColor: failOnFindings ? 'var(--color-accent-300)' : 'var(--faint)',
+      toggleTrack: failOnFindings ? 'color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'transparent',
+      toggleBorder: failOnFindings ? 'color-mix(in srgb, var(--color-accent) 60%, transparent)' : 'var(--rule)',
+      toggleKnob: failOnFindings ? 'var(--color-accent)' : 'var(--muted)',
+      toggleJustify: failOnFindings ? 'flex-end' : 'flex-start',
+      submit: this.submit,
+      submitLabel: repo ? 'Run ▸' : 'Run ▸',
+      submitOpacity: repo ? '1' : '0.5',
+      newRunId: 'run_01J8XQ4B',
+      repoOrDash: repo || '—',
+      progress: Math.min(100, ticks * 10) + '%',
+      navHint: ticks >= 10 ? 'opening run detail' : 'waiting for first event…',
+      reset: () => { clearInterval(this.nav); this.setState({ phase: 'form', touched: false, repo: '' }); },
+    };
+  }
+}
+
+</script>
+</body>
+</html>

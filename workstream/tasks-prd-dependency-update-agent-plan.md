@@ -1,0 +1,151 @@
+# Implementation Plan - Dependency Update Agent
+
+## Relevant Files
+
+- `agents/dependency-update/agentcore/agentcore.json` - Runtime configuration (Container, HTTP, lifecycle)
+- `agents/dependency-update/agentcore/aws-targets.json` - Deployment target (us-east-1)
+- `agents/dependency-update/app/dependencyUpdate/main.py` - Pipeline orchestrator entrypoint
+- `agents/dependency-update/app/dependencyUpdate/agent_reporter.py` - Reporting SDK copy
+- `agents/dependency-update/app/dependencyUpdate/config.py` - Env var reads, constants
+- `agents/dependency-update/app/dependencyUpdate/credentials.py` - Supabase key + GitHub App auth
+- `agents/dependency-update/app/dependencyUpdate/scrubber.py` - Token scrubbing
+- `agents/dependency-update/app/dependencyUpdate/toolchain.py` - Package manager detection
+- `agents/dependency-update/app/dependencyUpdate/validator.py` - Lint/format/typecheck/test runner
+- `agents/dependency-update/app/dependencyUpdate/audit.py` - Audit runner + parsing
+- `agents/dependency-update/app/dependencyUpdate/eligibility.py` - Version eligibility (D26)
+- `agents/dependency-update/app/dependencyUpdate/classifier.py` - Advisory classification (D25)
+- `agents/dependency-update/app/dependencyUpdate/updater.py` - Apply updates + reconcile lockfile
+- `agents/dependency-update/app/dependencyUpdate/fix_agent.py` - Strands fix agent + tools
+- `agents/dependency-update/app/dependencyUpdate/pull_request.py` - Branch, PR creation, body builder
+- `agents/dependency-update/app/dependencyUpdate/Dockerfile` - ARM64 container image
+- `agents/dependency-update/app/dependencyUpdate/pyproject.toml` - Python dependencies
+- `agents/dependency-update/README.md` - Agent documentation
+- `docs/reference/002_seed.sql` - Agent seed row update
+
+## Tasks
+
+- [ ] 0.0 Project Setup (S-001) — https://github.com/llipe/dev-tasks-agent-fleet/issues/70
+  - [ ] 0.1 Run `agentcore create` with Container/Strands/Bedrock/HTTP flags in `agents/dependency-update/`
+  - [ ] 0.2 Edit `agentcore.json`: set runtimeVersion PYTHON_3_14, maxLifetime 3600, idleTimeout 300, code location `app/dependencyUpdate/`, entrypoint `main.py`
+  - [ ] 0.3 Set `aws-targets.json` to us-east-1 with account ID
+  - [ ] 0.4 Author Dockerfile (ARM64 multi-stage: Python 3.13 + Node 26 + pnpm + npm + gh CLI)
+  - [ ] 0.5 Author `pyproject.toml` with pinned deps: bedrock-agentcore, strands-agents, strands-agents-tools, boto3, requests, PyJWT, cryptography
+  - [ ] 0.6 Copy `docs/reference/agent_reporter.py` → `app/dependencyUpdate/agent_reporter.py`
+  - [ ] 0.7 Create minimal `main.py` with BedrockAgentCoreApp + /ping responding
+  - [ ] 0.8 Create module stubs (config, credentials, scrubber, toolchain, validator, audit, eligibility, classifier, updater, fix_agent, pull_request)
+  - [ ] 0.9 Create `tests/` directory structure: `tests/unit/`, `tests/component/`, `tests/fixtures/`
+  - [ ] 0.10 Author README.md documenting layout, deployment, and max_runtime_seconds ↔ maxLifetime coupling
+  - [ ] 0.11 Verify: `agentcore validate` passes
+  - [ ] 0.12 Verify: Docker builds for ARM64 (`docker build --platform linux/arm64`)
+  - [ ] 0.13 Verify: `agentcore dev` + `curl localhost:8080/ping` → 200
+  - [ ] 0.14 Verify: `diff docs/reference/agent_reporter.py agents/dependency-update/app/dependencyUpdate/agent_reporter.py` → no diff
+
+- [ ] 1.0 Implement Issue #71 — https://github.com/llipe/dev-tasks-agent-fleet/issues/71: Credential Resolution and GitHub App Auth
+  - [ ] 1.1 Implement `config.py`: SUPABASE_URL, SUPABASE_KEY_SECRET_ID env reads, MODEL_ID, TEST_TIMEOUT
+  - [ ] 1.2 Implement `scrubber.py`: `scrub(text, secrets)` and `scrub_process_error(exc, secrets)`
+  - [ ] 1.3 Implement `credentials.py`: `fetch_supabase_key()` reading from Secrets Manager
+  - [ ] 1.4 Implement `credentials.py`: PostgREST query for `github_installations` row
+  - [ ] 1.5 Implement `credentials.py`: `mint_installation_token()` (RS256 JWT → GitHub API exchange)
+  - [ ] 1.6 Implement `credentials.py`: `TokenContext` dataclass with `is_stale(threshold=45)`
+  - [ ] 1.7 Implement `credentials.py`: `refresh_if_stale()` re-minting logic
+  - [ ] 1.8 Write `tests/unit/test_scrubber.py`: token in string, CalledProcessError, multiple secrets, edge cases
+  - [ ] 1.9 Write `tests/unit/test_credentials.py`: mock boto3 + HTTP — happy path, no-installation, staleness
+  - [ ] 1.10 Verify AC: secret ID overridable via env var
+  - [ ] 1.11 Verify AC: NO_INSTALLATION on missing/disabled row
+  - [ ] 1.12 Run tests: `pytest -m unit tests/unit/test_credentials.py tests/unit/test_scrubber.py`
+
+- [ ] 2.0 Implement Issue #72 — https://github.com/llipe/dev-tasks-agent-fleet/issues/72: Toolchain Detection and Validation Runner
+  - [ ] 2.1 Implement `toolchain.py`: `detect_package_manager(workspace)` with precedence table
+  - [ ] 2.2 Implement `toolchain.py`: `detect_pnpm_version(workspace)` from packageManager/lockfileVersion
+  - [ ] 2.3 Implement `toolchain.py`: `ensure_pnpm_version(workspace)` to install correct major
+  - [ ] 2.4 Implement `toolchain.py`: `detect_scripts(workspace)` returning script contract struct
+  - [ ] 2.5 Implement `validator.py`: `ValidationResult` dataclass (per-check: passed/failed/skipped + output)
+  - [ ] 2.6 Implement `validator.py`: `run_lint()`, `run_format()`, `run_typecheck()`, `run_tests()` with fix-and-retry for lint/format
+  - [ ] 2.7 Implement `validator.py`: `run_validation()` orchestrating lint→format→typecheck→test
+  - [ ] 2.8 Create `tests/fixtures/` with temp dir fixtures (pnpm project, npm project, no lockfile, no test script)
+  - [ ] 2.9 Write `tests/unit/test_toolchain.py`: all detection cases, version mapping, script detection
+  - [ ] 2.10 Write `tests/unit/test_validator.py`: mock subprocess, pass/fail/skip/fix-retry scenarios
+  - [ ] 2.11 Verify AC: NO_PACKAGE_MANAGER on empty fixture
+  - [ ] 2.12 Verify AC: NO_TEST_SCRIPT on fixture without test
+  - [ ] 2.13 Verify AC: warn events for absent optional scripts
+  - [ ] 2.14 Run tests: `pytest -m unit tests/unit/test_toolchain.py tests/unit/test_validator.py`
+
+- [ ] 3.0 Implement Issue #73 — https://github.com/llipe/dev-tasks-agent-fleet/issues/73: Audit, Version Eligibility, and Advisory Classification
+  - [ ] 3.1 Implement `eligibility.py`: `parse_semver()` with regex (spec §8.3)
+  - [ ] 3.2 Implement `eligibility.py`: `is_eligible(installed, target)` — 4-row table + anti-loophole
+  - [ ] 3.3 Implement `classifier.py`: `_extract_lowest_version(patched_range)` — naive regex extraction
+  - [ ] 3.4 Implement `classifier.py`: `ClassifiedAdvisory` dataclass
+  - [ ] 3.5 Implement `classifier.py`: `classify_advisory()` using eligibility rules (req 37 — no drift)
+  - [ ] 3.6 Implement `audit.py`: `run_audit(workspace, pm)` — pnpm/npm audit --json
+  - [ ] 3.7 Implement `audit.py`: `count_vulns()`, `extract_advisories()` for both pnpm/npm JSON shapes
+  - [ ] 3.8 Implement `audit.py`: `snapshot_lockfile_packages(workspace, pm)` via `pnpm/npm list --json --depth 0`
+  - [ ] 3.9 Implement `audit.py`: `diff_packages(before, after)` returning changes list
+  - [ ] 3.10 Collect real pnpm/npm audit JSON fixtures → `tests/fixtures/audit_pnpm_*.json`, `tests/fixtures/audit_npm_*.json`
+  - [ ] 3.11 Write `tests/unit/test_eligibility.py`: all 4 rows + anti-loophole (req 34) + edge cases (pre-release, v-prefix)
+  - [ ] 3.12 Write `tests/unit/test_classifier.py`: fixture corpus — major_required, in_range, unknown, 0.x cases, complex ranges
+  - [ ] 3.13 Write `tests/unit/test_audit.py`: parse both audit JSON formats, snapshot, diff
+  - [ ] 3.14 Verify AC: 0.x minor → ineligible (major-equivalent)
+  - [ ] 3.15 Verify AC: non-semver → eligible but warned
+  - [ ] 3.16 Verify AC: empty patched range → unknown (not major_required)
+  - [ ] 3.17 Run tests: `pytest -m unit tests/unit/test_eligibility.py tests/unit/test_classifier.py tests/unit/test_audit.py`
+
+- [ ] 4.0 Implement Issue #74 — https://github.com/llipe/dev-tasks-agent-fleet/issues/74: Deterministic Pipeline Orchestrator
+  - [ ] 4.1 Implement `updater.py`: `install_deps(workspace, pm, frozen)`, `update_packages(workspace, pm)`, `has_changes(workspace)`, `reconcile_lockfile(workspace, pm)`
+  - [ ] 4.2 Implement payload unwrapping (handle `prompt` key wrapper) in `main.py`
+  - [ ] 4.3 Implement payload validation against expected schema; reject with INVALID_PARAMS
+  - [ ] 4.4 Implement defaults application (fix_mode, fail_on_findings, max_fix_attempts) with 0..5 constraint
+  - [ ] 4.5 Implement clone logic: construct URL, git clone --depth 1, scrub token, set git identity
+  - [ ] 4.6 Implement outcome determination as pure function `determine_outcome(classified, params, validation, has_pr)` → (status, outcome, error_code)
+  - [ ] 4.7 Wire full orchestrator per spec §8.2 pseudocode: step emission, reporter lifecycle, error handling
+  - [ ] 4.8 Implement return payload assembly (spec §6.2)
+  - [ ] 4.9 Implement `run_events` emission: error per major_required advisory (req 40), summary event, warn for absent scripts + non-semver
+  - [ ] 4.10 Write `tests/unit/test_outcome_mapping.py`: every row of §8.1 table + precedence rules
+  - [ ] 4.11 Write `tests/component/test_pipeline.py`: audit_only clean, audit_only findings (both fail settings), audit_only major_required, llm_fix no-change, invalid payload, unhandled exception
+  - [ ] 4.12 Verify AC: payload with missing run_id → INVALID_PARAMS, no clone
+  - [ ] 4.13 Verify AC: steps emitted in correct order
+  - [ ] 4.14 Verify AC: unhandled exception → failed + traceback + step closed
+  - [ ] 4.15 Run tests: `pytest -m "unit or component" tests/`
+
+- [ ] 5.0 Implement Issue #75 — https://github.com/llipe/dev-tasks-agent-fleet/issues/75: LLM Fix Agent Escape Hatch
+  - [ ] 5.1 Implement `fix_agent.py`: `_safe_path(rel)` resolver refusing workspace escapes
+  - [ ] 5.2 Implement `fix_agent.py`: 5 tools (shell, read_file, write_file, find_files, grep_code) with @tool decorators
+  - [ ] 5.3 Define `FIX_AGENT_SYSTEM_PROMPT` constant (spec §8.7)
+  - [ ] 5.4 Implement `run_fix_loop(workspace, pm, scripts, max_attempts, initial_result)`: create Strands Agent, iterate, re-validate
+  - [ ] 5.5 Implement `verify_no_mandate_violation(workspace, pkg_json_before)` (spec §8.8)
+  - [ ] 5.6 Wire into main.py: after validation fails, enter fix loop; after success, re-run lint/format/typecheck + mandate check
+  - [ ] 5.7 Write `tests/unit/test_safe_path.py`: `../`, `../../etc/passwd`, absolute path, symlink, `node_modules/../../../`
+  - [ ] 5.8 Write `tests/unit/test_mandate_check.py`: no change passes, widened range fails, new dep fails, changed pin (by pm) passes
+  - [ ] 5.9 Write `tests/component/test_fix_agent.py`: mock Bedrock responses, verify tool calls, retry budget respected, max_attempts=0 → zero calls
+  - [ ] 5.10 Verify AC: _safe_path raises ValueError on traversal
+  - [ ] 5.11 Verify AC: mandate violation → MANDATE_VIOLATION, no PR
+  - [ ] 5.12 Run tests: `pytest -m "unit or component" tests/unit/test_safe_path.py tests/unit/test_mandate_check.py tests/component/test_fix_agent.py`
+
+- [ ] 6.0 Implement Issue #76 — https://github.com/llipe/dev-tasks-agent-fleet/issues/76: Pull Request Creation and PR Body Builder
+  - [ ] 6.1 Implement `pull_request.py`: `existing_pr(workspace, env)` — `gh pr list --json` for `deps/update-*`
+  - [ ] 6.2 Implement `pull_request.py`: `_push_with_credential_helper(workspace, token, branch)` — ephemeral helper, no token in remote
+  - [ ] 6.3 Implement `pull_request.py`: `create_pr(workspace, token, base, body)` — branch, commit, push, `gh pr create --body-file`
+  - [ ] 6.4 Implement `pull_request.py`: PR body section helpers — `_security_summary()`, `_fixed_advisories_table()`, `_major_required_section()`, `_unknown_advisories_section()`, `_non_semver_section()`, `_package_changes_table()`, `_validation_table()`, `_ai_warning()`
+  - [ ] 6.5 Implement `pull_request.py`: `build_pr_body()` assembling all sections conditionally
+  - [ ] 6.6 Wire into main.py: idempotency check → open_pr step → record artifact
+  - [ ] 6.7 Handle token refresh before push (call `refresh_if_stale` from credentials)
+  - [ ] 6.8 Handle PR-opened-then-MAJOR_UPDATE_REQUIRED ordering (req 43): open PR first, fail after
+  - [ ] 6.9 Write `tests/unit/test_pr_body.py`: all sections present, some omitted, package cap at 30, AI warning on/off
+  - [ ] 6.10 Write `tests/component/test_pr_creation.py`: mock gh/git — happy path, existing PR short-circuit, push failure scrubbed
+  - [ ] 6.11 Verify AC: body via --body-file (never inline)
+  - [ ] 6.12 Verify AC: idempotency → not_applicable + existing URL as artifact
+  - [ ] 6.13 Run tests: `pytest -m "unit or component" tests/unit/test_pr_body.py tests/component/test_pr_creation.py`
+
+- [ ] 7.0 Implement Issue #77 — https://github.com/llipe/dev-tasks-agent-fleet/issues/77: Seed Update, Deployment, and E2E Validation
+  - [ ] 7.1 Update `docs/reference/002_seed.sql` with `dependency-update` agent row: params_schema, defaults, timeouts, requires_repository
+  - [ ] 7.2 Run `agentcore deploy -y` from `agents/dependency-update/`
+  - [ ] 7.3 Confirm `agentcore status` reports runtime ready; record `runtime_arn`
+  - [ ] 7.4 Fill runtime_arn in `002_seed.sql`
+  - [ ] 7.5 Apply seed to Supabase (SQL Editor)
+  - [ ] 7.6 Add IAM permissions to execution role: `secretsmanager:GetSecretValue` on `agent-fleet/prod/*`, `bedrock:InvokeModel` on Claude Sonnet
+  - [ ] 7.7 E2E: `agentcore invoke` with `fix_mode=audit_only` on clean repo — verify Supabase writes (runs, steps, events, artifacts)
+  - [ ] 7.8 E2E: `agentcore invoke` with `fix_mode=llm_fix` on repo with available updates — verify PR opened
+  - [ ] 7.9 E2E: second invoke while PR open — verify `succeeded / not_applicable`
+  - [ ] 7.10 E2E: invoke with invalid payload — verify `failed / INVALID_PARAMS` without clone
+  - [ ] 7.11 Verify `runs.metrics` populated correctly (llm_used, fix_attempts, vuln counts)
+  - [ ] 7.12 Update README with deployment results and invocation examples
+  - [ ] 7.13 Verify AC: max_runtime_seconds in seed equals maxLifetime in agentcore.json (both 3600)

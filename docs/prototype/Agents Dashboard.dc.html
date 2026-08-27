@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/styles.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/_ds_bundle.js"></script>
+<style>
+:root{--st-ok:#74b58f;--st-fail:#d1706b;--st-timeout:#d1a45e;--rule:var(--color-divider);--muted:color-mix(in srgb, var(--color-text) 55%, transparent);--faint:color-mix(in srgb, var(--color-text) 38%, transparent)}
+body{margin:0;background:color-mix(in srgb, var(--color-bg) 88%, #000);font-family:var(--font-body)}
+a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-400)}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid var(--rule);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px var(--font-mono,ui-monospace);padding:3px 7px;background:var(--color-text);color:var(--color-bg);border-radius:4px;text-decoration:none}
+.dv-tname{font:500 13px/1.2 var(--font-heading);color:var(--color-text)}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:500 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:var(--rule);color:var(--color-text);border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 var(--font-body);color:var(--muted)}
+.dv-card{max-width:100%;background:var(--color-bg);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow-lg);overflow:hidden}
+.dv-opt:target .dv-oid{background:var(--color-accent);color:var(--color-bg)}
+.dv-next{margin:22px 0 0;font:12px/1.5 var(--font-body);color:var(--muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Agents dashboard — three densities</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Dense rows — table-first, one line per agent</div>
+<div class="dv-card" style="width:1180px">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:10px 16px;border-bottom:1px solid var(--color-divider)">
+    <div style="display:flex;align-items:center;gap:var(--space-4)">
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 8px var(--color-accent)"></span><span style="font:500 13px var(--font-heading);color:var(--color-text);letter-spacing:.02em">agentcore</span></div>
+      <nav style="display:flex;gap:2px">
+        <span style="font:500 12px var(--font-body);color:var(--color-text);padding:4px 9px;border-radius:6px;background:var(--rule)">Agents</span>
+        <a href="#1a" style="font:400 12px var(--font-body);color:var(--muted);padding:4px 9px;border-radius:6px">Runs</a>
+        <a href="#1a" style="font:400 12px var(--font-body);color:var(--muted);padding:4px 9px;border-radius:6px">Repositories</a>
+      </nav>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--muted);display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--st-ok);animation:pulse 2s ease-in-out infinite"></span>realtime</span>
+      <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint)">us-east-1</span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4);padding:18px 16px 14px">
+    <div>
+      <h1 style="margin:0;font:500 20px/1.2 var(--font-heading);color:var(--color-text)">Agents</h1>
+      <p style="margin:4px 0 0;font:400 12px/1.4 var(--font-body);color:var(--muted)">4 configured · 3 enabled · 138 runs in the last 7 days</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;border:1px solid var(--color-divider);border-radius:var(--radius-md);overflow:hidden">
+        <span style="font:500 11px var(--font-body);color:var(--color-text);padding:6px 10px;background:var(--rule)">7d</span>
+        <span style="font:400 11px var(--font-body);color:var(--muted);padding:6px 10px;border-left:1px solid var(--color-divider)">30d</span>
+        <span style="font:400 11px var(--font-body);color:var(--muted);padding:6px 10px;border-left:1px solid var(--color-divider)">all</span>
+      </div>
+      <input class="input" placeholder="Filter agents…" style="width:180px;min-height:30px;font-size:12px">
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:26px minmax(0,1fr) 128px 300px 132px 92px;gap:0;padding:0 16px 6px;font:500 10px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--color-divider)">
+    <span></span><span>Agent</span><span>Runs · 7d</span><span>Status breakdown</span><span>Last run</span><span style="text-align:right">Action</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:26px minmax(0,1fr) 128px 300px 132px 92px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--rule)">
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--st-ok)"></span>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:baseline;gap:9px"><span style="font:500 13.5px var(--font-heading);color:var(--color-text)">Dependency Update</span><code style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-400)">dependency-update</code></div>
+      <span style="font:400 11.5px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Runs npm audit, patches vulnerable transitive deps with an LLM fix pass, opens a PR per repo.</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:5px"><span style="font:500 16px ui-monospace,Menlo,monospace;color:var(--color-text)">82</span><span style="font:400 10.5px var(--font-body);color:var(--faint)">runs</span></div>
+    <div style="display:flex;flex-direction:column;gap:5px;padding-right:20px">
+      <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--rule)"><span style="width:79%;background:var(--st-ok)"></span><span style="width:13%;background:var(--st-fail)"></span><span style="width:8%;background:var(--st-timeout)"></span></div>
+      <div style="display:flex;gap:12px;font:400 11px ui-monospace,Menlo,monospace"><span style="color:var(--st-ok)">65 ok</span><span style="color:var(--st-fail)">11 fail</span><span style="color:var(--st-timeout)">6 timeout</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">14m ago</span><span class="tag tag-outline" style="font-size:9.5px;padding:1px 5px;align-self:flex-start;letter-spacing:.06em">FIXED</span></div>
+    <div style="display:flex;justify-content:flex-end;gap:6px"><button class="btn btn-primary" style="min-height:28px;padding:0 12px;font-size:12px">Run</button></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:26px minmax(0,1fr) 128px 300px 132px 92px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--rule)">
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 7px var(--color-accent);animation:pulse 1.6s ease-in-out infinite"></span>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:baseline;gap:9px"><span style="font:500 13.5px var(--font-heading);color:var(--color-text)">Secret Scan</span><code style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-400)">secret-scan</code></div>
+      <span style="font:400 11.5px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Greps history for credential patterns, verifies live keys, files an issue with rotation steps.</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:5px"><span style="font:500 16px ui-monospace,Menlo,monospace;color:var(--color-text)">36</span><span style="font:400 10.5px var(--font-body);color:var(--faint)">runs</span></div>
+    <div style="display:flex;flex-direction:column;gap:5px;padding-right:20px">
+      <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--rule)"><span style="width:92%;background:var(--st-ok)"></span><span style="width:8%;background:var(--st-fail)"></span></div>
+      <div style="display:flex;gap:12px;font:400 11px ui-monospace,Menlo,monospace"><span style="color:var(--st-ok)">33 ok</span><span style="color:var(--st-fail)">3 fail</span><span style="color:var(--faint)">0 timeout</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-300)">running · 2m</span><span class="tag tag-outline" style="font-size:9.5px;padding:1px 5px;align-self:flex-start;letter-spacing:.06em;opacity:.45">—</span></div>
+    <div style="display:flex;justify-content:flex-end;gap:6px"><button class="btn btn-primary" style="min-height:28px;padding:0 12px;font-size:12px">Run</button></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:26px minmax(0,1fr) 128px 300px 132px 92px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--rule)">
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--st-ok)"></span>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:baseline;gap:9px"><span style="font:500 13.5px var(--font-heading);color:var(--color-text)">Test Repair</span><code style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-400)">test-repair</code></div>
+      <span style="font:400 11.5px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Reproduces the failing suite in a sandbox, proposes a minimal patch, re-runs before opening a PR.</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:5px"><span style="font:500 16px ui-monospace,Menlo,monospace;color:var(--color-text)">20</span><span style="font:400 10.5px var(--font-body);color:var(--faint)">runs</span></div>
+    <div style="display:flex;flex-direction:column;gap:5px;padding-right:20px">
+      <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--rule)"><span style="width:55%;background:var(--st-ok)"></span><span style="width:30%;background:var(--st-fail)"></span><span style="width:15%;background:var(--st-timeout)"></span></div>
+      <div style="display:flex;gap:12px;font:400 11px ui-monospace,Menlo,monospace"><span style="color:var(--st-ok)">11 ok</span><span style="color:var(--st-fail)">6 fail</span><span style="color:var(--st-timeout)">3 timeout</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">6h ago</span><span class="tag tag-outline" style="font-size:9.5px;padding:1px 5px;align-self:flex-start;letter-spacing:.06em">NEEDS REVIEW</span></div>
+    <div style="display:flex;justify-content:flex-end;gap:6px"><button class="btn btn-primary" style="min-height:28px;padding:0 12px;font-size:12px">Run</button></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:26px minmax(0,1fr) 128px 300px 132px 92px;align-items:center;padding:11px 16px;opacity:.5">
+    <span style="width:7px;height:7px;border-radius:50%;border:1px solid var(--faint)"></span>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:baseline;gap:9px"><span style="font:500 13.5px var(--font-heading);color:var(--color-text)">Doc Sync</span><code style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">doc-sync</code><span class="tag tag-neutral" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">DISABLED</span></div>
+      <span style="font:400 11.5px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Regenerates README API sections from exported types after a release tag lands.</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:5px"><span style="font:500 16px ui-monospace,Menlo,monospace;color:var(--color-text)">0</span><span style="font:400 10.5px var(--font-body);color:var(--faint)">runs</span></div>
+    <div style="display:flex;flex-direction:column;gap:5px;padding-right:20px"><div style="height:5px;border-radius:3px;background:var(--rule)"></div><span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint)">no runs in window</span></div>
+    <div><span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">23d ago</span></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn btn-secondary" style="min-height:28px;padding:0 12px;font-size:12px" disabled>Run</button></div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Cards — last-24-runs strip per agent</div>
+<div class="dv-card" style="width:1180px;padding:18px 16px 22px">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px">
+    <div><h1 style="margin:0;font:500 20px/1.2 var(--font-heading);color:var(--color-text)">Agents</h1><p style="margin:4px 0 0;font:400 12px var(--font-body);color:var(--muted)">Each strip is the last 24 runs, newest at the right.</p></div>
+    <button class="btn btn-secondary" style="min-height:30px;padding:0 12px;font-size:12px">New agent</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+
+    <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:11px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font:500 15px var(--font-heading);color:var(--color-text)">Dependency Update</span><span class="tag tag-accent" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">ENABLED</span></div>
+          <code style="display:block;margin-top:3px;font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-400)">dependency-update</code>
+        </div>
+        <button class="btn btn-primary" style="min-height:28px;padding:0 13px;font-size:12px;flex:none">Run ▸</button>
+      </div>
+      <p style="margin:0;font:400 12px/1.45 var(--font-body);color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Runs npm audit against the lockfile, patches vulnerable transitive deps with an LLM fix pass, then opens one PR per repo with the audit report attached.</p>
+      <div style="display:flex;gap:2px;align-items:flex-end;height:22px">
+        <span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-timeout);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-timeout);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--color-accent);border-radius:1px;animation:pulse 1.6s ease-in-out infinite"></span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:9px;border-top:1px solid var(--rule)">
+        <div style="display:flex;gap:13px;font:400 11.5px ui-monospace,Menlo,monospace"><span style="color:var(--color-text)">82 runs</span><span style="color:var(--st-ok)">65 ✓</span><span style="color:var(--st-fail)">11 ✕</span><span style="color:var(--st-timeout)">6 ⧗</span></div>
+        <span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">last 14m ago</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:11px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font:500 15px var(--font-heading);color:var(--color-text)">Secret Scan</span><span class="tag tag-accent" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">ENABLED</span></div>
+          <code style="display:block;margin-top:3px;font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-400)">secret-scan</code>
+        </div>
+        <button class="btn btn-primary" style="min-height:28px;padding:0 13px;font-size:12px;flex:none">Run ▸</button>
+      </div>
+      <p style="margin:0;font:400 12px/1.45 var(--font-body);color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Greps the full history for credential patterns, verifies which keys are still live, and files an issue with rotation steps per finding.</p>
+      <div style="display:flex;gap:2px;align-items:flex-end;height:22px">
+        <span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--color-accent);border-radius:1px;animation:pulse 1.6s ease-in-out infinite"></span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:9px;border-top:1px solid var(--rule)">
+        <div style="display:flex;gap:13px;font:400 11.5px ui-monospace,Menlo,monospace"><span style="color:var(--color-text)">36 runs</span><span style="color:var(--st-ok)">33 ✓</span><span style="color:var(--st-fail)">3 ✕</span><span style="color:var(--faint)">0 ⧗</span></div>
+        <span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-300)">running now · 2m</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:11px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font:500 15px var(--font-heading);color:var(--color-text)">Test Repair</span><span class="tag tag-accent" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">ENABLED</span></div>
+          <code style="display:block;margin-top:3px;font:400 11.5px ui-monospace,Menlo,monospace;color:var(--color-accent-400)">test-repair</code>
+        </div>
+        <button class="btn btn-primary" style="min-height:28px;padding:0 13px;font-size:12px;flex:none">Run ▸</button>
+      </div>
+      <p style="margin:0;font:400 12px/1.45 var(--font-body);color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Reproduces the failing suite in a sandbox, proposes a minimal patch, re-runs it, and only opens a PR when the suite goes green.</p>
+      <div style="display:flex;gap:2px;align-items:flex-end;height:22px">
+        <span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-timeout);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-timeout);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-timeout);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-fail);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:100%;background:var(--st-ok);border-radius:1px"></span><span style="flex:1;height:33%;background:color-mix(in srgb, var(--color-text) 13%, transparent);border-radius:1px"></span><span style="flex:1;height:33%;background:color-mix(in srgb, var(--color-text) 13%, transparent);border-radius:1px"></span><span style="flex:1;height:33%;background:color-mix(in srgb, var(--color-text) 13%, transparent);border-radius:1px"></span><span style="flex:1;height:33%;background:color-mix(in srgb, var(--color-text) 13%, transparent);border-radius:1px"></span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:9px;border-top:1px solid var(--rule)">
+        <div style="display:flex;gap:13px;font:400 11.5px ui-monospace,Menlo,monospace"><span style="color:var(--color-text)">20 runs</span><span style="color:var(--st-ok)">11 ✓</span><span style="color:var(--st-fail)">6 ✕</span><span style="color:var(--st-timeout)">3 ⧗</span></div>
+        <span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">last 6h ago</span>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:11px;opacity:.55">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font:500 15px var(--font-heading);color:var(--color-text)">Doc Sync</span><span class="tag tag-neutral" style="font-size:9.5px;padding:1px 6px;letter-spacing:.06em">DISABLED</span></div>
+          <code style="display:block;margin-top:3px;font:400 11.5px ui-monospace,Menlo,monospace;color:var(--muted)">doc-sync</code>
+        </div>
+        <button class="btn btn-secondary" style="min-height:28px;padding:0 13px;font-size:12px;flex:none" disabled>Run ▸</button>
+      </div>
+      <p style="margin:0;font:400 12px/1.45 var(--font-body);color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Regenerates the README API sections from exported types whenever a release tag lands on the default branch.</p>
+      <div style="display:flex;gap:2px;align-items:flex-end;height:22px;">
+        <span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span><span style="flex:1;height:33%;background:var(--rule);border-radius:1px"></span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:9px;border-top:1px solid var(--rule)">
+        <div style="display:flex;gap:13px;font:400 11.5px ui-monospace,Menlo,monospace"><span style="color:var(--muted)">0 runs · 7d</span></div>
+        <span style="font:400 11.5px ui-monospace,Menlo,monospace;color:var(--faint)">last 23d ago</span>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Ledger — maximum density, keyboard-first</div>
+<div class="dv-card" style="width:760px;padding:0">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--color-divider)">
+    <span style="font:500 11px var(--font-body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Agents · 4</span>
+    <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint)">↑↓ select · ⏎ run · / filter</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-left:2px solid var(--color-accent);background:color-mix(in srgb, var(--color-accent) 8%, transparent)">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><code style="font:500 12.5px ui-monospace,Menlo,monospace;color:var(--color-text)">dependency-update</code><span class="tag tag-outline" style="font-size:9px;padding:0 5px;letter-spacing:.06em">ON</span></div>
+      <div style="font:400 11px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">npm audit → LLM fix → PR per repo</div>
+    </div>
+    <div style="font:400 11px ui-monospace,Menlo,monospace;color:var(--muted);display:flex;gap:9px;flex:none"><span style="color:var(--st-ok)">65</span><span style="color:var(--st-fail)">11</span><span style="color:var(--st-timeout)">6</span><span style="color:var(--faint)">/82</span></div>
+    <div style="width:70px;height:4px;border-radius:2px;overflow:hidden;background:var(--rule);display:flex;flex:none"><span style="width:79%;background:var(--st-ok)"></span><span style="width:13%;background:var(--st-fail)"></span><span style="width:8%;background:var(--st-timeout)"></span></div>
+    <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint);width:52px;text-align:right;flex:none">14m</span>
+    <button class="btn btn-primary" style="min-height:24px;padding:0 9px;font-size:11px;flex:none">Run</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-left:2px solid transparent;border-top:1px solid var(--rule)">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><code style="font:500 12.5px ui-monospace,Menlo,monospace;color:var(--color-text)">secret-scan</code><span class="tag tag-outline" style="font-size:9px;padding:0 5px;letter-spacing:.06em">ON</span><span style="font:400 10px ui-monospace,Menlo,monospace;color:var(--color-accent-300);display:flex;align-items:center;gap:4px"><span style="width:5px;height:5px;border-radius:50%;background:var(--color-accent);animation:pulse 1.6s ease-in-out infinite"></span>running</span></div>
+      <div style="font:400 11px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">history grep → live-key check → issue with rotation steps</div>
+    </div>
+    <div style="font:400 11px ui-monospace,Menlo,monospace;display:flex;gap:9px;flex:none"><span style="color:var(--st-ok)">33</span><span style="color:var(--st-fail)">3</span><span style="color:var(--faint)">0</span><span style="color:var(--faint)">/36</span></div>
+    <div style="width:70px;height:4px;border-radius:2px;overflow:hidden;background:var(--rule);display:flex;flex:none"><span style="width:92%;background:var(--st-ok)"></span><span style="width:8%;background:var(--st-fail)"></span></div>
+    <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint);width:52px;text-align:right;flex:none">2m</span>
+    <button class="btn btn-secondary" style="min-height:24px;padding:0 9px;font-size:11px;flex:none">Run</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-left:2px solid transparent;border-top:1px solid var(--rule)">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><code style="font:500 12.5px ui-monospace,Menlo,monospace;color:var(--color-text)">test-repair</code><span class="tag tag-outline" style="font-size:9px;padding:0 5px;letter-spacing:.06em">ON</span></div>
+      <div style="font:400 11px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">sandbox repro → minimal patch → re-run → PR</div>
+    </div>
+    <div style="font:400 11px ui-monospace,Menlo,monospace;display:flex;gap:9px;flex:none"><span style="color:var(--st-ok)">11</span><span style="color:var(--st-fail)">6</span><span style="color:var(--st-timeout)">3</span><span style="color:var(--faint)">/20</span></div>
+    <div style="width:70px;height:4px;border-radius:2px;overflow:hidden;background:var(--rule);display:flex;flex:none"><span style="width:55%;background:var(--st-ok)"></span><span style="width:30%;background:var(--st-fail)"></span><span style="width:15%;background:var(--st-timeout)"></span></div>
+    <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint);width:52px;text-align:right;flex:none">6h</span>
+    <button class="btn btn-secondary" style="min-height:24px;padding:0 9px;font-size:11px;flex:none">Run</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-left:2px solid transparent;border-top:1px solid var(--rule);opacity:.45">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><code style="font:500 12.5px ui-monospace,Menlo,monospace;color:var(--color-text)">doc-sync</code><span class="tag tag-neutral" style="font-size:9px;padding:0 5px;letter-spacing:.06em">OFF</span></div>
+      <div style="font:400 11px var(--font-body);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">exported types → README API sections</div>
+    </div>
+    <div style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint);flex:none">— /0</div>
+    <div style="width:70px;height:4px;border-radius:2px;background:var(--rule);flex:none"></div>
+    <span style="font:400 11px ui-monospace,Menlo,monospace;color:var(--faint);width:52px;text-align:right;flex:none">23d</span>
+    <button class="btn btn-secondary" style="min-height:24px;padding:0 9px;font-size:11px;flex:none" disabled>Run</button>
+  </div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "build out <a class="dv-oid" href="#1a">1a</a> as the real page with the run-detail drawer" · "give <a class="dv-oid" href="#1b">1b</a> the status/outcome split from <a class="dv-oid" href="#1a">1a</a>" · "show the invocation form the Run button opens"</p>
+</section>
+
+</x-dc>
+</body>
+</html>

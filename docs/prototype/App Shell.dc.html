@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="stylesheet" href="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/styles.css">
+<script src="_ds/nocturne-a98c260f-d03a-4bc8-ac61-7b143a751c04/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--st-ok:#74b58f;--st-fail:#d1706b;--st-timeout:#d1a45e;--rule:var(--color-divider);--muted:color-mix(in srgb, var(--color-text) 55%, transparent);--faint:color-mix(in srgb, var(--color-text) 38%, transparent);--mono:ui-monospace,Menlo,monospace}
+body{margin:0;background:color-mix(in srgb, var(--color-bg) 88%, #000);font-family:var(--font-body)}
+a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-400)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.mono{font:400 11.5px var(--mono)}
+.klabel{font:500 10px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.navitem{display:grid;align-items:center;gap:10px;padding:6px 9px;border-radius:7px;cursor:pointer;font:400 12.5px var(--font-body);text-decoration:none}
+.navitem:hover{background:color-mix(in srgb, var(--color-text) 5%, transparent)}
+.gl{width:15px;text-align:center;font:400 12px var(--mono);flex:none}
+.crumb{font:400 12px var(--mono);color:var(--muted);text-decoration:none}
+.crumb:hover{color:var(--color-text)}
+</style></helmet>
+
+<div style="height:100dvh;overflow:hidden;display:flex;background:var(--color-bg)">
+
+  <div style="width:{{ railWidth }};flex:none;display:flex;flex-direction:column;border-right:1px solid var(--rule);background:color-mix(in srgb, var(--color-bg) 92%, #000);transition:width .14s ease">
+    <div style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-bottom:1px solid var(--rule)">
+      <span style="width:16px;height:16px;border-radius:4px;border:1px solid var(--color-accent);flex:none;display:flex;align-items:center;justify-content:center"><span style="width:5px;height:5px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 7px var(--color-accent)"></span></span>
+      <span style="display:{{ labelDisplay }};font:500 13px var(--font-heading);color:var(--color-text);letter-spacing:.01em;white-space:nowrap">Agent Fleet</span>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:9px 8px;display:flex;flex-direction:column;gap:1px">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="4">
+        <div class="navitem" onClick="{{ n.pick }}" style="grid-template-columns:{{ itemCols }};background:{{ n.bg }};color:{{ n.fg }};border-left:2px solid {{ n.mark }}">
+          <span class="gl" style="color:{{ n.glyphColor }}">{{ n.glyph }}</span>
+          <span style="display:{{ labelDisplay }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.label }}</span>
+          <span style="display:{{ labelDisplay }};font:400 10.5px var(--mono);color:var(--faint);text-align:right">{{ n.badge }}</span>
+        </div>
+      </sc-for>
+
+      <div style="display:{{ labelDisplay }};margin:14px 0 5px;padding:0 9px" class="klabel">Agents</div>
+      <div style="display:{{ railDividerDisplay }};margin:10px 6px 8px;height:1px;background:var(--rule)"></div>
+      <sc-for list="{{ agents }}" as="a" hint-placeholder-count="4">
+        <div class="navitem" title="{{ a.slug }}" onClick="{{ a.pick }}" style="grid-template-columns:{{ itemCols }};background:{{ a.bg }};color:{{ a.fg }};border-left:2px solid {{ a.mark }}">
+          <span class="gl" style="color:{{ a.dot }};font-size:{{ a.glyphSize }};letter-spacing:-.02em">{{ a.glyph }}</span>
+          <span class="mono" style="display:{{ labelDisplay }};font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.slug }}</span>
+          <span style="display:{{ labelDisplay }};font:400 10.5px var(--mono);color:var(--faint);text-align:right">{{ a.runs }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex:none;padding:9px 8px;border-top:1px solid var(--rule);display:flex;flex-direction:column;gap:1px">
+      <sc-for list="{{ footer }}" as="f" hint-placeholder-count="3">
+        <div class="navitem" onClick="{{ f.pick }}" style="grid-template-columns:{{ itemCols }};background:{{ f.bg }};color:{{ f.fg }};border-left:2px solid {{ f.mark }}">
+          <span class="gl" style="color:{{ f.glyphColor }}">{{ f.glyph }}</span>
+          <span style="display:{{ labelDisplay }};white-space:nowrap">{{ f.label }}</span>
+          <span style="display:{{ labelDisplay }};font:400 10.5px var(--mono);color:var(--faint);text-align:right">{{ f.badge }}</span>
+        </div>
+      </sc-for>
+      <div onClick="{{ toggleRail }}" class="navitem" style="grid-template-columns:{{ itemCols }};color:var(--faint);margin-top:4px">
+        <span class="gl">{{ railGlyph }}</span>
+        <span style="display:{{ labelDisplay }};white-space:nowrap;font-size:11.5px">Collapse</span>
+        <span style="display:{{ labelDisplay }};font:400 10.5px var(--mono);text-align:right">⌘\</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 14px;height:38px;border-bottom:1px solid var(--rule)">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="3">
+          <span style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span style="display:{{ c.sepDisplay }};color:var(--faint);font:400 11px var(--mono)">/</span>
+            <a href="#" class="crumb" style="color:{{ c.color }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.label }}</a>
+          </span>
+        </sc-for>
+        <span style="display:{{ crumbStatusDisplay }};align-items:center;gap:6px;margin-left:4px;font:500 10.5px var(--mono);padding:2px 8px 2px 6px;border-radius:999px;background:color-mix(in srgb, var(--color-accent) 15%, transparent);color:var(--color-accent-300)"><span style="width:5px;height:5px;border-radius:50%;background:var(--color-accent);animation:pulse 1.6s ease-in-out infinite"></span>running</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;flex:none">
+        <span class="mono" style="color:var(--faint);display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--st-ok);animation:pulse 2s ease-in-out infinite"></span>realtime</span>
+        <span class="mono" style="color:var(--faint)">us-east-1</span>
+        <span class="mono" style="color:var(--faint)">⌘K</span>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:18px 14px 14px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font:500 19px/1.2 var(--font-heading);color:var(--color-text)">{{ pageTitle }}</h1>
+          <p style="margin:5px 0 0;max-width:620px;font:400 12px/1.55 var(--font-body);color:var(--muted)">{{ pageSub }}</p>
+        </div>
+        <div style="display:flex;gap:8px;flex:none">
+          <button class="btn btn-ghost" style="min-height:30px;padding:0 11px;font-size:12px;display:{{ secondaryDisplay }}">{{ secondaryLabel }}</button>
+          <a href="{{ primaryHref }}" class="btn btn-primary" style="min-height:30px;padding:0 16px;font-size:12.5px;display:inline-flex;align-items:center">{{ primaryLabel }}</a>
+        </div>
+      </div>
+
+      <div style="padding:0 14px 20px">
+        <div style="border:1px dashed var(--rule);border-radius:10px;padding:22px;background:color-mix(in srgb, var(--color-bg) 96%, #000)">
+          <div class="klabel">Content region</div>
+          <p style="margin:9px 0 0;max-width:560px;font:400 12.5px/1.6 var(--font-body);color:var(--muted)">{{ regionNote }}</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+            <a href="Agents Dashboard.dc.html" class="mono" style="padding:5px 11px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">Agents Dashboard ↗</a>
+            <a href="Agent Run History.dc.html" class="mono" style="padding:5px 11px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">Agent Run History ↗</a>
+            <a href="Run Detail.dc.html" class="mono" style="padding:5px 11px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">Run Detail ↗</a>
+            <a href="Run Detail States.dc.html" class="mono" style="padding:5px 11px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">Run Detail States ↗</a>
+            <a href="Invoke Agent.dc.html" class="mono" style="padding:5px 11px;border:1px solid var(--rule);border-radius:999px;color:var(--color-text)">Invoke Agent ↗</a>
+          </div>
+          <div style="display:{{ settingsDisplay }};flex-direction:column;gap:0;margin-top:20px;padding-top:16px;border-top:1px solid var(--rule)">
+            <div class="klabel">Config · placeholder</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:11px">
+              <div style="border:1px solid var(--rule);border-radius:8px;padding:11px 13px">
+                <div class="mono" style="color:var(--color-text)">AgentCore</div>
+                <div class="mono" style="color:var(--faint);margin-top:4px">region us-east-1 · 2 aliases</div>
+              </div>
+              <div style="border:1px solid var(--rule);border-radius:8px;padding:11px 13px">
+                <div class="mono" style="color:var(--color-text)">GitHub</div>
+                <div class="mono" style="color:var(--faint);margin-top:4px">20 repos · PAT expires 41d</div>
+              </div>
+              <div style="border:1px solid var(--rule);border-radius:8px;padding:11px 13px">
+                <div class="mono" style="color:var(--color-text)">Supabase</div>
+                <div class="mono" style="color:var(--faint);margin-top:4px">realtime connected · 4 tables</div>
+              </div>
+              <div style="border:1px solid var(--rule);border-radius:8px;padding:11px 13px">
+                <div class="mono" style="color:var(--color-text)">Retention</div>
+                <div class="mono" style="color:var(--faint);margin-top:4px">events 30d · artifacts 90d</div>
+              </div>
+            </div>
+            <p style="margin:12px 0 0;font:400 11.5px/1.5 var(--font-body);color:var(--faint);max-width:520px">Single-user system — no login, no accounts, no roles. Credentials live in environment variables; this page only reports what resolved at boot.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:820}}">
+const NAV = [
+  { key: 'agents', glyph: '▦', label: 'Agents', badge: '4' },
+  { key: 'runs', glyph: '≡', label: 'All runs', badge: '138' },
+  { key: 'repos', glyph: '⑃', label: 'Repositories', badge: '20' },
+];
+const FOOTER = [
+  { key: 'settings', glyph: '⚙', label: 'Settings', badge: '' },
+  { key: 'health', glyph: '◈', label: 'System health', badge: 'ok' },
+];
+const AGENTS = [
+  { slug: 'dependency-update', runs: '82', on: true, name: 'Dependency Update',
+    desc: 'Runs npm audit, patches vulnerable transitive deps with an LLM fix pass, opens a PR per repo.' },
+  { slug: 'secret-scan', runs: '36', on: true, live: true, name: 'Secret Scan',
+    desc: 'Greps history for credential patterns, verifies live keys, files an issue with rotation steps.' },
+  { slug: 'test-repair', runs: '20', on: true, name: 'Test Repair',
+    desc: 'Reproduces the failing suite in a sandbox, proposes a minimal patch, re-runs before opening a PR.' },
+  { slug: 'doc-sync', runs: '0', on: false, name: 'Doc Sync',
+    desc: 'Regenerates README API sections from exported types after a release tag lands.' },
+];
+
+const PAGES = {
+  agents: {
+    crumbs: [['Agents', true]],
+    title: 'Agents',
+    sub: '4 configured · 3 enabled · 138 runs in the last 7 days.',
+    primary: ['Invoke agent ▸', 'Invoke Agent.dc.html'],
+    secondary: 'New agent',
+    note: 'The agent list renders here — rows or cards, filter field top-right. Sidebar stays fixed; only this pane scrolls.',
+  },
+  runs: {
+    crumbs: [['Runs', true]],
+    title: 'All runs',
+    sub: 'Every run across all agents, newest first. Filter by agent, repository, status or outcome.',
+    primary: ['Invoke agent ▸', 'Invoke Agent.dc.html'],
+    secondary: 'Export CSV',
+    note: 'The cross-agent run table renders here, with the agent slug as an extra column.',
+  },
+  repos: {
+    crumbs: [['Repositories', true]],
+    title: 'Repositories',
+    sub: '20 GitHub repos connected. Each row shows default branch, last run and which agents target it.',
+    primary: ['Connect repo', '#'],
+    secondary: 'Sync from GitHub',
+    note: 'The repository table renders here.',
+  },
+  agent: {
+    crumbs: [['Agents', false], ['dependency-update', true]],
+    title: 'Dependency Update',
+    sub: 'Runs npm audit, patches vulnerable transitive deps with an LLM fix pass, opens a PR per repo.',
+    primary: ['Invoke ▸', 'Invoke Agent.dc.html'],
+    secondary: 'Edit config',
+    note: 'The agent detail page and its run history table render here.',
+  },
+  run: {
+    crumbs: [['Agents', false], ['dependency-update', false], ['Run #01J8XQ2F', true]],
+    title: 'Run 01J8XQ2F',
+    sub: 'llipe/thinkfirst-api · main @ 4f9c1ab · started 14:02:11.',
+    primary: ['Open full run ▸', 'Run Detail.dc.html'],
+    secondary: 'Re-run',
+    note: 'Run summary and the full-height log viewer render here. At this depth the log pane owns the scroll and this outer pane does not scroll at all.',
+    status: true,
+  },
+  settings: {
+    crumbs: [['Settings', true]],
+    title: 'Settings',
+    sub: 'Connections and retention. No authentication — this panel is single-user by design.',
+    primary: ['Reload config', '#'],
+    secondary: '',
+    note: 'Configuration groups render here as compact cards.',
+    settings: true,
+  },
+  health: {
+    crumbs: [['System health', true]],
+    title: 'System health',
+    sub: 'Realtime channel, queue depth, reaper activity and AgentCore quota headroom.',
+    primary: ['Run diagnostics', '#'],
+    secondary: '',
+    note: 'Health checks render here as a compact status list.',
+  },
+};
+
+class Component extends DCLogic {
+  state = { route: 'run', slug: 'dependency-update', collapsed: false };
+
+  item(cfg, active) {
+    return {
+      bg: active ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
+      fg: active ? 'var(--color-text)' : 'var(--muted)',
+      mark: active ? 'var(--color-accent)' : 'transparent',
+      glyphColor: active ? 'var(--color-accent-300)' : 'var(--faint)',
+    };
+  }
+
+  renderVals() {
+    const { route, collapsed, slug } = this.state;
+    const agentActive = route === 'agent' || route === 'run';
+    const agent = AGENTS.find((a) => a.slug === slug) || AGENTS[0];
+    let page = PAGES[route];
+    if (route === 'agent') {
+      page = Object.assign({}, page, {
+        crumbs: [['Agents', false], [agent.slug, true]],
+        title: agent.name,
+        sub: agent.desc,
+      });
+    } else if (route === 'run') {
+      page = Object.assign({}, page, {
+        crumbs: [['Agents', false], [agent.slug, false], ['Run #01J8XQ2F', true]],
+      });
+    }
+
+    return {
+      railWidth: collapsed ? '52px' : '212px',
+      labelDisplay: collapsed ? 'none' : 'block',
+      itemCols: collapsed ? '15px' : '15px minmax(0,1fr) auto',
+      railDividerDisplay: collapsed ? 'block' : 'none',
+      railGlyph: collapsed ? '»' : '«',
+      toggleRail: () => this.setState({ collapsed: !collapsed }),
+
+      nav: NAV.map((n) => Object.assign({
+        label: n.label, glyph: n.glyph, badge: n.badge,
+        pick: () => this.setState({ route: n.key }),
+      }, this.item(n, route === n.key))),
+
+      footer: FOOTER.map((f) => Object.assign({
+        label: f.label, glyph: f.glyph, badge: f.badge,
+        pick: () => this.setState({ route: f.key }),
+      }, this.item(f, route === f.key))),
+
+      agents: AGENTS.map((a) => Object.assign({
+        slug: a.slug, runs: a.runs,
+        glyph: collapsed ? a.slug.split('-').map((w) => w[0]).join('').slice(0, 2) : '•',
+        glyphSize: collapsed ? '10.5px' : '12px',
+        dot: a.live ? 'var(--color-accent)' : a.on ? 'var(--st-ok)' : 'var(--faint)',
+        pick: () => this.setState({ route: 'agent', slug: a.slug }),
+      }, this.item(a, agentActive && a.slug === slug))),
+
+      crumbs: page.crumbs.map((c, i) => ({
+        label: c[0],
+        color: c[1] ? 'var(--color-text)' : 'var(--muted)',
+        sepDisplay: i === 0 ? 'none' : 'inline',
+      })),
+      crumbStatusDisplay: page.status ? 'inline-flex' : 'none',
+      pageTitle: page.title,
+      pageSub: page.sub,
+      primaryLabel: page.primary[0],
+      primaryHref: page.primary[1],
+      secondaryLabel: page.secondary,
+      secondaryDisplay: page.secondary ? 'inline-flex' : 'none',
+      regionNote: page.note,
+      settingsDisplay: page.settings ? 'flex' : 'none',
+    };
+  }
+}
+
+</script>
+</body>
+</html>
