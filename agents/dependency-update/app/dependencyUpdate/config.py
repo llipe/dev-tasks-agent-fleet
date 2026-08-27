@@ -20,10 +20,10 @@ TEST_TIMEOUT: int = int(os.environ.get("TEST_TIMEOUT", "600"))
 TOOL_COMMAND_TIMEOUT: int = int(os.environ.get("TOOL_COMMAND_TIMEOUT", "180"))
 
 # --- Agent behaviour ---
-DEFAULT_FIX_MODE: str = "llm_fix"
+DEFAULT_FIX_MODE: str = "audit_only"
 DEFAULT_MAX_FIX_ATTEMPTS: int = 3
 MAX_FIX_ATTEMPTS_CEILING: int = 5
-DEFAULT_FAIL_ON_FINDINGS: bool = False
+DEFAULT_FAIL_ON_FINDINGS: bool = True
 
 # --- Token refresh ---
 TOKEN_STALE_THRESHOLD_MINUTES: float = 45.0
