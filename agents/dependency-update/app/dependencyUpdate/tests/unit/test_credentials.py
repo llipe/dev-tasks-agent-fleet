@@ -10,14 +10,12 @@ import pytest
 from credentials import (
     CredentialError,
     TokenContext,
-    _fetch_pem,
     _get_installation,
     fetch_supabase_key,
     mint_installation_token,
     refresh_if_stale,
     resolve_github_credentials,
 )
-
 
 # ---------------------------------------------------------------------------
 # TokenContext
@@ -175,9 +173,7 @@ class TestRefreshIfStale:
     @patch("credentials.mint_installation_token")
     def test_refreshes_when_stale(self, mock_mint):
         mock_mint.return_value = "new_token"
-        ctx = TokenContext(
-            token="old", issued_at=time.monotonic() - (46 * 60), installation_id=1
-        )
+        ctx = TokenContext(token="old", issued_at=time.monotonic() - (46 * 60), installation_id=1)
         result = refresh_if_stale(ctx, pem="pem", app_id=100)
         mock_mint.assert_called_once_with(100, 1, "pem")
         assert result.token == "new_token"

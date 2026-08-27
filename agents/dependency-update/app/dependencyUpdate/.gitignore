@@ -16,3 +16,8 @@ build/
 
 # Local CA certs
 nscacert.pem
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/

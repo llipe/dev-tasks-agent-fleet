@@ -15,9 +15,7 @@ def scrub(text: str, secrets: list[str]) -> str:
     return text
 
 
-def scrub_process_error(
-    exc: subprocess.CalledProcessError, secrets: list[str]
-) -> None:
+def scrub_process_error(exc: subprocess.CalledProcessError, secrets: list[str]) -> None:
     """Scrub cmd, stdout, and stderr of a CalledProcessError in-place."""
     cmd_str = " ".join(exc.cmd) if isinstance(exc.cmd, list) else str(exc.cmd)
     exc.cmd = scrub(cmd_str, secrets)
