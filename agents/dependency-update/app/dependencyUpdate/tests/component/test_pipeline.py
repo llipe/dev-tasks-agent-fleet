@@ -287,3 +287,117 @@ class TestInvalidPayloadNoClone:
         payload = json.loads(text)
         assert payload["status"] == "failed"
         assert payload["error_code"] == "INVALID_PARAMS"
+
+
+# ---------------------------------------------------------------------------
+# Post-fix wiring: req 49 re-run + req 50 mandate gate (issue #75)
+# ---------------------------------------------------------------------------
+
+
+class TestRerunStaticChecksAfterFix:
+    """req 49: after a successful LLM fix, lint/format/typecheck are re-run."""
+
+    def test_reruns_lint_format_typecheck_and_preserves_test(self, tmp_path):
+        """The re-run invokes lint/format/typecheck and preserves the test result."""
+        import main
+        from validator import CheckStatus, ValidationResult
+
+        pkg = {
+            "name": "p",
+            "version": "1.0.0",
+            "scripts": {"test": "jest", "lint": "eslint", "typecheck": "tsc"},
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+
+        scripts = main.detect_scripts(str(tmp_path))
+
+        prior = ValidationResult()
+        prior.llm_used = True
+        prior.fix_attempts = 2
+        prior.record("test", CheckStatus.PASSED, "5 passed")
+
+        # Stub the individual runners so no real subprocess runs.
+        calls = []
+
+        def _fake_lint(ws, pm, sc, res):
+            calls.append("lint")
+            res.record("lint", CheckStatus.PASSED, "")
+
+        def _fake_format(ws, pm, sc, res):
+            calls.append("format")
+            res.record("format", CheckStatus.SKIPPED, "")
+
+        def _fake_typecheck(ws, pm, sc, res):
+            calls.append("typecheck")
+            res.record("typecheck", CheckStatus.PASSED, "")
+
+        orig = (main.run_lint, main.run_format, main.run_typecheck)
+        main.run_lint, main.run_format, main.run_typecheck = (
+            _fake_lint,
+            _fake_format,
+            _fake_typecheck,
+        )
+        try:
+            out = main.rerun_static_checks_after_fix(str(tmp_path), "pnpm", scripts, prior)
+        finally:
+            main.run_lint, main.run_format, main.run_typecheck = orig
+
+        assert calls == ["lint", "format", "typecheck"]
+        # Carries llm metadata forward
+        assert out.llm_used is True
+        assert out.fix_attempts == 2
+        # Preserves the original test result rather than re-running it
+        assert out.checks["test"].status == CheckStatus.PASSED
+        assert out.checks["test"].output == "5 passed"
+        assert out.passed is True
+
+
+class TestCheckMandate:
+    """req 50: mandate gate returns violation details or None."""
+
+    def test_clean_returns_none(self, tmp_path):
+        """Unchanged package.json → no violation."""
+        import main
+
+        pkg = {
+            "name": "p",
+            "version": "1.0.0",
+            "dependencies": {"react": "^18.2.0"},
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+        before = {"dependencies": {"react": "^18.2.0"}, "devDependencies": {}}
+
+        assert main.check_mandate(str(tmp_path), before) is None
+
+    def test_widened_range_returns_details(self, tmp_path):
+        """Widened range → human-readable violation string mentioning the package."""
+        import main
+
+        pkg = {
+            "name": "p",
+            "version": "1.0.0",
+            "dependencies": {"react": "^19.0.0"},
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+        before = {"dependencies": {"react": "^18.2.0"}, "devDependencies": {}}
+
+        details = main.check_mandate(str(tmp_path), before)
+        assert details is not None
+        assert "react" in details
+        assert "dependencies" in details
+
+    def test_new_dependency_returns_details(self, tmp_path):
+        """Added dependency → violation string."""
+        import main
+
+        pkg = {
+            "name": "p",
+            "version": "1.0.0",
+            "dependencies": {"react": "^18.2.0", "evil": "^1.0.0"},
+        }
+        (tmp_path / "package.json").write_text(json.dumps(pkg))
+        before = {"dependencies": {"react": "^18.2.0"}, "devDependencies": {}}
+
+        details = main.check_mandate(str(tmp_path), before)
+        assert details is not None
+        assert "evil" in details
