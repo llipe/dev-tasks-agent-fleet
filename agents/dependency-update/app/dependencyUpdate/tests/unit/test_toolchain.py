@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from toolchain import (
+    ScriptContract,
     ToolchainError,
     detect_package_manager,
+    detect_pnpm_version,
+    detect_scripts,
+    ensure_pnpm_version,
 )
 
 
@@ -73,3 +78,158 @@ class TestDetectPackageManager:
         (tmp_path / "package.json").write_text("{ not valid json", encoding="utf-8")
         (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
         assert detect_package_manager(str(tmp_path)) == "npm"
+
+
+class TestDetectPnpmVersion:
+    def test_from_package_manager_field(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"packageManager": "pnpm@9.1.0"})
+        assert detect_pnpm_version(str(tmp_path)) == 9
+
+    def test_package_manager_field_wins_over_lockfile(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"packageManager": "pnpm@8.15.0"})
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) == 8
+
+    def test_from_lockfile_version_9(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) == 9
+
+    def test_from_lockfile_version_6_maps_to_pnpm_8(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '6.0'\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) == 8
+
+    def test_from_lockfile_version_5_maps_to_pnpm_7(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: 5.4\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) == 7
+
+    def test_lockfile_version_without_quotes(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: 9.0\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) == 9
+
+    def test_returns_none_when_undeterminable(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        (tmp_path / "pnpm-lock.yaml").write_text("packages:\n  foo: {}\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) is None
+
+    def test_returns_none_when_no_pnpm_evidence(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        assert detect_pnpm_version(str(tmp_path)) is None
+
+    def test_unknown_lockfile_version_returns_none(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '3.0'\n", encoding="utf-8")
+        assert detect_pnpm_version(str(tmp_path)) is None
+
+
+class TestEnsurePnpmVersion:
+    @patch("toolchain._current_pnpm_major", return_value=9)
+    @patch("toolchain._run")
+    def test_no_install_when_version_matches(self, mock_run, mock_current, tmp_path: Path):
+        _write_package_json(tmp_path, {"packageManager": "pnpm@9.1.0"})
+        ensure_pnpm_version(str(tmp_path))
+        mock_run.assert_not_called()
+
+    @patch("toolchain._current_pnpm_major", return_value=9)
+    @patch("toolchain._run")
+    def test_installs_when_major_differs(self, mock_run, mock_current, tmp_path: Path):
+        _write_package_json(tmp_path, {"packageManager": "pnpm@8.15.0"})
+        ensure_pnpm_version(str(tmp_path))
+        assert mock_run.call_count == 1
+        args = mock_run.call_args[0][0]
+        # Installs the required major, e.g. `npm install -g pnpm@8`.
+        assert any("pnpm@8" in str(a) for a in args)
+
+    @patch("toolchain._current_pnpm_major", return_value=9)
+    @patch("toolchain._run")
+    def test_noop_when_required_version_undeterminable(
+        self, mock_run, mock_current, tmp_path: Path
+    ):
+        _write_package_json(tmp_path, {"name": "x"})
+        ensure_pnpm_version(str(tmp_path))
+        mock_run.assert_not_called()
+
+    @patch("toolchain._current_pnpm_major", return_value=None)
+    @patch("toolchain._run")
+    def test_installs_when_current_unknown(self, mock_run, mock_current, tmp_path: Path):
+        _write_package_json(tmp_path, {"packageManager": "pnpm@8.15.0"})
+        ensure_pnpm_version(str(tmp_path))
+        assert mock_run.call_count == 1
+
+
+class TestDetectScripts:
+    def test_test_script_required_present(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"scripts": {"test": "vitest run"}})
+        contract = detect_scripts(str(tmp_path))
+        assert contract.test == "test"
+
+    def test_missing_test_raises_no_test_script(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"scripts": {"lint": "eslint ."}})
+        with pytest.raises(ToolchainError) as exc_info:
+            detect_scripts(str(tmp_path))
+        assert exc_info.value.code == "NO_TEST_SCRIPT"
+
+    def test_no_scripts_at_all_raises_no_test_script(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"name": "x"})
+        with pytest.raises(ToolchainError) as exc_info:
+            detect_scripts(str(tmp_path))
+        assert exc_info.value.code == "NO_TEST_SCRIPT"
+
+    def test_detects_all_optional_scripts(self, tmp_path: Path):
+        _write_package_json(
+            tmp_path,
+            {"scripts": {"test": "t", "lint": "l", "format": "f", "typecheck": "tc"}},
+        )
+        contract = detect_scripts(str(tmp_path))
+        assert contract.lint == "lint"
+        assert contract.format == "format"
+        assert contract.typecheck == "typecheck"
+        assert contract.missing_optional == []
+
+    def test_detects_lint_fix_variant(self, tmp_path: Path):
+        _write_package_json(
+            tmp_path, {"scripts": {"test": "t", "lint": "l", "lint:fix": "lf"}}
+        )
+        contract = detect_scripts(str(tmp_path))
+        assert contract.lint_fix == "lint:fix"
+
+    def test_detects_format_check_variant(self, tmp_path: Path):
+        _write_package_json(
+            tmp_path, {"scripts": {"test": "t", "format:check": "fc"}}
+        )
+        contract = detect_scripts(str(tmp_path))
+        # format:check satisfies the "format" logical check
+        assert contract.format == "format:check"
+
+    def test_detects_format_fix_variant(self, tmp_path: Path):
+        _write_package_json(
+            tmp_path, {"scripts": {"test": "t", "format": "f", "format:fix": "ff"}}
+        )
+        contract = detect_scripts(str(tmp_path))
+        assert contract.format_fix == "format:fix"
+
+    def test_detects_type_check_hyphen_variant(self, tmp_path: Path):
+        _write_package_json(
+            tmp_path, {"scripts": {"test": "t", "type-check": "tsc --noEmit"}}
+        )
+        contract = detect_scripts(str(tmp_path))
+        assert contract.typecheck == "type-check"
+
+    def test_missing_optional_scripts_listed(self, tmp_path: Path):
+        _write_package_json(tmp_path, {"scripts": {"test": "t"}})
+        contract = detect_scripts(str(tmp_path))
+        assert set(contract.missing_optional) == {"lint", "format", "typecheck"}
+        assert contract.lint is None
+        assert contract.format is None
+        assert contract.typecheck is None
+
+    def test_canonical_name_preferred_over_variant(self, tmp_path: Path):
+        # When both `format` and `format:check` exist, prefer canonical `format`.
+        _write_package_json(
+            tmp_path, {"scripts": {"test": "t", "format": "f", "format:check": "fc"}}
+        )
+        contract = detect_scripts(str(tmp_path))
+        assert contract.format == "format"
