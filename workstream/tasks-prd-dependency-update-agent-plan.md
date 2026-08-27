@@ -70,24 +70,24 @@
   - [x] 2.13 Verify AC: warn events for absent optional scripts
   - [x] 2.14 Run tests: `pytest -m unit tests/unit/test_toolchain.py tests/unit/test_validator.py`
 
-- [ ] 3.0 Implement Issue #73 — https://github.com/llipe/dev-tasks-agent-fleet/issues/73: Audit, Version Eligibility, and Advisory Classification
-  - [ ] 3.1 Implement `eligibility.py`: `parse_semver()` with regex (spec §8.3)
-  - [ ] 3.2 Implement `eligibility.py`: `is_eligible(installed, target)` — 4-row table + anti-loophole
-  - [ ] 3.3 Implement `classifier.py`: `_extract_lowest_version(patched_range)` — naive regex extraction
-  - [ ] 3.4 Implement `classifier.py`: `ClassifiedAdvisory` dataclass
-  - [ ] 3.5 Implement `classifier.py`: `classify_advisory()` using eligibility rules (req 37 — no drift)
-  - [ ] 3.6 Implement `audit.py`: `run_audit(workspace, pm)` — pnpm/npm audit --json
-  - [ ] 3.7 Implement `audit.py`: `count_vulns()`, `extract_advisories()` for both pnpm/npm JSON shapes
-  - [ ] 3.8 Implement `audit.py`: `snapshot_lockfile_packages(workspace, pm)` via `pnpm/npm list --json --depth 0`
-  - [ ] 3.9 Implement `audit.py`: `diff_packages(before, after)` returning changes list
-  - [ ] 3.10 Collect real pnpm/npm audit JSON fixtures → `tests/fixtures/audit_pnpm_*.json`, `tests/fixtures/audit_npm_*.json`
-  - [ ] 3.11 Write `tests/unit/test_eligibility.py`: all 4 rows + anti-loophole (req 34) + edge cases (pre-release, v-prefix)
-  - [ ] 3.12 Write `tests/unit/test_classifier.py`: fixture corpus — major_required, in_range, unknown, 0.x cases, complex ranges
-  - [ ] 3.13 Write `tests/unit/test_audit.py`: parse both audit JSON formats, snapshot, diff
-  - [ ] 3.14 Verify AC: 0.x minor → ineligible (major-equivalent)
-  - [ ] 3.15 Verify AC: non-semver → eligible but warned
-  - [ ] 3.16 Verify AC: empty patched range → unknown (not major_required)
-  - [ ] 3.17 Run tests: `pytest -m unit tests/unit/test_eligibility.py tests/unit/test_classifier.py tests/unit/test_audit.py`
+- [x] 3.0 Implement Issue #73 — https://github.com/llipe/dev-tasks-agent-fleet/issues/73: Audit, Version Eligibility, and Advisory Classification
+  - [x] 3.1 Implement `eligibility.py`: `parse_semver()` with regex (spec §8.3)
+  - [x] 3.2 Implement `eligibility.py`: `is_eligible(installed, target)` — 4-row table + anti-loophole
+  - [x] 3.3 Implement `classifier.py`: `_extract_lowest_version(patched_range)` — naive regex extraction
+  - [x] 3.4 Implement `classifier.py`: `ClassifiedAdvisory` dataclass
+  - [x] 3.5 Implement `classifier.py`: `classify_advisory()` using eligibility rules (req 37 — no drift)
+  - [x] 3.6 Implement `audit.py`: `run_audit(workspace, pm)` — pnpm/npm audit --json
+  - [x] 3.7 Implement `audit.py`: `count_vulns()`, `extract_advisories()` for both pnpm/npm JSON shapes
+  - [x] 3.8 Implement `audit.py`: `snapshot_lockfile_packages(workspace, pm)` via `pnpm/npm list --json --depth 0`
+  - [x] 3.9 Implement `audit.py`: `diff_packages(before, after)` returning changes list
+  - [x] 3.10 Collect real pnpm/npm audit JSON fixtures → `tests/fixtures/audit_pnpm_*.json`, `tests/fixtures/audit_npm_*.json`
+  - [x] 3.11 Write `tests/unit/test_eligibility.py`: all 4 rows + anti-loophole (req 34) + edge cases (pre-release, v-prefix)
+  - [x] 3.12 Write `tests/unit/test_classifier.py`: fixture corpus — major_required, in_range, unknown, 0.x cases, complex ranges
+  - [x] 3.13 Write `tests/unit/test_audit.py`: parse both audit JSON formats, snapshot, diff
+  - [x] 3.14 Verify AC: 0.x minor → ineligible (major-equivalent)
+  - [x] 3.15 Verify AC: non-semver → eligible but warned
+  - [x] 3.16 Verify AC: empty patched range → unknown (not major_required)
+  - [x] 3.17 Run tests: `pytest -m unit tests/unit/test_eligibility.py tests/unit/test_classifier.py tests/unit/test_audit.py`
 
 - [ ] 4.0 Implement Issue #74 — https://github.com/llipe/dev-tasks-agent-fleet/issues/74: Deterministic Pipeline Orchestrator
   - [ ] 4.1 Implement `updater.py`: `install_deps(workspace, pm, frozen)`, `update_packages(workspace, pm)`, `has_changes(workspace)`, `reconcile_lockfile(workspace, pm)`

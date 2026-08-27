@@ -1,0 +1,16 @@
+[
+  {
+    "name": "my-project",
+    "version": "1.0.0",
+    "path": "/workspace/my-project",
+    "dependencies": {
+      "lodash": {"version": "4.17.0", "from": "lodash@^4.17.0"},
+      "express": {"version": "4.18.2", "from": "express@^4.18.0"},
+      "axios": {"version": "1.2.0", "from": "axios@^1.0.0"}
+    },
+    "devDependencies": {
+      "vitest": {"version": "1.6.0", "from": "vitest@^1.0.0"},
+      "typescript": {"version": "5.4.5", "from": "typescript@^5.0.0"}
+    }
+  }
+]
