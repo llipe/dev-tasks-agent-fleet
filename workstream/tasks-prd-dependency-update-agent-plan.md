@@ -21,6 +21,10 @@
 - `agents/dependency-update/app/dependencyUpdate/pyproject.toml` - Python dependencies
 - `agents/dependency-update/README.md` - Agent documentation
 - `agents/dependency-update/app/dependencyUpdate/tests/unit/test_outcome_mapping.py` - Outcome determination unit tests
+- `agents/dependency-update/app/dependencyUpdate/tests/unit/test_safe_path.py` - Path-safety guard unit tests (traversal, absolute, symlink)
+- `agents/dependency-update/app/dependencyUpdate/tests/unit/test_mandate_check.py` - package.json mandate-violation unit tests
+- `agents/dependency-update/app/dependencyUpdate/tests/unit/test_fix_tools.py` - Fix-agent tool + system-prompt unit tests
+- `agents/dependency-update/app/dependencyUpdate/tests/component/test_fix_agent.py` - Fix-loop component tests (retry budget, tool wiring)
 - `agents/dependency-update/app/dependencyUpdate/tests/component/test_pipeline.py` - Pipeline orchestrator component tests
 - `docs/reference/002_seed.sql` - Agent seed row update
 
@@ -108,19 +112,19 @@
   - [x] 4.14 Verify AC: unhandled exception → failed + traceback + step closed
   - [x] 4.15 Run tests: `pytest -m "unit or component" tests/`
 
-- [ ] 5.0 Implement Issue #75 — https://github.com/llipe/dev-tasks-agent-fleet/issues/75: LLM Fix Agent Escape Hatch
-  - [ ] 5.1 Implement `fix_agent.py`: `_safe_path(rel)` resolver refusing workspace escapes
-  - [ ] 5.2 Implement `fix_agent.py`: 5 tools (shell, read_file, write_file, find_files, grep_code) with @tool decorators
-  - [ ] 5.3 Define `FIX_AGENT_SYSTEM_PROMPT` constant (spec §8.7)
-  - [ ] 5.4 Implement `run_fix_loop(workspace, pm, scripts, max_attempts, initial_result)`: create Strands Agent, iterate, re-validate
-  - [ ] 5.5 Implement `verify_no_mandate_violation(workspace, pkg_json_before)` (spec §8.8)
-  - [ ] 5.6 Wire into main.py: after validation fails, enter fix loop; after success, re-run lint/format/typecheck + mandate check
-  - [ ] 5.7 Write `tests/unit/test_safe_path.py`: `../`, `../../etc/passwd`, absolute path, symlink, `node_modules/../../../`
-  - [ ] 5.8 Write `tests/unit/test_mandate_check.py`: no change passes, widened range fails, new dep fails, changed pin (by pm) passes
-  - [ ] 5.9 Write `tests/component/test_fix_agent.py`: mock Bedrock responses, verify tool calls, retry budget respected, max_attempts=0 → zero calls
-  - [ ] 5.10 Verify AC: _safe_path raises ValueError on traversal
-  - [ ] 5.11 Verify AC: mandate violation → MANDATE_VIOLATION, no PR
-  - [ ] 5.12 Run tests: `pytest -m "unit or component" tests/unit/test_safe_path.py tests/unit/test_mandate_check.py tests/component/test_fix_agent.py`
+- [x] 5.0 Implement Issue #75 — https://github.com/llipe/dev-tasks-agent-fleet/issues/75: LLM Fix Agent Escape Hatch
+  - [x] 5.1 Implement `fix_agent.py`: `_safe_path(rel)` resolver refusing workspace escapes
+  - [x] 5.2 Implement `fix_agent.py`: 5 tools (shell, read_file, write_file, find_files, grep_code) with @tool decorators
+  - [x] 5.3 Define `FIX_AGENT_SYSTEM_PROMPT` constant (spec §8.7)
+  - [x] 5.4 Implement `run_fix_loop(workspace, pm, scripts, max_attempts, initial_result)`: create Strands Agent, iterate, re-validate
+  - [x] 5.5 Implement `verify_no_mandate_violation(workspace, pkg_json_before)` (spec §8.8)
+  - [x] 5.6 Wire into main.py: after validation fails, enter fix loop; after success, re-run lint/format/typecheck + mandate check
+  - [x] 5.7 Write `tests/unit/test_safe_path.py`: `../`, `../../etc/passwd`, absolute path, symlink, `node_modules/../../../`
+  - [x] 5.8 Write `tests/unit/test_mandate_check.py`: no change passes, widened range fails, new dep fails, changed pin (by pm) passes
+  - [x] 5.9 Write `tests/component/test_fix_agent.py`: mock Bedrock responses, verify tool calls, retry budget respected, max_attempts=0 → zero calls
+  - [x] 5.10 Verify AC: _safe_path raises ValueError on traversal
+  - [x] 5.11 Verify AC: mandate violation → MANDATE_VIOLATION, no PR
+  - [x] 5.12 Run tests: `pytest -m "unit or component" tests/unit/test_safe_path.py tests/unit/test_mandate_check.py tests/component/test_fix_agent.py`
 
 - [ ] 6.0 Implement Issue #76 — https://github.com/llipe/dev-tasks-agent-fleet/issues/76: Pull Request Creation and PR Body Builder
   - [ ] 6.1 Implement `pull_request.py`: `existing_pr(workspace, env)` — `gh pr list --json` for `deps/update-*`
