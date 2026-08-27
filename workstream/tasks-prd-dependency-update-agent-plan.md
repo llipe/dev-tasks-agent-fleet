@@ -24,21 +24,21 @@
 
 ## Tasks
 
-- [ ] 0.0 Project Setup (S-001) — https://github.com/llipe/dev-tasks-agent-fleet/issues/70
-  - [ ] 0.1 Run `agentcore create` with Container/Strands/Bedrock/HTTP flags in `agents/dependency-update/`
-  - [ ] 0.2 Edit `agentcore.json`: set runtimeVersion PYTHON_3_14, maxLifetime 3600, idleTimeout 300, code location `app/dependencyUpdate/`, entrypoint `main.py`
-  - [ ] 0.3 Set `aws-targets.json` to us-east-1 with account ID
-  - [ ] 0.4 Author Dockerfile (ARM64 multi-stage: Python 3.13 + Node 26 + pnpm + npm + gh CLI)
-  - [ ] 0.5 Author `pyproject.toml` with pinned deps: bedrock-agentcore, strands-agents, strands-agents-tools, boto3, requests, PyJWT, cryptography
-  - [ ] 0.6 Copy `docs/reference/agent_reporter.py` → `app/dependencyUpdate/agent_reporter.py`
-  - [ ] 0.7 Create minimal `main.py` with BedrockAgentCoreApp + /ping responding
-  - [ ] 0.8 Create module stubs (config, credentials, scrubber, toolchain, validator, audit, eligibility, classifier, updater, fix_agent, pull_request)
-  - [ ] 0.9 Create `tests/` directory structure: `tests/unit/`, `tests/component/`, `tests/fixtures/`
-  - [ ] 0.10 Author README.md documenting layout, deployment, and max_runtime_seconds ↔ maxLifetime coupling
-  - [ ] 0.11 Verify: `agentcore validate` passes
-  - [ ] 0.12 Verify: Docker builds for ARM64 (`docker build --platform linux/arm64`)
-  - [ ] 0.13 Verify: `agentcore dev` + `curl localhost:8080/ping` → 200
-  - [ ] 0.14 Verify: `diff docs/reference/agent_reporter.py agents/dependency-update/app/dependencyUpdate/agent_reporter.py` → no diff
+- [x] 0.0 Project Setup (S-001) — https://github.com/llipe/dev-tasks-agent-fleet/issues/70
+  - [x] 0.1 Run `agentcore create` with Container/Strands/Bedrock/HTTP flags in `agents/dependency-update/`
+  - [x] 0.2 Edit `agentcore.json`: set runtimeVersion PYTHON_3_14, maxLifetime 3600, idleTimeout 300, code location `app/dependencyUpdate/`, entrypoint `main.py`
+  - [x] 0.3 Set `aws-targets.json` to us-east-1 with account ID
+  - [x] 0.4 Author Dockerfile (ARM64 multi-stage: Python 3.13 + Node 22 + pnpm + npm + gh CLI)
+  - [x] 0.5 Author `pyproject.toml` with pinned deps: bedrock-agentcore, strands-agents, boto3, requests, PyJWT, cryptography
+  - [x] 0.6 Copy `docs/reference/agent_reporter.py` → `app/dependencyUpdate/agent_reporter.py`
+  - [x] 0.7 Create minimal `main.py` with BedrockAgentCoreApp + /ping responding
+  - [x] 0.8 Create module stubs (config, credentials, scrubber, toolchain, validator, audit, eligibility, classifier, updater, fix_agent, pull_request)
+  - [x] 0.9 Create `tests/` directory structure: `tests/unit/`, `tests/component/`, `tests/fixtures/`
+  - [x] 0.10 Author README.md documenting layout, deployment, and max_runtime_seconds ↔ maxLifetime coupling
+  - [x] 0.11 Verify: `agentcore validate` passes
+  - [x] 0.12 Verify: Docker builds for ARM64 (`docker build --platform linux/arm64`)
+  - [x] 0.13 Verify: `agentcore dev` + `curl localhost:8080/ping` → 200
+  - [x] 0.14 Verify: `diff docs/reference/agent_reporter.py agents/dependency-update/app/dependencyUpdate/agent_reporter.py` → no diff
 
 - [ ] 1.0 Implement Issue #71 — https://github.com/llipe/dev-tasks-agent-fleet/issues/71: Credential Resolution and GitHub App Auth
   - [ ] 1.1 Implement `config.py`: SUPABASE_URL, SUPABASE_KEY_SECRET_ID env reads, MODEL_ID, TEST_TIMEOUT
