@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import subprocess
 
-import pytest
-
 from scrubber import scrub, scrub_process_error
 
 
@@ -14,7 +12,7 @@ class TestScrub:
         text = "Authorization: Bearer ghp_abc123secret"
         result = scrub(text, ["ghp_abc123secret"])
         assert "ghp_abc123secret" not in result
-        assert "Authorization: Bearer ***" == result
+        assert result == "Authorization: Bearer ***"
 
     def test_removes_token_appearing_multiple_times(self):
         text = "token=ghp_x; again ghp_x end"
@@ -58,7 +56,9 @@ class TestScrubProcessError:
         return exc
 
     def test_scrubs_cmd_as_list(self):
-        exc = self._make_error(["git", "clone", "https://x-access-token:SECRET@github.com/org/repo"])
+        exc = self._make_error(
+            ["git", "clone", "https://x-access-token:SECRET@github.com/org/repo"]
+        )
         scrub_process_error(exc, ["SECRET"])
         assert "SECRET" not in exc.cmd
         assert "***" in exc.cmd

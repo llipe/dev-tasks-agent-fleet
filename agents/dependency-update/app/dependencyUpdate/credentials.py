@@ -156,9 +156,7 @@ def resolve_github_credentials(
     )
 
 
-def refresh_if_stale(
-    token_ctx: TokenContext, pem: str, app_id: int
-) -> TokenContext:
+def refresh_if_stale(token_ctx: TokenContext, pem: str, app_id: int) -> TokenContext:
     """Re-mint token if >45 min elapsed (req 20)."""
     if token_ctx.is_stale():
         new_token = mint_installation_token(app_id, token_ctx.installation_id, pem)
