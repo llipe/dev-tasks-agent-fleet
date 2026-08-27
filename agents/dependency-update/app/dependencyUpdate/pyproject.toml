@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dependency-update"
+version = "0.1.0"
+description = "Dependency update agent for AgentCore — audits, classifies, fixes, and opens PRs"
+requires-python = ">=3.13"
+dependencies = [
+    "bedrock-agentcore==1.22.0",
+    "strands-agents==1.53.0",
+    "boto3==1.43.81",
+    "requests==2.34.2",
+    "PyJWT==2.13.0",
+    "cryptography==50.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",
+    "pytest-mock==3.14.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: unit tests (no I/O, no network)",
+    "component: component tests (mocked external services)",
+]
