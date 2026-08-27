@@ -117,6 +117,23 @@ class TestIndividualRunners:
         assert mock_run.call_count == 1
 
     @patch("validator._run")
+    def test_run_tests_timeout_marks_failed(self, mock_run):
+        # A subprocess timeout on the test run is a FAILED check, not a crash.
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["pnpm", "run", "test"], timeout=600)
+        contract = ScriptContract(test="test")
+        result = ValidationResult()
+        run_tests("/ws", "pnpm", contract, result)
+        assert result.checks["test"].status == CheckStatus.FAILED
+
+    @patch("validator._run")
+    def test_run_lint_timeout_marks_failed(self, mock_run):
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["pnpm", "run", "lint"], timeout=180)
+        contract = ScriptContract(test="test", lint="lint", lint_fix=None)
+        result = ValidationResult()
+        run_lint("/ws", "pnpm", contract, result)
+        assert result.checks["lint"].status == CheckStatus.FAILED
+
+    @patch("validator._run")
     def test_run_tests_uses_test_timeout(self, mock_run):
         mock_run.return_value = _ok()
         contract = ScriptContract(test="test")
