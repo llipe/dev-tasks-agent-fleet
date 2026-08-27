@@ -16,8 +16,8 @@ agents/dependency-update/
 │   ├── config.py          # Environment variable reads, constants
 │   ├── credentials.py     # Supabase key + GitHub App token resolution
 │   ├── scrubber.py        # Token scrubbing for output/errors
-│   ├── toolchain.py       # Package manager detection (pnpm/npm)
-│   ├── validator.py       # Lint/format/typecheck/test runner
+│   ├── toolchain.py       # PM detection (D19), pnpm version mapping, script contract
+│   ├── validator.py       # Lint→format→typecheck→test runner (fix-and-retry)
 │   ├── audit.py           # Audit runner + JSON parsing
 │   ├── eligibility.py     # Semver version eligibility (D26)
 │   ├── classifier.py      # Advisory classification (D25)
@@ -89,10 +89,20 @@ curl http://localhost:8080/ping
 
 ## Testing
 
+Quality gates run through the `Makefile` (canonical command contract, mirrors
+`TESTING.md`). Run from `app/dependencyUpdate/`:
+
 ```bash
 cd agents/dependency-update/app/dependencyUpdate
-pip install -e ".[dev]"
-pytest -m unit tests/unit/
-pytest -m component tests/component/
-pytest tests/
+make install         # pip install -e '.[dev]'
+make test            # python -m pytest (all layers)
+make test-unit       # python -m pytest -m unit
+make test-component  # python -m pytest -m component
+make test-cov        # python -m pytest --cov --cov-report=term-missing
+make validate        # aggregate gate: lint + format-check + typecheck + test-cov + audit
 ```
+
+Layer markers (`unit` / `component`) are applied automatically by
+`tests/conftest.py` based on the test's directory, so tests do not declare them
+by hand. Shared temp-dir project fixtures (pnpm/npm/no-lockfile/no-test/minimal)
+also live in `tests/conftest.py`.
