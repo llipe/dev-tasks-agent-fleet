@@ -20,6 +20,8 @@
 - `agents/dependency-update/app/dependencyUpdate/Dockerfile` - ARM64 container image
 - `agents/dependency-update/app/dependencyUpdate/pyproject.toml` - Python dependencies
 - `agents/dependency-update/README.md` - Agent documentation
+- `agents/dependency-update/app/dependencyUpdate/tests/unit/test_outcome_mapping.py` - Outcome determination unit tests
+- `agents/dependency-update/app/dependencyUpdate/tests/component/test_pipeline.py` - Pipeline orchestrator component tests
 - `docs/reference/002_seed.sql` - Agent seed row update
 
 ## Tasks
@@ -89,22 +91,22 @@
   - [x] 3.16 Verify AC: empty patched range → unknown (not major_required)
   - [x] 3.17 Run tests: `pytest -m unit tests/unit/test_eligibility.py tests/unit/test_classifier.py tests/unit/test_audit.py`
 
-- [ ] 4.0 Implement Issue #74 — https://github.com/llipe/dev-tasks-agent-fleet/issues/74: Deterministic Pipeline Orchestrator
-  - [ ] 4.1 Implement `updater.py`: `install_deps(workspace, pm, frozen)`, `update_packages(workspace, pm)`, `has_changes(workspace)`, `reconcile_lockfile(workspace, pm)`
-  - [ ] 4.2 Implement payload unwrapping (handle `prompt` key wrapper) in `main.py`
-  - [ ] 4.3 Implement payload validation against expected schema; reject with INVALID_PARAMS
-  - [ ] 4.4 Implement defaults application (fix_mode, fail_on_findings, max_fix_attempts) with 0..5 constraint
-  - [ ] 4.5 Implement clone logic: construct URL, git clone --depth 1, scrub token, set git identity
-  - [ ] 4.6 Implement outcome determination as pure function `determine_outcome(classified, params, validation, has_pr)` → (status, outcome, error_code)
-  - [ ] 4.7 Wire full orchestrator per spec §8.2 pseudocode: step emission, reporter lifecycle, error handling
-  - [ ] 4.8 Implement return payload assembly (spec §6.2)
-  - [ ] 4.9 Implement `run_events` emission: error per major_required advisory (req 40), summary event, warn for absent scripts + non-semver
-  - [ ] 4.10 Write `tests/unit/test_outcome_mapping.py`: every row of §8.1 table + precedence rules
-  - [ ] 4.11 Write `tests/component/test_pipeline.py`: audit_only clean, audit_only findings (both fail settings), audit_only major_required, llm_fix no-change, invalid payload, unhandled exception
-  - [ ] 4.12 Verify AC: payload with missing run_id → INVALID_PARAMS, no clone
-  - [ ] 4.13 Verify AC: steps emitted in correct order
-  - [ ] 4.14 Verify AC: unhandled exception → failed + traceback + step closed
-  - [ ] 4.15 Run tests: `pytest -m "unit or component" tests/`
+- [x] 4.0 Implement Issue #74 — https://github.com/llipe/dev-tasks-agent-fleet/issues/74: Deterministic Pipeline Orchestrator
+  - [x] 4.1 Implement `updater.py`: `install_deps(workspace, pm, frozen)`, `update_packages(workspace, pm)`, `has_changes(workspace)`, `reconcile_lockfile(workspace, pm)`
+  - [x] 4.2 Implement payload unwrapping (handle `prompt` key wrapper) in `main.py`
+  - [x] 4.3 Implement payload validation against expected schema; reject with INVALID_PARAMS
+  - [x] 4.4 Implement defaults application (fix_mode, fail_on_findings, max_fix_attempts) with 0..5 constraint
+  - [x] 4.5 Implement clone logic: construct URL, git clone --depth 1, scrub token, set git identity
+  - [x] 4.6 Implement outcome determination as pure function `determine_outcome(classified, params, validation, has_pr)` → (status, outcome, error_code)
+  - [x] 4.7 Wire full orchestrator per spec §8.2 pseudocode: step emission, reporter lifecycle, error handling
+  - [x] 4.8 Implement return payload assembly (spec §6.2)
+  - [x] 4.9 Implement `run_events` emission: error per major_required advisory (req 40), summary event, warn for absent scripts + non-semver
+  - [x] 4.10 Write `tests/unit/test_outcome_mapping.py`: every row of §8.1 table + precedence rules
+  - [x] 4.11 Write `tests/component/test_pipeline.py`: audit_only clean, audit_only findings (both fail settings), audit_only major_required, llm_fix no-change, invalid payload, unhandled exception
+  - [x] 4.12 Verify AC: payload with missing run_id → INVALID_PARAMS, no clone
+  - [x] 4.13 Verify AC: steps emitted in correct order
+  - [x] 4.14 Verify AC: unhandled exception → failed + traceback + step closed
+  - [x] 4.15 Run tests: `pytest -m "unit or component" tests/`
 
 - [ ] 5.0 Implement Issue #75 — https://github.com/llipe/dev-tasks-agent-fleet/issues/75: LLM Fix Agent Escape Hatch
   - [ ] 5.1 Implement `fix_agent.py`: `_safe_path(rel)` resolver refusing workspace escapes
