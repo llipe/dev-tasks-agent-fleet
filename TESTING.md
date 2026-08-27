@@ -74,10 +74,10 @@ described in its own terms, not forced into JavaScript script names.
 
 | Package             | Local                | CI                | Production / runtime          |
 | ------------------- | -------------------- | ----------------- | ----------------------------- |
-| `dependency-update` | CPython **3.13.0** (dev venv at `.venv`, `pyvenv.cfg`) | **no CI** — no `.github/workflows` present | **PYTHON_3_14** (`agentcore/agentcore.json` → `runtimeVersion`); Docker build base is `python:3.13-slim` (`Dockerfile`) |
-| `agentcore-cdk-app` | Node (unpinned locally) | no CI | n/a — build/deploy tooling, not a runtime target |
+| `dependency-update` | CPython **3.13.0** (dev venv at `.venv`, `pyvenv.cfg`) | **3.13 + 3.14 matrix** (`.github/workflows/ci.yml`) | **PYTHON_3_14** (`agentcore/agentcore.json` → `runtimeVersion`); Docker build base is `python:3.13-slim` (`Dockerfile`) |
+| `agentcore-cdk-app` | Node (unpinned locally) | not in CI yet | n/a — build/deploy tooling, not a runtime target |
 
-> **FINDING — runtime parity divergence (`dependency-update`).** Three different Python runtimes are in play: tests are authored and pass locally on **3.13.0**, the container image builds on **python:3.13-slim**, but AgentCore executes the runtime as **PYTHON_3_14**. `pyproject.toml` only pins `requires-python = ">=3.13"`, so nothing enforces parity. Tests that pass on 3.13 prove nothing about 3.14 behavior (e.g. stdlib changes, deprecations). Additionally there is **no CI runtime**, so the only executed environment today is a developer's 3.13 venv. Recommended exits: align the Docker base to `python:3.14-slim` to match AgentCore, or add a CI matrix running pytest on both 3.13 and 3.14, and tighten the `requires-python` floor.
+> **FINDING — runtime parity divergence (`dependency-update`), MITIGATED by CI.** Three Python runtimes are in play: tests are authored locally on **3.13.0**, the container image builds on **python:3.13-slim**, and AgentCore executes as **PYTHON_3_14**. `pyproject.toml` pins only `requires-python = ">=3.13"`. This is now mitigated: `ci.yml` runs the full quality gate on a **3.13 + 3.14 matrix**, so every PR proves the suite passes on the production runtime, not just the dev one (verified: 25 tests pass on 3.14). Remaining lower-priority cleanup: align the Docker base to `python:3.14-slim` to match AgentCore exactly, and consider tightening the `requires-python` floor.
 
 ## Commands
 
@@ -131,13 +131,13 @@ The aggregate test command MUST reach every package that contains tests, and the
 CI and deploy quality gates MUST invoke that aggregate. A correctly named script
 that silently omits a package is the failure this section exists to prevent.
 
-- Aggregate quality gate (Python package): **`make validate`** (in `agents/dependency-update/app/dependencyUpdate/`) runs lint + format-check + typecheck + test-cov + audit, fail-fast. This is the canonical gate for the active codebase.
-- Aggregate test command (repo-wide): **still none.** There is no repo-root aggregate that runs both packages in one command. The Python package uses `make validate` / `make test`; the CDK package uses `pnpm test` in its own dir. A repo-root orchestrator (Makefile/tox/nox) is a future item if a second active package appears.
-- Packages reached: **`dependency-update`** via `make validate`/`make test`. **`agentcore-cdk-app`** via a manual `pnpm test`. No single command reaches both.
-- CI gate: **none — `no CI gate found`.** There is no `.github/workflows/` directory. Nothing runs `make validate` or any suite automatically on push or PR. Human PR review is the only backstop (per git-guard). FINDING remains open.
-- Deploy gate: **none.** Deploy is via the AgentCore CLI / CDK (Phase 1) and Fly (Phase 2); neither is wired to invoke the aggregate. A deploy can still proceed with zero tests executed. FINDING remains open.
+- Aggregate quality gate (Python package): **`make validate`** — from the repo root (delegates via root `Makefile`) or from `agents/dependency-update/app/dependencyUpdate/`. Runs lint + format-check + typecheck + test-cov + audit, fail-fast. This is the canonical gate for the active codebase.
+- Aggregate test command (repo-wide): a repo-root `Makefile` delegates the Python package targets (`make validate`/`make test`/etc.) via `-C`. The CDK package still uses `pnpm test` in its own dir and is not yet folded into the root aggregate (IaC smoke test, low priority).
+- Packages reached: **`dependency-update`** via root `make validate`/`make test`. **`agentcore-cdk-app`** via a manual `pnpm test`.
+- CI gate: **`.github/workflows/ci.yml`** runs on every push to `main` and every PR targeting `main`. It executes lint → format-check → typecheck → test+coverage → audit as explicit steps (same commands as `make validate`) on a **Python 3.13 + 3.14 matrix**. RESOLVED.
+- Deploy gate: **still none.** Deploy is via the AgentCore CLI / CDK (Phase 1) and Fly (Phase 2); neither is wired to invoke the aggregate. A deploy can still proceed without the gate. FINDING remains open (lower risk now that CI enforces on every PR to `main`).
 
-> **PARTIALLY RESOLVED.** A real aggregate gate (`make validate`) now exists and passes for the Python package. **Still open:** no CI workflow and no deploy gate invoke it — enforcement is manual/human-review only until `.github/workflows/` is added. Wiring `make validate` into CI is the remaining step to close this finding.
+> **RESOLVED (CI) / PARTIALLY OPEN (deploy).** `make validate` exists, works from the repo root, and is now enforced by CI (`ci.yml`) on every push/PR to `main` across both the dev runtime (3.13) and the production runtime (3.14). The remaining open item is a deploy-time gate — `agentcore deploy`/Fly do not yet invoke the suite. Given CI blocks unmerged breakage, this is now a lower-risk gap rather than an unguarded one.
 
 ## Coverage
 
