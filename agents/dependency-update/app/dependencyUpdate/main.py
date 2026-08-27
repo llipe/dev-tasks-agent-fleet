@@ -37,6 +37,7 @@ from config import (
 )
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
 from fix_agent import _read_pkg_dependencies, run_fix_loop, verify_no_mandate_violation
+from pull_request import build_pr_body, open_pr_if_needed
 from scrubber import scrub, scrub_process_error
 from toolchain import (
     ToolchainError,
@@ -629,14 +630,47 @@ async def invoke(payload: dict, context):
                 return
 
             # --- Step: open_pr ---
+            # Snapshot the branch that update+fix produced, then open the PR
+            # BEFORE evaluating MAJOR_UPDATE_REQUIRED so the reviewer always has
+            # the fixed subset in hand even when a major bump remains (req 43).
             with run.step("open_pr"):
-                # PR creation is implemented in issue #76 — stub for now
-                # When #76 is implemented, this becomes:
-                # pr_url, pr_existed = open_pr_if_needed(workspace, token_ctx, ...)
-                pr_url: str | None = None
-                pr_existed = False
-                has_new_pr = False
-                log.info("PR creation step — not yet implemented (issue #76)")
+                # Refresh the installation token if it has aged past the
+                # staleness threshold before we push (req 58).
+                token_ctx = refresh_token_if_stale(token_ctx, org, secrets)
+
+                pr_body = build_pr_body_from_state(
+                    audit_before.total_vulns,
+                    audit_after.total_vulns,
+                    classified,
+                    reclassified,
+                    pkg_changes,
+                    val_result,
+                )
+                base_branch = payload.get("base_branch") or "main"
+                pr_result = open_pr_if_needed(
+                    workspace,
+                    token_ctx.token,
+                    base_branch,
+                    pr_body,
+                )
+                pr_url = pr_result.url
+                pr_existed = pr_result.existed
+                has_new_pr = pr_result.created
+
+                # Record the PR as an artifact regardless of new vs. existing (req 57).
+                if pr_url:
+                    run.artifact(
+                        "pull_request",
+                        url=pr_url,
+                        title="Dependency Update PR",
+                        metadata={"existed": pr_existed, "branch": pr_result.branch},
+                    )
+                log.info(
+                    "open_pr: url=%s created=%s existed=%s",
+                    pr_url,
+                    has_new_pr,
+                    pr_existed,
+                )
 
             # Final outcome determination
             status, outcome, error_code = determine_outcome(
@@ -696,6 +730,77 @@ async def invoke(payload: dict, context):
         log.error("Unhandled exception:\n%s", scrub(tb, secrets))
         result = build_return_payload("failed", "not_applicable", "UNHANDLED_ERROR")
         yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+
+
+# ---------------------------------------------------------------------------
+# Token refresh + PR body assembly (issue #76)
+# ---------------------------------------------------------------------------
+
+
+def refresh_token_if_stale(token_ctx, org: str, secrets: list[str]):
+    """
+    Re-mint the GitHub installation token if it has aged past the threshold (req 58).
+
+    ``resolve_github_credentials`` returns a :class:`TokenContext` without the PEM
+    or app_id needed by ``credentials.refresh_if_stale``, so a stale token is
+    refreshed by re-resolving credentials for the org (a fresh mint). The new
+    token is appended to ``secrets`` so it is scrubbed from any later error path.
+    """
+    if not token_ctx.is_stale():
+        return token_ctx
+    log.info("Installation token stale (>45 min) — re-minting before push")
+    new_ctx = resolve_github_credentials(org)
+    secrets.append(new_ctx.token)
+    return new_ctx
+
+
+def _split_advisory_buckets(
+    classified: list[ClassifiedAdvisory],
+) -> tuple[list[ClassifiedAdvisory], list[ClassifiedAdvisory], list[ClassifiedAdvisory]]:
+    """Split classified advisories into (fixed/in_range, major_required, unknown)."""
+    fixed = [a for a in classified if a.bucket == "in_range"]
+    major = [a for a in classified if a.bucket == "major_required"]
+    unknown = [a for a in classified if a.bucket == "unknown"]
+    return fixed, major, unknown
+
+
+def build_pr_body_from_state(
+    vuln_before: int,
+    vuln_after: int,
+    classified_before: list[ClassifiedAdvisory],
+    reclassified_after: list[ClassifiedAdvisory],
+    pkg_changes,
+    val_result: ValidationResult,
+) -> str:
+    """
+    Assemble the PR body from pipeline state (spec §8.9).
+
+    - Fixed advisories: those that were in-range before the update (the update
+      closed them).
+    - Major-required / unknown: taken from the post-update reclassification —
+      what still remains after the update lands.
+    - Non-semver changes: package changes whose new version does not parse as
+      semver (accepted but surfaced).
+    """
+    from eligibility import parse_semver
+
+    fixed_before, _major_before, _unknown_before = _split_advisory_buckets(classified_before)
+    _fixed_after, major_after, unknown_after = _split_advisory_buckets(reclassified_after)
+
+    non_semver = [c for c in pkg_changes if c.new_version and parse_semver(c.new_version) is None]
+
+    return build_pr_body(
+        vuln_before=vuln_before,
+        vuln_after=vuln_after,
+        fixed_advisories=fixed_before,
+        major_required=major_after,
+        unknown_advisories=unknown_after,
+        non_semver_changes=non_semver,
+        upgraded=list(pkg_changes),
+        validation=val_result,
+        llm_used=val_result.llm_used,
+        fix_attempts=val_result.fix_attempts,
+    )
 
 
 # ---------------------------------------------------------------------------
