@@ -1,0 +1,63 @@
+{
+  "actions": {
+    "update": {
+      "lodash": {
+        "target": "4.17.21",
+        "resolves": [{"id": 1065, "path": "lodash"}]
+      }
+    }
+  },
+  "advisories": {
+    "1065": {
+      "id": 1065,
+      "module_name": "lodash",
+      "severity": "high",
+      "title": "Prototype Pollution in lodash",
+      "url": "https://github.com/advisories/GHSA-jf85-cpcp-j695",
+      "cves": ["CVE-2021-23337"],
+      "patched_versions": ">=4.17.21",
+      "findings": [
+        {"version": "4.17.0", "paths": ["lodash"]}
+      ],
+      "vulnerable_versions": "<4.17.21"
+    },
+    "1084": {
+      "id": 1084,
+      "module_name": "minimist",
+      "severity": "critical",
+      "title": "Prototype Pollution in minimist",
+      "url": "https://github.com/advisories/GHSA-xvch-5gv4-984h",
+      "cves": ["CVE-2021-44906"],
+      "patched_versions": ">=1.2.6",
+      "findings": [
+        {"version": "1.2.0", "paths": ["minimist"]}
+      ],
+      "vulnerable_versions": "<1.2.6"
+    },
+    "1095": {
+      "id": 1095,
+      "module_name": "got",
+      "severity": "moderate",
+      "title": "Open Redirect in got",
+      "url": "https://github.com/advisories/GHSA-pfrx-2q88-qq97",
+      "cves": ["CVE-2022-33987"],
+      "patched_versions": ">=12.1.0",
+      "findings": [
+        {"version": "9.6.0", "paths": ["got"]}
+      ],
+      "vulnerable_versions": "<12.1.0"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 1,
+      "critical": 1
+    },
+    "dependencies": 42,
+    "devDependencies": 15,
+    "totalDependencies": 57
+  }
+}

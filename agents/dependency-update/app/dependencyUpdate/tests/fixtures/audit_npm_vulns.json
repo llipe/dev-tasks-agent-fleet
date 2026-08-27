@@ -1,0 +1,77 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "lodash": {
+      "name": "lodash",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1065,
+          "name": "lodash",
+          "dependency": "lodash",
+          "title": "Prototype Pollution in lodash",
+          "url": "https://github.com/advisories/GHSA-jf85-cpcp-j695",
+          "severity": "high",
+          "cves": ["CVE-2021-23337"],
+          "range": ">=4.17.21"
+        }
+      ],
+      "effects": [],
+      "range": "<4.17.21",
+      "nodes": ["node_modules/lodash"],
+      "fixAvailable": true
+    },
+    "axios": {
+      "name": "axios",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1096,
+          "name": "axios",
+          "dependency": "axios",
+          "title": "Server-Side Request Forgery in axios",
+          "url": "https://github.com/advisories/GHSA-4w2v-q235-vp99",
+          "severity": "moderate",
+          "cves": ["CVE-2023-45857"],
+          "range": ">=1.3.2"
+        }
+      ],
+      "effects": [],
+      "range": "<1.3.2",
+      "nodes": ["node_modules/axios"],
+      "fixAvailable": true
+    },
+    "express": {
+      "name": "express",
+      "severity": "low",
+      "isDirect": true,
+      "via": [
+        "qs"
+      ],
+      "effects": [],
+      "range": "*",
+      "nodes": ["node_modules/express"],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 1,
+      "moderate": 1,
+      "high": 1,
+      "critical": 0,
+      "total": 3
+    },
+    "dependencies": {
+      "prod": 30,
+      "dev": 12,
+      "optional": 0,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 42
+    }
+  }
+}
