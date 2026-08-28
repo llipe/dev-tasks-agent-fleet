@@ -65,12 +65,17 @@ def update_packages(workspace: str, pm: str) -> str:
     """
     Apply available dependency updates using the package manager's update command.
 
-    Uses ``pnpm update --no-optional`` or ``npm update`` to bump versions within
-    declared semver ranges.
+    Uses ``pnpm update`` or ``npm update`` to bump versions within declared
+    semver ranges.
+
+    The pnpm command MUST NOT narrow the included dep-type set (e.g. with
+    ``--no-optional``): ``install_deps`` installs every dep type, pnpm records
+    that set in ``node_modules/.modules.yaml``, and a later command wanting a
+    different set aborts with ``ERR_PNPM_INCLUDED_DEPS_CONFLICT`` (issue #77).
 
     Returns combined stdout+stderr output.
     """
-    cmd = ["pnpm", "update", "--no-optional"] if pm == "pnpm" else ["npm", "update"]
+    cmd = ["pnpm", "update"] if pm == "pnpm" else ["npm", "update"]
 
     try:
         result = _run(cmd, workspace)

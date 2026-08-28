@@ -16,6 +16,11 @@
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
+      "envVars": [
+        { "name": "SUPABASE_URL", "value": "https://hegxeycmbmjfgzqpdiik.supabase.co" },
+        { "name": "SUPABASE_KEY_SECRET_ID", "value": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY" },
+        { "name": "MODEL_ID", "value": "us.anthropic.claude-sonnet-4-6" }
+      ],
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 300,
         "maxLifetime": 3600

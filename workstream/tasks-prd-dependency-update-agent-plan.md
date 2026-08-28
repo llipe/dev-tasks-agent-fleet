@@ -147,15 +147,15 @@
 - [ ] 7.0 Implement Issue #77 — https://github.com/llipe/dev-tasks-agent-fleet/issues/77: Seed Update, Deployment, and E2E Validation
   > Note: sub-tasks 7.2-7.10 require live AWS/Supabase/GitHub access and are documented for the operator in `docs/runbooks/issue-77-deployment-e2e.md`. Code/seed/docs portions (7.1, 7.11 code, 7.12, 7.13) are complete on branch `issue/77-seed-deployment-e2e-validation` (PR #88).
   - [x] 7.1 Update `docs/reference/002_seed.sql` with `dependency-update` agent row: params_schema, defaults, timeouts, requires_repository
-  - [ ] 7.2 Run `agentcore deploy -y` from `agents/dependency-update/`
-  - [ ] 7.3 Confirm `agentcore status` reports runtime ready; record `runtime_arn`
-  - [ ] 7.4 Fill runtime_arn in `002_seed.sql`
-  - [ ] 7.5 Apply seed to Supabase (SQL Editor)
-  - [ ] 7.6 Add IAM permissions to execution role: `secretsmanager:GetSecretValue` on `agent-fleet/prod/*`, `bedrock:InvokeModel` on Claude Sonnet
-  - [ ] 7.7 E2E: `agentcore invoke` with `fix_mode=audit_only` on clean repo — verify Supabase writes (runs, steps, events, artifacts)
-  - [ ] 7.8 E2E: `agentcore invoke` with `fix_mode=llm_fix` on repo with available updates — verify PR opened
-  - [ ] 7.9 E2E: second invoke while PR open — verify `succeeded / not_applicable`
-  - [ ] 7.10 E2E: invoke with invalid payload — verify `failed / INVALID_PARAMS` without clone
+  - [x] 7.2 Run `agentcore deploy -y` from `agents/dependency-update/` — stack `AgentCore-dependencyupdate-default` = CREATE_COMPLETE (required renaming aws-targets.json target to `default`; first attempt rolled back on a Docker Hub 429)
+  - [x] 7.3 Confirm `agentcore status` reports runtime ready; record `runtime_arn` — `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0`
+  - [x] 7.4 Fill runtime_arn in `002_seed.sql` — real ARN committed; file no longer clobbers live state on re-apply
+  - [x] 7.5 Apply seed to Supabase — DB matches the seed file: installation `llipe` (156226839/app 4687256), agent row, and both repos (`llipe/memo-cli`, `llipe/tf-ecommerce-mgmt`). Block 2 repos were inserted via PostgREST after the file's `mi-org` placeholder list was corrected.
+  - [x] 7.6 Add IAM permissions to execution role: `secretsmanager:GetSecretValue` on `agent-fleet/prod/*`, `bedrock:InvokeModel` on Claude Sonnet — inline policy `agent-fleet-secrets-and-bedrock` on role `AgentCore-dependencyupdat-ApplicationAgentDependenc-FRS81O093Deh`; proven working (Supabase key fetch + credential resolution succeeded)
+  - [x] 7.7 E2E: `agentcore invoke` with `fix_mode=audit_only` on clean repo — verify Supabase writes (runs, steps, events, artifacts) — PASS on `llipe/memo-cli`: succeeded/no_vulnerabilities, 5 steps, 7 events, 1 audit_report artifact, no PR (fire-and-forget invoke; verified via DB)
+  - [x] 7.8 E2E: `agentcore invoke` with `fix_mode=llm_fix` on repo with available updates — verify PR opened — PASS on `llipe/tf-ecommerce-mgmt`: PR #283 opened (branch `deps/update-20260828-173956`, 79 files, +2761/-2644), 8 steps all succeeded, `failed / needs_review / MAJOR_UPDATE_REQUIRED` after PR per req 43, vulns 101→81, `pull_request` artifact recorded with flat metadata. Exposed 2 defects (both fixed + deployed): `pnpm update --no-optional` deps conflict, and Docker Hub 429 on base-image pulls. Metric under-reporting logged as follow-up (see note below).
+  - [ ] 7.9 E2E: second invoke while PR open — verify `succeeded / not_applicable` (depends on 7.8)
+  - [x] 7.10 E2E: invoke with invalid payload — verify `failed / INVALID_PARAMS` without clone — PASS: payload missing required fields logged `INVALID_PARAMS`, returned before reporter init, no clone and no `runs` row written
   - [x] 7.11 Verify `runs.metrics` populated correctly (llm_used, fix_attempts, vuln counts) — code wired: metrics persisted at all terminal reports via `build_metrics`; live verification per runbook 7.11
   - [x] 7.12 Update README with deployment results and invocation examples
   - [x] 7.13 Verify AC: max_runtime_seconds in seed equals maxLifetime in agentcore.json (both 3600)

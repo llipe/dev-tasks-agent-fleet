@@ -1,3 +1,17 @@
 {
-  "targets": {}
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "dependency_update": {
+            "runtimeId": "dependencyupdate_dependency_update-UsQc5U5Yz0",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0",
+            "roleArn": "arn:aws:iam::755641879575:role/AgentCore-dependencyupdat-ApplicationAgentDependenc-FRS81O093Deh"
+          }
+        },
+        "stackName": "AgentCore-dependencyupdate-default",
+        "deployHash": "54c6fdd9f50086df"
+      }
+    }
+  }
 }
