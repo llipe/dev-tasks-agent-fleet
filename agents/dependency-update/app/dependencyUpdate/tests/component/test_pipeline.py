@@ -401,3 +401,123 @@ class TestCheckMandate:
         details = main.check_mandate(str(tmp_path), before)
         assert details is not None
         assert "evil" in details
+
+
+# ---------------------------------------------------------------------------
+# open_pr wiring: PR body assembly + token refresh (issue #76)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPrBodyFromState:
+    """main.build_pr_body_from_state splits buckets and flags non-semver."""
+
+    def test_splits_fixed_from_before_and_major_from_after(self):
+        import main
+        from audit import PackageChange
+        from classifier import ClassifiedAdvisory
+        from validator import CheckStatus, ValidationResult
+
+        def adv(module, bucket):
+            return ClassifiedAdvisory(
+                id=1, module=module, severity="high", title="t", url="u", bucket=bucket
+            )
+
+        # Before the update: lodash was in-range (gets fixed).
+        classified_before = [adv("lodash", "in_range")]
+        # After the update: a major-only advisory remains.
+        reclassified_after = [adv("left-pad", "major_required")]
+
+        pkg_changes = [
+            PackageChange(
+                name="lodash", action="updated", old_version="4.0.0", new_version="4.0.1"
+            ),
+            PackageChange(
+                name="weird", action="updated", old_version="1.0.0", new_version="git-sha"
+            ),
+        ]
+
+        val = ValidationResult()
+        val.record("test", CheckStatus.PASSED, "")
+
+        body = main.build_pr_body_from_state(
+            5, 2, classified_before, reclassified_after, pkg_changes, val
+        )
+
+        assert "## Fixed Advisories" in body
+        assert "lodash" in body
+        assert "Major Version Required" in body
+        assert "left-pad" in body
+        # Non-semver "git-sha" change is surfaced.
+        assert "## Non-semver Version Changes" in body
+        assert "weird" in body
+
+    def test_ai_warning_follows_validation_llm_flag(self):
+        import main
+        from validator import CheckStatus, ValidationResult
+
+        val = ValidationResult()
+        val.record("test", CheckStatus.PASSED, "")
+        val.llm_used = True
+        val.fix_attempts = 2
+
+        body = main.build_pr_body_from_state(1, 0, [], [], [], val)
+        assert "AI-Assisted Modifications" in body
+        assert "**2**" in body
+
+
+class TestRefreshTokenIfStale:
+    """main.refresh_token_if_stale re-resolves credentials only when stale."""
+
+    def test_returns_same_when_not_stale(self, monkeypatch):
+        import main
+        from credentials import TokenContext
+
+        ctx = TokenContext(token="tok", issued_at=0.0, installation_id=1)
+        monkeypatch.setattr(ctx, "is_stale", lambda: False)
+        secrets: list[str] = []
+        out = main.refresh_token_if_stale(ctx, "org", secrets)
+        assert out is ctx
+        assert secrets == []
+
+    def test_re_resolves_when_stale(self, monkeypatch):
+        import main
+        from credentials import TokenContext
+
+        ctx = TokenContext(token="old", issued_at=0.0, installation_id=1)
+        monkeypatch.setattr(ctx, "is_stale", lambda: True)
+        fresh = TokenContext(token="new", issued_at=1.0, installation_id=1)
+        monkeypatch.setattr(main, "resolve_github_credentials", lambda org: fresh)
+
+        secrets: list[str] = []
+        out = main.refresh_token_if_stale(ctx, "org", secrets)
+        assert out is fresh
+        assert "new" in secrets
+
+
+class TestPullRequestErrorMapping:
+    """A PR push/create failure maps to failed/needs_review/<code>, not UNHANDLED_ERROR."""
+
+    def test_pull_request_error_carries_code(self):
+        from pull_request import PullRequestError
+
+        exc = PullRequestError("PUSH_FAILED", "git push failed")
+        assert exc.code == "PUSH_FAILED"
+
+    def test_handler_payload_shape_for_pr_error(self):
+        # Mirrors the `except PullRequestError` branch in main.invoke: the update
+        # itself succeeded, only the PR handoff failed → needs_review + the code.
+        import main
+        from pull_request import PullRequestError
+
+        exc = PullRequestError("PR_CREATE_FAILED", "gh pr create failed")
+        result = main.build_return_payload("failed", "needs_review", exc.code)
+        assert result["status"] == "failed"
+        assert result["outcome"] == "needs_review"
+        assert result["error_code"] == "PR_CREATE_FAILED"
+
+    def test_main_imports_pull_request_error_handler(self):
+        # Guard: main must import PullRequestError so the dedicated handler exists
+        # (otherwise a PR failure would fall through to the generic UNHANDLED_ERROR).
+        import main
+
+        assert hasattr(main, "PullRequestError")

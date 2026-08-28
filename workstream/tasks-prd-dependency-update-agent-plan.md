@@ -26,6 +26,8 @@
 - `agents/dependency-update/app/dependencyUpdate/tests/unit/test_fix_tools.py` - Fix-agent tool + system-prompt unit tests
 - `agents/dependency-update/app/dependencyUpdate/tests/component/test_fix_agent.py` - Fix-loop component tests (retry budget, tool wiring)
 - `agents/dependency-update/app/dependencyUpdate/tests/component/test_pipeline.py` - Pipeline orchestrator component tests
+- `agents/dependency-update/app/dependencyUpdate/tests/unit/test_pr_body.py` - PR body builder unit tests (sections, cap, AI warning)
+- `agents/dependency-update/app/dependencyUpdate/tests/component/test_pr_creation.py` - PR creation component tests (mock gh/git, idempotency, scrub)
 - `docs/reference/002_seed.sql` - Agent seed row update
 
 ## Tasks
@@ -126,20 +128,20 @@
   - [x] 5.11 Verify AC: mandate violation → MANDATE_VIOLATION, no PR
   - [x] 5.12 Run tests: `pytest -m "unit or component" tests/unit/test_safe_path.py tests/unit/test_mandate_check.py tests/component/test_fix_agent.py`
 
-- [ ] 6.0 Implement Issue #76 — https://github.com/llipe/dev-tasks-agent-fleet/issues/76: Pull Request Creation and PR Body Builder
-  - [ ] 6.1 Implement `pull_request.py`: `existing_pr(workspace, env)` — `gh pr list --json` for `deps/update-*`
-  - [ ] 6.2 Implement `pull_request.py`: `_push_with_credential_helper(workspace, token, branch)` — ephemeral helper, no token in remote
-  - [ ] 6.3 Implement `pull_request.py`: `create_pr(workspace, token, base, body)` — branch, commit, push, `gh pr create --body-file`
-  - [ ] 6.4 Implement `pull_request.py`: PR body section helpers — `_security_summary()`, `_fixed_advisories_table()`, `_major_required_section()`, `_unknown_advisories_section()`, `_non_semver_section()`, `_package_changes_table()`, `_validation_table()`, `_ai_warning()`
-  - [ ] 6.5 Implement `pull_request.py`: `build_pr_body()` assembling all sections conditionally
-  - [ ] 6.6 Wire into main.py: idempotency check → open_pr step → record artifact
-  - [ ] 6.7 Handle token refresh before push (call `refresh_if_stale` from credentials)
-  - [ ] 6.8 Handle PR-opened-then-MAJOR_UPDATE_REQUIRED ordering (req 43): open PR first, fail after
-  - [ ] 6.9 Write `tests/unit/test_pr_body.py`: all sections present, some omitted, package cap at 30, AI warning on/off
-  - [ ] 6.10 Write `tests/component/test_pr_creation.py`: mock gh/git — happy path, existing PR short-circuit, push failure scrubbed
-  - [ ] 6.11 Verify AC: body via --body-file (never inline)
-  - [ ] 6.12 Verify AC: idempotency → not_applicable + existing URL as artifact
-  - [ ] 6.13 Run tests: `pytest -m "unit or component" tests/unit/test_pr_body.py tests/component/test_pr_creation.py`
+- [x] 6.0 Implement Issue #76 — https://github.com/llipe/dev-tasks-agent-fleet/issues/76: Pull Request Creation and PR Body Builder
+  - [x] 6.1 Implement `pull_request.py`: `existing_pr(workspace, env)` — `gh pr list --json` for `deps/update-*`
+  - [x] 6.2 Implement `pull_request.py`: `_push_with_credential_helper(workspace, token, branch)` — ephemeral helper, no token in remote
+  - [x] 6.3 Implement `pull_request.py`: `create_pr(workspace, token, base, body)` — branch, commit, push, `gh pr create --body-file`
+  - [x] 6.4 Implement `pull_request.py`: PR body section helpers — `_security_summary()`, `_fixed_advisories_table()`, `_major_required_section()`, `_unknown_advisories_section()`, `_non_semver_section()`, `_package_changes_table()`, `_validation_table()`, `_ai_warning()`
+  - [x] 6.5 Implement `pull_request.py`: `build_pr_body()` assembling all sections conditionally
+  - [x] 6.6 Wire into main.py: idempotency check → open_pr step → record artifact
+  - [x] 6.7 Handle token refresh before push (call `refresh_if_stale` from credentials)
+  - [x] 6.8 Handle PR-opened-then-MAJOR_UPDATE_REQUIRED ordering (req 43): open PR first, fail after
+  - [x] 6.9 Write `tests/unit/test_pr_body.py`: all sections present, some omitted, package cap at 30, AI warning on/off
+  - [x] 6.10 Write `tests/component/test_pr_creation.py`: mock gh/git — happy path, existing PR short-circuit, push failure scrubbed
+  - [x] 6.11 Verify AC: body via --body-file (never inline)
+  - [x] 6.12 Verify AC: idempotency → not_applicable + existing URL as artifact
+  - [x] 6.13 Run tests: `pytest -m "unit or component" tests/unit/test_pr_body.py tests/component/test_pr_creation.py`
 
 - [ ] 7.0 Implement Issue #77 — https://github.com/llipe/dev-tasks-agent-fleet/issues/77: Seed Update, Deployment, and E2E Validation
   - [ ] 7.1 Update `docs/reference/002_seed.sql` with `dependency-update` agent row: params_schema, defaults, timeouts, requires_repository

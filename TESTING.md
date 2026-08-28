@@ -26,12 +26,12 @@ The layer taxonomy below is fixed. What belongs in each layer is project-specifi
 
 | Layer    | Name                      | Scope                                                                                 | Status            |
 | -------- | ------------------------- | ------------------------------------------------------------------------------------- | ----------------- |
-| 1        | Deterministic foundations | Unit tests, schema validation. No I/O, no network, no real database.                  | active — `tests/unit/` (pytest `unit` marker); 83 tests covering `scrubber.py`, `credentials.py`, `toolchain.py`, and `validator.py`. |
-| 2        | Constrained model/tool    | Backend component tests, mocked APIs, fixtures and gold datasets.                     | scaffolded, empty — `tests/component/` and `tests/fixtures/` exist but hold no tests (`component` marker declared, unused). Finding: no component coverage yet. |
+| 1        | Deterministic foundations | Unit tests, schema validation. No I/O, no network, no real database.                  | active — `tests/unit/` (pytest `unit` marker); covers `scrubber.py`, `credentials.py`, `toolchain.py`, `validator.py`, `eligibility.py`, `classifier.py`, `fix_agent.py` (`_safe_path`, mandate check, fix tools), and `pull_request.py` (PR-body builder + branch naming). |
+| 2        | Constrained model/tool    | Backend component tests, mocked APIs, fixtures and gold datasets.                     | active — `tests/component/` holds ~56 tests across `test_pipeline.py`, `test_pr_creation.py`, and `test_fix_agent.py` (mocked `git`/`gh`/`subprocess`, Secrets Manager, PostgREST, and the Strands `Agent`). `tests/fixtures/` still holds no recorded payloads (`.gitkeep` only). |
 | 2.5      | Integration               | Real database, real migrations, RLS policies, schema contracts. No mocked data layer. | not configured — no local Postgres/Supabase harness present. Belongs to Phase 2 / DB work; not applicable to the current agent package. |
 | E2E      | End-to-end                | Playwright CLI — committed browser automation, full-stack, scenario-driven.           | not configured — no frontend in repo (Next.js is Phase 2). No Playwright config. |
 | Contract | Contract validation       | API spec drift, breaking-change detection, consumer impact. `dt verify` family.       | not configured — no OpenAPI/AsyncAPI spec in repo; `dt` not wired. |
-| 3        | Product evaluation        | Semantic, tone, groundedness, hallucination evals. Only for LLM features.             | not configured — the agent uses an LLM (`strands-agents`) in `fix_agent.py`, but no eval harness exists. Finding: LLM fix path is untested. |
+| 3        | Product evaluation        | Semantic, tone, groundedness, hallucination evals. Only for LLM features.             | not configured — the agent uses an LLM (`strands-agents`) in `fix_agent.py`. `fix_agent.py` now has Layer 1 + Layer 2 tests (with the model mocked), but no semantic/groundedness eval harness exists. Finding: the LLM output quality is unevaluated. |
 | 4        | Human evaluation          | Review gates, safeguards, risk alerts.                                                | out of band — human PR review is the enforcement backstop (see git-guard). No automated gate in repo. |
 
 Integration, end-to-end, and contract validation layers are declared per project
@@ -59,7 +59,7 @@ described in its own terms, not forced into JavaScript script names.
 
 | Package                                              | Language          | Runner   | Test command                                   | Test environment                          | Coverage tooling                    |
 | ---------------------------------------------------- | ----------------- | -------- | ---------------------------------------------- | ----------------------------------------- | ----------------------------------- |
-| `dependency-update` (`agents/dependency-update/app/dependencyUpdate/`) | Python `>=3.13` | pytest 8.3.5 | `python -m pytest` (from the package dir; `testpaths=["tests"]`) | Local CPython process, no DB/network; all external I/O mocked | pytest-cov 7.1.0 (branch coverage) — see Coverage §, gate is MEASURED (~96% on implemented modules; no `fail_under` floor yet) |
+| `dependency-update` (`agents/dependency-update/app/dependencyUpdate/`) | Python `>=3.13` | pytest 8.3.5 | `python -m pytest` (from the package dir; `testpaths=["tests"]`) | Local CPython process, no DB/network; all external I/O mocked | pytest-cov 7.1.0 (branch coverage) — see Coverage §, gate is MEASURED (~90%+ on implemented modules; no `fail_under` floor yet) |
 | `agentcore-cdk-app` (`agents/dependency-update/agentcore/cdk/`) | TypeScript | jest 29 (ts-jest) | `pnpm test` / `npm test` (→ `jest`) | Node (jest default); CDK `Template` synth assertions | none configured (no `@vitest/coverage`/`nyc`, no `--coverage` wired) |
 
 > **Scope note.** The `dependency-update` Python package is the active codebase and the subject of this standard. `agentcore-cdk-app` is infrastructure-as-code with a single CDK synth smoke test (`test/cdk.test.ts`); it is listed for completeness and reachability accounting, not as a primary test target. The Next.js frontend (Phase 2) is **not** in the repo — no JS/TS application test package exists yet.
@@ -77,7 +77,7 @@ described in its own terms, not forced into JavaScript script names.
 | `dependency-update` | CPython **3.13.0** (dev venv at `.venv`, `pyvenv.cfg`) | **3.13 + 3.14 matrix** (`.github/workflows/ci.yml`) | **PYTHON_3_14** (`agentcore/agentcore.json` → `runtimeVersion`); Docker build base is `python:3.13-slim` (`Dockerfile`) |
 | `agentcore-cdk-app` | Node (unpinned locally) | not in CI yet | n/a — build/deploy tooling, not a runtime target |
 
-> **FINDING — runtime parity divergence (`dependency-update`), MITIGATED by CI.** Three Python runtimes are in play: tests are authored locally on **3.13.0**, the container image builds on **python:3.13-slim**, and AgentCore executes as **PYTHON_3_14**. `pyproject.toml` pins only `requires-python = ">=3.13"`. This is now mitigated: `ci.yml` runs the full quality gate on a **3.13 + 3.14 matrix**, so every PR proves the suite passes on the production runtime, not just the dev one (the current 83-test suite passes on both). Remaining lower-priority cleanup: align the Docker base to `python:3.14-slim` to match AgentCore exactly, and consider tightening the `requires-python` floor.
+> **FINDING — runtime parity divergence (`dependency-update`), MITIGATED by CI.** Three Python runtimes are in play: tests are authored locally on **3.13.0**, the container image builds on **python:3.13-slim**, and AgentCore executes as **PYTHON_3_14**. `pyproject.toml` pins only `requires-python = ">=3.13"`. This is now mitigated: `ci.yml` runs the full quality gate on a **3.13 + 3.14 matrix**, so every PR proves the suite passes on the production runtime, not just the dev one (the current 328-test suite passes on both). Remaining lower-priority cleanup: align the Docker base to `python:3.14-slim` to match AgentCore exactly, and consider tightening the `requires-python` floor.
 
 ## Commands
 
@@ -113,7 +113,7 @@ test command reaches it.
 | `dependency-update` | Install dev deps              | `make install` → `pip install -e '.[dev]'` (pytest, pytest-mock, pytest-cov, ruff, mypy, pip-audit) |
 | `dependency-update` | Run all tests                 | `make test` → `python -m pytest` (run from `agents/dependency-update/app/dependencyUpdate/`; `testpaths=["tests"]`) |
 | `dependency-update` | Layer 1 only (unit)           | `make test-unit` → `python -m pytest -m unit`                                       |
-| `dependency-update` | Layer 2 only (component)      | `make test-component` → `python -m pytest -m component` (currently selects 0 tests — no component tests authored yet) |
+| `dependency-update` | Layer 2 only (component)      | `make test-component` → `python -m pytest -m component` (~56 component tests across `test_pipeline.py`, `test_pr_creation.py`, `test_fix_agent.py`) |
 | `dependency-update` | Lint                          | `make lint` → `ruff check .` (autofix: `make lint-fix`)                              |
 | `dependency-update` | Format / format check         | `make format` → `ruff format .`; check-only: `make format-check` → `ruff format --check .` |
 | `dependency-update` | Typecheck                     | `make typecheck` → `mypy .`                                                          |
@@ -121,7 +121,7 @@ test command reaches it.
 | `dependency-update` | Audit (dependency vuln scan)  | `make audit` → `pip-audit . --strict` (audits declared runtime deps, not ambient venv tooling) |
 | `dependency-update` | **Aggregate gate**            | `make validate` → lint + format-check + typecheck + test-cov + audit (fail-fast)     |
 
-> **RESOLVED (was: no quality toolchain).** As of the `chore/python-quality-toolchain` change, the Python package has a full toolchain, all pinned in `pyproject.toml [dev]`: **ruff 0.16.4** (lint + format), **mypy 2.3.1** (typecheck), **pip-audit 2.10.1** (vuln scan), **pytest-cov 7.1.0** (coverage). Tool config lives in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.coverage]`). A `Makefile` in the package dir provides the canonical targets and the `validate` aggregate. Current state: `make validate` passes clean (lint ✓, format ✓, typecheck ✓, 83 tests ✓, audit ✓ no known vulns).
+> **RESOLVED (was: no quality toolchain).** As of the `chore/python-quality-toolchain` change, the Python package has a full toolchain, all pinned in `pyproject.toml [dev]`: **ruff 0.16.4** (lint + format), **mypy 2.3.1** (typecheck), **pip-audit 2.10.1** (vuln scan), **pytest-cov 7.1.0** (coverage). Tool config lives in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.coverage]`). A `Makefile` in the package dir provides the canonical targets and the `validate` aggregate. Current state: `make validate` passes clean (lint ✓, format ✓, typecheck ✓, 328 tests ✓, audit ✓ no known vulns).
 >
 > **Note on `audit`:** `pip-audit` run bare audits the whole venv and surfaces vulnerabilities in ambient tooling (`pip`, `pytest`) that never ship in the production container. The gate therefore runs `pip-audit .` to scope the scan to the project's declared runtime dependencies. Those are clean.
 >
@@ -149,28 +149,31 @@ Coverage percentages alone do not establish confidence — a suite can cover eve
 line while asserting nothing meaningful. Thresholds are a floor, not a goal.
 
 - Measurement tool per package: **`dependency-update`: pytest-cov 7.1.0** (coverage.py backend), branch coverage on, config in `[tool.coverage.run]` / `[tool.coverage.report]`. `agentcore-cdk-app`: none wired (out of scope — IaC smoke test only).
-- Threshold policy: **no hard floor yet (`fail_under` unset).** Coverage is measured and reported on every `make test-cov`/`make validate` run, but a numeric gate is deliberately deferred until the deterministic pipeline modules (#72–#77) exist — enforcing a floor against a codebase that is ~85% empty stubs would be meaningless. Raise `fail_under` once the pipeline modules are implemented and their tests land.
-- Baseline: **~96% on implemented modules** (`credentials.py` 95%, `scrubber.py` 100%, `config.py` 100%, `toolchain.py` 94%, `validator.py` 99%) as of Issue #72; the remaining modules are empty stubs reporting 100% trivially (0 statements). This baseline is honest but narrow — it describes only the modules that actually contain logic.
-- Regression policy: report coverage on every `validate` run; a drop on `credentials.py`/`scrubber.py`/`toolchain.py`/`validator.py` below their current numbers is a regression to investigate. Formal `fail_under` enforcement lands with the remaining pipeline modules.
+- Threshold policy: **no hard floor yet (`fail_under` unset).** Coverage is measured and reported on every `make test-cov`/`make validate` run, but a numeric gate is deliberately deferred. Most deterministic pipeline modules (#72–#76) now exist and are tested; a `fail_under` floor should be introduced once the remaining wiring (#77) lands so the number reflects a complete pipeline.
+- Baseline: **~90%+ on implemented modules** — `scrubber.py` 100%, `config.py` 100%, `classifier.py` 100%, `eligibility.py` 100%, `credentials.py` 95%, `pull_request.py` 95%, `validator.py` 99%, `toolchain.py` 94%, `fix_agent.py` ~91%, `audit.py` ~87%. `main.py` and `agent_reporter.py` remain coverage-excluded/untested (see gap table). This baseline now describes the bulk of the pipeline logic, not just a narrow slice.
+- Regression policy: report coverage on every `validate` run; a drop on any of the tested modules below its current number is a regression to investigate. Formal `fail_under` enforcement lands with the remaining #77 wiring.
 
-> **`coverage_gate: MEASURED (~96% on implemented modules; no `fail_under` floor yet)`.** The gate is no longer SKIPPED — a provider (pytest-cov) is configured and runs in `make validate`. The structural gap analysis below remains the correct lens for the *unimplemented* modules: 100% "coverage" on an empty stub is not evidence of anything.
+> **`coverage_gate: MEASURED (~90%+ on implemented modules; no `fail_under` floor yet)`.** The gate is not SKIPPED — a provider (pytest-cov) is configured and runs in `make validate`. The structural gap analysis below now targets the remaining untested surface (`main.py` orchestrator wiring, `agent_reporter.py`), not the pipeline logic modules, which are covered.
 
 **Structural gap analysis (substitute for coverage, current state):**
 
 | Source file (`dependency-update`) | Tested? | Risk | Note |
 | ---------------------------------- | ------- | ---- | ---- |
-| `credentials.py`                   | partial | HIGH | GitHub App RS256 JWT auth + Supabase key resolution. Happy paths and staleness covered; security-negative cases largely missing (see Security-Negative §). |
-| `scrubber.py`                      | yes     | MED  | Secret redaction; 13 tests including boundary/overlap/bytes cases. |
-| `toolchain.py`                     | yes     | MED  | Package-manager + script-contract detection. Tested via temp-dir project fixtures (`tests/conftest.py`); **94%** line/branch coverage (pnpm/npm detection, `NO_PACKAGE_MANAGER`, `NO_TEST_SCRIPT`, minimal-script cases). |
-| `validator.py`                     | yes     | MED  | Post-fix validation gating. Tested via the same temp-dir fixtures; **99%** coverage. |
-| `fix_agent.py`                     | **no**  | HIGH | LLM-driven code fix path (`strands-agents`). Untested and no eval harness (Layer 3 absent). |
-| `audit.py`                         | **no**  | HIGH | Vulnerability audit parsing — core agent function, no tests. |
-| `pull_request.py`                  | **no**  | HIGH | Opens PRs via `gh`/GitHub API — side-effecting, no tests. |
-| `updater.py`, `classifier.py`, `eligibility.py` | **no** | MED–HIGH | Dependency resolution, classification, and eligibility gating — all still stubs/untested. |
+| `credentials.py`                   | partial | HIGH | GitHub App RS256 JWT auth + Supabase key resolution. Happy paths and staleness covered (**95%**); security-negative cases largely missing (see Security-Negative §). |
+| `scrubber.py`                      | yes     | MED  | Secret redaction; 13 tests including boundary/overlap/bytes cases (**100%**). |
+| `toolchain.py`                     | yes     | MED  | Package-manager + script-contract detection. Temp-dir project fixtures; **94%** coverage. |
+| `validator.py`                     | yes     | MED  | Post-fix validation gating. Same temp-dir fixtures; **99%** coverage. |
+| `classifier.py`                    | yes     | MED  | Advisory classification (in_range / major_required / unknown). **100%** coverage. |
+| `eligibility.py`                   | yes     | MED  | Semver eligibility policy (D26). **100%** coverage. |
+| `audit.py`                         | yes     | MED  | Vulnerability audit runner + JSON parsing. **~87%** coverage. |
+| `fix_agent.py`                     | yes     | HIGH | LLM-driven code fix path (`strands-agents`). Layer 1 + Layer 2 tested with the model mocked (**~91%**); no Layer 3 semantic/groundedness eval harness (LLM *output quality* still unevaluated). |
+| `pull_request.py`                  | yes     | MED  | Branch naming, idempotency (`gh pr list`), credential-helper push, PR body builder, `open_pr_if_needed`. Unit + component tested (**95%**); side-effecting `git`/`gh` calls mocked. |
+| `updater.py`                       | partial | MED  | Apply updates + reconcile lockfile. Exercised via component pipeline tests; no dedicated unit suite. |
 | `agent_reporter.py`                | **no**  | MED  | Lifecycle/log reporting SDK (buffering, retries, `seq` ordering). Design doc notes prior manual testing with a fake client; no committed tests. |
-| `config.py`, `main.py`             | **no**  | LOW–MED | Config constants and entrypoint wiring. |
+| `config.py`                        | yes     | LOW  | Config constants. **100%** coverage. |
+| `main.py`                          | **no** (coverage-excluded) | MED | Entrypoint/orchestrator wiring. Listed in `[tool.coverage.run] omit`; guard ordering (req49→req50→open_pr, PR-before-MAJOR_UPDATE_REQUIRED, `pull_request` artifact emission) verified by inspection, not by an automated assertion. |
 
-Source-to-test ratio: **4 of ~14 source modules** have any tests (`scrubber.py`, `credentials.py`, `toolchain.py`, `validator.py`). The highest-risk behavior — the LLM fix path, audit parsing, and PR creation — still has **zero** coverage. Ranked by risk, the top remaining gaps are `fix_agent.py`, `audit.py`, and `pull_request.py`, followed by `updater.py`/`classifier.py`/`eligibility.py` (still stubs).
+Source-to-test ratio: **most source modules now have tests** — the deterministic pipeline (`audit`, `classifier`, `eligibility`, `toolchain`, `validator`, `updater`, `pull_request`), the secret scrubber, credentials, and the LLM fix loop are all exercised. The remaining untested surface is `agent_reporter.py` (SDK, no committed tests) and `main.py` (orchestrator, coverage-excluded by convention). Ranked by residual risk: (1) `main.py` orchestration guards (inspection-only), (2) `agent_reporter.py` buffering/retry/`seq` behavior, (3) the **LLM output-quality** dimension of `fix_agent.py` (Layer 3 eval harness absent — the code path is tested, its semantic output is not), and (4) the security-negative auth cases in `credentials.py` (see below).
 
 ### When coverage cannot be measured
 
@@ -203,7 +206,7 @@ Mocks are function/class-scoped via decorators and context managers, so they res
 
 ### Gold datasets
 
-**None recorded today.** `tests/fixtures/` contains only a `.gitkeep` — no recorded HTTP responses, no golden files, no captured PostgREST/Secrets-Manager/GitHub-API payloads. Component tests (Layer 2) that record real API shapes do not yet exist. When they are added, recorded responses and golden files MUST live under `tests/fixtures/`, and each fixture MUST document how it was captured and how to regenerate it. Until then, this section is a gap, not a satisfied requirement.
+**None recorded today.** `tests/fixtures/` contains only a `.gitkeep` — no recorded HTTP responses, no golden files, no captured PostgREST/Secrets-Manager/GitHub-API payloads. Layer 2 component tests now exist (`test_pipeline.py`, `test_pr_creation.py`, `test_fix_agent.py`) but they build their inputs inline / via mocks rather than from recorded API-shape fixtures. When recorded-payload fixtures are added, they MUST live under `tests/fixtures/`, and each fixture MUST document how it was captured and how to regenerate it. Until then, this section is a gap, not a satisfied requirement.
 
 ## Security-Negative Tests
 
