@@ -521,3 +521,124 @@ class TestPullRequestErrorMapping:
         import main
 
         assert hasattr(main, "PullRequestError")
+
+
+# ---------------------------------------------------------------------------
+# runs.metrics persistence (issue #77)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMetrics:
+    """main.build_metrics projects the metric fields out of the return payload."""
+
+    def test_extracts_metric_fields(self):
+        import main
+
+        result = main.build_return_payload(
+            status="succeeded",
+            outcome="fixed",
+            error_code=None,
+            pr_url="https://github.com/org/repo/pull/1",
+            vuln_before=5,
+            vuln_after=2,
+            advisories_fixed=3,
+            advisories_major_required=1,
+            advisories_unknown=1,
+            packages_changed=4,
+            fix_attempts=2,
+            llm_used=True,
+        )
+        metrics = main.build_metrics(result)
+
+        assert metrics == {
+            "vulnerabilities_before": 5,
+            "vulnerabilities_after": 2,
+            "advisories_fixed": 3,
+            "advisories_major_required": 1,
+            "advisories_unknown": 1,
+            "packages_changed": 4,
+            "fix_attempts": 2,
+            "llm_used": True,
+        }
+
+    def test_excludes_non_metric_fields(self):
+        """status, outcome, error_code, pr_url are columns, not metrics."""
+        import main
+
+        result = main.build_return_payload(
+            status="failed",
+            outcome="needs_review",
+            error_code="VALIDATION_FAILING",
+            pr_url=None,
+        )
+        metrics = main.build_metrics(result)
+
+        for excluded in ("status", "outcome", "error_code", "pr_url"):
+            assert excluded not in metrics
+
+    def test_defaults_for_minimal_payload(self):
+        """A minimal payload still yields a complete, zero-valued metrics dict."""
+        import main
+
+        result = main.build_return_payload(
+            status="failed",
+            outcome="not_applicable",
+            error_code="INVALID_PARAMS",
+        )
+        metrics = main.build_metrics(result)
+
+        assert metrics["vulnerabilities_before"] == 0
+        assert metrics["vulnerabilities_after"] == 0
+        assert metrics["advisories_fixed"] == 0
+        assert metrics["fix_attempts"] == 0
+        assert metrics["llm_used"] is False
+
+
+class _FakeRun:
+    """Minimal RunReporter stand-in capturing succeed/fail calls."""
+
+    def __init__(self):
+        self.succeed_calls = []
+        self.fail_calls = []
+
+    def succeed(self, outcome, result=None, metrics=None):
+        self.succeed_calls.append({"outcome": outcome, "metrics": metrics})
+
+    def fail(self, error_code, error_message, outcome=None, metrics=None):
+        self.fail_calls.append({"error_code": error_code, "outcome": outcome, "metrics": metrics})
+
+
+class TestReportTerminalMetrics:
+    """_report_terminal forwards metrics to succeed/fail (issue #77, req 52)."""
+
+    def test_succeed_receives_metrics(self):
+        import main
+
+        run = _FakeRun()
+        metrics = {"vulnerabilities_before": 3, "llm_used": False}
+        main._report_terminal(run, "succeeded", "no_vulnerabilities", None, metrics=metrics)
+
+        assert len(run.succeed_calls) == 1
+        assert run.succeed_calls[0]["outcome"] == "no_vulnerabilities"
+        assert run.succeed_calls[0]["metrics"] == metrics
+
+    def test_fail_receives_metrics(self):
+        import main
+
+        run = _FakeRun()
+        metrics = {"vulnerabilities_before": 3, "llm_used": True, "fix_attempts": 1}
+        main._report_terminal(run, "failed", "needs_review", "VALIDATION_FAILING", metrics=metrics)
+
+        assert len(run.fail_calls) == 1
+        assert run.fail_calls[0]["error_code"] == "VALIDATION_FAILING"
+        assert run.fail_calls[0]["outcome"] == "needs_review"
+        assert run.fail_calls[0]["metrics"] == metrics
+
+    def test_metrics_optional_defaults_to_none(self):
+        """Backward compatible: omitting metrics passes None through."""
+        import main
+
+        run = _FakeRun()
+        main._report_terminal(run, "succeeded", "fixed", None)
+
+        assert run.succeed_calls[0]["metrics"] is None
