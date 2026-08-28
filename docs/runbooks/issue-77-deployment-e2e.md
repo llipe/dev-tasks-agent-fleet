@@ -22,10 +22,10 @@
 
 ## Prerequisites (verify before starting)
 
-- [ ] AWS CLI authenticated to the target account (`aws sts get-caller-identity`).
-- [ ] `agentcore` CLI installed and on PATH (`agentcore --version`).
-- [ ] Docker running with ARM64 build support (the runtime image is ARM64).
-- [ ] Supabase schema already applied (`001_schema.sql`) with RLS deny-all.
+- [x] AWS CLI authenticated to the target account (`aws sts get-caller-identity`).
+- [x] `agentcore` CLI installed and on PATH (`agentcore --version`).
+- [x] Docker running with ARM64 build support (the runtime image is ARM64).
+- [x] Supabase schema already applied (`001_schema.sql`) with RLS deny-all.
 - [ ] `github_installations` row exists (real `installation_id`, `app_id`,
       `private_key_secret_arn`) — see block 1 of `002_seed.sql`.
 - [ ] Secrets Manager entries exist:
@@ -33,6 +33,78 @@
   - the GitHub App private key referenced by `private_key_secret_arn`
 - [ ] Bedrock model access granted for `MODEL_ID`
       (default `us.anthropic.claude-sonnet-4-6`).
+
+---
+
+## Secrets Manager format
+
+The agent reads two secrets from AWS Secrets Manager, both as **plaintext
+`SecretString`** values (no JSON wrapper, no base64). Grounded in
+`agents/dependency-update/app/dependencyUpdate/credentials.py`:
+`fetch_supabase_key()` and `_fetch_pem()` both return `SecretString` verbatim,
+and the PEM is passed straight into `jwt.encode(..., pem, algorithm="RS256")`.
+
+### GitHub App private key (PEM)
+
+Store the secret value as the **raw PEM exactly as GitHub emits it** — the full
+text including the header/footer lines and all newlines:
+
+```
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1c3f...
+...many base64 lines...
+-----END RSA PRIVATE KEY-----
+```
+
+- **Do NOT** store it as JSON (e.g. `{"private_key": "..."}`) — the code does
+  not parse JSON; the whole value is fed to the RS256 signer and signing fails.
+- **Do NOT** base64-encode it — it must be the literal PEM text.
+- Preserve the embedded newlines. A PKCS#8 `-----BEGIN PRIVATE KEY-----` block
+  also works; store whatever GitHub gave you as-is.
+
+Create it (CLI reads from the file so newlines are preserved and the key never
+lands in shell history):
+
+```bash
+aws secretsmanager create-secret \
+  --name "agent-fleet/prod/GITHUB_APP_PRIVATE_KEY" \
+  --description "GitHub App private key (PEM) for dependency-update agent" \
+  --secret-string "file://my-app.private-key.pem" \
+  --region us-east-1
+```
+
+Rotate/update an existing one:
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id "agent-fleet/prod/GITHUB_APP_PRIVATE_KEY" \
+  --secret-string "file://my-app.new.private-key.pem" \
+  --region us-east-1
+```
+
+Then put this secret's **ARN** into `github_installations.private_key_secret_arn`
+(block 1 of `002_seed.sql`) — the DB stores only the ARN, never the key. Name the
+secret under `agent-fleet/prod/*` so it is covered by the IAM grant in step 7.6.
+
+Verify it is a clean PEM (not JSON-wrapped):
+
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id "agent-fleet/prod/GITHUB_APP_PRIVATE_KEY" \
+  --query SecretString --output text --region us-east-1 | head -1
+# expect: -----BEGIN RSA PRIVATE KEY-----
+```
+
+### Supabase service role key
+
+Separate secret at `agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY` (read by
+`fetch_supabase_key`), also a plaintext `SecretString` — the raw service role
+key string, nothing wrapped. Both secrets are covered by the same
+`agent-fleet/prod/*` IAM grant in step 7.6.
+
+- [ ] GitHub App PEM stored as raw plaintext `SecretString` under `agent-fleet/prod/*`.
+- [ ] Its ARN placed in `github_installations.private_key_secret_arn`.
+- [ ] Supabase service role key stored as plaintext `SecretString`.
 
 ---
 
