@@ -1,8 +1,13 @@
+# Base images come from AWS ECR Public (a mirror of the official Docker Library
+# images) rather than Docker Hub: anonymous Docker Hub pulls from CodeBuild's
+# shared IP ranges routinely hit "429 Too Many Requests", which fails the
+# container build and rolls back the whole stack (issue #77).
+
 # Stage 1: Node 26 binaries
-FROM node:26-slim AS node-base
+FROM public.ecr.aws/docker/library/node:26-slim AS node-base
 
 # Stage 2: Python base with system-level dependencies
-FROM python:3.13-slim AS base
+FROM public.ecr.aws/docker/library/python:3.13-slim AS base
 
 # Custom CA certificates (e.g. corporate proxy like Netskope)
 # Pass at build time: --build-arg EXTRA_CA_CERT=path/to/cert.pem

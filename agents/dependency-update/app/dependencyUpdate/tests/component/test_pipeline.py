@@ -521,3 +521,218 @@ class TestPullRequestErrorMapping:
         import main
 
         assert hasattr(main, "PullRequestError")
+
+
+# ---------------------------------------------------------------------------
+# runs.metrics persistence (issue #77)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMetrics:
+    """main.build_metrics projects the metric fields out of the return payload."""
+
+    def test_extracts_metric_fields(self):
+        import main
+
+        result = main.build_return_payload(
+            status="succeeded",
+            outcome="fixed",
+            error_code=None,
+            pr_url="https://github.com/org/repo/pull/1",
+            vuln_before=5,
+            vuln_after=2,
+            advisories_fixed=3,
+            advisories_major_required=1,
+            advisories_unknown=1,
+            packages_changed=4,
+            fix_attempts=2,
+            llm_used=True,
+        )
+        metrics = main.build_metrics(result)
+
+        assert metrics == {
+            "vulnerabilities_before": 5,
+            "vulnerabilities_after": 2,
+            "advisories_fixed": 3,
+            "advisories_major_required": 1,
+            "advisories_unknown": 1,
+            "packages_changed": 4,
+            "fix_attempts": 2,
+            "llm_used": True,
+        }
+
+    def test_excludes_non_metric_fields(self):
+        """status, outcome, error_code, pr_url are columns, not metrics."""
+        import main
+
+        result = main.build_return_payload(
+            status="failed",
+            outcome="needs_review",
+            error_code="VALIDATION_FAILING",
+            pr_url=None,
+        )
+        metrics = main.build_metrics(result)
+
+        for excluded in ("status", "outcome", "error_code", "pr_url"):
+            assert excluded not in metrics
+
+    def test_defaults_for_minimal_payload(self):
+        """A minimal payload still yields a complete, zero-valued metrics dict."""
+        import main
+
+        result = main.build_return_payload(
+            status="failed",
+            outcome="not_applicable",
+            error_code="INVALID_PARAMS",
+        )
+        metrics = main.build_metrics(result)
+
+        assert metrics["vulnerabilities_before"] == 0
+        assert metrics["vulnerabilities_after"] == 0
+        assert metrics["advisories_fixed"] == 0
+        assert metrics["fix_attempts"] == 0
+        assert metrics["llm_used"] is False
+
+
+class _FakeRun:
+    """Minimal RunReporter stand-in capturing succeed/fail calls."""
+
+    def __init__(self):
+        self.succeed_calls = []
+        self.fail_calls = []
+
+    def succeed(self, outcome, result=None, metrics=None):
+        self.succeed_calls.append({"outcome": outcome, "metrics": metrics})
+
+    def fail(self, error_code, error_message, outcome=None, metrics=None):
+        self.fail_calls.append({"error_code": error_code, "outcome": outcome, "metrics": metrics})
+
+
+class TestReportTerminalMetrics:
+    """_report_terminal forwards metrics to succeed/fail (issue #77, req 52)."""
+
+    def test_succeed_receives_metrics(self):
+        import main
+
+        run = _FakeRun()
+        metrics = {"vulnerabilities_before": 3, "llm_used": False}
+        main._report_terminal(run, "succeeded", "no_vulnerabilities", None, metrics=metrics)
+
+        assert len(run.succeed_calls) == 1
+        assert run.succeed_calls[0]["outcome"] == "no_vulnerabilities"
+        assert run.succeed_calls[0]["metrics"] == metrics
+
+    def test_fail_receives_metrics(self):
+        import main
+
+        run = _FakeRun()
+        metrics = {"vulnerabilities_before": 3, "llm_used": True, "fix_attempts": 1}
+        main._report_terminal(run, "failed", "needs_review", "VALIDATION_FAILING", metrics=metrics)
+
+        assert len(run.fail_calls) == 1
+        assert run.fail_calls[0]["error_code"] == "VALIDATION_FAILING"
+        assert run.fail_calls[0]["outcome"] == "needs_review"
+        assert run.fail_calls[0]["metrics"] == metrics
+
+    def test_metrics_optional_defaults_to_none(self):
+        """Backward compatible: omitting metrics passes None through."""
+        import main
+
+        run = _FakeRun()
+        main._report_terminal(run, "succeeded", "fixed", None)
+
+        assert run.succeed_calls[0]["metrics"] is None
+
+
+# ---------------------------------------------------------------------------
+# Artifact metadata shape (issue #77) — no double nesting
+# ---------------------------------------------------------------------------
+
+
+class _MetadataCapturingRun:
+    """Captures run.artifact(...) kwargs the way agent_reporter does."""
+
+    def __init__(self):
+        self.artifacts = []
+
+    def artifact(self, type_, url=None, title=None, storage_path=None, **metadata):
+        # Mirrors agent_reporter.RunReporter.artifact: trailing kwargs become
+        # the `metadata` jsonb column verbatim.
+        self.artifacts.append({"type": type_, "url": url, "title": title, "metadata": metadata})
+
+
+class TestArtifactMetadataNotDoubleNested:
+    """
+    Regression guard: artifact metadata must be flat, not nested under a
+    redundant "metadata" key.
+
+    agent_reporter.artifact() collects metadata via **kwargs, so a caller that
+    passes `metadata={...}` produces {"metadata": {...}} in the DB column —
+    i.e. metadata.metadata.total_vulns instead of metadata.total_vulns.
+    Callers MUST spread the mapping instead.
+    """
+
+    def test_audit_report_metadata_is_flat(self):
+        run = _MetadataCapturingRun()
+        payload = {
+            "total_vulns": 3,
+            "vuln_counts": {"high": 1},
+            "in_range": 2,
+            "major_required": 1,
+            "unknown": 0,
+        }
+
+        # The correct call shape: spread, not nested.
+        run.artifact("audit_report", title="Audit Report", **payload)
+
+        meta = run.artifacts[0]["metadata"]
+        assert "metadata" not in meta, "metadata must not be nested under itself"
+        assert meta["total_vulns"] == 3
+        assert meta["in_range"] == 2
+        assert meta["major_required"] == 1
+
+    def test_pull_request_metadata_is_flat(self):
+        run = _MetadataCapturingRun()
+        payload = {"existed": False, "branch": "deps/update-20260101-000000"}
+
+        run.artifact("pull_request", url="https://x/pr/1", title="PR", **payload)
+
+        meta = run.artifacts[0]["metadata"]
+        assert "metadata" not in meta
+        assert meta["existed"] is False
+        assert meta["branch"] == "deps/update-20260101-000000"
+
+    def test_nested_form_is_what_we_are_avoiding(self):
+        """Documents the defect: passing metadata= nests it one level too deep."""
+        run = _MetadataCapturingRun()
+        run.artifact("audit_report", title="t", metadata={"total_vulns": 3})
+
+        meta = run.artifacts[0]["metadata"]
+        # This is the buggy shape we must not produce in main.py.
+        assert meta == {"metadata": {"total_vulns": 3}}
+        assert "total_vulns" not in meta
+
+
+class TestMainArtifactCallSitesUseSpread:
+    """
+    Static guard on main.py: neither artifact call site may pass `metadata=`.
+
+    This catches a regression at the source rather than relying on a live run,
+    since the orchestrator's artifact emission is not covered by an automated
+    end-to-end test (see TESTING.md known gaps).
+    """
+
+    def test_no_metadata_kwarg_in_artifact_calls(self):
+        import inspect
+        import re
+
+        import main
+
+        source = inspect.getsource(main)
+        # Find each run.artifact( ... ) call and assert it has no `metadata=`.
+        for match in re.finditer(r"run\.artifact\((.*?)\n\s*\)", source, re.DOTALL):
+            call = match.group(1)
+            assert "metadata=" not in call, (
+                "run.artifact() must spread metadata (**{...}), not pass "
+                f"metadata={{...}} — offending call: {call[:120]}"
+            )

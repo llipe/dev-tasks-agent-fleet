@@ -35,3 +35,6 @@ packages/shared/generated/__pycache__
 # Scratch bodies passed to `gh --body-file`. GitHub is the source of truth for
 # issue and PR prose, so these drafts stay local.
 workstream/.pr-body-*.md
+
+# Exclude kiro's mcp config
+.kiro/settings/mcp.json

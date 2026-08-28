@@ -9,10 +9,10 @@
 -- ---------------------------------------------------------------------
 insert into github_installations (github_org_slug, installation_id, app_id, private_key_secret_arn)
 values (
-  'mi-org',                                                   -- slug de la organización
-  12345678,                                                   -- installation_id de GitHub
-  987654,                                                     -- app_id de GitHub
-  'arn:aws:secretsmanager:us-east-1:000000000000:secret:github-app-key'
+  'llipe',                                                    -- slug de la organización
+  156226839,                                                  -- installation_id de GitHub
+  4687256,                                                    -- app_id de GitHub
+  'arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2'
 )
 on conflict (github_org_slug) do update
   set installation_id        = excluded.installation_id,
@@ -24,15 +24,12 @@ on conflict (github_org_slug) do update
 --    Agregar una línea por repo. Formato: (full_name, default_branch)
 -- ---------------------------------------------------------------------
 with inst as (
-  select id from github_installations where github_org_slug = 'mi-org'
+  select id from github_installations where github_org_slug = 'llipe'
 ),
 repos(full_name, default_branch) as (
   values
-    ('mi-org/checkout-api',      'main'),
-    ('mi-org/catalog-service',   'main'),
-    ('mi-org/orders-worker',     'main'),
-    ('mi-org/payments-gateway',  'master'),
-    ('mi-org/notifications-svc', 'main')
+    ('llipe/memo-cli',           'main'),
+    ('llipe/tf-ecommerce-mgmt',  'main')
 )
 insert into repositories (installation_id, full_name, default_branch)
 select inst.id, repos.full_name, repos.default_branch
@@ -43,8 +40,11 @@ on conflict (installation_id, full_name) do update
       archived_at    = null;
 
 -- ---------------------------------------------------------------------
--- 3. Agente dependency-update  <<< EDITAR runtime_arn y max_runtime_seconds
---    max_runtime_seconds DEBE coincidir con el timeout real en AgentCore.
+-- 3. Agente dependency-update
+--    runtime_arn ya refleja el runtime desplegado (issue #77). Actualizar sólo
+--    si se redespliega con un nombre de runtime distinto.
+--    max_runtime_seconds (3600) DEBE coincidir con maxLifetime en agentcore.json.
+--    start_timeout_seconds (300) DEBE coincidir con idleRuntimeSessionTimeout.
 -- ---------------------------------------------------------------------
 insert into agents (
   slug, name, description, version,
@@ -57,13 +57,14 @@ values (
   'Dependency Update',
   'Corre npm audit sobre un repositorio y, opcionalmente, corrige las vulnerabilidades con un LLM y abre un PR.',
   '0.1.0',
-  'arn:aws:bedrock-agentcore:us-east-1:000000000000:runtime/dependency-update',
+  -- runtime_arn: reportado por `agentcore status` tras el deploy (issue #77).
+  'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0',
   'DEFAULT',
   true,
-  900,   -- 15 min: igualar al timeout de AgentCore
-  60,
-  300,
-  '{"fix_mode":"audit_only","fail_on_findings":true}'::jsonb,
+  3600,  -- 60 min: DEBE igualar maxLifetime en agentcore.json
+  120,   -- grace_seconds
+  300,   -- start_timeout_seconds: DEBE igualar idleRuntimeSessionTimeout en agentcore.json
+  '{"fix_mode":"audit_only","fail_on_findings":true,"max_fix_attempts":3}'::jsonb,
   $json${
     "type": "object",
     "additionalProperties": false,
@@ -81,6 +82,20 @@ values (
         "title": "Fallar si hay hallazgos",
         "description": "Solo aplica en modo audit_only.",
         "default": true
+      },
+      "max_fix_attempts": {
+        "type": "integer",
+        "title": "Intentos máximos del agente LLM",
+        "description": "Solo aplica en modo llm_fix. 0 desactiva el agente LLM. Rango 0..5.",
+        "minimum": 0,
+        "maximum": 5,
+        "default": 3
+      },
+      "base_branch": {
+        "type": "string",
+        "title": "Rama base del PR",
+        "description": "Rama contra la que se abre el PR. Por defecto la rama por defecto del repo (main).",
+        "default": "main"
       }
     }
   }$json$::jsonb
