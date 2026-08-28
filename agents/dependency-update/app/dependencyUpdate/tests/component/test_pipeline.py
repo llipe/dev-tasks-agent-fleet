@@ -17,6 +17,7 @@ Scenarios:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from main import (
     apply_defaults,
@@ -463,6 +464,72 @@ class TestBuildPrBodyFromState:
         body = main.build_pr_body_from_state(1, 0, [], [], [], val)
         assert "AI-Assisted Modifications" in body
         assert "**2**" in body
+
+    def test_security_summary_uses_id_set_diff_not_bucket_count(self):
+        """
+        Regression for issue #90: when no advisory classifies as in_range (all
+        unknown) but advisories actually disappeared, the Security Summary must
+        report the audit ID-set diff — not 0 — and it must agree with the
+        Package Changes section (both non-zero for a monorepo update).
+        """
+        import main
+        from audit import PackageChange, count_advisories_fixed, extract_advisories
+        from validator import CheckStatus, ValidationResult
+
+        fx = Path(__file__).parent.parent / "fixtures"
+        with open(fx / "audit_pnpm_before.json", encoding="utf-8") as f:
+            before_adv = extract_advisories(json.load(f), "pnpm")
+        with open(fx / "audit_pnpm_after.json", encoding="utf-8") as f:
+            after_adv = extract_advisories(json.load(f), "pnpm")
+
+        fixed_count = count_advisories_fixed(before_adv, after_adv)
+        assert fixed_count == 2  # 2001, 2002 disappeared; 2003 remains
+
+        # Post-update reclassification: everything left is `unknown`
+        # (empty patched_versions) — the classifier never yields in_range here,
+        # which is exactly the case that made bucket subtraction report 0.
+        from classifier import ClassifiedAdvisory
+
+        reclassified = [
+            ClassifiedAdvisory(
+                id=2003,
+                module="ansi-regex",
+                severity="moderate",
+                title="t",
+                url="u",
+                bucket="unknown",
+            )
+        ]
+
+        # A real package-version change from the monorepo diff.
+        pkg_changes = [
+            PackageChange(
+                name="glob-parent",
+                action="updated",
+                old_version="5.1.1",
+                new_version="5.1.2",
+            )
+        ]
+
+        val = ValidationResult()
+        val.record("test", CheckStatus.PASSED, "")
+
+        body = main.build_pr_body_from_state(
+            3,
+            1,
+            [],
+            reclassified,
+            pkg_changes,
+            val,
+            advisories_fixed_count=fixed_count,
+        )
+
+        # Security Summary reflects the ID-set diff, not a bucket count of 0.
+        assert "| Advisories fixed | 2 |" in body
+        # Package Changes section is present and lists the real change.
+        assert "glob-parent" in body
+        # Self-consistency: not the contradictory "fixed: 0" the bug produced.
+        assert "| Advisories fixed | 0 |" not in body
 
 
 class TestRefreshTokenIfStale:

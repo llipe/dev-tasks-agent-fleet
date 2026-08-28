@@ -1,0 +1,49 @@
+[
+  {
+    "name": "root",
+    "version": "0.0.0",
+    "path": "/workspace",
+    "dependencies": {},
+    "devDependencies": {
+      "turbo": {"version": "1.13.0", "from": "turbo@^1.13.0"}
+    }
+  },
+  {
+    "name": "@app/web",
+    "version": "1.0.0",
+    "path": "/workspace/apps/web",
+    "dependencies": {
+      "react": {
+        "version": "18.2.0",
+        "from": "react@^18.2.0",
+        "dependencies": {
+          "loose-envify": {
+            "version": "1.4.0",
+            "from": "loose-envify@^1.1.0",
+            "dependencies": {
+              "js-tokens": {"version": "4.0.0", "from": "js-tokens@^3.0.0 || ^4.0.0"}
+            }
+          }
+        }
+      },
+      "chokidar": {
+        "version": "3.5.3",
+        "from": "chokidar@^3.5.0",
+        "dependencies": {
+          "glob-parent": {"version": "5.1.2", "from": "glob-parent@~5.1.2"}
+        }
+      }
+    }
+  },
+  {
+    "name": "@app/api",
+    "version": "1.0.0",
+    "path": "/workspace/apps/api",
+    "dependencies": {
+      "express": {"version": "4.18.2", "from": "express@^4.18.0"}
+    },
+    "devDependencies": {
+      "typescript": {"version": "5.4.5", "from": "typescript@^5.0.0"}
+    }
+  }
+]

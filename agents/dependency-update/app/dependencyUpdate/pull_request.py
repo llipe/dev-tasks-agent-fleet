@@ -287,17 +287,27 @@ def build_pr_body(
     validation: ValidationResult,
     llm_used: bool,
     fix_attempts: int,
+    advisories_fixed_count: int | None = None,
 ) -> str:
     """
     Assemble the PR body markdown from conditional sections (spec §8.9).
 
     Sections 1 (security summary), 6 (package changes), and 7 (validation results)
     are always present. Sections 2-5 and 8 appear only when they carry content.
+
+    ``advisories_fixed_count`` is the authoritative Security Summary count (the
+    audit ID-set diff — issue #90). When ``None`` it falls back to the number of
+    rows in the Fixed Advisories table, preserving prior behavior for callers
+    that do not supply it.
     """
     sections: list[str] = []
 
+    fixed_count = (
+        advisories_fixed_count if advisories_fixed_count is not None else len(fixed_advisories)
+    )
+
     # 1. Security summary table (always present).
-    sections.append(_security_summary(vuln_before, vuln_after, len(fixed_advisories)))
+    sections.append(_security_summary(vuln_before, vuln_after, fixed_count))
 
     # 2. Fixed advisories table.
     if fixed_advisories:

@@ -1,0 +1,49 @@
+{
+  "advisories": {
+    "2001": {
+      "id": 2001,
+      "module_name": "acorn",
+      "severity": "moderate",
+      "title": "Regular Expression Denial of Service in acorn",
+      "url": "https://github.com/advisories/GHSA-acorn-2001",
+      "cves": ["CVE-2021-2001"],
+      "patched_versions": "",
+      "findings": [{"version": "6.4.0", "paths": ["some-tool>acorn"]}],
+      "vulnerable_versions": "<6.4.1"
+    },
+    "2002": {
+      "id": 2002,
+      "module_name": "glob-parent",
+      "severity": "high",
+      "title": "Regular Expression Denial of Service in glob-parent",
+      "url": "https://github.com/advisories/GHSA-glob-2002",
+      "cves": ["CVE-2021-2002"],
+      "patched_versions": "",
+      "findings": [{"version": "5.1.1", "paths": ["chokidar>glob-parent"]}],
+      "vulnerable_versions": "<5.1.2"
+    },
+    "2003": {
+      "id": 2003,
+      "module_name": "ansi-regex",
+      "severity": "moderate",
+      "title": "Inefficient Regular Expression Complexity in ansi-regex",
+      "url": "https://github.com/advisories/GHSA-ansi-2003",
+      "cves": ["CVE-2021-2003"],
+      "patched_versions": "",
+      "findings": [{"version": "3.0.0", "paths": ["strip-ansi>ansi-regex"]}],
+      "vulnerable_versions": ">=3.0.0 <3.0.1"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 2,
+      "high": 1,
+      "critical": 0
+    },
+    "dependencies": 120,
+    "devDependencies": 60,
+    "totalDependencies": 180
+  }
+}

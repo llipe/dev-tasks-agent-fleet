@@ -8,6 +8,7 @@ Provides:
     pnpm and npm JSON shapes into a uniform list of dicts.
   - ``snapshot_lockfile_packages(workspace, pm)`` — {name: version} from lockfile.
   - ``diff_packages(before, after)`` — compute changes between two snapshots.
+  - ``count_advisories_fixed(before, after)`` — advisory ID-set diff (issue #90).
 """
 
 from __future__ import annotations
@@ -246,14 +247,24 @@ def _extract_npm_advisories(audit_result: dict) -> list[dict]:
 
 def snapshot_lockfile_packages(workspace: str, pm: str) -> dict[str, str]:
     """
-    Return {package_name: version} for top-level (depth 0) dependencies.
+    Return {package_name: version} across the whole install tree.
 
-    Uses ``pnpm list --json --depth 0`` or ``npm list --json --depth 0``.
+    Uses a workspace-aware, recursive listing so that in a monorepo/workspace
+    layout the snapshot includes every workspace package's dependencies and the
+    transitive dependencies the lockfile actually resolved — not just the root
+    package's top-level deps (issue #90):
+
+      - pnpm: ``pnpm list -r --depth Infinity --json`` (``-r`` traverses all
+        workspace packages; ``--depth Infinity`` walks transitive deps).
+      - npm:  ``npm list --all --json`` (``--all`` walks the full tree).
+
+    The previous ``--depth 0`` listing saw none of the workspace or transitive
+    changes on a turbo monorepo, so ``diff_packages`` reported zero changes.
     """
     if pm == "pnpm":
-        cmd = ["pnpm", "list", "--json", "--depth", "0"]
+        cmd = ["pnpm", "list", "-r", "--depth", "Infinity", "--json"]
     else:
-        cmd = ["npm", "list", "--json", "--depth", "0"]
+        cmd = ["npm", "list", "--all", "--json"]
 
     try:
         result = subprocess.run(
@@ -277,40 +288,49 @@ def snapshot_lockfile_packages(workspace: str, pm: str) -> dict[str, str]:
     return _parse_list_json(data, pm)
 
 
+def _collect_deps(deps: dict, packages: dict[str, str]) -> None:
+    """
+    Recursively collect {name: version} from a nested dependencies mapping.
+
+    Both pnpm (`list -r --depth Infinity`) and npm (`list --all`) nest transitive
+    dependencies under a ``dependencies`` key on each dependency node. Walking
+    that tree captures workspace-package and transitive changes the lockfile
+    reconcile applied (issue #90). The first version seen for a name wins — the
+    snapshot only needs presence + a representative version for the diff.
+    """
+    if not isinstance(deps, dict):
+        return
+    for name, info in deps.items():
+        if not isinstance(info, dict):
+            continue
+        if "version" in info and name not in packages:
+            packages[name] = str(info["version"])
+        nested = info.get("dependencies")
+        if isinstance(nested, dict):
+            _collect_deps(nested, packages)
+
+
 def _parse_list_json(data: dict | list, pm: str) -> dict[str, str]:
     """
     Parse the JSON output of pnpm/npm list into {name: version}.
 
-    pnpm list --json returns a list of workspace entries:
-      [{"name": "...", "dependencies": {"pkg": {"version": "..."}}, ...}]
+    pnpm ``list -r --json`` returns a list of workspace entries:
+      [{"name": "...", "dependencies": {"pkg": {"version": "...", "dependencies": {...}}}, ...}]
 
-    npm list --json returns a single object:
-      {"name": "...", "dependencies": {"pkg": {"version": "..."}}, ...}
+    npm ``list --all --json`` returns a single object with nested dependencies:
+      {"name": "...", "dependencies": {"pkg": {"version": "...", "dependencies": {...}}}}
+
+    Both are walked recursively so workspace-package and transitive dependencies
+    are captured, not only the root's top-level deps (issue #90).
     """
     packages: dict[str, str] = {}
 
-    if isinstance(data, list):
-        # pnpm format: array of workspace entries
-        for entry in data:
-            if not isinstance(entry, dict):
-                continue
-            deps = entry.get("dependencies", {})
-            if isinstance(deps, dict):
-                for name, info in deps.items():
-                    if isinstance(info, dict) and "version" in info:
-                        packages[name] = str(info["version"])
-            dev_deps = entry.get("devDependencies", {})
-            if isinstance(dev_deps, dict):
-                for name, info in dev_deps.items():
-                    if isinstance(info, dict) and "version" in info:
-                        packages[name] = str(info["version"])
-    elif isinstance(data, dict):
-        # npm format: single object
-        deps = data.get("dependencies", {})
-        if isinstance(deps, dict):
-            for name, info in deps.items():
-                if isinstance(info, dict) and "version" in info:
-                    packages[name] = str(info["version"])
+    entries: list = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        _collect_deps(entry.get("dependencies", {}), packages)
+        _collect_deps(entry.get("devDependencies", {}), packages)
 
     return packages
 
@@ -338,3 +358,26 @@ def diff_packages(before: dict[str, str], after: dict[str, str]) -> list[Package
             )
 
     return changes
+
+
+def count_advisories_fixed(before: list[dict], after: list[dict]) -> int:
+    """
+    Count advisories resolved between the pre- and post-update audits (issue #90).
+
+    Correct measure = the number of distinct advisory IDs present in the
+    before-audit but absent in the after-audit. This deliberately replaces the
+    old ``(in_range before) - (in_range after)`` bucket subtraction, which
+    reported 0 on any repo where no advisory was ever classified ``in_range``
+    (e.g. a monorepo whose advisories all land in the ``unknown`` bucket) even
+    though real advisories disappeared across the update.
+
+    Advisories that appear only in ``after`` (newly introduced) are ignored —
+    they are not "fixed" — so the result is never negative. IDs are deduplicated
+    before counting.
+
+    Both arguments are the normalized advisory dicts produced by
+    ``extract_advisories`` (each with an ``id`` key).
+    """
+    before_ids = {adv.get("id") for adv in before if adv.get("id") is not None}
+    after_ids = {adv.get("id") for adv in after if adv.get("id") is not None}
+    return len(before_ids - after_ids)
