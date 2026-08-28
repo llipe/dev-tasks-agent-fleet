@@ -26,12 +26,12 @@
 - [x] `agentcore` CLI installed and on PATH (`agentcore --version`).
 - [x] Docker running with ARM64 build support (the runtime image is ARM64).
 - [x] Supabase schema already applied (`001_schema.sql`) with RLS deny-all.
-- [ ] `github_installations` row exists (real `installation_id`, `app_id`,
+- [x] `github_installations` row exists (real `installation_id`, `app_id`,
       `private_key_secret_arn`) — see block 1 of `002_seed.sql`.
-- [ ] Secrets Manager entries exist:
+- [x] Secrets Manager entries exist:
   - `agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY` (Supabase service role key)
   - the GitHub App private key referenced by `private_key_secret_arn`
-- [ ] Bedrock model access granted for `MODEL_ID`
+- [x] Bedrock model access granted for `MODEL_ID`
       (default `us.anthropic.claude-sonnet-4-6`).
 
 ---
@@ -102,9 +102,9 @@ Separate secret at `agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY` (read by
 key string, nothing wrapped. Both secrets are covered by the same
 `agent-fleet/prod/*` IAM grant in step 7.6.
 
-- [ ] GitHub App PEM stored as raw plaintext `SecretString` under `agent-fleet/prod/*`.
-- [ ] Its ARN placed in `github_installations.private_key_secret_arn`.
-- [ ] Supabase service role key stored as plaintext `SecretString`.
+- [x] GitHub App PEM stored as raw plaintext `SecretString` under `agent-fleet/prod/*`.
+- [x] Its ARN placed in `github_installations.private_key_secret_arn`.
+- [x] Supabase service role key stored as plaintext `SecretString`.
 
 ---
 
@@ -118,7 +118,7 @@ agentcore deploy -y
 Expected: build succeeds, image pushed, runtime created/updated. Capture the
 full console output in case of failure.
 
-- [ ] `agentcore deploy -y` completed without error.
+- [x] `agentcore deploy -y` completed without error.
 
 ---
 
@@ -135,8 +135,8 @@ Expected: runtime status `READY`. Copy the **runtime ARN** — it looks like:
 arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT_ID>:runtime/dependency_update-<suffix>
 ```
 
-- [ ] Status reports runtime `READY`.
-- [ ] `runtime_arn` recorded: `__________________________________________`
+- [x] Status reports runtime `READY`.
+- [x] `runtime_arn` recorded: `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0`
 
 ---
 
@@ -152,7 +152,7 @@ carry `max_fix_attempts` (0..5) and `base_branch`.
 > Ask the developer agent to make this one-line edit and commit it to the branch
 > once you have the ARN, or edit it yourself and push.
 
-- [ ] `runtime_arn` in `002_seed.sql` updated to the real value.
+- [x] `runtime_arn` in `002_seed.sql` updated to the real value.
 
 ---
 
@@ -182,7 +182,7 @@ select slug, runtime_arn, max_runtime_seconds, grace_seconds, start_timeout_seco
 from agents where slug = 'dependency-update';
 ```
 
-- [ ] Seed applied; the `agents` row shows the real ARN and
+- [x] Seed applied; the `agents` row shows the real ARN and
       `max_runtime_seconds=3600`, `grace_seconds=120`, `start_timeout_seconds=300`.
 
 ---
@@ -220,8 +220,8 @@ Example policy statement (scope the resources — do **not** use `*`):
 > profile. If using a cross-region inference profile, also allow
 > `bedrock:InvokeModel` on the profile ARN and the underlying regional model ARNs.
 
-- [ ] Execution role can read `agent-fleet/prod/*` secrets.
-- [ ] Execution role can invoke the configured Bedrock model.
+- [x] Execution role can read `agent-fleet/prod/*` secrets.
+- [x] Execution role can invoke the configured Bedrock model.
 
 ---
 
@@ -245,10 +245,10 @@ select count(*) from run_events where run_id = '<uuid>';
 select type from run_artifacts where run_id = '<uuid>';
 ```
 
-- [ ] `runs`: `status=succeeded`, `outcome=no_vulnerabilities`.
-- [ ] `run_steps`: `resolve_credentials, checkout, detect_toolchain, install, audit` present.
-- [ ] `run_events`: rows present (non-zero).
-- [ ] `run_artifacts`: an `audit_report` row present; **no** `pull_request`.
+- [x] `runs`: `status=succeeded`, `outcome=no_vulnerabilities`.
+- [x] `run_steps`: `resolve_credentials, checkout, detect_toolchain, install, audit` present.
+- [x] `run_events`: rows present (non-zero).
+- [x] `run_artifacts`: an `audit_report` row present; **no** `pull_request`.
 
 ### 7.8 — llm_fix on a repo with available updates
 
@@ -256,9 +256,9 @@ select type from run_artifacts where run_id = '<uuid>';
 agentcore invoke '{"prompt": "{\"run_id\":\"<uuid2>\",\"repository_org\":\"<org>\",\"repository_name\":\"<repo-with-vulns>\",\"params\":{\"fix_mode\":\"llm_fix\",\"max_fix_attempts\":3}}"}'
 ```
 
-- [ ] A PR was opened on the target repo (branch `deps/update-YYYYMMDD-HHMMSS`).
-- [ ] `run_artifacts` has a `pull_request` row with the PR URL.
-- [ ] `runs.outcome` is one of `fixed` / `partial` (or `needs_review` if a major
+- [x] A PR was opened on the target repo (branch `deps/update-YYYYMMDD-HHMMSS`).
+- [x] `run_artifacts` has a `pull_request` row with the PR URL.
+- [x] `runs.outcome` is one of `fixed` / `partial` (or `needs_review` if a major
       bump remains — the PR is still opened first).
 
 ### 7.9 — Idempotency: second invoke while the PR is open
@@ -279,8 +279,8 @@ agentcore invoke '{"prompt": "{\"run_id\":\"<uuid3>\",\"repository_org\":\"<org>
 agentcore invoke '{"prompt": "{\"run_id\":\"<uuid4>\"}"}'   # missing org + name
 ```
 
-- [ ] `runs`: `status=failed`, `error_code=INVALID_PARAMS`.
-- [ ] No `checkout` step (no clone happened).
+- [x] `runs`: `status=failed`, `error_code=INVALID_PARAMS`.
+- [x] No `checkout` step (no clone happened).
 
 ### 7.11 — Metrics populated
 
@@ -292,11 +292,11 @@ select metrics from runs where id = '<uuid2>';
 
 Expect a JSON object containing:
 
-- [ ] `llm_used` (bool) — `true` if the fix loop ran.
-- [ ] `fix_attempts` (int, 0..5).
-- [ ] `vulnerabilities_before`, `vulnerabilities_after`.
-- [ ] `advisories_fixed`, `advisories_major_required`, `advisories_unknown`.
-- [ ] `packages_changed`.
+- [x] `llm_used` (bool) — `true` if the fix loop ran.
+- [x] `fix_attempts` (int, 0..5).
+- [x] `vulnerabilities_before`, `vulnerabilities_after`.
+- [x] `advisories_fixed`, `advisories_major_required`, `advisories_unknown`.
+- [x] `packages_changed`.
 
 ---
 
