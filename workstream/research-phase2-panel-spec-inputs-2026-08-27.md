@@ -5,6 +5,26 @@
 | Version | Date       | Summary                                                                 | Author     |
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------- |
 | 1.0     | 2026-08-27 | Initial research. Scoped to what the Phase 2 Next.js panel specification must build on: existing reference artifacts, the agent's live invocation contract, RLS/Realtime reachability, and the test-harness starting point. | researcher |
+| 1.1     | 2026-08-27 | Staleness addendum after merging `origin/main` (11 commits, issue #77 deployment). Provenance SHA intentionally unchanged — see the addendum immediately below Provenance for which findings moved. | researcher |
+
+## Staleness addendum — `origin/main` merged at `c8d515e`
+
+The Provenance SHA below (`411b027`) is left as recorded, because that is the commit these findings were read from. `origin/main` has since advanced 11 commits, completing issue #77 (agent deployment + E2E). Re-verified against the merged tree:
+
+| Finding | Status after merge |
+|---|---|
+| S2 payload contract (`repository_org`/`repository_name`) | **Unchanged and confirmed.** `main.py:64` `_REQUIRED_FIELDS` is identical. F1 / issue #89 stand in full |
+| S2 `prompt` wrapper open question | **Partially answered.** `docs/runbooks/issue-77-deployment-e2e.md:236` shows the CLI invoking with the payload wrapped: `{"prompt": "{\"run_id\":...}"}`. Evidence the envelope is expected on the CLI path; whether the panel's `InvokeAgentRuntime` call must wrap is still unconfirmed, and `unwrap_payload` tolerates both |
+| S5 `max_fix_attempts` absent from `params_schema` | **Resolved.** Added to `002_seed.sql` with `minimum: 0, maximum: 5, default: 3`, and to `default_params` |
+| S5 Spanish `params_schema` labels | **Not resolved.** `"Modo de corrección"`, `"Fallar si hay hallazgos"`, `"Intentos máximos del agente LLM"` and all descriptions remain Spanish |
+| S5 `runtime_arn` placeholder | **Resolved.** Real deployed ARN now seeded |
+| Relationships — "`agents.max_runtime_seconds` (900), `grace_seconds` (60)" | **Stale.** Those are the `001_schema.sql` column defaults, which are unchanged. The seeded `dependency-update` row now overrides them to **3600** and **120** — a 60-minute agent, not 15. The shared-clock coupling argument is unaffected; the numbers are not |
+| S5 schema not applied / no `supabase/migrations` | **Unchanged.** Still applied by hand; still no migration directory. F6 stands |
+| S5 RLS zero policies | **Unchanged.** F2 stands |
+| S4 no JS/TS application test package | **Unchanged.** F7 stands |
+| S8 issue #77 open items (`runs.metrics`) | **Resolved.** `build_metrics()` added to `main.py`; metrics persisted at termination |
+
+Net effect on the seven fix proposals: **F1, F2, F4, F5, F6, F7 stand unchanged. F3 is reduced to the Spanish-label half.**
 
 ## Provenance
 

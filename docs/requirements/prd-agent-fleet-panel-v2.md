@@ -7,6 +7,7 @@
 | 1.0     | 2026-08-26 | Initial version. Reformatted from `PRD-agent-fleet-v2-consolidado.md` (Draft 2, tmp) into standard PRD structure. Decisions (D1-D14) and risks (R1-R7) preserved. | product-engineer |
 | 1.1     | 2026-08-26 | Reference artifacts moved from `tmp/` to `docs/reference/`. All mentions now link to their files. | product-engineer |
 | 2.0     | 2026-08-26 | Translated to English. Introduced two-phase delivery model: Phase 1 (database + agent + base API) and Phase 2 (Next.js panel for visualization). | product-engineer |
+| 2.4     | 2026-08-27 | Reconciled §19 against `origin/main` at `c8d515e` (issue #77 deployment merged). **F3 partially resolved upstream** — `max_fix_attempts` and the real `runtime_arn` are now seeded; only the Spanish-label fix remains. F1 re-verified unchanged. Recorded the seeded timeout change (`max_runtime_seconds` 900 → 3600, `grace_seconds` 60 → 120) and its effect on log volume. Noted that `docs/runbooks/issue-77-deployment-e2e.md` already carries the correct payload shape while the older manual-config runbook still does not. | product-engineer |
 | 2.3     | 2026-08-27 | Linked the Supabase Auth backlog item to the new [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md). Recorded in F2 that the two deny-all hardening items (explicit `REVOKE`, `security_invoker` on `v_runs`) land with the auth work rather than in Phase 2, with the rationale. | product-engineer |
 | 2.2     | 2026-08-27 | Added §19 Fix Proposals — seven research findings (F1-F7) with proposed fixes, severity, and owner. F1 (agent invocation payload contract) additionally tracked as [#89](https://github.com/llipe/dev-tasks-agent-fleet/issues/89) because the panel is its only production caller. F2 resolved in favour of a server-side Realtime relay over an `anon` read policy — the anon key ships in the browser bundle and Supabase's API is public, so D16's private-Fly mitigation would not have covered that exposure. | product-engineer |
 | 2.1     | 2026-08-27 | Spec-readiness pass. Resolved D16 (no user auth; R1 mitigation is a Fly deploy setting, not code), D17 (dashboard density toggle, default dense rows). Fixed the §12 Supabase-credential contradiction against D15. Updated Phase 1 status (agent implemented, deployment pending). Scoped Phase 2 to four screens — All runs / Repositories / Settings / System health moved to Non-Goals. Deferred DESIGN.md-derived UI requirements to [`prd-agent-fleet-panel-v3-ui-depth.md`](prd-agent-fleet-panel-v3-ui-depth.md). Added acceptance criteria for FR10, FR11, FR13, FR14. Added FR11a (`v_runs` as read source). Resolved Open Questions #3 and #6. Folded in three correctness corrections from [`research-phase2-panel-spec-inputs-2026-08-27.md`](../../workstream/research-phase2-panel-spec-inputs-2026-08-27.md): the authoritative agent invocation payload contract (`repository_org`/`repository_name`, not a uuid), the RLS deny-all constraint on data-access architecture, and two `002_seed.sql` `params_schema` defects that block the invoke form. | product-engineer |
@@ -544,7 +545,7 @@ Severity key: **Blocking** = Phase 2 cannot function without it. **Correctness**
 |---|---|---|---|---|
 | F1 | Agent invocation payload contract mismatch | **Blocking** | See F1 below — panel-side translation + runbook correction. Tracked as [#89](https://github.com/llipe/dev-tasks-agent-fleet/issues/89) | Phase 2 spec + `developer` |
 | F2 | RLS deny-all blocks browser-side reads and Realtime | **Blocking** | See F2 below — server-side data access, no anon client | Phase 2 spec |
-| F3 | `002_seed.sql` `params_schema` is Spanish and omits `max_fix_attempts` | **Correctness** | See F3 below — seed correction re-applied to the live database | Phase 2 spec (prerequisite task) |
+| F3 | `002_seed.sql` `params_schema` is Spanish and omits `max_fix_attempts` | **Correctness** | **Partially resolved upstream** by issue #77 — `max_fix_attempts` and the real `runtime_arn` are now seeded. Only the Spanish-label fix remains. See F3 below | Phase 2 spec (prerequisite task) |
 | F4 | `v_runs` cannot be a Realtime source; display source ≠ subscription source | **Correctness** | See F4 below — client-side `effective_status` recomputation | Phase 2 spec |
 | F5 | `credentials.ts` token-extraction fallback is unsafe; comments are Spanish; file is unplaced | **Correctness** | See F5 below | Phase 2 spec |
 | F6 | `001_schema.sql` / `002_seed.sql` are documents, not migrations | **Hygiene** | See F6 below — adopt Supabase CLI migrations | Phase 2 spec |
@@ -565,7 +566,7 @@ Three documents describe three different shapes, and only the code is right:
 **Proposed fix (three parts):**
 
 1. **Panel-side translation (Phase 2 spec, normative).** The invoke route handler resolves `repository_id` → `repositories.full_name`, splits on the first `/`, and emits `repository_org` + `repository_name` at the payload top level. `repository_id` remains the FK on the `runs` row and is **never** sent to the agent. The split must reject a `full_name` without exactly one `/` rather than sending a malformed payload.
-2. **Runbook correction.** Fix the §9 E2E invoke examples in `pending-manual-config-dependency-update-agent.md` to the authoritative shape. As written they fail validation, so anyone following the runbook for issue #77's E2E step gets `INVALID_PARAMS` and debugs the wrong layer.
+2. **Runbook correction.** Fix the §9 E2E invoke examples in `pending-manual-config-dependency-update-agent.md` to the authoritative shape. As written they fail validation, so anyone following that file gets `INVALID_PARAMS` and debugs the wrong layer. **Status after the `origin/main` merge:** the *newer* `docs/runbooks/issue-77-deployment-e2e.md` already uses the correct shape (line 236), so the corrected examples exist — but the older file still carries the wrong ones and is not marked superseded. Either fix it or point it at the new runbook; two runbooks disagreeing is worse than one being wrong.
 3. **Contract test (Phase 2 spec, normative).** A test asserting the panel's emitted payload satisfies `_REQUIRED_FIELDS`. Because the panel is TypeScript and the agent is Python, no compiler catches drift here — this boundary needs an explicit test or it will break silently again. Suggested form: a fixture of the exact payload the panel produces, asserted against the agent's `validate_payload` contract.
 
 **Why it is tracked as an issue rather than only as a spec line.** The UI is the only production caller of this contract — the panel is what will actually trigger the agent, and no code path exercises the translation today. It needs a checklist item with a verification step, not a paragraph. Tracked as [#89](https://github.com/llipe/dev-tasks-agent-fleet/issues/89).
@@ -593,21 +594,20 @@ Three documents describe three different shapes, and only the code is right:
 
 Both fixes are specified as FR17 and FR18 in [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md) rather than here, because they are cheap to land alongside the policy work and premature in isolation: with no policies to protect, `REVOKE` and `security_invoker` guard nothing that deny-all does not already guard. Phase 2 **must not** grant `anon` access to any table or view, which keeps both traps closed until the auth work lands.
 
-### F3 — `002_seed.sql` `params_schema` defects (Correctness)
+### F3 — `002_seed.sql` `params_schema` defects (Correctness — **partially resolved upstream**)
+
+> **Status update (merge of `origin/main` at `c8d515e`, issue #77).** Two of the three defects were fixed upstream while this PRD was being written. `max_fix_attempts` is now present in `params_schema` with `minimum: 0, maximum: 5, default: 3` and in `default_params`. `runtime_arn` now carries the real deployed ARN. **The Spanish-label defect remains** and is the only part of F3 still open.
+>
+> The merge also changed the seeded timeouts materially: `max_runtime_seconds` 900 → **3600** and `grace_seconds` 60 → **120**, to match `maxLifetime` in `agentcore.json`. The `001_schema.sql` column defaults are unchanged; the seed overrides them. This does not alter any requirement, but it means a single run can now span 60 minutes rather than 15 — relevant to the log-viewport bound in the Phase 2 spec (SD11) and to R3's growth argument.
 
 **Finding.** The invoke form renders directly from `agents.params_schema` (D2), so defects in seed data become defects in the UI.
 
-1. `title` and `description` values are Spanish — a Spanish UI, violating the repository's English-only rule through *data*, so no linter can catch it.
-2. `max_fix_attempts` is absent from the schema, but the agent accepts it and clamps it to 0..5 (`main.py:98-121`). The generated form cannot expose a real parameter. This is the R4 drift class, already present before the panel exists.
+1. ~~`max_fix_attempts` is absent from the schema~~ — **resolved upstream.**
+2. `title` and `description` values are Spanish — a Spanish UI, violating the repository's English-only rule through *data*, so no linter can catch it. Current values: `"Modo de corrección"`, `"Fallar si hay hallazgos"`, `"Intentos máximos del agente LLM"`, plus all three descriptions. **Still open.**
 
-**Proposed fix.** Correct `002_seed.sql` and re-apply to the live database as a Phase 2 prerequisite task, before the invoke form is built:
+**Proposed fix.** Translate all `title` / `description` strings to English and re-apply as a Phase 2 prerequisite, before the invoke form is built. The seed is idempotent via `on conflict`, so re-application is safe. It **must** go through F6's migration tooling rather than another hand-paste into the SQL Editor.
 
-- Translate all `title` / `description` strings to English.
-- Add `max_fix_attempts` as `{"type": "integer", "minimum": 0, "maximum": 5, "default": 3}` with an English title and description noting it only applies in `llm_fix` mode.
-- Add `runtime_arn` from the actual deployment (already a known pending edit, see §16).
-- The seed is idempotent via `on conflict`, so re-application is safe. It **must** go through F6's migration tooling rather than another hand-paste into the SQL Editor.
-
-**Standing mitigation.** The deeper problem is that nothing validates `params_schema` against what the agent accepts. A cheap guard: a test asserting the seeded schema's property names are a subset of the agent's known parameter names. That closes R4's feedback loop without building schema cross-validation infrastructure.
+**Standing mitigation.** The deeper problem is that nothing validates `params_schema` against what the agent accepts. `max_fix_attempts` being fixed upstream does not close that gap — it closed one instance of it. A cheap guard: a test asserting the seeded schema's property names are a subset of the agent's known parameter names. That closes R4's feedback loop without building schema cross-validation infrastructure.
 
 ### F4 — `v_runs` display source vs. Realtime subscription source (Correctness)
 

@@ -5,6 +5,7 @@
 | Version | Date       | Summary         | Author             |
 | ------- | ---------- | --------------- | ------------------ |
 | 1.0     | 2026-08-27 | Initial version. Derived from PRD v2.2 (Phase 2 scope only) and research artifact at commit `411b027`. Records twelve specification decisions (SD1-SD12) and resolves fix proposals F1-F7. | product-engineer |
+| 1.1     | 2026-08-27 | Reconciled against `origin/main` at `c8d515e` (issue #77 deployment merged). F1 re-verified unchanged. `prompt` wrapping now has partial evidence from the deployment runbook (§9.1, OQ2). SD11 gains a sizing note: the seeded `max_runtime_seconds` is 3600, not the 900 assumed from schema defaults, so a run can emit ~4x the log volume. | product-engineer |
 
 ---
 
@@ -401,7 +402,7 @@ Rendering does **not** use a generic JSON-Schema form library. `react-jsonschema
 
 Fire-and-forget from the route handler (D7) using `@aws-sdk/client-bedrock-agentcore`. Target from `agents.runtime_arn` + `runtime_qualifier`. No retry on failure — mark `failed_to_start` and stop (PRD §12); the reaper covers accepted-but-never-started.
 
-The panel must determine whether `InvokeAgentRuntime` wraps the payload in a `prompt` key. The agent's `unwrap_payload` (`main.py:67-82`) tolerates both, so this is low-risk, but the spec requires it be **confirmed by observation** during the first integration test rather than assumed.
+The panel must determine whether `InvokeAgentRuntime` wraps the payload in a `prompt` key. **Partial evidence:** `docs/runbooks/issue-77-deployment-e2e.md:236` shows the AgentCore CLI invoking with the payload wrapped as `{"prompt": "{\"run_id\":...}"}`, so the envelope is expected on the CLI path. Whether the SDK's `InvokeAgentRuntime` requires the panel to wrap explicitly is still unconfirmed. The agent's `unwrap_payload` (`main.py:67-82`) tolerates both, so this remains low-risk, but the spec requires it be **confirmed by observation** on the first integration test rather than assumed in either direction.
 
 ### SD9 — Adopt `credentials.ts` with the F5 corrections
 
@@ -438,6 +439,8 @@ Four screens plus the invoke dialog. `/DESIGN.md` is the visual contract — thi
 ### SD11 — Log viewer bounds its initial fetch
 
 PRD §12 requires the run detail not attempt an unbounded `run_events` fetch (R3: this table grows two orders of magnitude beyond the others). Phase 2: fetch the **most recent 2,000 events** on initial load, with an explicit "load earlier" control if `seq` gaps remain above the window. Virtualization is deferred (v3 C13); 2,000 rows of `pre-wrap` text is acceptable un-virtualized, and the bound prevents the pathological case.
+
+**Sizing note.** The seeded agent's `max_runtime_seconds` is **3600** (60 minutes, matching `maxLifetime` in `agentcore.json`) — not the 900 that `001_schema.sql` defaults to. A run can therefore emit four times the log volume an earlier reading of this spec would have assumed. The 2,000-event window is a bound, not a capacity estimate, and no measurement of events-per-run exists yet. The first real 60-minute `llm_fix` run should be used to check whether 2,000 is a reasonable window or a routinely-hit ceiling; if it is routinely hit, virtualization moves from v3 into Phase 2.
 
 Live tail follows `/DESIGN.md` §6.6: auto-scroll when within 24px of bottom, scroll-up pauses, clicking "live tail" resumes.
 
@@ -590,7 +593,7 @@ Inherited and unchanged: R1 (accepted via D16), R2, R3, R5, R6 from PRD §17.
 ## 17. Open Questions
 
 1. **Fly OIDC socket response shape and `sub` claim normalization** (PRD Open Question #5). Blocks AC8. Requires probing a live Machine; cannot be closed from documentation.
-2. **`InvokeAgentRuntime` `prompt` wrapping** — resolve by observation on first integration (§9.1). Low risk either way.
+2. **`InvokeAgentRuntime` `prompt` wrapping** — the AgentCore CLI wraps (`docs/runbooks/issue-77-deployment-e2e.md:236`); whether the SDK path requires the panel to wrap explicitly is unconfirmed. Resolve by observation on first integration (§9.1). Low risk — `unwrap_payload` tolerates both.
 3. **`runs` timeout-snapshot null constraints.** The research artifact did not verify whether `runs.max_runtime_seconds` and siblings are `not null` in `001_schema.sql`. §8.2 requires the panel enforce them regardless, but knowing the DB-level constraint determines whether a panel bug fails loudly or writes an unreapable row.
 4. **Does the operator want the "load earlier" control in Phase 2** (SD11), or is the 2,000-event window sufficient without it? Cutting it is a small scope reduction.
 5. **Fly region and machine sizing** — not a spec concern, but needed before deploy.
