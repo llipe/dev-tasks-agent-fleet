@@ -43,8 +43,9 @@ on conflict (installation_id, full_name) do update
       archived_at    = null;
 
 -- ---------------------------------------------------------------------
--- 3. Agente dependency-update  <<< EDITAR runtime_arn y max_runtime_seconds
---    max_runtime_seconds DEBE coincidir con el timeout real en AgentCore.
+-- 3. Agente dependency-update  <<< EDITAR runtime_arn tras el deploy
+--    max_runtime_seconds (3600) DEBE coincidir con maxLifetime en agentcore.json.
+--    start_timeout_seconds (300) DEBE coincidir con idleRuntimeSessionTimeout.
 -- ---------------------------------------------------------------------
 insert into agents (
   slug, name, description, version,
@@ -57,13 +58,15 @@ values (
   'Dependency Update',
   'Corre npm audit sobre un repositorio y, opcionalmente, corrige las vulnerabilidades con un LLM y abre un PR.',
   '0.1.0',
+  -- runtime_arn: reemplazar con el ARN real reportado por `agentcore status`
+  -- tras `agentcore deploy` (issue #77, sub-task 7.4).
   'arn:aws:bedrock-agentcore:us-east-1:000000000000:runtime/dependency-update',
   'DEFAULT',
   true,
-  900,   -- 15 min: igualar al timeout de AgentCore
-  60,
-  300,
-  '{"fix_mode":"audit_only","fail_on_findings":true}'::jsonb,
+  3600,  -- 60 min: DEBE igualar maxLifetime en agentcore.json
+  120,   -- grace_seconds
+  300,   -- start_timeout_seconds: DEBE igualar idleRuntimeSessionTimeout en agentcore.json
+  '{"fix_mode":"audit_only","fail_on_findings":true,"max_fix_attempts":3}'::jsonb,
   $json${
     "type": "object",
     "additionalProperties": false,
@@ -81,6 +84,20 @@ values (
         "title": "Fallar si hay hallazgos",
         "description": "Solo aplica en modo audit_only.",
         "default": true
+      },
+      "max_fix_attempts": {
+        "type": "integer",
+        "title": "Intentos máximos del agente LLM",
+        "description": "Solo aplica en modo llm_fix. 0 desactiva el agente LLM. Rango 0..5.",
+        "minimum": 0,
+        "maximum": 5,
+        "default": 3
+      },
+      "base_branch": {
+        "type": "string",
+        "title": "Rama base del PR",
+        "description": "Rama contra la que se abre el PR. Por defecto la rama por defecto del repo (main).",
+        "default": "main"
       }
     }
   }$json$::jsonb

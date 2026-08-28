@@ -280,6 +280,33 @@ def build_return_payload(
     }
 
 
+# Metric fields persisted into the ``runs.metrics`` column (issue #77, req 52).
+# status/outcome/error_code/pr_url are their own columns, not metrics.
+_METRIC_FIELDS = (
+    "vulnerabilities_before",
+    "vulnerabilities_after",
+    "advisories_fixed",
+    "advisories_major_required",
+    "advisories_unknown",
+    "packages_changed",
+    "fix_attempts",
+    "llm_used",
+)
+
+
+def build_metrics(result: dict) -> dict:
+    """
+    Project the metric fields out of a return payload (issue #77, req 52).
+
+    The pipeline already computes ``llm_used``, ``fix_attempts``, and the
+    vulnerability / advisory / package counts for the entrypoint return payload.
+    This helper selects exactly those fields so the same values are persisted
+    into the ``runs.metrics`` jsonb column at termination, keeping the returned
+    payload and the stored metrics in lockstep from a single source.
+    """
+    return {field: result[field] for field in _METRIC_FIELDS}
+
+
 # ---------------------------------------------------------------------------
 # Clone logic (req 12, 18)
 # ---------------------------------------------------------------------------
@@ -362,15 +389,22 @@ def classify_advisories(
 # ---------------------------------------------------------------------------
 
 
-def _report_terminal(run: RunReporter, status: str, outcome: str, error_code: str | None) -> None:
+def _report_terminal(
+    run: RunReporter,
+    status: str,
+    outcome: str,
+    error_code: str | None,
+    metrics: dict | None = None,
+) -> None:
     """Call run.succeed or run.fail with the correct argument signature."""
     if status == "succeeded":
-        run.succeed(outcome)
+        run.succeed(outcome, metrics=metrics)
     else:
         run.fail(
             error_code=error_code or "UNKNOWN",
             error_message=f"{outcome} ({error_code})",
             outcome=outcome,
+            metrics=metrics,
         )
 
 
@@ -490,7 +524,6 @@ async def invoke(payload: dict, context):
                 status, outcome, error_code = determine_outcome(
                     classified, params, None, has_pr=False
                 )
-                _report_terminal(run, status, outcome, error_code)
                 result = build_return_payload(
                     status=status,
                     outcome=outcome,
@@ -499,6 +532,7 @@ async def invoke(payload: dict, context):
                     advisories_major_required=buckets["major_required"],
                     advisories_unknown=buckets["unknown"],
                 )
+                _report_terminal(run, status, outcome, error_code, metrics=build_metrics(result))
                 yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                 return
 
@@ -517,7 +551,6 @@ async def invoke(payload: dict, context):
                         has_pr=False,
                         has_working_changes=False,
                     )
-                    _report_terminal(run, status, outcome, error_code)
                     result = build_return_payload(
                         status=status,
                         outcome=outcome,
@@ -525,6 +558,9 @@ async def invoke(payload: dict, context):
                         vuln_before=audit_before.total_vulns,
                         advisories_major_required=buckets["major_required"],
                         advisories_unknown=buckets["unknown"],
+                    )
+                    _report_terminal(
+                        run, status, outcome, error_code, metrics=build_metrics(result)
                     )
                     yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                     return
@@ -588,11 +624,6 @@ async def invoke(payload: dict, context):
                 violation_details = check_mandate(workspace, pkg_json_before)
                 if violation_details is not None:
                     log.error("Mandate violation detected: %s", violation_details)
-                    run.fail(
-                        error_code="MANDATE_VIOLATION",
-                        error_message=f"LLM modified package.json: {violation_details}",
-                        outcome="needs_review",
-                    )
                     result = build_return_payload(
                         status="failed",
                         outcome="needs_review",
@@ -605,6 +636,12 @@ async def invoke(payload: dict, context):
                         advisories_major_required=_bucket_counts(reclassified)["major_required"],
                         advisories_unknown=_bucket_counts(reclassified)["unknown"],
                     )
+                    run.fail(
+                        error_code="MANDATE_VIOLATION",
+                        error_message=f"LLM modified package.json: {violation_details}",
+                        outcome="needs_review",
+                        metrics=build_metrics(result),
+                    )
                     yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                     return
 
@@ -613,7 +650,6 @@ async def invoke(payload: dict, context):
                 status, outcome, error_code = determine_outcome(
                     reclassified, params, val_result, has_pr=False
                 )
-                _report_terminal(run, status, outcome, error_code)
                 result = build_return_payload(
                     status=status,
                     outcome=outcome,
@@ -626,6 +662,7 @@ async def invoke(payload: dict, context):
                     advisories_major_required=_bucket_counts(reclassified)["major_required"],
                     advisories_unknown=_bucket_counts(reclassified)["unknown"],
                 )
+                _report_terminal(run, status, outcome, error_code, metrics=build_metrics(result))
                 yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
                 return
 
@@ -681,11 +718,6 @@ async def invoke(payload: dict, context):
                 pr_existed=pr_existed,
             )
 
-            if status == "succeeded":
-                run.succeed(outcome)
-            else:
-                _report_terminal(run, status, outcome, error_code)
-
             # Count fixed advisories
             fixed_count = sum(1 for a in classified if a.bucket == "in_range") - sum(
                 1 for a in reclassified if a.bucket == "in_range"
@@ -706,6 +738,13 @@ async def invoke(payload: dict, context):
                 fix_attempts=val_result.fix_attempts,
                 llm_used=val_result.llm_used,
             )
+
+            metrics = build_metrics(result)
+            if status == "succeeded":
+                run.succeed(outcome, metrics=metrics)
+            else:
+                _report_terminal(run, status, outcome, error_code, metrics=metrics)
+
             yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
 
     except CredentialError as exc:

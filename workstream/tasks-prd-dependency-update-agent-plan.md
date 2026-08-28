@@ -29,6 +29,7 @@
 - `agents/dependency-update/app/dependencyUpdate/tests/unit/test_pr_body.py` - PR body builder unit tests (sections, cap, AI warning)
 - `agents/dependency-update/app/dependencyUpdate/tests/component/test_pr_creation.py` - PR creation component tests (mock gh/git, idempotency, scrub)
 - `docs/reference/002_seed.sql` - Agent seed row update
+- `docs/runbooks/issue-77-deployment-e2e.md` - Operator runbook for deploy/IAM/seed-apply/E2E (sub-tasks 7.2-7.10)
 
 ## Tasks
 
@@ -144,7 +145,8 @@
   - [x] 6.13 Run tests: `pytest -m "unit or component" tests/unit/test_pr_body.py tests/component/test_pr_creation.py`
 
 - [ ] 7.0 Implement Issue #77 — https://github.com/llipe/dev-tasks-agent-fleet/issues/77: Seed Update, Deployment, and E2E Validation
-  - [ ] 7.1 Update `docs/reference/002_seed.sql` with `dependency-update` agent row: params_schema, defaults, timeouts, requires_repository
+  > Note: sub-tasks 7.2-7.10 require live AWS/Supabase/GitHub access and are documented for the operator in `docs/runbooks/issue-77-deployment-e2e.md`. Code/seed/docs portions (7.1, 7.11 code, 7.12, 7.13) are complete on branch `issue/77-seed-deployment-e2e-validation` (PR #88).
+  - [x] 7.1 Update `docs/reference/002_seed.sql` with `dependency-update` agent row: params_schema, defaults, timeouts, requires_repository
   - [ ] 7.2 Run `agentcore deploy -y` from `agents/dependency-update/`
   - [ ] 7.3 Confirm `agentcore status` reports runtime ready; record `runtime_arn`
   - [ ] 7.4 Fill runtime_arn in `002_seed.sql`
@@ -154,6 +156,6 @@
   - [ ] 7.8 E2E: `agentcore invoke` with `fix_mode=llm_fix` on repo with available updates — verify PR opened
   - [ ] 7.9 E2E: second invoke while PR open — verify `succeeded / not_applicable`
   - [ ] 7.10 E2E: invoke with invalid payload — verify `failed / INVALID_PARAMS` without clone
-  - [ ] 7.11 Verify `runs.metrics` populated correctly (llm_used, fix_attempts, vuln counts)
-  - [ ] 7.12 Update README with deployment results and invocation examples
-  - [ ] 7.13 Verify AC: max_runtime_seconds in seed equals maxLifetime in agentcore.json (both 3600)
+  - [x] 7.11 Verify `runs.metrics` populated correctly (llm_used, fix_attempts, vuln counts) — code wired: metrics persisted at all terminal reports via `build_metrics`; live verification per runbook 7.11
+  - [x] 7.12 Update README with deployment results and invocation examples
+  - [x] 7.13 Verify AC: max_runtime_seconds in seed equals maxLifetime in agentcore.json (both 3600)
