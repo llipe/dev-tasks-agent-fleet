@@ -7,6 +7,9 @@
 | 1.0     | 2026-08-26 | Initial version. Reformatted from `PRD-agent-fleet-v2-consolidado.md` (Draft 2, tmp) into standard PRD structure. Decisions (D1-D14) and risks (R1-R7) preserved. | product-engineer |
 | 1.1     | 2026-08-26 | Reference artifacts moved from `tmp/` to `docs/reference/`. All mentions now link to their files. | product-engineer |
 | 2.0     | 2026-08-26 | Translated to English. Introduced two-phase delivery model: Phase 1 (database + agent + base API) and Phase 2 (Next.js panel for visualization). | product-engineer |
+| 2.3     | 2026-08-27 | Linked the Supabase Auth backlog item to the new [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md). Recorded in F2 that the two deny-all hardening items (explicit `REVOKE`, `security_invoker` on `v_runs`) land with the auth work rather than in Phase 2, with the rationale. | product-engineer |
+| 2.2     | 2026-08-27 | Added §19 Fix Proposals — seven research findings (F1-F7) with proposed fixes, severity, and owner. F1 (agent invocation payload contract) additionally tracked as [#89](https://github.com/llipe/dev-tasks-agent-fleet/issues/89) because the panel is its only production caller. F2 resolved in favour of a server-side Realtime relay over an `anon` read policy — the anon key ships in the browser bundle and Supabase's API is public, so D16's private-Fly mitigation would not have covered that exposure. | product-engineer |
+| 2.1     | 2026-08-27 | Spec-readiness pass. Resolved D16 (no user auth; R1 mitigation is a Fly deploy setting, not code), D17 (dashboard density toggle, default dense rows). Fixed the §12 Supabase-credential contradiction against D15. Updated Phase 1 status (agent implemented, deployment pending). Scoped Phase 2 to four screens — All runs / Repositories / Settings / System health moved to Non-Goals. Deferred DESIGN.md-derived UI requirements to [`prd-agent-fleet-panel-v3-ui-depth.md`](prd-agent-fleet-panel-v3-ui-depth.md). Added acceptance criteria for FR10, FR11, FR13, FR14. Added FR11a (`v_runs` as read source). Resolved Open Questions #3 and #6. Folded in three correctness corrections from [`research-phase2-panel-spec-inputs-2026-08-27.md`](../../workstream/research-phase2-panel-spec-inputs-2026-08-27.md): the authoritative agent invocation payload contract (`repository_org`/`repository_name`, not a uuid), the RLS deny-all constraint on data-access architecture, and two `002_seed.sql` `params_schema` defects that block the invoke form. | product-engineer |
 
 > **Source:** this document reorganizes, without altering the substantive content, `tmp/PRD-agent-fleet-v2-consolidado.md` (Draft 2 — consolidated, August 26 2026, author Llipe), together with the reference artifacts [`001_schema.sql`](../reference/001_schema.sql), [`002_seed.sql`](../reference/002_seed.sql), [`agent_reporter.py`](../reference/agent_reporter.py), and [`credentials.ts`](../reference/credentials.ts). Closed decisions are referenced by their original identifier (D1-D14) and risks by theirs (R1-R7) for traceability with the source document.
 
@@ -122,6 +125,9 @@ There is no external end-user or intent for commercial distribution.
 
 10. The system **must** list configured agents from the `agents` table, showing at least slug, name, description, and `is_enabled` state.
 11. The system **must** list, per agent, its executions (`runs`) ordered by date descending, showing `status`, `outcome`, duration, and associated repository (if applicable).
+
+    **FR11a.** The panel **must** derive displayed run status from the `v_runs` view's `effective_status`, not from `runs.status` directly. This prevents the UI from showing a run as `running` when it has already exceeded its timeout threshold but the `pg_cron` reaper has not yet materialized the state change (see `technical-guidelines.md` §3 — the reaper materializes eventual truth, the view tells immediate truth). Note that `v_runs` is a view and therefore **cannot** be a Realtime subscription source — `001_schema.sql:212-213` publishes `runs` and `run_events` only. The spec must define how a live-updating row reconciles the subscription source with the display source.
+
 12. The system **must** show, per execution, the complete log (`run_events`) ordered by `seq`, with live tail via Supabase Realtime — the user does not reload the page to see new events.
 13. The system **must** render the invocation form from `agents.params_schema` (JSON Schema) — **D2**. The repository field is rendered separately, outside the schema, when `agents.requires_repository = true`.
 14. When invoking an agent, the front-end **must**:
@@ -133,6 +139,8 @@ There is no external end-user or intent for commercial distribution.
     f. Respond `202` with the `run_id` and navigate to the execution detail.
 15. The front-end **must** obtain AWS credentials without static keys: via Fly OIDC + `AssumeRoleWithWebIdentity` in production, and via the standard SDK chain (`fromNodeProviderChain`) locally — **D12**.
 16. Adding a new agent **must** require only inserting a row in `agents` with its `params_schema`, no front-end changes or deploy — verified by acceptance criterion #5.
+17. The Agents Dashboard **must** offer a view toggle across the three density variants defined in `/DESIGN.md` §5.1, defaulting to dense rows (variant 1a), with the selection persisted client-side — **D17**.
+18. The panel **must not** implement user authentication — **D16**. No login screen, no user avatar, no roles (consistent with `/DESIGN.md` §11.3). The residual exposure risk this creates is accepted and mitigated at deploy time, not in code (see R1 in §17).
 
 ## 8. Business Rules
 
@@ -150,7 +158,9 @@ There is no external end-user or intent for commercial distribution.
 - **D12 — The front-end authenticates to AWS via Fly OIDC + `AssumeRoleWithWebIdentity`, no static keys.** Closes the hole that D7 left open on how the front-end calls `InvokeAgentRuntime`.
 - **D13 — The agent reporting SDK is a Python file copied per repo, no dependencies.** For 2-3 agents, drift is not a real problem; a pip package adds versioning and publishing overhead that does not pay off today.
 - **D14 — The SDK uses a hybrid interface: standard `logging.Handler` + explicit lifecycle API.** The handler captures third-party noise; the lifecycle does not fit in a `logger.info()`.
-- **D15 — The agent writes to Supabase via direct PostgREST (Option A), authenticating with the service role key stored in AWS Secrets Manager.** No dedicated API layer in Phase 1. The key never lives as a plaintext env var in the AgentCore runtime config — the agent fetches it from Secrets Manager at startup. A dedicated reporting API is deferred until R2 mitigation or fleet growth justifies it.
+- **D15 — The agent writes to Supabase via direct PostgREST (Option A), authenticating with the service role key stored in AWS Secrets Manager.** No dedicated API layer in Phase 1. The key never lives as a plaintext env var in the AgentCore runtime config — the agent fetches it from Secrets Manager at startup, using the secret ID carried in `SUPABASE_KEY_SECRET_ID`. A dedicated reporting API is deferred until R2 mitigation or fleet growth justifies it.
+- **D16 — Phase 2 ships with no user authentication, and no shared-secret header either.** The two auth concerns in this system are distinct and must not be conflated: *panel → AWS* machine auth is solved by D12 (Fly OIDC + `AssumeRoleWithWebIdentity`) and is required for invocation to work at all; *operator → panel* user auth does not exist. The alternative mitigation floated in R1 (shared-secret header on the invoke route) is **rejected for this iteration** — it would add an auth layer to the API contract for a benefit that keeping the Fly app private achieves with zero code. Consequence for the spec: no middleware, no session handling, no protected routes. `runs.triggered_by` is populated with a constant or left null, not with an authenticated identity.
+- **D17 — The Agents Dashboard ships all three density variants behind a persisted view toggle, defaulting to dense rows.** The variants share one query and differ only in presentation; the correct default is not knowable before real usage. See §11.
 
 ## 9. Data Requirements
 
@@ -273,16 +283,27 @@ Design notes encapsulated by the data model:
 
 **Out of v1 (explicitly declared):**
 
-- User authentication — the first iteration runs without login.
+- User authentication — the first iteration runs without login (**D16**). This is a decision, not a deferral pending design: no shared-secret header either.
 - Automatic schedules.
 - Repo sync from the GitHub App — manual seed in its place ([`002_seed.sql`](../reference/002_seed.sql)).
 - Cost Explorer, prompt evaluation, findings materialization.
+
+**Out of Phase 2 scope — deferred UI surfaces.** The prototype's sidebar shows four destinations with no backing requirement in this PRD. They are out of scope and **must not** be implemented as functioning routes:
+
+| Deferred screen | Why deferred |
+|---|---|
+| **All runs** (cross-agent run feed) | Redundant with per-agent run history at v1 fleet size (1 agent) |
+| **Repositories** | Repo management is manual seed in v1 (see above); no CRUD surface is warranted |
+| **Settings** | Nothing user-configurable exists — all configuration lives in the `agents` table or AgentCore |
+| **System health** | No health-signal source exists; `last_heartbeat_at` is declared but unused for detection in v1 |
+
+**Out of Phase 2 scope — deferred UI depth.** A set of `/DESIGN.md`-specified behaviors (run history filtering and pagination, step-panel click-to-filter, log viewport bounding, Realtime reconnect backfill semantics, and the terminal-state banner matrix) are captured as a next-iteration PRD at [`prd-agent-fleet-panel-v3-ui-depth.md`](prd-agent-fleet-panel-v3-ui-depth.md) for later refinement. They are **not** in scope for the Phase 2 spec.
 
 **Declared backlog, not implemented (data model already supports or anticipates):**
 
 | Item | Future form |
 |---|---|
-| Supabase Auth with allowlist | Populate `triggered_by` with `auth.uid()`. RLS policies per role |
+| Supabase Auth with allowlist | **Now specified** in [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md) — GitHub OAuth, `app_users` allowlist, `viewer`/`operator` roles, RLS policies per role, `triggered_by` = `auth.uid()`. Retires R1 |
 | `schedules` | `schedules` table (`agent_id`, `cron`, `params`, `is_enabled`) + EventBridge |
 | `agent_repository_settings` | Enable/disable an agent per repo |
 | Repo sync | Job that reads the GitHub App installation and upserts into `repositories` |
@@ -304,6 +325,10 @@ The prototype defines 6 screens:
 4. **Run Detail** — full-height layout with summary, steps panel, and streaming log viewer
 5. **Run Detail States** — terminal-state banners (timed_out, failed_to_start, queued)
 6. **Invoke Agent** — schema-driven form dialog with toggle switches, select fields, success confirmation
+
+**Phase 2 screen scope.** All six prototype screens are in scope. The sidebar destinations that the prototype shows but that have no backing requirement in this PRD — **All runs**, **Repositories**, **Settings**, **System health** — are out of scope (see §10). The spec **must** render them as disabled or absent nav entries rather than dead links.
+
+**D17 — The Agents Dashboard ships all three density variants behind a user-selectable view toggle, defaulting to dense rows (variant 1a).** The toggle state is a client-side preference persisted in `localStorage`, consistent with the sidebar-collapse pattern in `/DESIGN.md` §11.3. Rationale: the three variants share one data query and differ only in presentation, so the marginal cost over picking one is presentation-layer work, and the right default is not knowable before the operator has used the panel against real run volume.
 
 Functional UI considerations already decided at product level:
 
@@ -366,17 +391,43 @@ flowchart LR
 
    **Pending verification** (not validated against the real Fly endpoint): exact JSON response shape from the OIDC socket; literal claim name `sub` as normalized by AWS in the trust policy; that `DurationSeconds: 900` is compatible with the role's configured `MaxSessionDuration`.
 
-**Agent reporting contract (§9 of the source document).** [`agent_reporter.py`](../reference/agent_reporter.py), copied to each agent repo (D13). Stdlib only (`urllib`) — the container does not gain a dependency tree to do POST/PATCH. Required env vars: `SUPABASE_URL`, `RUN_ID`, `RUN_PARAMS`, `AGENT_LOG_LEVEL`. The `SUPABASE_SERVICE_ROLE_KEY` is **not** an env var — the agent fetches it from AWS Secrets Manager at startup (D15), keeping it out of the runtime configuration visible in the AgentCore console. Changing the transport (move writes to a panel endpoint instead of direct PostgREST) touches only the `_SupabaseClient` class, ~40 lines.
+**Agent reporting contract (§9 of the source document).** [`agent_reporter.py`](../reference/agent_reporter.py), copied to each agent repo (D13). Stdlib only (`urllib`) — the container does not gain a dependency tree to do POST/PATCH. Required env vars: `SUPABASE_URL`, `RUN_ID`, `RUN_PARAMS`, `AGENT_LOG_LEVEL`. The `SUPABASE_SERVICE_ROLE_KEY` is **not** supplied as a runtime env var — the agent fetches it from AWS Secrets Manager at startup (D15) using the secret ID in `SUPABASE_KEY_SECRET_ID`, then sets it into the process environment in-process so the SDK's `from_env()` contract still holds. This keeps the key out of the runtime configuration visible in the AgentCore console. Changing the transport (move writes to a panel endpoint instead of direct PostgREST) touches only the `_SupabaseClient` class, ~40 lines.
 
 **Fallback behavior:** when PostgREST is unreachable (Phase 1 development, network issues, or misconfiguration), the SDK writes the failed payloads to stderr after 3 retries. Those payloads land in CloudWatch via AgentCore's log routing. This ensures no execution is invisible — if the database cannot record it, CloudWatch still captures the raw evidence.
+
+**Deferred to the Phase 2 spec (technical decisions, not product requirements).** The following are within Phase 2 scope but this PRD deliberately does not prescribe them — they are implementation choices the specification must resolve:
+
+| Decision | Constraint the spec must satisfy |
+|---|---|
+| Realtime reconnect semantics | On subscription drop and recovery, events emitted during the gap **must not** be silently lost. `run_events.seq` is monotonic per run, so a backfill query above the last-seen `seq` is available. The connection-state indicator in `/DESIGN.md` §11.3 must reflect actual subscription state |
+| Initial `run_events` fetch size | R3 warns this table grows two orders of magnitude beyond the others; the run-detail view must not attempt an unbounded fetch |
+| Front-end test layer taxonomy | The repository default is test-first design. `technical-guidelines.md` §11 defers the JS/TS framework choice to Phase 2 start — the spec must define it and extend `/TESTING.md` accordingly |
+| Data-access layer | Whether the panel reads Supabase via the JS client, PostgREST directly, or Next.js server components. Constrained by FR11a (`v_runs`, not `runs`) **and by the RLS posture below** |
+
+**RLS constrains the data-access architecture (D11 consequence, not previously stated).** `001_schema.sql` enables RLS on all seven tables and creates **zero policies** — deny-all, with only `service_role` bypassing. Two consequences the spec must design around:
+
+1. **A browser-side Supabase client using the anon key reads nothing and receives no Realtime events.** The conventional Supabase + Next.js pattern does not work here. Because the service role key cannot ship in a browser bundle, data access must be server-side (server components or route handlers) unless read policies are added — which is a scope decision, not an implementation detail.
+2. **Granting `anon` SELECT on `v_runs` is not a safe shortcut.** In PostgreSQL 15+, `security_invoker` defaults to `false`, so a view executes with its owner's privileges and bypasses RLS on its base tables. Exposing `v_runs` to an unauthenticated client would surface every `runs` column — including `params` and `error_message` — which combined with D16 (no user auth) means public exposure if the Fly app is ever made public. If the spec chooses this path it **must** create the view with `security_invoker = true` and add explicit policies.
 
 **`dependency-update` agent (first productive agent, Phase 1):**
 
 | Param | Type | Default | Description |
 |---|---|---|---|
-| `repository_id` | uuid | — | First-class field, outside `params_schema` |
+| `repository_id` | uuid | — | First-class field, outside `params_schema`. **This is the `runs` row FK, not the invocation payload** — see the payload contract note below |
 | `fix_mode` | enum `audit_only` \| `llm_fix` | `audit_only` | `audit_only` runs npm audit and reports; `llm_fix` attempts to fix and open a PR |
 | `fail_on_findings` | bool | `true` | Only applies in `audit_only`: if there are vulnerabilities, the run finishes as `failed` |
+| `max_fix_attempts` | int 0-5 | `3` | Retry budget for the LLM fix loop. Accepted and clamped by the agent, but **currently absent from `002_seed.sql`'s `params_schema`** — see prerequisites below |
+
+**Invocation payload contract (authoritative: `agents/dependency-update/app/dependencyUpdate/main.py`).** The agent requires three non-empty top-level strings — `run_id`, `repository_org`, `repository_name` — plus optional `params` and `base_branch` (default `main`). A payload missing any of the three is rejected as `failed` / `not_applicable` / `INVALID_PARAMS` before any clone occurs.
+
+The panel therefore **must** translate: it holds `repository_id` for the `runs` FK, and must resolve it to `repositories.full_name`, split on `/`, and emit `repository_org` + `repository_name` in the invocation payload. The repository is **not** passed as a uuid and **not** nested under `params`.
+
+> Documentation drift corrected in v2.1: earlier revisions of this PRD implied the uuid was sent to the agent, and `workstream/pending-manual-config-dependency-update-agent.md` §9 contains E2E examples nesting the repo as `params.repository.full_name`. Both are wrong against the implemented agent. The runbook needs the same correction.
+
+**Phase 2 prerequisites in `002_seed.sql`.** Two seed defects must be fixed before the invoke form is usable, because the form renders directly from `params_schema`:
+
+1. The `params_schema` `title` and `description` values are Spanish. Rendering them produces a Spanish UI, violating the repository's English-only rule through data rather than code — invisible to any linter.
+2. `max_fix_attempts` is absent from `params_schema`, so the generated form cannot expose a parameter the agent accepts. This is an instance of the R4 drift class, already present before the panel exists.
 
 Expected outcomes:
 
@@ -388,7 +439,7 @@ Expected outcomes:
 | `succeeded` | `needs_review` | Findings exist, no fix attempted (`audit_only` with `fail_on_findings=false`) |
 | `failed` | `needs_review` | `audit_only` with findings and `fail_on_findings=true` |
 
-The agent reads the GitHub App private key and `installation_id` from Secrets Manager to issue an installation token for cloning and PR creation. The Supabase credential arrives via the runtime's environment variables.
+The agent reads the GitHub App private key and `installation_id` from Secrets Manager to issue an installation token for cloning and PR creation. The Supabase service role key is fetched from Secrets Manager at startup as well (D15) — only the *pointer* to it (`SUPABASE_KEY_SECRET_ID`, default `agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY`) is a runtime environment variable. The key value itself is never present in the AgentCore runtime configuration.
 
 ## 13. Acceptance Criteria
 
@@ -405,6 +456,12 @@ The agent reads the GitHub App private key and `installation_id` from Secrets Ma
 6. The log is visible in the panel in real time, without page reload.
 7. A new agent is added by inserting a row in `agents` with its `params_schema` — zero front-end deploys.
 8. The front-end runs on Fly without any AWS keys in `fly secrets`, and runs locally with an SSO profile with no code changes.
+9. *(FR10)* The Agents Dashboard lists every `is_enabled` agent from the `agents` table with slug, name, and description, and the density toggle switches between all three `/DESIGN.md` §5.1 variants with the selection surviving a page reload.
+10. *(FR11, FR11a)* The Agent Run History lists that agent's runs newest-first with `status`, `outcome`, duration, and repository. A run whose timeout threshold has passed but which the reaper has not yet updated displays as `timed_out`, not `running` — verified by reading from `v_runs` with the `pg_cron` job paused.
+11. *(FR13)* The invocation form for `dependency-update` renders `fix_mode` as a select and `fail_on_findings` as a toggle, derived solely from `agents.params_schema`, with the repository selector rendered separately because `requires_repository = true`.
+12. *(FR14)* An invocation inserts a `queued` run row with snapshotted thresholds *before* calling AgentCore, returns `202` with the `run_id`, and navigates to the run detail. An invocation whose `InvokeAgentRuntime` call throws is marked `failed_to_start` by the route handler itself, without waiting for the reaper.
+13. *(FR14b)* Parameters that violate `params_schema` are rejected client-side before any `runs` row is inserted — a rejected submission leaves no database trace.
+14. *(§11)* A `failed` run carrying a `pull_request` artifact surfaces the artifact link alongside the red status pill, not hidden behind the failure state.
 
 ## 14. Success Metrics
 
@@ -432,8 +489,9 @@ Equivalent to the acceptance criteria (§13) — in a product of this type, the 
   | [`002_seed.sql`](../reference/002_seed.sql) | Idempotent seed: installation, repo list, `dependency-update` agent | Done. Edit block 1, repo list, and `runtime_arn` |
   | [`agent_reporter.py`](../reference/agent_reporter.py) | Agent reporting SDK | Done. Tested with fake client: write sequence, monotonic `seq`, step association, exception propagation |
   | [`credentials.ts`](../reference/credentials.ts) | AWS credential provider with Fly OIDC and local branches | Done. Compiles with `tsc --strict`. §12 pending verification items not validated against real Fly endpoint |
-  | Next.js front-end | Routes, schema-generated forms, live tail | Pending (Phase 2) |
-  | `dependency-update` agent | AgentCore runtime | Pending — pre-reset version exists to port (Phase 1) |
+  | Next.js front-end | Routes, schema-generated forms, live tail | Pending (Phase 2) — this is the sole remaining scope of the Phase 2 spec |
+  | `dependency-update` agent | AgentCore runtime | **Implemented** (Phase 1). Deterministic audit→classify→update→validate pipeline, bounded LLM fix loop ([ADR-001](../adr/ADR-001-llm-fix-agent-escape-hatch.md)), idempotent `open_pr` step + `pull_request` artifact ([ADR-002](../adr/ADR-002-open-pr-step-and-pr-artifact.md)). 328 tests passing. **Pending: deployment + E2E** (issue #77) and the manual infrastructure runbook in [`pending-manual-config-dependency-update-agent.md`](../../workstream/pending-manual-config-dependency-update-agent.md) |
+  | Supabase schema + seed applied to a live project | Schema, seed, `pg_cron` reaper schedule | Pending — manual runbook steps 5 and 7 |
 
 - **Timeline:** not formalized in the source document; no delivery date is fixed in this PRD.
 
@@ -441,7 +499,7 @@ Equivalent to the acceptance criteria (§13) — in a product of this type, the 
 
 Risks identified in the source document with their minimal mitigation or declared future exit:
 
-**R1 — No authentication in the first iteration.** The panel triggers agents that write to organization repos; anyone with the URL can invoke them. Read access without auth is a minor problem; **invocation** without auth is not. Minimal mitigation while Supabase Auth does not exist: shared-secret header on `/api/agents/[slug]/invoke`, or keeping the app private on Fly.
+**R1 — No authentication in the first iteration (D16).** The panel triggers agents that write to organization repos; anyone with the URL can invoke them. Read access without auth is a minor problem; **invocation** without auth is not. **Decision for this iteration:** the shared-secret header is rejected and the risk is mitigated at deploy time — the Fly app is kept private (no public service / no allocated public IP), so the invoke route is not reachable from the internet. This is a deployment configuration item, not a code requirement, and therefore imposes nothing on the Phase 2 spec. The residual risk is that a future deploy that exposes the app publicly silently removes the only mitigation; the exit path remains Supabase Auth with an allowlist (§10 backlog).
 
 **R2 — The agent uses the Supabase `service role key`.** Grants full database access, not just writing its own events. The key is stored in AWS Secrets Manager and fetched at startup (D15) — not exposed as a plaintext env var in the AgentCore runtime config. Acceptable for a single-tenant personal system. Exit: dedicated Postgres role with grants limited to `insert` on `run_events`/`run_steps` and `update` on its own `run_id`, via a signed JWT for that role. Does not resolve D12 — they are credentials for two different APIs.
 
@@ -459,9 +517,145 @@ Risks identified in the source document with their minimal mitigation or declare
 
 ## 18. Open Questions
 
+**Resolved in v2.1:**
+
+- ~~Is the minimal mitigation for R1 (no authentication) decided before or after the first Fly deployment?~~ → Resolved as **D16**: no user auth and no shared-secret header. Mitigation is keeping the Fly app private, applied at deploy time.
+- ~~Does each agent's repo (e.g., `dependency-update`) live in this monorepo or in a separate repo?~~ → Resolved by implementation: agents live in this repo under `agents/<slug>/`. [`agent_reporter.py`](../reference/agent_reporter.py) is copied to `agents/dependency-update/app/dependencyUpdate/` rather than to a separate repository, so D13's drift concern currently applies within one repo.
+- ~~Which Agents Dashboard density variant ships?~~ → Resolved as **D17**: all three behind a toggle, default dense rows.
+
+**Still open:**
+
 - At what point (number of agents, or actual drift signal) is `agent_reporter.py` packaged as a pip package instead of copied per repo (D13, §10)?
 - What is the retention threshold for `run_events` before table growth hurts (R3), and who reviews it?
-- Is the minimal mitigation for R1 (no authentication) decided before or after the first Fly deployment?
 - When does it become worthwhile to move from "a second Supabase project for development" (R7) to a more formal staging environment?
-- The exact JSON response shape from the Fly OIDC socket, and the literal `sub` claim name as normalized by AWS, remain pending empirical verification against a real Machine (§12) — blocks end-to-end validation of acceptance criterion #8.
-- Does each agent's repo (e.g., `dependency-update`) live in this monorepo or in a separate repo? The source document does not specify explicitly beyond "copied to the agent's repo."
+- The exact JSON response shape from the Fly OIDC socket, and the literal `sub` claim name as normalized by AWS, remain pending empirical verification against a real Machine (§12) — blocks end-to-end validation of acceptance criterion #8. **This is the one open question that constrains the Phase 2 spec**: the spec can define the credential-provider contract, but acceptance criterion #8 cannot be closed until a Fly Machine is available to probe.
+- How many `run_events` should the run-detail viewer load initially, and does it bound the viewport? Deferred to [`prd-agent-fleet-panel-v3-ui-depth.md`](prd-agent-fleet-panel-v3-ui-depth.md), but the Phase 2 spec must still choose an initial fetch size — flagged as a spec-level decision rather than a product requirement.
+
+
+---
+
+## 19. Fix Proposals — Research Findings
+
+Source: [`workstream/research-phase2-panel-spec-inputs-2026-08-27.md`](../../workstream/research-phase2-panel-spec-inputs-2026-08-27.md) (commit `411b027`). Each finding below is a defect in an existing artifact that Phase 2 depends on, with a proposed fix and an owner. These are **not** new product scope — they are corrections required for the Phase 2 requirements in §7 to be implementable as written.
+
+Severity key: **Blocking** = Phase 2 cannot function without it. **Correctness** = Phase 2 functions but produces a wrong result. **Hygiene** = no functional impact, but violates a repository rule or leaves a trap.
+
+| ID | Finding | Severity | Proposed fix | Owner |
+|---|---|---|---|---|
+| F1 | Agent invocation payload contract mismatch | **Blocking** | See F1 below — panel-side translation + runbook correction. Tracked as [#89](https://github.com/llipe/dev-tasks-agent-fleet/issues/89) | Phase 2 spec + `developer` |
+| F2 | RLS deny-all blocks browser-side reads and Realtime | **Blocking** | See F2 below — server-side data access, no anon client | Phase 2 spec |
+| F3 | `002_seed.sql` `params_schema` is Spanish and omits `max_fix_attempts` | **Correctness** | See F3 below — seed correction re-applied to the live database | Phase 2 spec (prerequisite task) |
+| F4 | `v_runs` cannot be a Realtime source; display source ≠ subscription source | **Correctness** | See F4 below — client-side `effective_status` recomputation | Phase 2 spec |
+| F5 | `credentials.ts` token-extraction fallback is unsafe; comments are Spanish; file is unplaced | **Correctness** | See F5 below | Phase 2 spec |
+| F6 | `001_schema.sql` / `002_seed.sql` are documents, not migrations | **Hygiene** | See F6 below — adopt Supabase CLI migrations | Phase 2 spec |
+| F7 | No JS/TS package is reachable from `make validate` or CI | **Hygiene** | See F7 below — wire the panel into the aggregate gate | Phase 2 spec |
+
+### F1 — Agent invocation payload contract (Blocking)
+
+**Finding.** The authoritative contract is `agents/dependency-update/app/dependencyUpdate/main.py`: `_REQUIRED_FIELDS = ("run_id", "repository_org", "repository_name")`, three non-empty top-level strings. Optional `params` and `base_branch` (default `main`). A payload missing any required field is rejected as `failed` / `not_applicable` / `INVALID_PARAMS` before any clone.
+
+Three documents describe three different shapes, and only the code is right:
+
+| Source | Shape | Correct? |
+|---|---|---|
+| `main.py:64` | `repository_org` + `repository_name`, flat strings | **Authoritative** |
+| This PRD, pre-v2.1 §12 | `repository_id` uuid sent to the agent | No |
+| `workstream/pending-manual-config-dependency-update-agent.md` §9 | `params.repository.full_name`, nested | No |
+
+**Proposed fix (three parts):**
+
+1. **Panel-side translation (Phase 2 spec, normative).** The invoke route handler resolves `repository_id` → `repositories.full_name`, splits on the first `/`, and emits `repository_org` + `repository_name` at the payload top level. `repository_id` remains the FK on the `runs` row and is **never** sent to the agent. The split must reject a `full_name` without exactly one `/` rather than sending a malformed payload.
+2. **Runbook correction.** Fix the §9 E2E invoke examples in `pending-manual-config-dependency-update-agent.md` to the authoritative shape. As written they fail validation, so anyone following the runbook for issue #77's E2E step gets `INVALID_PARAMS` and debugs the wrong layer.
+3. **Contract test (Phase 2 spec, normative).** A test asserting the panel's emitted payload satisfies `_REQUIRED_FIELDS`. Because the panel is TypeScript and the agent is Python, no compiler catches drift here — this boundary needs an explicit test or it will break silently again. Suggested form: a fixture of the exact payload the panel produces, asserted against the agent's `validate_payload` contract.
+
+**Why it is tracked as an issue rather than only as a spec line.** The UI is the only production caller of this contract — the panel is what will actually trigger the agent, and no code path exercises the translation today. It needs a checklist item with a verification step, not a paragraph. Tracked as [#89](https://github.com/llipe/dev-tasks-agent-fleet/issues/89).
+
+**Do not fix by changing the agent.** The agent is implemented, tested (328 tests), and about to deploy. Changing `_REQUIRED_FIELDS` to accept a uuid would require the agent to query Supabase for the repository row before it can clone, adding a database round-trip and a failure mode to a path that currently has neither. The panel already holds the repository row it needs.
+
+### F2 — RLS deny-all blocks browser-side data access (Blocking)
+
+**Finding.** `001_schema.sql` enables RLS on all seven tables and creates zero policies (D11, deny-all). Only `service_role` bypasses. Consequences:
+
+- A browser Supabase client using the anon key returns zero rows and receives zero Realtime events. FR12 (live tail) has no working transport under the conventional pattern.
+- The service role key cannot ship in a browser bundle.
+- Granting `anon` SELECT on `v_runs` is not a safe workaround: in PostgreSQL 15+ `security_invoker` defaults to `false`, so the view runs with its owner's privileges and **bypasses RLS on its base tables**, exposing every `runs` column including `params` and `error_message`. Under D16 (no user auth) that is public exposure if the Fly app is ever made public.
+
+**Proposed fix.** Keep the service role key server-side and add **no** RLS policies in Phase 2:
+
+1. All reads go through Next.js server components or route handlers holding the service role key as a server-only secret. No `NEXT_PUBLIC_`-prefixed Supabase key exists.
+2. Realtime is the one case needing a live push to the browser. Two options were considered:
+   - **Rejected: a narrow read-only `anon` policy on `run_events`.** This looks cheap and keeps Realtime's native browser subscription, but the exposure is wider than it first appears. The anon key ships in the browser bundle, and Supabase's REST and Realtime endpoints are public — so an `anon` read policy exposes every run log line to anyone holding that key, independent of whether the Fly app is private. D16's mitigation (private Fly app) does not cover Supabase's own public API surface. Log lines carry repository names, dependency versions, and agent error output.
+   - **Chosen: server-side subscription relayed to the browser.** A route handler holds the service role key, subscribes to `run_events` server-side, and re-publishes to the client over Server-Sent Events. Deny-all is preserved completely and no Supabase credential reaches the browser. The cost is implementing the relay and managing its lifecycle; at single-operator concurrency (1-2 connections) this is not a scaling concern.
+3. `v_runs` **must not** be granted to `anon` under either option. If a future iteration needs it client-side, recreate it with `security_invoker = true` first.
+4. Record the choice as a decision in the spec, because it is the single largest architectural consequence of D11 and is not recoverable cheaply later.
+
+**Two hardening items deferred to the auth PRD, not to Phase 2.** Analysis of the deny-all posture surfaced that it is a *single* control, not defence in depth: `001_schema.sql` contains zero `GRANT`/`REVOKE` statements, so Supabase's default `anon` grants remain in place and RLS is the only thing blocking the public API. Disabling RLS on one table — or adding a new table without enabling it — exposes it instantly. Separately, `v_runs` has no `security_invoker`, so it executes with owner privileges and bypasses RLS on its base tables.
+
+Both fixes are specified as FR17 and FR18 in [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md) rather than here, because they are cheap to land alongside the policy work and premature in isolation: with no policies to protect, `REVOKE` and `security_invoker` guard nothing that deny-all does not already guard. Phase 2 **must not** grant `anon` access to any table or view, which keeps both traps closed until the auth work lands.
+
+### F3 — `002_seed.sql` `params_schema` defects (Correctness)
+
+**Finding.** The invoke form renders directly from `agents.params_schema` (D2), so defects in seed data become defects in the UI.
+
+1. `title` and `description` values are Spanish — a Spanish UI, violating the repository's English-only rule through *data*, so no linter can catch it.
+2. `max_fix_attempts` is absent from the schema, but the agent accepts it and clamps it to 0..5 (`main.py:98-121`). The generated form cannot expose a real parameter. This is the R4 drift class, already present before the panel exists.
+
+**Proposed fix.** Correct `002_seed.sql` and re-apply to the live database as a Phase 2 prerequisite task, before the invoke form is built:
+
+- Translate all `title` / `description` strings to English.
+- Add `max_fix_attempts` as `{"type": "integer", "minimum": 0, "maximum": 5, "default": 3}` with an English title and description noting it only applies in `llm_fix` mode.
+- Add `runtime_arn` from the actual deployment (already a known pending edit, see §16).
+- The seed is idempotent via `on conflict`, so re-application is safe. It **must** go through F6's migration tooling rather than another hand-paste into the SQL Editor.
+
+**Standing mitigation.** The deeper problem is that nothing validates `params_schema` against what the agent accepts. A cheap guard: a test asserting the seeded schema's property names are a subset of the agent's known parameter names. That closes R4's feedback loop without building schema cross-validation infrastructure.
+
+### F4 — `v_runs` display source vs. Realtime subscription source (Correctness)
+
+**Finding.** FR11a requires displaying `v_runs.effective_status`. But `001_schema.sql:212-213` publishes only `runs` and `run_events` to `supabase_realtime`, and views cannot be published. So the subscription source and the display source are necessarily different objects. A naive implementation subscribes to `runs`, receives a push carrying `status = 'running'`, and overwrites a correctly-computed `timed_out` display — the exact bug FR11a exists to prevent, reintroduced through the live-update path.
+
+**Proposed fix.** Recompute `effective_status` client-side on every render, from fields the panel already has:
+
+1. Initial load reads `v_runs` (server-side), which supplies `effective_status` plus the snapshot columns `started_at`, `queued_at`, `max_runtime_seconds`, `grace_seconds`, `start_timeout_seconds`.
+2. A single pure function — mirroring the view's `case` expression in `001_schema.sql:240-248` — derives display status from those fields plus current time. It is applied to both the initial row and every Realtime push, so the two paths cannot disagree.
+3. That function is the natural home for a unit test asserting parity with the SQL view's three branches (`running` past threshold → `timed_out`; `queued` past threshold → `failed_to_start`; otherwise passthrough). Duplicated logic across two languages needs a test pinning them together.
+
+This is duplicated logic, which is a real cost. The alternative — polling `v_runs` instead of subscribing — trades a correctness risk for a latency and load cost, and contradicts D4's rationale for Realtime. Duplicate the three-branch `case` and test it.
+
+### F5 — `credentials.ts` defects (Correctness)
+
+**Finding.** Three distinct problems in the reference artifact:
+
+1. **Unsafe token extraction.** Line 60: `parsed.value ?? parsed.token ?? parsed.aud`. `aud` is the audience (`sts.amazonaws.com`), not a token. If the real response shape uses neither `value` nor `token`, this sends the audience string to STS as a web identity token, producing a confusing authentication error rather than a clear parse failure. The final fallback (`data.trim()` on unparseable output) has the same problem.
+2. **Spanish comments** throughout, violating the English-only rule.
+3. **Unplaced.** The header targets `lib/aws/credentials.ts`, a path that does not exist. Nothing imports it.
+
+**Proposed fix.**
+
+1. Replace the guess-chain with an explicit allowlist of expected field names (`value`, `token`) and **fail loudly** when none is present, rather than falling through to a value known to be wrong. An unverified endpoint shape is a reason to error clearly, not to guess.
+2. Translate all comments to English during adoption.
+3. Relocate to the panel's `lib/aws/` on adoption; the spec fixes the exact path when it settles the folder convention.
+4. Keep the embedded `curl` verification command (line 57) as a comment — it is the procedure that closes Open Question #5.
+
+### F6 — Schema and seed are documents, not migrations (Hygiene)
+
+**Finding.** There is no `supabase/` directory and no `supabase/migrations/`. `001_schema.sql` and `002_seed.sql` live under `docs/reference/` and are applied by hand-pasting into the Supabase SQL Editor (`pending-manual-config-dependency-update-agent.md` §5). F3 already requires a second application, and F2's Realtime option may require a third. There is no versioned path for any of them.
+
+**Proposed fix.** Adopt Supabase CLI migrations as part of Phase 2 setup:
+
+1. Create `supabase/migrations/` and move the schema in as the first timestamped migration, preserving content exactly so the live database matches without a destructive re-apply.
+2. Keep the seed as `supabase/seed.sql` (already idempotent via `on conflict`).
+3. Land F3's corrections as a second migration rather than an edit to the first.
+4. Leave `docs/reference/` copies in place as documentation, or replace them with links to the migration files — the spec decides, but they **must not** remain independently editable, or they will drift from the applied database.
+
+This also serves R7 (test runs against production): a migration directory makes standing up a second Supabase project for development a command instead of a manual replay.
+
+### F7 — No JS/TS package reachable from the aggregate gate (Hygiene)
+
+**Finding.** `make validate` (Makefile:32) runs Python-only lint, format-check, typecheck, test-cov, and audit. CI (`.github/workflows/ci.yml`) runs a Python 3.13/3.14 matrix. `TESTING.md` records that no JS/TS application test package exists, and treats unreachability from the aggregate gate as a harness defect class. The one existing TS package (`agents/dependency-update/agentcore/cdk/`) has jest with **no coverage wiring** — a weak precedent that would produce a panel package passing `pnpm test` while measuring nothing.
+
+**Proposed fix.**
+
+1. Add the panel as a `pnpm` package with the canonical scripts (`lint`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`) per `technical-guidelines.md` §12.
+2. Extend `make validate` with a JS/TS branch so the panel's gates run in the same aggregate command as the agent's, and extend the CI workflow with a Node job.
+3. Wire coverage from the start — do not follow the `agentcore-cdk-app` precedent.
+4. Update `TESTING.md` with the panel's package row, its layer assignments, and its reachability from the gate. Per `technical-guidelines.md` §11 this is where the front-end layer taxonomy gets defined.
