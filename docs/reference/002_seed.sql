@@ -9,10 +9,10 @@
 -- ---------------------------------------------------------------------
 insert into github_installations (github_org_slug, installation_id, app_id, private_key_secret_arn)
 values (
-  'mi-org',                                                   -- slug de la organización
-  12345678,                                                   -- installation_id de GitHub
-  987654,                                                     -- app_id de GitHub
-  'arn:aws:secretsmanager:us-east-1:000000000000:secret:github-app-key'
+  'llipe',                                                    -- slug de la organización
+  156226839,                                                  -- installation_id de GitHub
+  4687256,                                                    -- app_id de GitHub
+  'arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2'
 )
 on conflict (github_org_slug) do update
   set installation_id        = excluded.installation_id,
@@ -24,15 +24,12 @@ on conflict (github_org_slug) do update
 --    Agregar una línea por repo. Formato: (full_name, default_branch)
 -- ---------------------------------------------------------------------
 with inst as (
-  select id from github_installations where github_org_slug = 'mi-org'
+  select id from github_installations where github_org_slug = 'llipe'
 ),
 repos(full_name, default_branch) as (
   values
-    ('mi-org/checkout-api',      'main'),
-    ('mi-org/catalog-service',   'main'),
-    ('mi-org/orders-worker',     'main'),
-    ('mi-org/payments-gateway',  'master'),
-    ('mi-org/notifications-svc', 'main')
+    ('llipe/memo-cli',           'main'),
+    ('llipe/tf-ecommerce-mgmt',  'main')
 )
 insert into repositories (installation_id, full_name, default_branch)
 select inst.id, repos.full_name, repos.default_branch
@@ -43,7 +40,9 @@ on conflict (installation_id, full_name) do update
       archived_at    = null;
 
 -- ---------------------------------------------------------------------
--- 3. Agente dependency-update  <<< EDITAR runtime_arn tras el deploy
+-- 3. Agente dependency-update
+--    runtime_arn ya refleja el runtime desplegado (issue #77). Actualizar sólo
+--    si se redespliega con un nombre de runtime distinto.
 --    max_runtime_seconds (3600) DEBE coincidir con maxLifetime en agentcore.json.
 --    start_timeout_seconds (300) DEBE coincidir con idleRuntimeSessionTimeout.
 -- ---------------------------------------------------------------------
@@ -58,9 +57,8 @@ values (
   'Dependency Update',
   'Corre npm audit sobre un repositorio y, opcionalmente, corrige las vulnerabilidades con un LLM y abre un PR.',
   '0.1.0',
-  -- runtime_arn: reemplazar con el ARN real reportado por `agentcore status`
-  -- tras `agentcore deploy` (issue #77, sub-task 7.4).
-  'arn:aws:bedrock-agentcore:us-east-1:000000000000:runtime/dependency-update',
+  -- runtime_arn: reportado por `agentcore status` tras el deploy (issue #77).
+  'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0',
   'DEFAULT',
   true,
   3600,  -- 60 min: DEBE igualar maxLifetime en agentcore.json

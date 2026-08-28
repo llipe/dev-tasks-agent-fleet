@@ -506,17 +506,17 @@ async def invoke(payload: dict, context):
                     buckets["unknown"],
                 )
 
-                # Record audit artifact
+                # Record audit artifact. Metadata goes as explicit keyword args
+                # because RunReporter.artifact collects it via **kwargs —
+                # passing metadata={...} would yield metadata.metadata.* (#77).
                 run.artifact(
                     "audit_report",
                     title="Audit Report",
-                    metadata={
-                        "total_vulns": audit_before.total_vulns,
-                        "vuln_counts": audit_before.vuln_counts,
-                        "in_range": buckets["in_range"],
-                        "major_required": buckets["major_required"],
-                        "unknown": buckets["unknown"],
-                    },
+                    total_vulns=audit_before.total_vulns,
+                    vuln_counts=audit_before.vuln_counts,
+                    in_range=buckets["in_range"],
+                    major_required=buckets["major_required"],
+                    unknown=buckets["unknown"],
                 )
 
             # --- audit_only mode ---
@@ -700,7 +700,8 @@ async def invoke(payload: dict, context):
                         "pull_request",
                         url=pr_url,
                         title="Dependency Update PR",
-                        metadata={"existed": pr_existed, "branch": pr_result.branch},
+                        existed=pr_existed,
+                        branch=pr_result.branch,
                     )
                 log.info(
                     "open_pr: url=%s created=%s existed=%s",
