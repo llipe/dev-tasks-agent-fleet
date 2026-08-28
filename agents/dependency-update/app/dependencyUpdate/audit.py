@@ -232,7 +232,11 @@ def _extract_npm_advisories(audit_result: dict) -> list[dict]:
 
             result.append(
                 {
-                    "id": via.get("source", ""),
+                    # Use the same source-or-url fallback as the dedup key so the
+                    # advisory ID is stable and unique even when npm omits the
+                    # numeric `source` — otherwise multiple such advisories would
+                    # collapse to id="" and under-count in the ID-set diff (#90).
+                    "id": via.get("source") or via.get("url") or "",
                     "module_name": via.get("name", pkg_name),
                     "severity": via.get("severity", vuln_info.get("severity", "unknown")),
                     "title": via.get("title", ""),
@@ -378,6 +382,6 @@ def count_advisories_fixed(before: list[dict], after: list[dict]) -> int:
     Both arguments are the normalized advisory dicts produced by
     ``extract_advisories`` (each with an ``id`` key).
     """
-    before_ids = {adv.get("id") for adv in before if adv.get("id") is not None}
-    after_ids = {adv.get("id") for adv in after if adv.get("id") is not None}
+    before_ids = {adv.get("id") for adv in before if adv.get("id")}
+    after_ids = {adv.get("id") for adv in after if adv.get("id")}
     return len(before_ids - after_ids)

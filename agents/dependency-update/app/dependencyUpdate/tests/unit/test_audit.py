@@ -388,6 +388,64 @@ class TestCountAdvisoriesFixed:
         after: list[dict] = []
         assert count_advisories_fixed(before, after) == 1
 
+    def test_npm_shape_id_set_diff_url_fallback(self):
+        """
+        npm advisories lacking a numeric `source` fall back to their URL as the
+        id (issue #90 drift fix), so distinct URL-only advisories are counted
+        distinctly rather than collapsing to a single empty id.
+        """
+        data_before = {
+            "vulnerabilities": {
+                "pkg-a": {
+                    "name": "pkg-a",
+                    "severity": "high",
+                    "via": [
+                        {
+                            "name": "pkg-a",
+                            "severity": "high",
+                            "title": "A",
+                            "url": "https://github.com/advisories/GHSA-aaaa",
+                            "range": "<1.0.0",
+                        }
+                    ],
+                },
+                "pkg-b": {
+                    "name": "pkg-b",
+                    "severity": "moderate",
+                    "via": [
+                        {
+                            "name": "pkg-b",
+                            "severity": "moderate",
+                            "title": "B",
+                            "url": "https://github.com/advisories/GHSA-bbbb",
+                            "range": "<2.0.0",
+                        }
+                    ],
+                },
+            }
+        }
+        data_after = {
+            "vulnerabilities": {
+                "pkg-b": {
+                    "name": "pkg-b",
+                    "severity": "moderate",
+                    "via": [
+                        {
+                            "name": "pkg-b",
+                            "severity": "moderate",
+                            "title": "B",
+                            "url": "https://github.com/advisories/GHSA-bbbb",
+                            "range": "<2.0.0",
+                        }
+                    ],
+                }
+            }
+        }
+        before = extract_advisories(data_before, "npm")
+        after = extract_advisories(data_after, "npm")
+        # GHSA-aaaa disappeared; GHSA-bbbb remains → exactly one fixed.
+        assert count_advisories_fixed(before, after) == 1
+
 
 # ---------------------------------------------------------------------------
 # run_audit (mocked subprocess)
