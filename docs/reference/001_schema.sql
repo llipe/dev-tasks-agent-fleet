@@ -320,9 +320,10 @@ begin
 end $$;
 
 -- Programar cada minuto.
--- Requiere habilitar pg_cron en Database > Extensions del dashboard de Supabase.
--- create extension if not exists pg_cron;
--- select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);
+-- Requiere habilitar pg_cron en Database > Extensions del dashboard de Supabase
+-- (o ejecutar el `create extension` de abajo con privilegios suficientes).
+create extension if not exists pg_cron;
+select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);
 
 -- ---------------------------------------------------------------------
 -- RLS: deny-all desde el día uno (D11).
