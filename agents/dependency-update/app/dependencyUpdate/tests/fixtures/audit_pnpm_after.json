@@ -1,0 +1,27 @@
+{
+  "advisories": {
+    "2003": {
+      "id": 2003,
+      "module_name": "ansi-regex",
+      "severity": "moderate",
+      "title": "Inefficient Regular Expression Complexity in ansi-regex",
+      "url": "https://github.com/advisories/GHSA-ansi-2003",
+      "cves": ["CVE-2021-2003"],
+      "patched_versions": "",
+      "findings": [{"version": "3.0.0", "paths": ["strip-ansi>ansi-regex"]}],
+      "vulnerable_versions": ">=3.0.0 <3.0.1"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 1,
+      "high": 0,
+      "critical": 0
+    },
+    "dependencies": 120,
+    "devDependencies": 60,
+    "totalDependencies": 180
+  }
+}

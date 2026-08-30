@@ -23,6 +23,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from agent_reporter import RunReporter
 from audit import (
     AuditResult,
+    count_advisories_fixed,
     diff_packages,
     run_audit,
     snapshot_lockfile_packages,
@@ -667,6 +668,11 @@ async def invoke(payload: dict, context):
                 return
 
             # --- Step: open_pr ---
+            # Advisories actually resolved between the before/after audits
+            # (issue #90): the ID-set diff drives BOTH the PR body Security
+            # Summary and runs.metrics.advisories_fixed so they never disagree.
+            fixed_count = count_advisories_fixed(audit_before.advisories, audit_after.advisories)
+
             # Snapshot the branch that update+fix produced, then open the PR
             # BEFORE evaluating MAJOR_UPDATE_REQUIRED so the reviewer always has
             # the fixed subset in hand even when a major bump remains (req 43).
@@ -682,6 +688,7 @@ async def invoke(payload: dict, context):
                     reclassified,
                     pkg_changes,
                     val_result,
+                    advisories_fixed_count=fixed_count,
                 )
                 base_branch = payload.get("base_branch") or "main"
                 pr_result = open_pr_if_needed(
@@ -719,12 +726,9 @@ async def invoke(payload: dict, context):
                 pr_existed=pr_existed,
             )
 
-            # Count fixed advisories
-            fixed_count = sum(1 for a in classified if a.bucket == "in_range") - sum(
-                1 for a in reclassified if a.bucket == "in_range"
-            )
-            fixed_count = max(0, fixed_count)
-
+            # Count fixed advisories: advisory IDs present before the update but
+            # absent after it (issue #90). Computed above (before open_pr) so the
+            # PR body and runs.metrics share one source of truth.
             result = build_return_payload(
                 status=status,
                 outcome=outcome,
@@ -819,12 +823,17 @@ def build_pr_body_from_state(
     reclassified_after: list[ClassifiedAdvisory],
     pkg_changes,
     val_result: ValidationResult,
+    advisories_fixed_count: int | None = None,
 ) -> str:
     """
     Assemble the PR body from pipeline state (spec §8.9).
 
     - Fixed advisories: those that were in-range before the update (the update
-      closed them).
+      closed them) — listed in the "Fixed Advisories" table.
+    - ``advisories_fixed_count``: the authoritative count shown in the Security
+      Summary. When provided (issue #90), it is the audit ID-set diff and MUST
+      match ``runs.metrics.advisories_fixed``. When ``None`` (older callers), it
+      falls back to the length of the in-range table for backward compatibility.
     - Major-required / unknown: taken from the post-update reclassification —
       what still remains after the update lands.
     - Non-semver changes: package changes whose new version does not parse as
@@ -848,6 +857,7 @@ def build_pr_body_from_state(
         validation=val_result,
         llm_used=val_result.llm_used,
         fix_attempts=val_result.fix_attempts,
+        advisories_fixed_count=advisories_fixed_count,
     )
 
 

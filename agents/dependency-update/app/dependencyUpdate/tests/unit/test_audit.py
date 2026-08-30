@@ -20,6 +20,7 @@ import pytest
 
 from audit import (
     _parse_list_json,
+    count_advisories_fixed,
     count_vulns,
     diff_packages,
     extract_advisories,
@@ -226,6 +227,46 @@ class TestParseListJson:
     def test_pnpm_no_deps_entry(self):
         assert _parse_list_json([{"name": "proj"}], "pnpm") == {}
 
+    # --- workspace / monorepo recursion (issue #90) ---
+
+    def test_pnpm_monorepo_captures_all_workspace_and_transitive(self):
+        """
+        Recursive parse of a `pnpm list -r` monorepo listing must capture
+        packages from every workspace entry AND nested transitive dependencies
+        — not just the root's top-level deps (issue #90).
+        """
+        data = _load_fixture("list_pnpm_monorepo.json")
+        packages = _parse_list_json(data, "pnpm")
+
+        # root devDependency
+        assert packages["turbo"] == "1.13.0"
+        # workspace @app/web direct deps
+        assert packages["react"] == "18.2.0"
+        assert packages["chokidar"] == "3.5.3"
+        # transitive under react
+        assert packages["loose-envify"] == "1.4.0"
+        assert packages["js-tokens"] == "4.0.0"
+        # transitive under chokidar
+        assert packages["glob-parent"] == "5.1.2"
+        # workspace @app/api deps + devDeps
+        assert packages["express"] == "4.18.2"
+        assert packages["typescript"] == "5.4.5"
+
+    def test_npm_nested_dependencies_recursion(self):
+        """npm `list --all` nests transitive deps under each dependency."""
+        data = {
+            "name": "proj",
+            "dependencies": {
+                "a": {
+                    "version": "1.0.0",
+                    "dependencies": {"b": {"version": "2.0.0"}},
+                }
+            },
+        }
+        packages = _parse_list_json(data, "npm")
+        assert packages["a"] == "1.0.0"
+        assert packages["b"] == "2.0.0"
+
 
 # ---------------------------------------------------------------------------
 # diff_packages
@@ -299,6 +340,114 @@ class TestDiffPackages:
 
 
 # ---------------------------------------------------------------------------
+# count_advisories_fixed (advisory ID-set diff — issue #90)
+# ---------------------------------------------------------------------------
+
+
+class TestCountAdvisoriesFixed:
+    """
+    Tests for count_advisories_fixed() — the ID-set diff (issue #90).
+
+    The number of advisories fixed is the count of advisory IDs present in the
+    before-audit but absent in the after-audit. This must NOT be derived by
+    subtracting `in_range` bucket counts: on a repo where nothing classifies as
+    `in_range` (all `unknown`), bucket subtraction yields 0 even though real
+    advisories disappeared.
+    """
+
+    def test_id_set_diff_on_unknown_bucket_fixtures(self):
+        """
+        Regression for #90: before={2001,2002,2003}, after={2003}, all with
+        empty patched_versions (→ unknown bucket). Two advisories were fixed.
+        """
+        before = extract_advisories(_load_fixture("audit_pnpm_before.json"), "pnpm")
+        after = extract_advisories(_load_fixture("audit_pnpm_after.json"), "pnpm")
+        assert count_advisories_fixed(before, after) == 2
+
+    def test_nothing_fixed_when_sets_equal(self):
+        before = extract_advisories(_load_fixture("audit_pnpm_before.json"), "pnpm")
+        assert count_advisories_fixed(before, list(before)) == 0
+
+    def test_all_fixed_when_after_empty(self):
+        before = extract_advisories(_load_fixture("audit_pnpm_before.json"), "pnpm")
+        assert count_advisories_fixed(before, []) == 3
+
+    def test_empty_before_is_zero(self):
+        after = extract_advisories(_load_fixture("audit_pnpm_after.json"), "pnpm")
+        assert count_advisories_fixed([], after) == 0
+
+    def test_new_advisories_after_do_not_go_negative(self):
+        """Advisories that appear only after the update are not 'fixed'."""
+        before = [{"id": 1, "module_name": "a"}]
+        after = [{"id": 1, "module_name": "a"}, {"id": 2, "module_name": "b"}]
+        assert count_advisories_fixed(before, after) == 0
+
+    def test_dedupes_repeated_ids(self):
+        """The same advisory ID appearing twice counts once."""
+        before = [{"id": 5, "module_name": "x"}, {"id": 5, "module_name": "x"}]
+        after: list[dict] = []
+        assert count_advisories_fixed(before, after) == 1
+
+    def test_npm_shape_id_set_diff_url_fallback(self):
+        """
+        npm advisories lacking a numeric `source` fall back to their URL as the
+        id (issue #90 drift fix), so distinct URL-only advisories are counted
+        distinctly rather than collapsing to a single empty id.
+        """
+        data_before = {
+            "vulnerabilities": {
+                "pkg-a": {
+                    "name": "pkg-a",
+                    "severity": "high",
+                    "via": [
+                        {
+                            "name": "pkg-a",
+                            "severity": "high",
+                            "title": "A",
+                            "url": "https://github.com/advisories/GHSA-aaaa",
+                            "range": "<1.0.0",
+                        }
+                    ],
+                },
+                "pkg-b": {
+                    "name": "pkg-b",
+                    "severity": "moderate",
+                    "via": [
+                        {
+                            "name": "pkg-b",
+                            "severity": "moderate",
+                            "title": "B",
+                            "url": "https://github.com/advisories/GHSA-bbbb",
+                            "range": "<2.0.0",
+                        }
+                    ],
+                },
+            }
+        }
+        data_after = {
+            "vulnerabilities": {
+                "pkg-b": {
+                    "name": "pkg-b",
+                    "severity": "moderate",
+                    "via": [
+                        {
+                            "name": "pkg-b",
+                            "severity": "moderate",
+                            "title": "B",
+                            "url": "https://github.com/advisories/GHSA-bbbb",
+                            "range": "<2.0.0",
+                        }
+                    ],
+                }
+            }
+        }
+        before = extract_advisories(data_before, "npm")
+        after = extract_advisories(data_after, "npm")
+        # GHSA-aaaa disappeared; GHSA-bbbb remains → exactly one fixed.
+        assert count_advisories_fixed(before, after) == 1
+
+
+# ---------------------------------------------------------------------------
 # run_audit (mocked subprocess)
 # ---------------------------------------------------------------------------
 
@@ -367,7 +516,8 @@ class TestSnapshotLockfilePackages:
         assert packages["lodash"] == "4.17.0"
         assert packages["express"] == "4.18.2"
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["pnpm", "list", "--json", "--depth", "0"]
+        # Workspace-aware + recursive so monorepo/transitive changes are seen (#90)
+        assert cmd == ["pnpm", "list", "-r", "--depth", "Infinity", "--json"]
 
     @patch("audit.subprocess.run")
     def test_npm_snapshot(self, mock_run):
@@ -377,7 +527,18 @@ class TestSnapshotLockfilePackages:
         packages = snapshot_lockfile_packages("/fake", "npm")
         assert packages["lodash"] == "4.17.0"
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["npm", "list", "--json", "--depth", "0"]
+        assert cmd == ["npm", "list", "--all", "--json"]
+
+    @patch("audit.subprocess.run")
+    def test_pnpm_monorepo_snapshot(self, mock_run):
+        """A monorepo listing yields workspace + transitive packages (#90)."""
+        fixture = _load_fixture("list_pnpm_monorepo.json")
+        mock_run.return_value = _mock_completed(json.dumps(fixture), returncode=0)
+
+        packages = snapshot_lockfile_packages("/fake", "pnpm")
+        assert packages["react"] == "18.2.0"
+        assert packages["glob-parent"] == "5.1.2"
+        assert len(packages) == 8
 
     @patch("audit.subprocess.run")
     def test_empty_stdout(self, mock_run):

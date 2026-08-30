@@ -122,6 +122,21 @@ picks versions, or writes the PR body — those stay deterministic.
 > payload and the stored metrics are built from the same source
 > (`build_metrics`). The fix-budget test-output artifact on budget exhaustion
 > remains a tracked, non-blocking gap (see `TESTING.md`).
+>
+> **Corrected as of issue #90:** two run-metric under-reporting bugs are fixed.
+> `advisories_fixed` is now the count of advisory IDs present in the
+> before-update audit but absent from the after-update audit
+> (`audit.count_advisories_fixed`), replacing an `in_range` bucket subtraction
+> that reported 0 whenever no advisory was classified `in_range` (common on
+> monorepos). `packages_changed` is now derived from a workspace-aware,
+> recursive lockfile snapshot (`pnpm list -r --depth Infinity --json` /
+> `npm list --all --json`, walking nested `dependencies`), replacing the
+> root-only `--depth 0` listing that saw no workspace-package or transitive
+> changes in a monorepo. The fixed-advisory count is computed once and feeds
+> **both** the PR body Security Summary and `runs.metrics.advisories_fixed`, so
+> the two can no longer disagree. (The npm advisory `id` is normalized to a
+> source-or-url fallback so npm advisories lacking a numeric source are not
+> collapsed in the ID-set diff.)
 
 ## Deployment
 
