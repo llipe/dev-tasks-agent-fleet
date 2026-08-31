@@ -114,12 +114,15 @@ Expect recent rows with `status = 'succeeded'`.
 
 - [x] Verified.
 
-**Results — AC1**
+**Results — AC1** _(executed 2026-08-31)_
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 1.4 job registered | one row, `* * * * *`, `active=t` | _(operator: paste)_ | ☐ |
-| 1.5 job firing | recent `status='succeeded'` rows | _(operator: paste)_ | ☐ |
+| 1.4 job registered | one row, `* * * * *`, `active=t` | `reap-stale-runs` present and active | ✅ PASS |
+| 1.5 job firing | recent `status='succeeded'` rows | recent successful executions confirmed | ✅ PASS |
+
+> Verbatim query output was not retained for these two checks; the operator confirmed both
+> assertions held. AC1 is satisfied. Re-run the §1.4/§1.5 queries any time to re-confirm.
 
 ---
 
@@ -169,12 +172,18 @@ order by seq;
 
 Expect `level='error'`, `reaped_by='reap_stale_runs'`, `reason='START_TIMEOUT'`.
 
-**Results — AC2**
+**Results — AC2** _(executed 2026-08-31, synthetic row)_
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 2.4 status | `failed_to_start` / `START_TIMEOUT` | _(operator)_ | ☐ |
-| 2.5 event | `reason=START_TIMEOUT` row present | _(operator)_ | ☐ |
+| 2.4 status | `failed_to_start` / `START_TIMEOUT` | flipped to `failed_to_start` within one tick | ✅ PASS |
+| 2.5 event | `reason=START_TIMEOUT` row present | explanatory event present | ✅ PASS |
+
+> A second, unplanned confirmation of AC2 was observed on run
+> `cba355cb-199e-4444-8818-d0d4cb9c4335`: an orphan `queued` row (agent never reported start
+> because the invoke payload was rejected — see §4.1) was reaped at
+> `queued_to_reap = 324s` against `start_timeout_seconds = 300`, with `started_at = null` and the
+> `START_TIMEOUT` event written. Correct behaviour on a genuine orphan.
 
 ---
 
@@ -231,13 +240,47 @@ where run_id = ':id' and data->>'reaped_by' = 'reap_stale_runs';
 -- expect: reason = RUNTIME_TIMEOUT
 ```
 
-**Results — AC3 / AC4**
+**Results — AC3 / AC4** _(executed 2026-08-31)_
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 3.3 two-layer | `running` + `effective_status=timed_out` | _(operator)_ | ☐ |
-| 3.5 status | `timed_out` / `RUNTIME_TIMEOUT` | _(operator)_ | ☐ |
-| 3.6 event | `reason=RUNTIME_TIMEOUT` row present | _(operator)_ | ☐ |
+| 3.3 two-layer (synthetic) | `running` + `effective_status=timed_out` | split observed before the tick | ✅ PASS |
+| 3.5 status (synthetic) | `timed_out` / `RUNTIME_TIMEOUT` | materialized after one tick | ✅ PASS |
+| 3.6 event (synthetic) | `reason=RUNTIME_TIMEOUT` row present | explanatory event present | ✅ PASS |
+
+### Real-run confirmation of AC3 — run `f63ac9f3-14b0-4157-9484-f2f6b062f846`
+
+A genuine hung `llm_fix` run provided stronger evidence than the synthetic row. The agent died
+during the `validate` step (steps 1–6 succeeded; `validate` opened 19:36:07.964 and never closed)
+and never reported a terminal status — exactly the failure class the reaper exists to cover.
+
+| Field | Value |
+|---|---|
+| `started_at` | `2026-08-31 19:34:47.710204+00` |
+| threshold | `max_runtime 3600 + grace 120` = **3720 s** → due `20:36:47` |
+| `finished_at` (reaped) | `2026-08-31 20:37:00.013991+00` |
+| `elapsed_seconds` | **3732.30** |
+| `status` | `timed_out` |
+| `error_code` | `RUNTIME_TIMEOUT` |
+| `error_message` | `Sin reporte de término tras 3720 s (max_runtime 3600 + grace 120).` |
+| event | `seq=10`, `level=error`, `reason=RUNTIME_TIMEOUT`, `reaped_by=reap_stale_runs` |
+
+Three properties confirmed by this single run:
+
+1. **No early reap.** Fired 12.3 s after the 3720 s boundary — inside one cron tick, never before
+   the threshold.
+2. **`seq` monotonicity.** The agent had written events `seq` 1–9; the reaper's event took
+   `seq=10` (`max(seq)+1`), so it does not collide with `uq_run_events_seq`.
+3. **Two-layer convergence.** Checked at `20:09` (34 min in, pre-threshold), `v_runs` reported
+   `running | running` — correctly *not* yet terminal. After the reap, both `status` and
+   `effective_status` read `timed_out`. The view leads and the reaper follows, then they agree.
+
+> ⚠️ **Gap observed — the reaper does not close open steps.** `run_steps.seq=7` (`validate`) remains
+> `status='running'` with `finished_at=null` inside a now-terminal `timed_out` run.
+> `reap_stale_runs()` updates `runs` and writes the `run_events` row but never touches `run_steps`,
+> unlike the agent's own failure path which closes open steps as `failed`
+> (technical-guidelines §8). Every reaped run therefore leaves an orphan step pinned in `running`.
+> Tracked as a follow-up (does not affect any issue #94 acceptance criterion).
 
 ### Cleanup synthetic rows
 
@@ -421,25 +464,44 @@ select status from runs where id = ':new_id';   -- row should be updated normall
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Run invisible in `runs`/`v_runs` after invoke | No row inserted; agent only PATCHes (D1) | Insert the `queued` row first (§4.0) |
-| `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Pass bare inner JSON via `--prompt-file` (§4.1) |
+| Run invisible in `runs`/`v_runs` after invoke | No row inserted; agent only PATCHes (D1) | Insert the `queued` row first (§4.0) — [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) |
+| `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Pass bare inner JSON via `--prompt-file` (§4.1) — [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) |
 | Row reaped `failed_to_start`, `started_at=null`, no agent events | Agent never reported start — broken `SUPABASE_URL`, `run_id` mismatch, or invalid payload | Check §4.1 payload, §5.5 restore, and that the invoke `run_id` matches the inserted row exactly |
-| Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container (kill/OOM/idle-timeout) separately |
+| Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container — [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) |
+| Step stuck `running` inside a terminal run | Reaper does not close open steps | Known gap — [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) |
 | `v_runs` and `runs` disagree | Expected between threshold and the next tick — that is the two-layer design | None; confirm they converge after the tick |
 | Reaper appears to do nothing | Job unscheduled (e.g. left unscheduled after a §3.3 retry) | Re-run `cron.schedule` (§1.3) and check `cron.job` |
 
 ---
 
-## Known limitation observed during verification
+## Known limitations observed during verification
 
-A real `llm_fix` invocation was observed dying during the `validate` step without reporting a
-terminal status (`run_steps` showed `validate` open, `runs.status` stuck `running`). The reaper
-correctly covers this at `started_at + max_runtime + grace`. Two config facts are relevant and are
-tracked outside issue #94:
+### 1 — Agent dies mid-`validate` without reporting terminal status → [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98)
+
+A real `llm_fix` invocation (`f63ac9f3-…`) died during the `validate` step
+(`run_steps` showed `validate` open, `runs.status` stuck `running`) and was correctly reaped
+3732 s later. Two config facts are relevant, tracked outside issue #94:
 
 - The entrypoint is an async generator that yields **only** its final result, so a run produces no
   stream output for its whole duration, against `idleRuntimeSessionTimeout: 300`.
-- `TEST_TIMEOUT` defaults to **600s**, twice that idle timeout.
+- `TEST_TIMEOUT` defaults to **600 s**, twice that idle timeout.
 
 Consequence for verification: AC5's "real 20+ minute `llm_fix` run" may not be achievable until
 that is resolved — use the synthetic interlock proof in §4.4 instead.
+
+### 2 — Reaper leaves open `run_steps` dangling → [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99)
+
+`reap_stale_runs()` transitions `runs` and writes the explanatory `run_events` row, but does not
+close open `run_steps`. A reaped run keeps its in-flight step at `status='running'`,
+`finished_at=null` indefinitely — unlike the agent's own failure path, which closes open steps as
+`failed`. Phase 2 impact: the Run Detail steps panel (DESIGN.md §5.3) would render a
+perpetually-running step inside a terminal run. Tracked as a follow-up; no issue #94 acceptance
+criterion asserts step closure.
+
+### 3 — The ~60-minute stale window is by design, not a defect
+
+Because `max_runtime_seconds` mirrors AgentCore's `maxLifetime` (3600) plus `grace_seconds` (120),
+a container that dies early still shows `running` until the 3720 s boundary. Run `f63ac9f3-…` died
+around 19:36 and was only marked `timed_out` at 20:37 — a ~61-minute window where the panel shows a
+plausible-but-stale `running`. This is the accepted D8 tradeoff; operators should not read it as a
+reaper failure.

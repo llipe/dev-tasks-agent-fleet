@@ -40,9 +40,9 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [x] 1.3 **[MANUAL]** Schedule the job in the SQL Editor: `select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);`
   - [x] 1.4 **[MANUAL]** Verify Acceptance Criterion 1 — job registered: `select * from cron.job;` shows `reap-stale-runs` scheduled at `* * * * *`.
   - [x] 1.5 **[MANUAL]** Verify Acceptance Criterion 1 — job firing: `select * from cron.job_run_details order by start_time desc limit 5;` shows recent successful executions.
-  - [ ] 1.6 **[DEV]** Record the AC1 result (job schedule + recent run details output) in the runbook results table.
+  - [x] 1.6 **[DEV]** Record the AC1 result (job schedule + recent run details output) in the runbook results table.
 
-- [ ] 2.0 Verify AC4 — `failed_to_start` (parent PRD AC4, D9)
+- [x] 2.0 Verify AC4 — `failed_to_start` (parent PRD AC4, D9)
 
   > Note: `start_timeout_seconds` is snapshotted per run (D8). Insert a `queued` row with a **backdated** `queued_at` so it is already past its `start_timeout_seconds` — this avoids waiting the full threshold; you only wait for the next cron tick.
   > Executed insert (backdated form): `queued_at = now() - interval '90 seconds'`, `start_timeout_seconds = 60`, resolving `agent_id`/`repository_id` from the seed (agent `dependency-update`, repo `llipe/memo-cli`).
@@ -52,9 +52,9 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [x] 2.3 **[MANUAL]** Wait for one cron tick (up to ~60s — job runs at the top of each minute; the row is already past threshold).
   - [x] 2.4 **[MANUAL]** Verify Acceptance Criterion 2 — assert `status='failed_to_start'`: `select status, error_code, error_message from runs where id = '<uuid>';`
   - [x] 2.5 **[MANUAL]** Verify Acceptance Criterion 2 — assert an explanatory `run_events` row exists: `select seq, level, message, data->>'reaped_by' as reaped_by, data->>'reason' as reason from run_events where run_id = '<uuid>' order by seq;` (expect `reaped_by='reap_stale_runs'`, `reason='START_TIMEOUT'` — this event has no other source).
-  - [ ] 2.6 **[DEV]** Record the AC4 result in the runbook.
+  - [x] 2.6 **[DEV]** Record the AC4 result in the runbook.
 
-- [ ] 3.0 Verify AC5 — `timed_out` + two-layer contract (parent PRD AC5, D8; technical-guidelines §3; PRD FR11a)
+- [x] 3.0 Verify AC5 — `timed_out` + two-layer contract (parent PRD AC5, D8; technical-guidelines §3; PRD FR11a)
 
   > Note: Same synthetic-row trick with backdated timestamps. `started_at = now() - interval '75 seconds'` with `max_runtime_seconds=60`, `grace_seconds=10` (threshold 70s) makes the row eligible immediately; you only wait one cron tick. The two-layer check (3.3) is time-sensitive — read `v_runs` before the next tick materializes the change.
 
@@ -64,7 +64,7 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [x] 3.4 **[MANUAL]** Wait for one cron tick (row already past the 70s threshold).
   - [x] 3.5 **[MANUAL]** Verify Acceptance Criterion 3 — assert `status='timed_out'`: `select status, error_code, error_message from runs where id = '<uuid>';`
   - [x] 3.6 **[MANUAL]** Verify Acceptance Criterion 3 — assert the explanatory `run_events` row exists (`reason='RUNTIME_TIMEOUT'`, `reaped_by='reap_stale_runs'`).
-  - [ ] 3.7 **[DEV]** Record the AC5 + two-layer (AC4) results in the runbook, noting explicitly that `effective_status` agreed with `timed_out` before materialization.
+  - [x] 3.7 **[DEV]** Record the AC5 + two-layer (AC4) results in the runbook, noting explicitly that `effective_status` agreed with `timed_out` before materialization.
 
 - [ ] 4.0 Verify AC-36 dynamic half — reaper interlock (dependency-update PRD AC-36, §12.4, open question 8)
 
