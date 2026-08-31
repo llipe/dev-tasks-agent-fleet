@@ -66,7 +66,7 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [x] 3.6 **[MANUAL]** Verify Acceptance Criterion 3 — assert the explanatory `run_events` row exists (`reason='RUNTIME_TIMEOUT'`, `reaped_by='reap_stale_runs'`).
   - [x] 3.7 **[DEV]** Record the AC5 + two-layer (AC4) results in the runbook, noting explicitly that `effective_status` agreed with `timed_out` before materialization.
 
-- [ ] 4.0 Verify AC-36 dynamic half — reaper interlock (dependency-update PRD AC-36, §12.4, open question 8)
+- [ ] 4.0 ⏳ **PENDING — blocked by #98** · Verify AC-36 dynamic half — reaper interlock (dependency-update PRD AC-36, §12.4, open question 8)
 
   > Note: Task 7.13 (issue #77) already confirmed the static half — `agents.max_runtime_seconds` (3600) equals `maxLifetime` in `agentcore.json` (3600). This task exercises the dynamic half, never run before.
   >
@@ -89,7 +89,7 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [ ] 4.3 **[MANUAL]** Measure the actual gap between AgentCore's clock and the agent's `started_at` on the real run (container cold start + image pull): `select queued_at, started_at, extract(epoch from (started_at - queued_at)) as start_gap_seconds from runs where id = '<uuid>';`. Record whether `grace_seconds=120` comfortably covers it — this is dependency-update PRD open question 8; underestimating it means the reaper kills healthy runs.
   - [ ] 4.4 **[DEV]** Record the AC-36 dynamic-half result + observed cold-start gap in the runbook, note the front-end-row-insert prerequisite (D1) discovered here, and update `workstream/traceability-matrix-dep-update-agent.md` to reflect the dynamic half is now exercised.
 
-- [ ] 5.0 Verify AC3 — CloudWatch fallback (parent PRD AC3; §8, R5; technical-guidelines §3/§14)
+- [ ] 5.0 ⏳ **PENDING — not executed** · Verify AC3 — CloudWatch fallback (parent PRD AC3; §8, R5; technical-guidelines §3/§14)
 
   > Note: Reporting must never kill the agent. When PostgREST is unreachable, the SDK dumps payloads to stderr → CloudWatch after 3 retries.
 
@@ -105,7 +105,7 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [x] 6.1 **[DEV]** DECIDED: separate runbook `docs/runbooks/issue-94-reaper-verification.md` (content too substantial for the #77 runbook; #77 cross-links to it). Original wording: add a "Reaper scheduling & stale-run verification" section to `docs/runbooks/issue-77-deployment-e2e.md`, OR create `docs/runbooks/issue-94-reaper-verification.md`. Prefer co-locating with the deployment runbook unless it becomes unwieldy; record the decision either way (the scheduling step currently lives only in the superseded `workstream/pending-manual-config-dependency-update-agent.md` step 5 and the dependency-update PRD table).
   - [x] 6.2 **[DEV]** Write the operator runbook content: prerequisites (schema applied, seed applied, agent deployed), the exact enable-extension + `cron.schedule` commands, the `cron.job` / `cron.job_run_details` verification queries, and the ready-to-paste synthetic-row inserts for Tasks 2 and 3 with all NOT-NULL columns filled.
   - [x] 6.3 **[DEV]** Add results-recording tables/checkboxes for AC3/AC4/AC5/AC-36 in the same style as #77 sub-tasks 7.7/7.8/7.10 (per-check pass/fail + observed `status`/`outcome`/event), for the operator to fill during Tasks 1–5.
-  - [ ] 6.4 **[DEV]** After the operator reports Task 1–5 results, transcribe them into the runbook results tables and the GitHub issue checklist.
+  - [x] 6.4 **[DEV]** (AC1–AC4 + AC7 transcribed; AC5/AC6 recorded as PENDING) After the operator reports Task 1–5 results, transcribe them into the runbook results tables and the GitHub issue checklist.
 
 - [ ] 7.0 Acceptance-criteria-to-verification mapping & wrap-up
 

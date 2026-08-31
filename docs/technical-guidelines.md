@@ -9,6 +9,7 @@
 | 1.2     | 2026-08-27 | Documented the implemented LLM fix-agent escape hatch (issue #75): added the sandbox + mandate-backstop security rule to §6, replaced the stale §11 Testing Strategy with the implemented pytest layer taxonomy, and recorded Strands/Bedrock as a committed agent runtime dependency in §16. See [ADR-001](adr/ADR-001-llm-fix-agent-escape-hatch.md). | technical-writer |
 | 1.3     | 2026-08-27 | Documented the implemented `open_pr` step + `pull_request` run artifact (issue #76): updated the §9 `dependency-update` status line (PR-creation/artifact no longer deferred; only `runs.metrics` persistence + deploy/E2E remain, → #77) and refreshed the §11 test surface (PR-creation Layer 1 + Layer 2 tests; suite now 328 passing). Current-state status correction only — no new architectural decision or enforceable-rule change. See [ADR-002](adr/ADR-002-open-pr-step-and-pr-artifact.md). | technical-writer |
 | 1.4     | 2026-08-27 | Documented the run-metric under-reporting fix (issue #90): refreshed the §9 `dependency-update` status line to record that `advisories_fixed` is now an audit ID-set diff and `packages_changed` a workspace-aware recursive lockfile snapshot (with a single fixed-advisory count feeding both the PR body Security Summary and `runs.metrics`), and updated the §11 test surface + suite count (now 362 passing). Current-state status correction only — no new architectural decision or enforceable-rule change. See [ADR-003](adr/ADR-003-run-metric-under-report-fix.md). | technical-writer |
+| 1.5     | 2026-08-31 | Recorded the `pg_cron` reaper activation and its verification (issue #94): added §18 "Open defects discovered during reaper verification" registering #97/#98/#99/#100, the empirically verified reaper properties (fires 12.3 s after the 3720 s threshold, writes the explanatory event at `max(seq)+1`, two-layer convergence confirmed), and the accepted ~61-minute stale window from the D8 threshold choice. See [ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md). | developer |
 
 ## 1. Overview
 
@@ -252,3 +253,31 @@ Risks explicitly accepted in v1, with their declared exit path (full detail in t
 | R5 — Write volume within a verbose execution | No preventive mitigation | Raise minimum captured level, logger allowlist, truncate per step, or increase batch — "evaluate later" is the chosen option today |
 | R6 — Drift between local and Fly environments (SSO permissions vs. scoped OIDC role) | Something that works locally may fail on Fly due to a missing permission | Assume the same role locally with a profile pointing to the Fly `role_arn` |
 | R7 — Test runs against the production database | Local development invokes real AgentCore and can write to the configured Supabase | Second Supabase project dedicated to development |
+
+### Open defects discovered during reaper verification (issue #94)
+
+The `pg_cron` reaper was scheduled and its stale-run detection verified in issue #94 (see
+[`runbooks/issue-94-reaper-verification.md`](runbooks/issue-94-reaper-verification.md)). The reaper
+behaved correctly in every observed case, but the verification surfaced four defects elsewhere in
+the stack. These are **open** and tracked as their own issues:
+
+| Issue | Defect | Impact | Status |
+|---|---|---|---|
+| [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) | `unwrap_payload()` strips exactly one `prompt` wrapper, but `agentcore` CLI ≥0.28.0 wraps the prompt argument itself — the documented pre-wrapped form arrives double-wrapped and dies with a generic `INVALID_PARAMS` | Any invocation using the README / #77-runbook examples fails; the error gives no hint of the real cause | Open |
+| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | A run died during the `validate` step without reporting terminal status. The entrypoint yields only its final result, so a run streams nothing for its whole duration against `idleRuntimeSessionTimeout: 300`; `TEST_TIMEOUT` defaults to 600 s, twice that. Root cause unconfirmed (idle-timeout vs. OOM both fit) | If runs cannot survive ~5 min, `maxLifetime: 3600` is moot and no long `llm_fix` run completes. **Blocks issue #94 AC5** | Open |
+| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` transitions `runs` and writes the explanatory event but never closes open `run_steps` — unlike the agent's own failure path (§8), which closes them as `failed` | Every reaped run leaves an orphan step pinned `running`; the Phase 2 Run Detail panel (DESIGN.md §5.3) would render a perpetually pulsing step inside a terminal run | Open |
+| [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) | Per D1 the control plane inserts the `queued` `runs` row; the agent SDK only PATCHes it. A direct `agentcore invoke` therefore leaves the run invisible — PostgREST returns HTTP 200 on a zero-match UPDATE | Runs appear to vanish with no error anywhere; documented contract omits the insert requirement | Open |
+
+**Verified-correct reaper behaviour worth recording** (from the same exercise, real run
+`f63ac9f3-14b0-4157-9484-f2f6b062f846`): the reaper fired 12.3 s after the 3720 s threshold
+(`max_runtime 3600 + grace 120`) — inside one cron tick, never early; its explanatory event took
+`seq = max(seq)+1` without colliding with `uq_run_events_seq`; and `v_runs.effective_status`
+reported `running` pre-threshold then agreed with `timed_out` after materialization, confirming the
+two-layer design in §3.
+
+**Accepted consequence of the D8 threshold choice.** Because `max_runtime_seconds` mirrors
+AgentCore's `maxLifetime` (3600) plus `grace_seconds` (120), a container that dies early still reads
+`running` until the 3720 s boundary. The run above died around 19:36 and was marked `timed_out` at
+20:37 — a ~61-minute window of plausible-but-stale state. This is the accepted tradeoff, not a
+reaper failure; `last_heartbeat_at` (declared, unused in v1) is the lever if it ever needs
+tightening.

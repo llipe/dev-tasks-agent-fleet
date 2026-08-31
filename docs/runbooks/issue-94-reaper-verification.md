@@ -379,13 +379,34 @@ from runs where id = ':id';
 Compare the true gap against `grace_seconds = 120`. If it approaches 120s, the grace window is too
 tight and healthy runs risk being reaped.
 
-**Results — AC5 / AC-36**
+**Results — AC5 / AC-36** — ⏳ **PENDING**
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 4.2 terminal status | `succeeded`/`failed`, never `timed_out` | _(operator)_ | ☐ |
-| 4.2 no reaper event | count = 0 | _(operator)_ | ☐ |
-| 4.3 true cold-start gap | comfortably < `grace_seconds` (120) | _(operator)_ | ☐ |
+| 4.2 terminal status | `succeeded`/`failed`, never `timed_out` | not executed | ⏳ PENDING |
+| 4.2 no reaper event | count = 0 | not executed | ⏳ PENDING |
+| 4.3 true cold-start gap | comfortably < `grace_seconds` (120) | not validly measured — see note | ⏳ PENDING |
+
+> **Why pending.** The real 20+ minute `llm_fix` run this AC calls for is **blocked by
+> [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98)** — the agent dies during
+> `validate` without reporting terminal status, so no long run can currently complete. The seeded
+> repos also yield `0 in_range` advisories, so the LLM fix loop is never reached and runs finish
+> in ~2 minutes regardless.
+>
+> **On the cold-start measurement.** One attempt produced `insert_to_start = 185.7 s` on run
+> `f63ac9f3-…`, but that figure is **invalid** — it includes the human delay between running the
+> INSERT and running `agentcore invoke`. The agent's first log (`19:34:47.530`) and `started_at`
+> (`19:34:47.710`) are 180 ms apart, so the app reported start essentially instantly. A valid
+> measurement requires the `date -u` method in §4.1. Do not record 185.7 s as the cold-start gap
+> or as input to a `grace_seconds` decision.
+>
+> **Partial evidence that does exist.** Run `f63ac9f3-…` was *not* reaped during its ~61 minutes in
+> `running` (zero `reaped_by` events until the legitimate 3720 s boundary), which demonstrates the
+> reaper does not touch an in-flight run before its threshold. That is a weaker form of the
+> interlock claim than AC5 asks for, but it is not nothing.
+>
+> **To close this AC**, run the synthetic interlock proof in §4.4 — it proves the boundary
+> deterministically in minutes and does not depend on the runtime path broken by #98.
 
 ### 4.4 Fallback — synthetic interlock proof
 
@@ -450,13 +471,51 @@ select status from runs where id = ':new_id';   -- row should be updated normall
 > writes nothing, and pre-inserted rows get reaped as `failed_to_start` with `started_at = null`.
 > If you see that signature, check this first.
 
-**Results — AC6**
+**Results — AC6** — ⏳ **PENDING** (Task 5 not executed)
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 5.3 agent completes | normal exit, no crash | _(operator)_ | ☐ |
-| 5.4 CloudWatch payloads | dumped payloads present after 3 retries | _(operator)_ | ☐ |
-| 5.5 restored | reporting works again | _(operator)_ | ☐ |
+| 5.3 agent completes | normal exit, no crash | not executed | ⏳ PENDING |
+| 5.4 CloudWatch payloads | dumped payloads present after 3 retries | not executed | ⏳ PENDING |
+| 5.5 restored | reporting works again | not executed | ⏳ PENDING |
+
+> When executing this task, use the **bare-payload `--prompt-file`** invocation form from §4.1 —
+> the pre-wrapped form fails with `INVALID_PARAMS` on CLI ≥0.28.0
+> ([#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97)). Remember to insert the
+> `queued` row first (§4.0), or the run will be invisible regardless of reachability
+> ([#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100)).
+
+---
+
+## Verification status summary
+
+| AC | Description | Verdict | Evidence |
+|----|-------------|---------|----------|
+| AC1 | `reap-stale-runs` scheduled `* * * * *` and firing | ✅ **PASS** | §1 results |
+| AC2 | `queued` past threshold → `failed_to_start` + event | ✅ **PASS** | §2 results (synthetic + orphan) |
+| AC3 | `running` past threshold → `timed_out` + event | ✅ **PASS** | §3 real-run `f63ac9f3-…` |
+| AC4 | `v_runs.effective_status` leads the reaper | ✅ **PASS** | §3 synthetic split + real-run convergence |
+| AC5 | Healthy long run not reaped; cold-start gap recorded | ⏳ **PENDING** | blocked by [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98); use §4.4 synthetic proof |
+| AC6 | Supabase unreachable → agent completes, CloudWatch recoverable | ⏳ **PENDING** | Task 5 not executed |
+| AC7 | Scheduling + results documented | ✅ **PASS** | this runbook |
+
+---
+
+## Follow-up issues raised by this verification
+
+All four were discovered while verifying the reaper and are **out of scope for #94** — the reaper
+itself behaved correctly in every observed case.
+
+| Issue | Title | Severity | Discovered how |
+|-------|-------|----------|----------------|
+| [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) | `unwrap_payload` double-wrap breaks `agentcore` CLI ≥0.28.0 invocations | high | Two invocations died with `INVALID_PARAMS` before switching to the bare-payload `--prompt-file` form (§4.1) |
+| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | Run dies during `validate` step without reporting terminal status | high | Real run `f63ac9f3-…` hung mid-`validate`; reaper had to clean it up 3732 s later (§3 real-run block). **Blocks AC5.** |
+| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` leaves open `run_steps` in `running` | medium | Same run: `validate` step still `running` inside a terminal `timed_out` run (Known limitations §2) |
+| [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) | Control plane must insert the `queued` runs row before invoking | medium | Direct `agentcore invoke` left runs invisible — agent only PATCHes, never INSERTs (§4.0) |
+
+Dependency note: **#98 blocks AC5** of this issue. #97 and #100 are prerequisites for anyone
+re-running §4 or §5 by hand, which is why both are cross-referenced from those sections and from the
+troubleshooting index.
 
 ---
 
