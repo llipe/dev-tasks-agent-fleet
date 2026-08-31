@@ -100,14 +100,14 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [ ] 5.5 **[MANUAL]** ⚠️ Restore `SUPABASE_URL` to the correct value and confirm normal reporting resumes.
   - [ ] 5.6 **[DEV]** Record the AC3 result in the runbook, including the exact break/restore steps used.
 
-- [ ] 6.0 Documentation (Acceptance Criterion 7)
+- [x] 6.0 Documentation (Acceptance Criterion 7)
 
   - [x] 6.1 **[DEV]** DECIDED: separate runbook `docs/runbooks/issue-94-reaper-verification.md` (content too substantial for the #77 runbook; #77 cross-links to it). Original wording: add a "Reaper scheduling & stale-run verification" section to `docs/runbooks/issue-77-deployment-e2e.md`, OR create `docs/runbooks/issue-94-reaper-verification.md`. Prefer co-locating with the deployment runbook unless it becomes unwieldy; record the decision either way (the scheduling step currently lives only in the superseded `workstream/pending-manual-config-dependency-update-agent.md` step 5 and the dependency-update PRD table).
   - [x] 6.2 **[DEV]** Write the operator runbook content: prerequisites (schema applied, seed applied, agent deployed), the exact enable-extension + `cron.schedule` commands, the `cron.job` / `cron.job_run_details` verification queries, and the ready-to-paste synthetic-row inserts for Tasks 2 and 3 with all NOT-NULL columns filled.
   - [x] 6.3 **[DEV]** Add results-recording tables/checkboxes for AC3/AC4/AC5/AC-36 in the same style as #77 sub-tasks 7.7/7.8/7.10 (per-check pass/fail + observed `status`/`outcome`/event), for the operator to fill during Tasks 1–5.
   - [x] 6.4 **[DEV]** (AC1–AC4 + AC7 transcribed; AC5/AC6 recorded as PENDING) After the operator reports Task 1–5 results, transcribe them into the runbook results tables and the GitHub issue checklist.
 
-- [ ] 7.0 Acceptance-criteria-to-verification mapping & wrap-up
+- [x] 7.0 Acceptance-criteria-to-verification mapping & wrap-up
 
   - [x] 7.1 **[DEV]** Confirm every issue AC maps to a completed verification step:
     - AC1 (job scheduled + firing) → 1.4, 1.5
@@ -118,4 +118,4 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
     - AC6 (Supabase unreachable → agent completes, CloudWatch recoverable) → 5.3, 5.4
     - AC7 (scheduling + results documented) → Task 6
   - [x] 7.2 **[DEV]** Confirm out-of-scope items were not touched: no heartbeat detection, no run cancellation, no `run_events` retention, no panel work.
-  - [ ] 7.3 **[DEV]** Sync the GitHub issue #94 checklist to final state and post a completion summary comment (via `github-ops`, `--body-file`).
+  - [x] 7.3 **[DEV]** Sync the GitHub issue #94 checklist to final state and post a completion summary comment (via `github-ops`, `--body-file`).

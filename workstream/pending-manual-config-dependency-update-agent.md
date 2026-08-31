@@ -61,7 +61,7 @@ Add to the AgentCore agent execution role — scoped, never `*`:
 | Run `001_schema.sql` | Tables, enums, indexes, `v_runs` view, `reap_stale_runs()`, RLS | #77 |
 | Run `002_seed.sql` | Installation row, repositories, `dependency-update` agent row | #77 |
 | `github_installations` row | Must contain: `github_org_slug`, `app_id`, `installation_id`, `private_key_secret_arn`, `is_enabled=true` | #71 |
-| pg_cron reaper | `SELECT cron.schedule('reap-stale-runs', '* * * * *', 'SELECT reap_stale_runs()')` | #77 |
+| pg_cron reaper | **Done in #94** — the `create extension` + `cron.schedule('reap-stale-runs', '* * * * *', …)` block now ships inside `001_schema.sql`, so running that file registers it. Verification: [`docs/runbooks/issue-94-reaper-verification.md`](../docs/runbooks/issue-94-reaper-verification.md) §1 | #94 |
 
 > The credential lookup query (`credentials._get_installation`) depends on the
 > `github_installations` row existing with `is_enabled=true` and matching `github_org_slug`.
@@ -232,11 +232,20 @@ on conflict (github_org_slug) do update
       is_enabled = true;
 ```
 
-5. Schedule the reaper (once):
+5. ~~Schedule the reaper (once):~~ **Superseded by issue #94.** The schedule now ships **inside**
+   `docs/reference/001_schema.sql` (the `create extension if not exists pg_cron;` +
+   `cron.schedule('reap-stale-runs', …)` block at the file tail was uncommented in #94), so step 2
+   above already registers it. Do not run the command separately.
 
-```sql
-select cron.schedule('reap-stale-runs', '* * * * *', 'select reap_stale_runs()');
-```
+   For enabling the extension, verifying the job (`cron.job`, `cron.job_run_details`), and the
+   stale-run verification procedures, follow
+   [`docs/runbooks/issue-94-reaper-verification.md`](../docs/runbooks/issue-94-reaper-verification.md)
+   §1 — that runbook is the current source of truth. The command is retained here only as history:
+
+   ```sql
+   -- superseded — now part of 001_schema.sql
+   select cron.schedule('reap-stale-runs', '* * * * *', 'select reap_stale_runs()');
+   ```
 
 > Sanity check the credential lookup path (#71) will resolve:
 > `select github_org_slug, app_id, installation_id from github_installations where is_enabled;`

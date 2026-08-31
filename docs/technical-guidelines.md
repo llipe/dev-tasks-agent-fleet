@@ -10,6 +10,7 @@
 | 1.3     | 2026-08-27 | Documented the implemented `open_pr` step + `pull_request` run artifact (issue #76): updated the §9 `dependency-update` status line (PR-creation/artifact no longer deferred; only `runs.metrics` persistence + deploy/E2E remain, → #77) and refreshed the §11 test surface (PR-creation Layer 1 + Layer 2 tests; suite now 328 passing). Current-state status correction only — no new architectural decision or enforceable-rule change. See [ADR-002](adr/ADR-002-open-pr-step-and-pr-artifact.md). | technical-writer |
 | 1.4     | 2026-08-27 | Documented the run-metric under-reporting fix (issue #90): refreshed the §9 `dependency-update` status line to record that `advisories_fixed` is now an audit ID-set diff and `packages_changed` a workspace-aware recursive lockfile snapshot (with a single fixed-advisory count feeding both the PR body Security Summary and `runs.metrics`), and updated the §11 test surface + suite count (now 362 passing). Current-state status correction only — no new architectural decision or enforceable-rule change. See [ADR-003](adr/ADR-003-run-metric-under-report-fix.md). | technical-writer |
 | 1.5     | 2026-08-31 | Recorded the `pg_cron` reaper activation and its verification (issue #94): added §18 "Open defects discovered during reaper verification" registering #97/#98/#99/#100, the empirically verified reaper properties (fires 12.3 s after the 3720 s threshold, writes the explanatory event at `max(seq)+1`, two-layer convergence confirmed), and the accepted ~61-minute stale window from the D8 threshold choice. See [ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md). | developer |
+| 1.6     | 2026-08-31 | Documentation-gate pass for issue #94 (PR #96) under the same decision record, [ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md) — no new decision taken. Corrected the sections written while the reaper was still unscheduled: §2 and §3 now state the job is registered `* * * * *` and empirically confirmed, §7 records the current scheduling state plus the `RUNTIME_TIMEOUT`/`START_TIMEOUT` event contract and the #99 orphan-step caveat, §14 adds the reaper observability surface (`cron.job_run_details` + the explanatory event), and §18 records the residual verification carried by #101 (AC5, AC6, AC4 `queued` half) and marks the 185.7 s cold-start figure invalid so it is not cited as a measurement. | technical-writer |
 
 ## 1. Overview
 
@@ -31,7 +32,7 @@ Guiding principle: **the agent reports state explicitly**; nothing is reconstruc
 | Agent SDK | Python, stdlib only (`urllib`, `logging`, `atexit`) | Single file [`agent_reporter.py`](reference/agent_reporter.py), copied per repo (D13), not a pip package |
 | Database | PostgreSQL via Supabase | System of record for executions. RLS deny-all from the first migration (D11) |
 | Realtime | Supabase Realtime on `run_events` and `runs` | Live log tail without polling |
-| Cron | `pg_cron` inside Supabase | Reaper for stale executions — does not depend on the front-end being alive (D10) |
+| Cron | `pg_cron` inside Supabase | Reaper for stale executions — does not depend on the front-end being alive (D10). Job `reap-stale-runs`, `* * * * *`, **scheduled and verified as of issue #94** (ADR-004) |
 | Front-end AWS auth | Fly OIDC + STS `AssumeRoleWithWebIdentity` | No static keys in `fly secrets` (D12) |
 | GitHub App secrets | AWS Secrets Manager | Only the ARN lives in `github_installations`, never the key |
 
@@ -51,7 +52,7 @@ Guiding principle: **the agent reports state explicitly**; nothing is reconstruc
 
 **Two clocks for two distinct failures (D8, D9).** `timed_out` (agent hung, clock = `started_at`) and `failed_to_start` (invocation that never started, clock = `queued_at`) are separate states and runbooks. They do not collapse into a single "did not respond."
 
-**Two application layers for the reaper (see specification §6).** `pg_cron` materializes the state change and writes the explanatory `run_event` every minute (D10). The `v_runs` view computes `effective_status` at read time, so the UI never shows a run "running" that has already expired even if the reaper is one minute behind. The reaper materializes eventual truth; the view tells immediate truth.
+**Two application layers for the reaper (see specification §6).** `pg_cron` materializes the state change and writes the explanatory `run_event` every minute (D10). The `v_runs` view computes `effective_status` at read time, so the UI never shows a run "running" that has already expired even if the reaper is one minute behind. The reaper materializes eventual truth; the view tells immediate truth. **Both layers are live and empirically confirmed** as of issue #94 ([ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md)): the job is registered `* * * * *`, and on a real hung run the view read `running` pre-threshold and then agreed with `timed_out` after materialization. Note that the explanatory event exists **only** in layer 1 — an unscheduled reaper is therefore worse than a late one, because the view keeps the UI looking correct while `runs.status` stays wrong and the "why" is never written.
 
 ## 4. API Design Standards
 
@@ -139,6 +140,18 @@ queued ──▶ running ──▶ succeeded | failed | canceled
 | `status = running` and `now() > started_at + max_runtime_seconds + grace_seconds` | `timed_out` |
 | `status = queued` and `now() > queued_at + start_timeout_seconds` | `failed_to_start` |
 
+**Current state (issue #94, ADR-004).** The schedule is **active**, not pending: `001_schema.sql`
+now carries `create extension if not exists pg_cron;` and
+`select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);` uncommented at
+its tail (the extension still has to be enabled with sufficient privilege, so the Supabase-dashboard
+note is retained). Each reaped run gets `error_code = RUNTIME_TIMEOUT` or `START_TIMEOUT` plus one
+`run_events` row at `max(seq)+1` with `level = error`, `data.reaped_by = reap_stale_runs`, and
+`data.reason`. Two caveats on the current implementation: the function does **not** close open
+`run_steps`, so a reaped run keeps its in-flight step pinned `running` (#99); and because the
+thresholds mirror AgentCore's own limits, a container that dies early still reads `running` until its
+boundary (~61 minutes in the observed case — see §18). Operator procedures and the verification
+evidence are in [`runbooks/issue-94-reaper-verification.md`](runbooks/issue-94-reaper-verification.md).
+
 `last_heartbeat_at` is declared in the schema but not used for detection in v1 — it comes into play only if agents appear that hang well below their timeout (backlog).
 
 **Retention (declared risk, not resolved in v1 — R3).** `run_events` will be the largest table by two orders of magnitude. Policy pending: events older than 90 days get collapsed to an artifact in Supabase Storage and the rows are purged.
@@ -219,6 +232,7 @@ No linter/formatter configured yet in the repo (no `package.json` at root at the
 - **CloudWatch** remains as infrastructure telemetry (container startup, crashes not captured by the SDK), outside the panel's functional scope (see §3). It also serves as a fallback destination when the agent SDK cannot reach the Supabase API — payloads are dumped to stderr, which lands in CloudWatch.
 - **Supabase Realtime** on `run_events` and `runs` is the business observability mechanism — live log tail without polling (Phase 2 enables the UI for this; Phase 1 writes the data).
 - **Captured log level** by the SDK's `logging.Handler` is configurable via `AGENT_LOG_LEVEL` (default `INFO`), first mitigation lever for R5 if an agent proves too verbose.
+- **Reaper observability (issue #94).** The `pg_cron` job is its own telemetry surface: `cron.job` shows the registered `reap-stale-runs` entry and `cron.job_run_details` shows per-tick success/failure — the check to run when runs stop being reaped. Every materialized transition also writes one `run_events` row carrying `data.reaped_by` and `data.reason`, which is the only record of *why* a run ended when the agent itself never reported (product-context success metric 3). No alerting is wired on either surface in v1; detection is manual, per [`runbooks/issue-94-reaper-verification.md`](runbooks/issue-94-reaper-verification.md).
 
 ## 15. Performance & Scalability
 
@@ -281,3 +295,15 @@ AgentCore's `maxLifetime` (3600) plus `grace_seconds` (120), a container that di
 20:37 — a ~61-minute window of plausible-but-stale state. This is the accepted tradeoff, not a
 reaper failure; `last_heartbeat_at` (declared, unused in v1) is the lever if it ever needs
 tightening.
+
+**Residual verification, not a defect.** Issue #94 closed with **5 of 7 acceptance criteria
+verified** (AC1, AC2, AC3, AC4, AC7). Three checks remain and are carried by
+[#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101): AC5 (a healthy long run is not
+reaped early, plus a *valid* cold-start measurement), AC6 (the SDK's CloudWatch fallback when
+PostgREST is unreachable), and the `queued` → `failed_to_start` read-time half of AC4 — `v_runs` has
+two independent branches and only the `running` one was observed. Two consequences to respect until
+#101 closes: the reaper's **must-not-reap** direction rests on one incidental observation rather than
+a deliberate check, and the earlier cold-start figure of **185.7 s is invalid** (it includes human
+delay between the row INSERT and the `agentcore invoke`; the agent's first log and `started_at` were
+180 ms apart). It must not be cited as a measurement or used to justify a `grace_seconds` change.
+`TESTING.md` (Database / reaper layer) ranks the corresponding structural test gaps.

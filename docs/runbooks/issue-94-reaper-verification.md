@@ -149,6 +149,17 @@ returning id;   -- capture this
 
 ### 2.3 Wait one cron tick (≤60s)
 
+> **Not-yet-executed check (AC4, `queued` half) — carried by
+> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101).** Before waiting for the tick,
+> query the view on the row from 2.2:
+> ```sql
+> select status, effective_status from v_runs where id = ':id';
+> -- expect: queued | failed_to_start
+> ```
+> `v_runs` has two independent read-time branches (`running`→`timed_out` and
+> `queued`→`failed_to_start`); only the `running` one was observed under #94 (§3.3). The `queued`
+> branch was verified by inspection of the same `case` expression, not by observation.
+
 ### 2.4 Assert the status flipped (AC2)
 
 ```sql
@@ -292,6 +303,10 @@ delete from runs where id in (':id_task2', ':id_task3');  -- events cascade
 
 ## 4 — Reaper interlock: healthy runs must not be reaped (AC5, dep-update AC-36)
 
+> ⏳ **Not closed under #94** — AC5 is carried by
+> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) (see the §4.3 results block for
+> why, and §4.4 for the proof that does not depend on #98).
+
 ### 4.0 Prerequisite — the run row must exist before invoking (D1)
 
 **A direct `agentcore invoke` does not create the `runs` row.** Per D1 and specification §14, the
@@ -406,7 +421,8 @@ tight and healthy runs risk being reaped.
 > interlock claim than AC5 asks for, but it is not nothing.
 >
 > **To close this AC**, run the synthetic interlock proof in §4.4 — it proves the boundary
-> deterministically in minutes and does not depend on the runtime path broken by #98.
+> deterministically in minutes and does not depend on the runtime path broken by #98. Execution is
+> carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101).
 
 ### 4.4 Fallback — synthetic interlock proof
 
@@ -434,6 +450,10 @@ by backdating past the threshold (`started_at = now() - interval '63 min'`, i.e.
 ---
 
 ## 5 — CloudWatch fallback when Supabase is unreachable (AC6)
+
+> ⏳ **Not executed under #94** — this task is carried by
+> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101). The procedure below is written
+> and ready; run it there. Note the §4.0 pre-insert and §4.1 payload form both apply.
 
 ### 5.1 Break PostgREST reachability
 
@@ -494,17 +514,24 @@ select status from runs where id = ':new_id';   -- row should be updated normall
 | AC1 | `reap-stale-runs` scheduled `* * * * *` and firing | ✅ **PASS** | §1 results |
 | AC2 | `queued` past threshold → `failed_to_start` + event | ✅ **PASS** | §2 results (synthetic + orphan) |
 | AC3 | `running` past threshold → `timed_out` + event | ✅ **PASS** | §3 real-run `f63ac9f3-…` |
-| AC4 | `v_runs.effective_status` leads the reaper | ✅ **PASS** | §3 synthetic split + real-run convergence |
-| AC5 | Healthy long run not reaped; cold-start gap recorded | ⏳ **PENDING** | blocked by [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98); use §4.4 synthetic proof |
-| AC6 | Supabase unreachable → agent completes, CloudWatch recoverable | ⏳ **PENDING** | Task 5 not executed |
+| AC4 | `v_runs.effective_status` leads the reaper | ✅ **PASS** | §3 synthetic split + real-run convergence (`running` half; the `queued` → `failed_to_start` read-time half was verified by inspection of the same `case` expression, not observed — carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)) |
+| AC5 | Healthy long run not reaped; cold-start gap recorded | ⏳ **PENDING** | blocked by [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98); use §4.4 synthetic proof — carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) |
+| AC6 | Supabase unreachable → agent completes, CloudWatch recoverable | ⏳ **PENDING** | Task 5 not executed — carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) |
 | AC7 | Scheduling + results documented | ✅ **PASS** | this runbook |
+
+**Residual verification owner.** Everything left open above —
+the AC4 `queued`-half observation, AC5 (interlock proof + a valid cold-start measurement), and AC6 —
+is carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)
+(*test(infra): complete issue #94 AC5/AC6 reaper verification*). Issue #94 ships with 5 of 7 ACs
+verified; #101 is the place those three checks get executed, using the procedures already written in
+§2–§5 of this runbook.
 
 ---
 
 ## Follow-up issues raised by this verification
 
-All four were discovered while verifying the reaper and are **out of scope for #94** — the reaper
-itself behaved correctly in every observed case.
+Four **defects** were discovered while verifying the reaper and are **out of scope for #94** — the
+reaper itself behaved correctly in every observed case.
 
 | Issue | Title | Severity | Discovered how |
 |-------|-------|----------|----------------|
@@ -516,6 +543,12 @@ itself behaved correctly in every observed case.
 Dependency note: **#98 blocks AC5** of this issue. #97 and #100 are prerequisites for anyone
 re-running §4 or §5 by hand, which is why both are cross-referenced from those sections and from the
 troubleshooting index.
+
+A fifth issue carries the **unfinished verification** rather than a defect:
+
+| Issue | Title | Carries |
+|-------|-------|---------|
+| [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) | `test(infra): complete issue #94 AC5/AC6 reaper verification` | AC5 (§4.2–§4.4 interlock proof + a valid `date -u` cold-start measurement), AC6 (§5 CloudWatch fallback, including the §5.5 restore), and the AC4 `queued` → `failed_to_start` read-time observation (§2 + a pre-tick `v_runs` query) |
 
 ---
 
