@@ -1,0 +1,445 @@
+# Operator Runbook — Issue #94: pg_cron Reaper Scheduling & Stale-Run Verification
+
+> **Audience:** the human operator with Supabase SQL Editor + AWS (AgentCore, CloudWatch) access.
+> **Why this exists:** scheduling the reaper touches the production Supabase database, and the
+> stale-run verifications require live invocations and CloudWatch reads. None of it can be
+> performed by the developer agent. The repo-side portion of issue #94 (uncommenting the
+> `cron.schedule` block in `docs/reference/001_schema.sql`) is already done on branch
+> `issue/94-schedule-pg-cron-reaper` (PR #96).
+>
+> **Location decision (sub-task 6.1):** kept as a **separate runbook** rather than a section in
+> [`issue-77-deployment-e2e.md`](issue-77-deployment-e2e.md). The reaper content is substantial
+> (scheduling + five verification tasks + several operational gotchas) and has a different
+> lifecycle from the one-time deployment steps. The #77 runbook cross-links here.
+
+| Field | Value |
+|-------|-------|
+| Issue | [#94](https://github.com/llipe/dev-tasks-agent-fleet/issues/94) |
+| PR | [#96](https://github.com/llipe/dev-tasks-agent-fleet/pull/96) (draft) |
+| Branch | `issue/94-schedule-pg-cron-reaper` |
+| Task list | `workstream/tasks-issue-94-schedule-pg-cron-reaper.md` |
+| Test plan | `workstream/test-plan-issue-94.md` |
+| Schema reference | `docs/reference/001_schema.sql` (`reap_stale_runs()`, `v_runs`) |
+| Region | `us-east-1` |
+
+---
+
+## Background — the two-layer design
+
+Two mechanisms implement stale-run detection, and both must be verified:
+
+| Layer | Mechanism | Timing |
+|-------|-----------|--------|
+| **1 — materialize** | `pg_cron` runs `reap_stale_runs()` every minute; writes the terminal `status` **and** an explanatory `run_events` row | up to 60s behind |
+| **2 — read time** | `v_runs.effective_status` computes the terminal status on read | instant |
+
+The explanatory `run_events` row exists **only** in layer 1. This is why an unscheduled reaper is
+dangerous rather than merely late: `v_runs` keeps the UI looking correct while `runs.status` stays
+wrong forever and the "why" event is never written.
+
+**Two clocks, two states** (D8/D9):
+
+| Condition | New status | Clock |
+|---|---|---|
+| `status='running'` and `now() > started_at + max_runtime_seconds + grace_seconds` | `timed_out` | `started_at` |
+| `status='queued'` and `now() > queued_at + start_timeout_seconds` | `failed_to_start` | `queued_at` |
+
+Thresholds are **snapshotted per run** — so synthetic rows with small values verify the mechanism
+in minutes instead of the seeded 62-minute window.
+
+---
+
+## Prerequisites
+
+- [x] `001_schema.sql` applied (tables, `v_runs`, `reap_stale_runs()`, RLS deny-all).
+- [x] `002_seed.sql` applied (installation, repos, `dependency-update` agent with
+      `max_runtime_seconds=3600`, `grace_seconds=120`, `start_timeout_seconds=300`).
+- [x] Agent deployed and runtime `READY` (see [#77 runbook](issue-77-deployment-e2e.md)).
+
+---
+
+## 1 — Schedule the reaper (AC1)
+
+### 1.2 Enable the extension ⚠️ live-DB change
+
+Supabase Dashboard → **Database → Extensions** → enable `pg_cron`. Or in the SQL Editor:
+
+```sql
+create extension if not exists pg_cron;
+```
+
+- [x] `pg_cron` enabled.
+
+### 1.3 Register the job
+
+```sql
+select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);
+```
+
+Returns a `jobid`. Safe to re-run — `pg_cron` upserts by `jobname`, so a second call updates the
+existing job rather than creating a duplicate.
+
+- [x] Job scheduled.
+
+### 1.4 Verify the job is registered (AC1a)
+
+```sql
+select jobid, jobname, schedule, command, active
+from cron.job
+where jobname = 'reap-stale-runs';
+```
+
+Expect exactly one row, `schedule = '* * * * *'`, `active = t`.
+
+- [x] Verified.
+
+### 1.5 Verify the job is firing (AC1b)
+
+Wait 1–2 minutes after scheduling, then:
+
+```sql
+select status, return_message, start_time, end_time
+from cron.job_run_details
+where jobid = (select jobid from cron.job where jobname = 'reap-stale-runs')
+order by start_time desc
+limit 5;
+```
+
+Expect recent rows with `status = 'succeeded'`.
+
+> **Why this query matters beyond AC1:** a reaper that raises inside its tick shows up here as
+> `status='failed'` with a `return_message`. Without checking `job_run_details`, a silently failing
+> reaper is indistinguishable from a healthy one — the exact class of defect issue #94 exists to
+> close.
+
+- [x] Verified.
+
+**Results — AC1**
+
+| Check | Expected | Observed | Verdict |
+|---|---|---|---|
+| 1.4 job registered | one row, `* * * * *`, `active=t` | _(operator: paste)_ | ☐ |
+| 1.5 job firing | recent `status='succeeded'` rows | _(operator: paste)_ | ☐ |
+
+---
+
+## 2 — Verify `failed_to_start` (AC2)
+
+Uses a **backdated** `queued_at` so the row is already past its threshold — you wait one cron
+tick, not the full 60s + tick.
+
+### 2.2 Insert the synthetic queued run
+
+```sql
+insert into runs (
+  id, agent_id, agent_version, repository_id, installation_id,
+  status, queued_at, max_runtime_seconds, grace_seconds, start_timeout_seconds
+)
+select
+  gen_random_uuid(), a.id, a.version, r.id, r.installation_id,
+  'queued', now() - interval '90 seconds', 3600, 120, 60
+from agents a
+join repositories r on r.full_name = 'llipe/memo-cli'
+where a.slug = 'dependency-update'
+returning id;   -- capture this
+```
+
+### 2.3 Wait one cron tick (≤60s)
+
+### 2.4 Assert the status flipped (AC2)
+
+```sql
+select status, error_code, error_message, finished_at
+from runs where id = ':id';
+```
+
+Expect `status='failed_to_start'`, `error_code='START_TIMEOUT'`, non-null `error_message` and
+`finished_at`.
+
+### 2.5 Assert the explanatory event exists (AC2)
+
+```sql
+select seq, level, message,
+       data->>'reaped_by' as reaped_by,
+       data->>'reason'    as reason
+from run_events
+where run_id = ':id'
+order by seq;
+```
+
+Expect `level='error'`, `reaped_by='reap_stale_runs'`, `reason='START_TIMEOUT'`.
+
+**Results — AC2**
+
+| Check | Expected | Observed | Verdict |
+|---|---|---|---|
+| 2.4 status | `failed_to_start` / `START_TIMEOUT` | _(operator)_ | ☐ |
+| 2.5 event | `reason=START_TIMEOUT` row present | _(operator)_ | ☐ |
+
+---
+
+## 3 — Verify `timed_out` + the two-layer contract (AC3, AC4)
+
+### 3.2 Insert the synthetic running run
+
+Threshold is `max_runtime + grace` = 60 + 10 = 70s; `started_at` backdated 75s makes it eligible
+immediately.
+
+```sql
+insert into runs (
+  id, agent_id, agent_version, repository_id, installation_id,
+  status, queued_at, started_at, max_runtime_seconds, grace_seconds, start_timeout_seconds
+)
+select
+  gen_random_uuid(), a.id, a.version, r.id, r.installation_id,
+  'running', now() - interval '3 min', now() - interval '75 seconds', 60, 10, 300
+from agents a
+join repositories r on r.full_name = 'llipe/memo-cli'
+where a.slug = 'dependency-update'
+returning id;   -- capture this
+```
+
+### 3.3 Two-layer check — run IMMEDIATELY, before the next tick (AC4)
+
+```sql
+select status, effective_status
+from v_runs where id = ':id';
+```
+
+Expect `status='running'` **and** `effective_status='timed_out'` at the same time. This is the
+behaviour PRD FR11a depends on.
+
+> **If you miss the window** (the tick already fired, both columns read `timed_out`), unschedule,
+> insert, observe, then re-schedule:
+> ```sql
+> select cron.unschedule('reap-stale-runs');
+> -- re-run the 3.2 insert, then the 3.3 query — the split is now stable
+> select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);
+> ```
+> Remember to re-schedule, or every later verification will appear to fail.
+
+### 3.4–3.6 Wait one tick, then assert materialization (AC3)
+
+```sql
+select status, error_code, error_message, finished_at
+from runs where id = ':id';
+-- expect: timed_out / RUNTIME_TIMEOUT
+
+select seq, level, message, data->>'reason' as reason
+from run_events
+where run_id = ':id' and data->>'reaped_by' = 'reap_stale_runs';
+-- expect: reason = RUNTIME_TIMEOUT
+```
+
+**Results — AC3 / AC4**
+
+| Check | Expected | Observed | Verdict |
+|---|---|---|---|
+| 3.3 two-layer | `running` + `effective_status=timed_out` | _(operator)_ | ☐ |
+| 3.5 status | `timed_out` / `RUNTIME_TIMEOUT` | _(operator)_ | ☐ |
+| 3.6 event | `reason=RUNTIME_TIMEOUT` row present | _(operator)_ | ☐ |
+
+### Cleanup synthetic rows
+
+```sql
+delete from runs where id in (':id_task2', ':id_task3');  -- events cascade
+```
+
+---
+
+## 4 — Reaper interlock: healthy runs must not be reaped (AC5, dep-update AC-36)
+
+### 4.0 Prerequisite — the run row must exist before invoking (D1)
+
+**A direct `agentcore invoke` does not create the `runs` row.** Per D1 and specification §14, the
+**front-end** inserts the `queued` row before invoking; the agent SDK only *updates* it
+(`agent_reporter.py::RunReporter.start()` issues a PATCH, never an INSERT). The Next.js panel is
+Phase 2 and does not exist yet, so PostgREST's PATCH matches zero rows, returns HTTP 200, and
+**nothing appears in `runs` or `v_runs`**.
+
+Insert the row first, simulating what the panel will do:
+
+```sql
+insert into runs (
+  id, agent_id, agent_version, repository_id, installation_id,
+  status, queued_at, max_runtime_seconds, grace_seconds, start_timeout_seconds
+)
+select gen_random_uuid(), a.id, a.version, r.id, r.installation_id,
+       'queued', now(), 3600, 120, 300
+from agents a
+join repositories r on r.full_name = 'llipe/tf-ecommerce-mgmt'
+where a.slug = 'dependency-update'
+returning id;
+```
+
+> **Symptom if you skip this:** the run stays invisible, then a pre-inserted orphan `queued` row is
+> reaped to `failed_to_start` at its threshold with `started_at = null` and zero agent-written
+> events. That is the reaper working correctly on an orphan — not an agent bug.
+
+### 4.1 Invoke — payload shape (⚠️ CLI 0.28.0)
+
+`agentcore invoke [prompt]` treats its argument **as** the prompt and wraps it itself as
+`{"prompt": "<arg>"}`. The agent's `unwrap_payload()` strips exactly **one** level. So passing an
+already-wrapped `{"prompt": "{...}"}` arrives **double-wrapped**; one unwrap leaves
+`{"prompt": "{...}"}`, whose only key is `prompt`, and validation fails with a generic
+`INVALID_PARAMS` / `"Invalid payload — missing required fields"`.
+
+**Pass the bare inner JSON.** Write `/tmp/invoke-94.json` with no `prompt` key:
+
+```json
+{"run_id": "<UUID-FROM-4.0>", "repository_org": "llipe", "repository_name": "tf-ecommerce-mgmt", "params": {"fix_mode": "llm_fix", "max_fix_attempts": 3}}
+```
+
+```bash
+cd agents/dependency-update
+date -u +"%Y-%m-%dT%H:%M:%S.%3NZ"   # record: needed for the cold-start measurement in 4.3
+agentcore invoke --prompt-file /tmp/invoke-94.json
+```
+
+Notes:
+- `repository_name` is the **repo name only** — not `org/repo`.
+- The README §Invocation and #77 runbook §7.7–7.10 examples use the pre-wrapped form and are
+  **wrong for CLI ≥ 0.28.0** (they worked on the CLI version current at #77). Tracked separately.
+
+Confirm it started:
+
+```sql
+select status, started_at from runs where id = ':id';   -- expect running + non-null started_at
+```
+
+### 4.2 Assert the healthy run is not reaped (AC5)
+
+```sql
+select status, outcome, error_code,
+       extract(epoch from (finished_at - started_at)) as run_duration_seconds
+from runs where id = ':id';
+-- expect terminal succeeded|failed, NEVER timed_out
+
+select count(*) from run_events
+where run_id = ':id' and data->>'reaped_by' = 'reap_stale_runs';
+-- expect 0
+```
+
+### 4.3 Measure the cold-start gap (dep-update PRD open question 8)
+
+```sql
+select queued_at, started_at,
+       extract(epoch from (started_at - queued_at)) as insert_to_start_seconds
+from runs where id = ':id';
+```
+
+> **Do not read `insert_to_start_seconds` as the cold-start gap when you insert the row manually.**
+> It includes the human delay between running the INSERT and running `agentcore invoke`. The
+> meaningful figure is **`started_at` − (the `date -u` timestamp from 4.1)**, because in production
+> the front-end inserts and invokes within milliseconds. Record both, and label them distinctly.
+
+Compare the true gap against `grace_seconds = 120`. If it approaches 120s, the grace window is too
+tight and healthy runs risk being reaped.
+
+**Results — AC5 / AC-36**
+
+| Check | Expected | Observed | Verdict |
+|---|---|---|---|
+| 4.2 terminal status | `succeeded`/`failed`, never `timed_out` | _(operator)_ | ☐ |
+| 4.2 no reaper event | count = 0 | _(operator)_ | ☐ |
+| 4.3 true cold-start gap | comfortably < `grace_seconds` (120) | _(operator)_ | ☐ |
+
+### 4.4 Fallback — synthetic interlock proof
+
+If no seeded repo yields a genuinely long `llm_fix` run (e.g. all advisories classify
+`major_required`/`unknown`, so zero packages change and the LLM loop is never reached), prove the
+interlock deterministically instead:
+
+```sql
+-- healthy long-running row with REAL thresholds, 30 min elapsed (well under 3600+120)
+insert into runs (
+  id, agent_id, agent_version, repository_id, installation_id,
+  status, queued_at, started_at, max_runtime_seconds, grace_seconds, start_timeout_seconds
+)
+select gen_random_uuid(), a.id, a.version, r.id, r.installation_id,
+       'running', now() - interval '31 min', now() - interval '30 min', 3600, 120, 300
+from agents a join repositories r on r.full_name = 'llipe/memo-cli'
+where a.slug = 'dependency-update'
+returning id;
+```
+
+Across several cron ticks it must stay `running` with `effective_status='running'` and zero reaper
+events — proving a legitimately long healthy run is not reaped. Then confirm the boundary does fire
+by backdating past the threshold (`started_at = now() - interval '63 min'`, i.e. > 3720s).
+
+---
+
+## 5 — CloudWatch fallback when Supabase is unreachable (AC6)
+
+### 5.1 Break PostgREST reachability
+
+Point `SUPABASE_URL` at an unreachable host on the runtime config. **Record the current correct
+value first** — it is in `agents/dependency-update/agentcore/agentcore.json` under
+`runtimes[].envVars`.
+
+### 5.2–5.4 Invoke and verify
+
+```bash
+agentcore invoke --prompt-file /tmp/invoke-94.json
+```
+
+- The agent **completes** rather than crashing — reporting failure must never kill the agent.
+- After the SDK's 3 retries (`HTTP_RETRIES = 3`), payloads are dumped to stderr → CloudWatch:
+
+```bash
+aws logs tail /aws/bedrock-agentcore/<runtime-log-group> \
+  --since 15m --region us-east-1 --format short \
+  | grep -iE "supabase|retry|payload|report"
+```
+
+> 4xx responses are **not** retried (contract error — retrying cannot help); only transient
+> failures (5xx, network) use the 3-attempt backoff before the stderr dump.
+
+### 5.5 ⚠️ Restore `SUPABASE_URL`
+
+Restore the recorded value and confirm reporting resumes:
+
+```sql
+select status from runs where id = ':new_id';   -- row should be updated normally again
+```
+
+> **Leaving `SUPABASE_URL` broken silently breaks every later verification** — the agent runs but
+> writes nothing, and pre-inserted rows get reaped as `failed_to_start` with `started_at = null`.
+> If you see that signature, check this first.
+
+**Results — AC6**
+
+| Check | Expected | Observed | Verdict |
+|---|---|---|---|
+| 5.3 agent completes | normal exit, no crash | _(operator)_ | ☐ |
+| 5.4 CloudWatch payloads | dumped payloads present after 3 retries | _(operator)_ | ☐ |
+| 5.5 restored | reporting works again | _(operator)_ | ☐ |
+
+---
+
+## Troubleshooting index
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Run invisible in `runs`/`v_runs` after invoke | No row inserted; agent only PATCHes (D1) | Insert the `queued` row first (§4.0) |
+| `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Pass bare inner JSON via `--prompt-file` (§4.1) |
+| Row reaped `failed_to_start`, `started_at=null`, no agent events | Agent never reported start — broken `SUPABASE_URL`, `run_id` mismatch, or invalid payload | Check §4.1 payload, §5.5 restore, and that the invoke `run_id` matches the inserted row exactly |
+| Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container (kill/OOM/idle-timeout) separately |
+| `v_runs` and `runs` disagree | Expected between threshold and the next tick — that is the two-layer design | None; confirm they converge after the tick |
+| Reaper appears to do nothing | Job unscheduled (e.g. left unscheduled after a §3.3 retry) | Re-run `cron.schedule` (§1.3) and check `cron.job` |
+
+---
+
+## Known limitation observed during verification
+
+A real `llm_fix` invocation was observed dying during the `validate` step without reporting a
+terminal status (`run_steps` showed `validate` open, `runs.status` stuck `running`). The reaper
+correctly covers this at `started_at + max_runtime + grace`. Two config facts are relevant and are
+tracked outside issue #94:
+
+- The entrypoint is an async generator that yields **only** its final result, so a run produces no
+  stream output for its whole duration, against `idleRuntimeSessionTimeout: 300`.
+- `TEST_TIMEOUT` defaults to **600s**, twice that idle timeout.
+
+Consequence for verification: AC5's "real 20+ minute `llm_fix` run" may not be achievable until
+that is resolved — use the synthetic interlock proof in §4.4 instead.

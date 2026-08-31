@@ -300,6 +300,21 @@ Expect a JSON object containing:
 
 ---
 
+## Related — stale-run reaper
+
+Scheduling the `pg_cron` reaper and verifying stale-run detection (`timed_out` /
+`failed_to_start`) were **not** part of issue #77 and are covered separately in
+[`issue-94-reaper-verification.md`](issue-94-reaper-verification.md). That runbook
+also documents two gotchas discovered while verifying, which affect the invocation
+steps below:
+
+- **A direct `agentcore invoke` does not create the `runs` row** — the control plane
+  (front-end, Phase 2) inserts it; the agent SDK only updates it. Insert the `queued`
+  row first or the run stays invisible.
+- **`agentcore` CLI ≥ 0.28.0 wraps the prompt itself**, so the pre-wrapped
+  `'{"prompt": "..."}'` form used in steps 7.7–7.10 below arrives double-wrapped and
+  fails with `INVALID_PARAMS`. Pass the bare inner JSON via `--prompt-file` instead.
+
 ## After completing all steps
 
 Report back to the developer agent with:
