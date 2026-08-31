@@ -227,8 +227,25 @@ Example policy statement (scope the resources — do **not** use `*`):
 
 ## E2E validation
 
+> ⚠️ **Read before running 7.7–7.10 — two invocation gotchas found after these steps were
+> executed** (details and workarounds in
+> [`issue-94-reaper-verification.md`](issue-94-reaper-verification.md) §4.0 and §4.1):
+>
+> 1. **`agentcore` CLI ≥ 0.28.0 wraps the prompt argument itself.** The pre-wrapped
+>    `'{"prompt": "{...}"}'` form used in the commands below therefore arrives **double-wrapped**
+>    and dies with a generic `INVALID_PARAMS`. Pass the **bare inner JSON** instead —
+>    `agentcore invoke --prompt-file /tmp/invoke.json`, where the file has no `prompt` key.
+>    Tracked as [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97); the commands below
+>    are kept verbatim as the record of what was executed under the older CLI.
+> 2. **A direct `agentcore invoke` does not create the `runs` row.** Per D1 the control plane
+>    (front-end, Phase 2) inserts the `queued` row and the agent only PATCHes it, so a run invoked
+>    by hand stays invisible in `runs`/`v_runs` with no error anywhere. Insert the `queued` row
+>    first — see §4.0 of the reaper runbook. Tracked as
+>    [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100).
+
 Generate a UUID per run (`uuidgen` or `python3 -c "import uuid;print(uuid.uuid4())"`).
-The payload is wrapped in a `prompt` key (JSON string).
+The payload is wrapped in a `prompt` key (JSON string) — see the CLI caveat above before copying
+the commands.
 
 ### 7.7 — audit_only on a clean repo
 
@@ -299,6 +316,22 @@ Expect a JSON object containing:
 - [x] `packages_changed`.
 
 ---
+
+## Related — stale-run reaper
+
+Scheduling the `pg_cron` reaper and verifying stale-run detection (`timed_out` /
+`failed_to_start`) were **not** part of issue #77 and are covered separately in
+[`issue-94-reaper-verification.md`](issue-94-reaper-verification.md). That runbook
+also documents two gotchas discovered while verifying, which affect the invocation
+steps in **E2E validation** above (repeated as a warning there, since a reader working
+top-down reaches 7.7 before this section):
+
+- **A direct `agentcore invoke` does not create the `runs` row** — the control plane
+  (front-end, Phase 2) inserts it; the agent SDK only updates it. Insert the `queued`
+  row first or the run stays invisible.
+- **`agentcore` CLI ≥ 0.28.0 wraps the prompt itself**, so the pre-wrapped
+  `'{"prompt": "..."}'` form used in steps 7.7–7.10 arrives double-wrapped and
+  fails with `INVALID_PARAMS`. Pass the bare inner JSON via `--prompt-file` instead.
 
 ## After completing all steps
 

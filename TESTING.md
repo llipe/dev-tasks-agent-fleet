@@ -28,7 +28,7 @@ The layer taxonomy below is fixed. What belongs in each layer is project-specifi
 | -------- | ------------------------- | ------------------------------------------------------------------------------------- | ----------------- |
 | 1        | Deterministic foundations | Unit tests, schema validation. No I/O, no network, no real database.                  | active — `tests/unit/` (pytest `unit` marker); covers `scrubber.py`, `credentials.py`, `toolchain.py`, `validator.py`, `eligibility.py`, `classifier.py`, `fix_agent.py` (`_safe_path`, mandate check, fix tools), and `pull_request.py` (PR-body builder + branch naming). |
 | 2        | Constrained model/tool    | Backend component tests, mocked APIs, fixtures and gold datasets.                     | active — `tests/component/` holds ~56 tests across `test_pipeline.py`, `test_pr_creation.py`, and `test_fix_agent.py` (mocked `git`/`gh`/`subprocess`, Secrets Manager, PostgREST, and the Strands `Agent`). `tests/fixtures/` still holds no recorded payloads (`.gitkeep` only). |
-| 2.5      | Integration               | Real database, real migrations, RLS policies, schema contracts. No mocked data layer. | not configured — no local Postgres/Supabase harness present. Belongs to Phase 2 / DB work; not applicable to the current agent package. |
+| 2.5      | Integration               | Real database, real migrations, RLS policies, schema contracts. No mocked data layer. | **not configured — and now a live gap, not a deferred one.** No local Postgres/Supabase harness exists (no pgTAP, no testcontainers, no `docker-compose`, no Supabase CLI directory). As of issue #94 the database is no longer inert reference DDL: `reap_stale_runs()` is scheduled in production via `pg_cron` and `v_runs.effective_status` is a read-time contract the Phase 2 UI will depend on. Both are verified **only** by live operator SQL (`docs/runbooks/issue-94-reaper-verification.md`). See the Database/reaper gap table under Coverage. |
 | E2E      | End-to-end                | Playwright CLI — committed browser automation, full-stack, scenario-driven.           | not configured — no frontend in repo (Next.js is Phase 2). No Playwright config. |
 | Contract | Contract validation       | API spec drift, breaking-change detection, consumer impact. `dt verify` family.       | not configured — no OpenAPI/AsyncAPI spec in repo; `dt` not wired. |
 | 3        | Product evaluation        | Semantic, tone, groundedness, hallucination evals. Only for LLM features.             | not configured — the agent uses an LLM (`strands-agents`) in `fix_agent.py`. `fix_agent.py` now has Layer 1 + Layer 2 tests (with the model mocked), but no semantic/groundedness eval harness exists. Finding: the LLM output quality is unevaluated. |
@@ -151,6 +151,7 @@ line while asserting nothing meaningful. Thresholds are a floor, not a goal.
 - Measurement tool per package: **`dependency-update`: pytest-cov 7.1.0** (coverage.py backend), branch coverage on, config in `[tool.coverage.run]` / `[tool.coverage.report]`. `agentcore-cdk-app`: none wired (out of scope — IaC smoke test only).
 - Threshold policy: **no hard floor yet (`fail_under` unset).** Coverage is measured and reported on every `make test-cov`/`make validate` run, but a numeric gate is deliberately deferred. Most deterministic pipeline modules (#72–#76) now exist and are tested; a `fail_under` floor should be introduced once the remaining wiring (#77) lands so the number reflects a complete pipeline.
 - Baseline: **~90%+ on implemented modules** — `scrubber.py` 100%, `config.py` 100%, `classifier.py` 100%, `eligibility.py` 100%, `credentials.py` 95%, `pull_request.py` 95%, `validator.py` 99%, `toolchain.py` 94%, `fix_agent.py` ~91%, `audit.py` ~87%. `main.py` and `agent_reporter.py` remain coverage-excluded/untested (see gap table). This baseline now describes the bulk of the pipeline logic, not just a narrow slice.
+- **Last validated artifact (2026-08-31, issue #94 / PR #96):** `make validate` re-run from `agents/dependency-update/app/dependencyUpdate/` — **362 passed**, TOTAL **94%** (845 stmts / 48 miss / 234 branch / 19 brpart), `pip-audit . --strict` clean. Figures reproduced independently, not taken on report. **Measured scope caveat:** this artifact covers the 11 non-omitted Python modules of the `dependency-update` package only. `main.py` and `agent_reporter.py` are in `[tool.coverage.run] omit`, and the SQL layer (`docs/reference/001_schema.sql`), runbooks, and `workstream/` artifacts are outside the measured tree entirely. It is valid evidence of no Python regression; it is **not** evidence about anything issue #94 changed.
 - Regression policy: report coverage on every `validate` run; a drop on any of the tested modules below its current number is a regression to investigate. Formal `fail_under` enforcement lands with the remaining #77 wiring.
 
 > **`coverage_gate: MEASURED (~90%+ on implemented modules; no `fail_under` floor yet)`.** The gate is not SKIPPED — a provider (pytest-cov) is configured and runs in `make validate`. The structural gap analysis below now targets the remaining untested surface (`main.py` orchestrator wiring, `agent_reporter.py`), not the pipeline logic modules, which are covered.
@@ -174,6 +175,62 @@ line while asserting nothing meaningful. Thresholds are a floor, not a goal.
 | `main.py`                          | **no** (coverage-excluded) | MED | Entrypoint/orchestrator wiring. Listed in `[tool.coverage.run] omit`; guard ordering (req49→req50→open_pr, PR-before-MAJOR_UPDATE_REQUIRED, `pull_request` artifact emission) verified by inspection, not by an automated assertion. |
 
 Source-to-test ratio: **most source modules now have tests** — the deterministic pipeline (`audit`, `classifier`, `eligibility`, `toolchain`, `validator`, `updater`, `pull_request`), the secret scrubber, credentials, and the LLM fix loop are all exercised. The remaining untested surface is `agent_reporter.py` (SDK, no committed tests) and `main.py` (orchestrator, coverage-excluded by convention). Ranked by residual risk: (1) `main.py` orchestration guards (inspection-only), (2) `agent_reporter.py` buffering/retry/`seq` behavior, (3) the **LLM output-quality** dimension of `fix_agent.py` (Layer 3 eval harness absent — the code path is tested, its semantic output is not), and (4) the security-negative auth cases in `credentials.py` (see below).
+
+### Database / reaper layer — structural gap (added issue #94)
+
+The stale-run reaper is **production behaviour with zero automated coverage.** `reap_stale_runs()`,
+`v_runs.effective_status`, and the explanatory `run_events` contract exist in exactly one file —
+`docs/reference/001_schema.sql` — and that file is applied by hand through the Supabase SQL Editor.
+A repo-wide search for `reap_stale_runs`, `v_runs`, and `effective_status` across `*.py`, `*.ts`,
+`*.sql`, `*.toml`, `*.yml`, and `Makefile` returns hits in that one file and nowhere else. No test,
+no migration runner, and no CI step touches it. `coverage_gate` therefore says nothing about this
+layer, in either direction.
+
+Issue #94 verified the reaper against the live database and the evidence is genuine — but it is
+**one-shot manual evidence, not a regression detector.** The runbook records AC1–AC4 and AC7 as PASS
+(`docs/runbooks/issue-94-reaper-verification.md`); AC5 and AC6 are PENDING. Nothing in the repo will
+notice if the deployed function, the view, or the cron schedule later drifts from the DDL in
+`001_schema.sql`, because nothing compares them.
+
+Ranked by residual risk:
+
+| # | Gap | Risk | Why it ranks here | Evidence today |
+|---|-----|------|-------------------|----------------|
+| 1 | **Reaper "must NOT reap" behaviour is unverified in both directions.** The negative half of the CT-1 state-transition contract — within-grace rows stay `running`, `started_at IS NULL` is skipped, future-dated `started_at` is skipped, already-terminal rows are never mutated — has no automated test *and* no executed manual check. | **HIGH** | Every executed case was past-threshold, so all observed evidence is of the reaper firing. A regression that reaps too eagerly would kill healthy long runs — the exact failure the D8 grace window exists to prevent — and would be invisible to every check that has run. AC5 (the one check that would have caught it on a real run) is PENDING, blocked by #98. | EC-1..EC-5 and EC-8 are catalogued in `workstream/test-plan-issue-94.md` and mapped in the traceability matrix as negative pairings, but the matrix records no executed result for them. EC-9 (`seq` monotonicity) was confirmed incidentally. |
+| 2 | **DDL drift between `001_schema.sql` and the deployed database is undetectable.** The schema file is a reference artifact applied manually; there is no migration runner, no checksum, no `schema diff` step. | **HIGH** | Issue #94 was itself a drift defect of this class — the scheduling block sat commented out while the design docs described a scheduled reaper. The same class of gap will recur silently. #100 (control plane must insert the `queued` row) is a second instance: a documented contract that no code or test enforces. | None. Verified by inspection only. |
+| 3 | **Two-layer consistency (CT-2) has no repeatable assertion.** `runs.status == v_runs.effective_status` after the reaper fires, and `effective_status` == eventual `status` before it fires, were each observed once. | **MED** | This is the invariant the Phase 2 Run Detail panel is built on (DESIGN.md §5.3, PRD FR11a). A view-vs-function divergence would surface as the UI showing a terminal run as `running` — quiet, plausible, and wrong. | One synthetic observation + one real-run convergence, both manual. |
+| 4 | **Event-schema contract (CT-3) is asserted by eye.** `level='error'`, `data.reaped_by`, `data.reason ∈ {START_TIMEOUT, RUNTIME_TIMEOUT}`, `seq = max(seq)+1`. | **MED** | The explanatory event is the *only* source of "why did this run die" (product-context success metric 3). It is also where #99 bites: the reaper writes the event but leaves open `run_steps` pinned `running`, and no assertion exists that would have caught that. | Real-run event inspected once (`seq=10`, no `uq_run_events_seq` collision). |
+| 5 | **Concurrency / idempotency of `for update skip locked` (EC-5, EC-6) unverified.** Two overlapping ticks must transition a row once and write exactly one event. | **MED** | A double-fire produces a `seq` collision that aborts the whole tick, so one bad row stalls reaping for every run. Low likelihood at one tick per minute; high blast radius. | Not executed. |
+| 6 | **`agent_reporter.py` is the write side of this same contract and has no committed tests** (buffering, 3-retry backoff, 4xx-not-retried, `seq` assignment, stderr/CloudWatch fallback). | **MED** | It is coverage-omitted, so the 94% figure excludes it entirely. AC6 — the CloudWatch fallback — is PENDING, meaning neither the automated nor the manual path covers it. Follow-up #97 (`unwrap_payload` double-wrap) and #98 (run dies without reporting terminal status) are both failures in this reporting surface. | None (design doc notes prior ad-hoc testing with a fake client). |
+
+**Is this in scope to fix now? No.** Closing gaps 1–5 requires a Layer 2.5 harness that does not exist
+— a local Postgres with `pg_cron` (testcontainers, `docker-compose`, or the Supabase CLI) plus pgTAP
+or a Python DB-integration suite. Standing that up means new dependencies and new CI infrastructure,
+which is an approved-task decision, not something to smuggle into an infrastructure-verification PR.
+Gap 6 (`agent_reporter.py`) is closable at Layer 1/2 with no new dependencies, but it is a different
+module than issue #94 touched and belongs in its own change.
+
+**Recommended follow-up issue (not filed by `qa-engineer` — hand to the user):**
+*"Add a Layer 2.5 database harness and pin the reaper contract with automated tests."* Scope: choose a
+local Postgres+`pg_cron` runner; port CT-1 (full transition table, **including the must-not-reap
+rows**), CT-2, CT-3, and EC-1..EC-6/EC-9 from `workstream/test-plan-issue-94.md` into executable
+assertions; apply `001_schema.sql` clean in the harness so DDL drift fails CI; wire the suite into
+`make validate` and `ci.yml`. This single issue covers ranked gaps 1–5 and would have caught #99
+(orphan `run_steps`) as an assertion rather than a manual observation.
+
+**Related open follow-ups from issue #94** (already registered in `docs/technical-guidelines.md` §18,
+`docs/adr/ADR-004-schedule-pg-cron-reaper.md`, and the verification runbook — repeated here for their
+testing consequences):
+
+| Issue | Testing consequence |
+|---|---|
+| [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) — `unwrap_payload()` double-wrap | Payload-shape handling has component tests (`test_pipeline.py::TestInvalidPayloadNoClone`) that assert the *single*-wrap contract only. The defect is a missing case, not a missing suite — closable at Layer 2 with no new deps. |
+| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) — agent dies mid-`validate` without reporting terminal status | **Blocks AC5**, which is the only planned check of the reaper's must-not-reap-healthy-runs behaviour (ranked gap 1). Also unreachable by any current layer: no test exercises the streaming/idle-timeout interaction with `TEST_TIMEOUT`. |
+| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) — reaper leaves open `run_steps` | Would be caught by ranked gap 4 (event/step schema assertions) once a Layer 2.5 harness exists. Currently detectable only by manual inspection. |
+| [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) — control plane must insert the `queued` row | Instance of ranked gap 2: a documented D1 contract with no enforcing code or test. PostgREST returns HTTP 200 on a zero-match UPDATE, so the failure is silent — exactly the shape that needs an integration assertion. |
+| [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) — complete issue #94 AC5/AC6 verification | Executes the **manual** half of ranked gaps 1 and 6: AC5's synthetic interlock proof is the first deliberate must-not-reap check (gap 1), and AC6 is the only coverage of the `agent_reporter.py` CloudWatch fallback in either direction (gap 6). Also carries the unobserved `queued`→`failed_to_start` read-time branch of AC4, which is gap 3's missing symmetric case. Closing #101 does not remove the need for the Layer 2.5 harness — it converts one-shot manual observations into recorded ones, not into regression detectors. |
+
+
 
 ### When coverage cannot be measured
 

@@ -47,7 +47,7 @@
 | AC-33 | Step stream complete | SC-26, CT-8, CT-9 | EC-14, EC-28 | E2E, Contract, Unit |
 | AC-34 | Reporting outage survivable | SC-27 | EC-13 | E2E, Component |
 | AC-35 | Unhandled failure recorded | SC-28 | — (itself is negative) | Component |
-| AC-36 | Reaper interlock | SC-36 | — | E2E (manual, long-running) |
+| AC-36 | Reaper interlock | SC-36 | — | E2E (manual, long-running) — **static half verified** (#77 task 7.13: `max_runtime_seconds` 3600 = `maxLifetime` 3600). **Dynamic half partially evidenced** (#94): real run `f63ac9f3-14b0-4157-9484-f2f6b062f846` sat `running` ~61 min with real thresholds and zero `reaped_by` events until 12.3 s past its legitimate 3720 s boundary — the reaper did not fire early. Full dynamic verification (a healthy 20+ min `llm_fix` run) and the cold-start-gap measurement remain **pending**, blocked by [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98). See `docs/runbooks/issue-94-reaper-verification.md` §3-§4. |
 
 ---
 

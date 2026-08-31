@@ -162,9 +162,33 @@ end-to-end invocation checks lives in
 
 ## Invocation
 
-Invoke the deployed runtime with `agentcore invoke`. The payload is wrapped in a
-`prompt` key (a JSON string) per the AgentCore contract; the agent unwraps it
+Invoke the deployed runtime with `agentcore invoke`. The runtime contract is a payload
+wrapped in a `prompt` key (a JSON string); the agent unwraps **exactly one** level
 transparently.
+
+> ⚠️ **`agentcore` CLI ≥ 0.28.0 — pass the bare payload, not the pre-wrapped form.**
+> The CLI treats its argument *as* the prompt and wraps it itself, so an already-wrapped
+> `'{"prompt": "{...}"}'` arrives double-wrapped: one unwrap leaves a payload whose only key is
+> `prompt`, and validation fails with a generic
+> `INVALID_PARAMS` / `"Invalid payload — missing required fields"`. Until
+> [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) fixes `unwrap_payload()`, write
+> the **inner JSON only** (no `prompt` key) to a file and invoke with `--prompt-file`:
+>
+> ```bash
+> cat > /tmp/invoke.json <<'JSON'
+> {"run_id":"<uuid>","repository_org":"my-org","repository_name":"checkout-api","params":{"fix_mode":"audit_only"}}
+> JSON
+> agentcore invoke --prompt-file /tmp/invoke.json
+> ```
+>
+> Also note that a direct CLI invoke does **not** create the `runs` row — the control plane inserts
+> it and the agent only PATCHes, so a hand-invoked run stays invisible with no error
+> ([#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100)). Insert the `queued` row
+> first; see [`docs/runbooks/issue-94-reaper-verification.md`](../../docs/runbooks/issue-94-reaper-verification.md)
+> §4.0 and §4.1.
+
+The wrapped form below is the contract the Phase 2 control plane will send over
+`InvokeAgentRuntime`; it is **not** currently usable from the CLI (see the warning above).
 
 ```bash
 # audit_only (default) — report findings, no PR

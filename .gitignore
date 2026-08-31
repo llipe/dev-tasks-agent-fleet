@@ -38,3 +38,8 @@ workstream/.pr-body-*.md
 
 # Exclude kiro's mcp config
 .kiro/settings/mcp.json
+
+
+# Operator scratch payloads for `agentcore invoke --prompt-file` (contain run IDs
+# and target repos, not credentials). Transient per-run, never repo artifacts.
+invoke-*.json
