@@ -87,7 +87,7 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
   - [ ] 4.1 **[MANUAL]** Insert the `queued` row (workaround above) simulating the front-end, then trigger a real `llm_fix` run with the same `run_id` that legitimately takes 20+ minutes on a repo with available updates (per runbook #77 sub-task 7.8 invocation shape).
   - [ ] 4.2 **[MANUAL]** Verify Acceptance Criterion 5 — confirm the healthy run is **not** reaped early: it reaches a normal terminal `status` (`succeeded`/`failed`), never `timed_out`, despite exceeding 20 minutes (well under the 3600+120 threshold). Also confirm no `run_events` row has `reaped_by='reap_stale_runs'` for this run.
   - [ ] 4.3 **[MANUAL]** Measure the actual gap between AgentCore's clock and the agent's `started_at` on the real run (container cold start + image pull): `select queued_at, started_at, extract(epoch from (started_at - queued_at)) as start_gap_seconds from runs where id = '<uuid>';`. Record whether `grace_seconds=120` comfortably covers it — this is dependency-update PRD open question 8; underestimating it means the reaper kills healthy runs.
-  - [ ] 4.4 **[DEV]** Record the AC-36 dynamic-half result + observed cold-start gap in the runbook, note the front-end-row-insert prerequisite (D1) discovered here, and update `workstream/traceability-matrix-dep-update-agent.md` to reflect the dynamic half is now exercised.
+  - [x] 4.4 **[DEV]** (partial evidence recorded; full dynamic half still pending) Record the AC-36 dynamic-half result + observed cold-start gap in the runbook, note the front-end-row-insert prerequisite (D1) discovered here, and update `workstream/traceability-matrix-dep-update-agent.md` to reflect the dynamic half is now exercised.
 
 - [ ] 5.0 ⏳ **PENDING — not executed** · Verify AC3 — CloudWatch fallback (parent PRD AC3; §8, R5; technical-guidelines §3/§14)
 
@@ -109,7 +109,7 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
 
 - [ ] 7.0 Acceptance-criteria-to-verification mapping & wrap-up
 
-  - [ ] 7.1 **[DEV]** Confirm every issue AC maps to a completed verification step:
+  - [x] 7.1 **[DEV]** Confirm every issue AC maps to a completed verification step:
     - AC1 (job scheduled + firing) → 1.4, 1.5
     - AC2 (`failed_to_start` + event) → 2.4, 2.5
     - AC3 (`timed_out` + event) → 3.5, 3.6
@@ -117,5 +117,5 @@ The **[MANUAL]** steps are grouped into an operator runbook (Task 6 deliverable)
     - AC5 (healthy `llm_fix` not reaped + cold-start gap) → 4.2, 4.3
     - AC6 (Supabase unreachable → agent completes, CloudWatch recoverable) → 5.3, 5.4
     - AC7 (scheduling + results documented) → Task 6
-  - [ ] 7.2 **[DEV]** Confirm out-of-scope items were not touched: no heartbeat detection, no run cancellation, no `run_events` retention, no panel work.
+  - [x] 7.2 **[DEV]** Confirm out-of-scope items were not touched: no heartbeat detection, no run cancellation, no `run_events` retention, no panel work.
   - [ ] 7.3 **[DEV]** Sync the GitHub issue #94 checklist to final state and post a completion summary comment (via `github-ops`, `--body-file`).
