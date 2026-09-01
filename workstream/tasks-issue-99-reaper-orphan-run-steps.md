@@ -89,12 +89,12 @@ Each sub-task is tagged with who executes it:
   - [x] 6.1 **[verifier]** Design Mode test plan produced: `workstream/test-plan-issue-99.md` (AC1–AC4 + edge cases + idempotency).
   - [x] 6.2 Build the acceptance-criteria-to-tests mapping in `workstream/traceability-matrix-issue-99.md` (each AC → scenario → observed verdict). Done with live results.
   - [x] 6.3 Record edge-case coverage: (a) multi open steps all closed — TC-2 PASS; (b) already-terminal step untouched — TC-2 seq1 + EC-1 PASS; (c) `failed_to_start` zero steps — TC-4 PASS; (d) reaper re-run idempotency — EC-3 PASS.
-  - [ ] 6.4 Quality gates: DB-only change, no application code modified → recorded `SKIPPED (DB-only PL/pgSQL change; no application test package exercises the reaper; no DB-function test runner in repo)`.
-  - [ ] 6.5 Record `coverage_gate` outcome via `qa-engineer`.
+  - [x] 6.4 Quality gates: DB-only change, no application code modified → recorded `SKIPPED (DB-only PL/pgSQL change; no application test package exercises the reaper; no DB-function test runner in repo)`.
+  - [x] 6.5 `coverage_gate` recorded via `qa-engineer`: **SKIPPED** (DB-only PL/pgSQL; no automated DB-function harness / SQL coverage provider; verified by 19/19 live SQL scenarios; residual gap tracked in `TESTING.md`). Non-blocking.
 
 - [ ] 7.0 Completion & wrap-up
 
-  - [ ] 7.1 Confirm out-of-scope items were not touched: no run-level transitions/thresholds changed, no `cron.schedule` change, no application code, no heartbeat/cancellation/retention work.
-  - [ ] 7.2 Run `verifier` in Audit Mode against the delivered change; post the human-readable summary to PR and issue #99 (via `github-ops`, `--body-file`). Drift findings do not block completion.
+  - [x] 7.1 Confirm out-of-scope items were not touched: no run-level transitions/thresholds changed, no `cron.schedule` change, no application code, no heartbeat/cancellation/retention work. **Verified by the verifier audit** (out-of-scope boundary HELD).
+  - [x] 7.2 Run `verifier` in Audit Mode against the delivered change; post the human-readable summary to PR and issue #99 (via `github-ops`, `--body-file`). **Done** — Fidelity High, drift None; posted to PR #104 + issue #99. `workstream/fidelity-report-issue-99.md`.
   - [ ] 7.3 Sync the GitHub issue #99 Scope + this task checklist to final state and post a completion summary comment (via `github-ops`, `--body-file`).
   - [ ] 7.4 Convert the PR from draft to ready for review; notify the user for review + merge (PR targets `main` → user approves and merges).
