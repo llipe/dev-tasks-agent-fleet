@@ -57,3 +57,40 @@ class TestReportAbruptTermination:
     def test_handles_none_run(self):
         # No active run yet — must be a safe no-op.
         report_abrupt_termination(None, signal_name="SIGTERM", secrets=[])
+
+
+class TestInstallTerminationBackstop:
+    def test_registers_sigterm_handler_on_main_thread(self):
+        import signal as _signal
+
+        from signal_backstop import install_termination_backstop
+
+        original = _signal.getsignal(_signal.SIGTERM)
+        try:
+            install_termination_backstop(lambda: None, lambda: [])
+            handler = _signal.getsignal(_signal.SIGTERM)
+            # A handler was installed (no longer the default/previous object).
+            assert callable(handler)
+            assert handler is not original
+        finally:
+            _signal.signal(_signal.SIGTERM, original)
+
+    def test_registration_is_noop_off_main_thread(self):
+        import threading
+
+        from signal_backstop import install_termination_backstop
+
+        errors = []
+
+        def _worker():
+            try:
+                # signal.signal raises ValueError off the main thread; the
+                # backstop must swallow it and leave the reaper as the fallback.
+                install_termination_backstop(lambda: None, lambda: [])
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        t = threading.Thread(target=_worker)
+        t.start()
+        t.join()
+        assert errors == []
