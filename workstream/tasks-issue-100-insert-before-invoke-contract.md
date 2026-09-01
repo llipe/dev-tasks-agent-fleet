@@ -73,14 +73,14 @@
 
   - [x] 4.1 Task 3 ADOPTED: `make validate` from `agents/dependency-update/app/dependencyUpdate/` → **PASS** (434 tests, 94% cov, mypy clean incl. the reference-copy override, `pip-audit --strict` clean).
   - [x] 4.2 N/A — Task 3 adopted, application code changed (was the docs-only fallback).
-  - [ ] 4.3 Record `coverage_gate` via `qa-engineer` (AC3 adopted → measured against the new `agent_reporter` unit tests).
+  - [x] 4.3 Record `coverage_gate` via `qa-engineer` (AC3 adopted → measured against the new `agent_reporter` unit tests).
   - [x] 4.4 AC-to-tests mapping: AC1 → 1.x (doc read-through); AC2 → 2.x (doc read-through); AC3 → `tests/unit/test_agent_reporter_start.py` (18 tests: header parse, `update_expect_rows` count/None/retry, `start()` warn-on-zero / silent-on-match / silent-on-unknown / never-raises).
 
 - [ ] 5.0 Completion & wrap-up
 
-  - [ ] 5.1 `technical-writer` validation: drift/stale-doc check across README, runbook §4.0, and (if AC3) technical-guidelines §8 — ensure the three do not contradict each other on the insert-then-invoke contract.
-  - [ ] 5.2 Confirm out-of-scope items untouched: no Phase 2 route, no reaper/threshold/cron change, no schema/seed change.
-  - [ ] 5.3 Run `verifier` in Audit Mode against the delivered change; post the human-readable summary to the PR and issue #100 (via `github-ops`, `--body-file`). Non-blocking on drift.
+  - [x] 5.1 `technical-writer` validation: drift/stale-doc check across README, runbook §4.0, and (if AC3) technical-guidelines §8 — ensure the three do not contradict each other on the insert-then-invoke contract.
+  - [x] 5.2 Confirm out-of-scope items untouched: no Phase 2 route, no reaper/threshold/cron change, no schema/seed change.
+  - [x] 5.3 Run `verifier` in Audit Mode against the delivered change; post the human-readable summary to the PR and issue #100 (via `github-ops`, `--body-file`). Non-blocking on drift.
   - [ ] 5.4 Sync the issue #100 Scope checklist + this task list to final state; post a completion summary (via `github-ops`, `--body-file`).
   - [ ] 5.5 Convert the PR from draft to ready for review; notify the user (PR targets `main` → user approves + merges). Do not close #100 until PR merged.
 
