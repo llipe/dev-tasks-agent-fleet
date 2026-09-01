@@ -200,11 +200,16 @@ row must exist first and the two `run_id`s must match exactly.)
 #### Failure mode — run invisible (silent no-op)
 
 If you invoke **without** inserting the row, the agent's `start()` PATCH matches **zero** rows.
-PostgREST returns **HTTP 200 on a zero-match UPDATE** (a silent no-op), so:
+PostgREST returns **HTTP 200 on a zero-match UPDATE** (a silent no-op at the database), so:
 
-- **Symptom:** the run never appears in `runs` or `v_runs`, the agent produces no error, and there
-  is no failure anywhere — the run simply seems to vanish. (This cost real debugging time during
-  #94 verification.)
+- **Symptom:** the run never appears in `runs` or `v_runs`, and the agent does **not** fail — it
+  runs to completion writing nothing durable. As of
+  [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) this is no longer *completely*
+  silent: `start()` sends the PATCH with `Prefer: count=exact`, reads the `Content-Range` count,
+  and on a **confirmed** zero-row match logs a loud stderr warning naming #100 (then continues —
+  reporting never kills the agent). Check the runtime's CloudWatch stderr for that warning if a run
+  seems to vanish. (An *unknown* count — request failed or header absent — does not warn, to avoid
+  false alarms.) This class of bug cost real debugging time during #94 verification.
 - **Cause:** no `queued` row existed for the PATCH to match.
 - **Fix:** insert the `queued` row first (above), then invoke with the matching `run_id`.
 
@@ -216,7 +221,8 @@ reaper defect — see runbook §2 / §4.0.
 
 **Quick diagnosis — "my run is invisible":**
 
-1. Did you `INSERT` the `queued` row before invoking? (the #1 cause)
+1. Did you `INSERT` the `queued` row before invoking? (the #1 cause — and since #100, look for the
+   loud `start()` zero-row warning in CloudWatch stderr, which confirms this case)
 2. Does the invoke payload `run_id` match the inserted row's `id` **exactly**?
 3. Is `SUPABASE_URL` reachable from the runtime? (an unreachable URL also drops the write — see
    runbook §5)

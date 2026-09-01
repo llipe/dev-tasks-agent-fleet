@@ -319,6 +319,16 @@ delete from runs where id in (':id_task2', ':id_task3');  -- events cascade
 Phase 2 and does not exist yet, so PostgREST's PATCH matches zero rows, returns HTTP 200, and
 **nothing appears in `runs` or `v_runs`**.
 
+> **As of [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100), `start()` now warns on
+> this.** The PATCH is sent with `Prefer: count=exact`; on a *confirmed* zero-row match `start()`
+> logs a loud stderr line naming #100 (then continues — reporting never kills the agent). So a
+> skipped insert is no longer completely silent: check the runtime's CloudWatch stderr for that
+> warning if a run seems to vanish. An *unknown* count (request failed / header absent) does not
+> warn, to avoid false alarms. See `technical-guidelines.md` §8 (*Zero-row `start()`*). The
+> agent-side contract and a minimal ready-to-paste example also live in the agent README
+> [`agents/dependency-update/README.md`](../../agents/dependency-update/README.md) §Invocation; this
+> runbook remains the full operator flow.
+
 Insert the row first, simulating what the panel will do:
 
 ```sql
@@ -334,9 +344,11 @@ where a.slug = 'dependency-update'
 returning id;
 ```
 
-> **Symptom if you skip this:** the run stays invisible, then a pre-inserted orphan `queued` row is
+> **Symptom if you skip this:** the run stays invisible in `runs`/`v_runs`, but `start()` now emits
+> a loud stderr warning naming [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) on
+> the confirmed zero-row PATCH (check CloudWatch). If instead a pre-inserted orphan `queued` row is
 > reaped to `failed_to_start` at its threshold with `started_at = null` and zero agent-written
-> events. That is the reaper working correctly on an orphan — not an agent bug.
+> events, that is the reaper working correctly on an orphan — not an agent bug.
 
 ### 4.1 Invoke — payload shape (⚠️ CLI 0.28.0)
 
@@ -573,7 +585,7 @@ A fifth issue carries the **unfinished verification** rather than a defect:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Run invisible in `runs`/`v_runs` after invoke | No row inserted; agent only PATCHes (D1) | Insert the `queued` row first (§4.0) — [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) |
+| Run invisible in `runs`/`v_runs` after invoke | No row inserted; agent only PATCHes (D1) | Insert the `queued` row first (§4.0) — [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100). Since #100, `start()` also logs a loud stderr warning naming #100 on the confirmed zero-row PATCH — check CloudWatch |
 | `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Resolved in [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) (PR #102): `unwrap_payload` now loops, so the pre-wrapped form works verbatim; bare inner JSON via `--prompt-file` (§4.1) also works. A still-wrapper-only payload now logs "appears double-wrapped" |
 | Row reaped `failed_to_start`, `started_at=null`, no agent events | Agent never reported start — broken `SUPABASE_URL`, `run_id` mismatch, or invalid payload | Check §4.1 payload, §5.5 restore, and that the invoke `run_id` matches the inserted row exactly |
 | Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container — [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) |
