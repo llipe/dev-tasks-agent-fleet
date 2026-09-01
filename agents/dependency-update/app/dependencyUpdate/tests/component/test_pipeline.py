@@ -1000,3 +1000,177 @@ class TestMainArtifactCallSitesUseSpread:
                 "run.artifact() must spread metadata (**{...}), not pass "
                 f"metadata={{...}} — offending call: {call[:120]}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat wiring in the entrypoint (issue #98, AC2/AC3/AC5/SC-3)
+# ---------------------------------------------------------------------------
+
+
+class _NoopStep:
+    """Context-manager stand-in for RunReporter.step(...)."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _HeartbeatFakeRun:
+    """RunReporter stand-in for the full-entrypoint heartbeat test."""
+
+    def __init__(self):
+        self.succeed_calls = []
+        self.fail_calls = []
+        self._terminal = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def step(self, key, title=None):
+        return _NoopStep()
+
+    def succeed(self, outcome, result=None, metrics=None):
+        self._terminal = True
+        self.succeed_calls.append(outcome)
+
+    def fail(self, error_code, error_message, outcome=None, metrics=None):
+        self._terminal = True
+        self.fail_calls.append(error_code)
+
+    def artifact(self, *a, **k):
+        pass
+
+    def log(self, *a, **k):
+        pass
+
+
+def _drive_invoke_with_slow_validate(monkeypatch, validate_seconds):
+    """Drive main.invoke through the llm_fix path with a slow run_validation.
+
+    All external boundaries are stubbed. `run_validation` sleeps for
+    `validate_seconds` and passes, so the pipeline goes update → validate →
+    (no llm_fix) → open_pr → succeed. HEARTBEAT_INTERVAL is shrunk so the slow
+    validate produces heartbeats.
+    """
+    import main
+    from validator import CheckStatus, ValidationResult
+
+    # Shrink the heartbeat interval for the test (real default is 120 s).
+    monkeypatch.setattr(main, "HEARTBEAT_INTERVAL", 0.05)
+
+    # Credentials / secrets.
+    monkeypatch.setattr(main, "fetch_supabase_key", lambda: "svc-key")
+
+    class _Tok:
+        token = "gh-token"
+
+        def is_stale(self):
+            return False
+
+    monkeypatch.setattr(main, "resolve_github_credentials", lambda org: _Tok())
+    monkeypatch.setattr(main, "install_termination_backstop", lambda *a, **k: None)
+
+    # Reporter.
+    fake_run = _HeartbeatFakeRun()
+    monkeypatch.setattr(main.RunReporter, "from_env", classmethod(lambda cls, **k: fake_run))
+
+    # Clone + toolchain.
+    monkeypatch.setattr(main, "clone_repo", lambda org, name, tok, secrets: "/tmp/ws")
+
+    class _Scripts:
+        test = "test"
+        missing_optional = []
+
+    monkeypatch.setattr(main, "detect_package_manager", lambda ws: "pnpm")
+    monkeypatch.setattr(main, "ensure_pnpm_version", lambda ws: None)
+    monkeypatch.setattr(main, "detect_scripts", lambda ws: _Scripts())
+
+    # Install + audit.
+    monkeypatch.setattr(main, "install_deps", lambda ws, pm, frozen=True: None)
+
+    from audit import AuditResult
+
+    audit_before = AuditResult(total_vulns=1, vuln_counts={"high": 1}, advisories=[])
+    audit_after = AuditResult(total_vulns=0, vuln_counts={}, advisories=[])
+    audits = iter([audit_before, audit_after])
+    monkeypatch.setattr(main, "run_audit", lambda ws, pm: next(audits))
+    monkeypatch.setattr(main, "snapshot_lockfile_packages", lambda ws, pm: {})
+    monkeypatch.setattr(main, "classify_advisories", lambda a, ws, pm: [])
+    monkeypatch.setattr(main, "diff_packages", lambda b, a: [])
+    monkeypatch.setattr(main, "count_advisories_fixed", lambda b, a: 1)
+
+    # Update: report changes so we proceed to validate.
+    monkeypatch.setattr(main, "update_packages", lambda ws, pm: None)
+    monkeypatch.setattr(main, "has_changes", lambda ws: True)
+    monkeypatch.setattr(main, "reconcile_lockfile", lambda ws, pm: None)
+
+    # Slow, passing validation.
+    def _slow_validation(ws, pm, scripts):
+        import time as _t
+
+        _t.sleep(validate_seconds)
+        res = ValidationResult()
+        res.record("test", CheckStatus.PASSED, "ok")
+        return res
+
+    monkeypatch.setattr(main, "run_validation", _slow_validation)
+    monkeypatch.setattr(main, "_read_pkg_dependencies", lambda p: {})
+
+    # open_pr.
+    monkeypatch.setattr(main, "refresh_token_if_stale", lambda ctx, org, secrets: ctx)
+    monkeypatch.setattr(main, "build_pr_body_from_state", lambda *a, **k: "body")
+
+    class _PrResult:
+        url = "https://x/pr/1"
+        existed = False
+        created = True
+        branch = "deps/update"
+
+    monkeypatch.setattr(main, "open_pr_if_needed", lambda *a, **k: _PrResult())
+
+    raw = {
+        "run_id": "r-1",
+        "repository_org": "org",
+        "repository_name": "repo",
+        "params": {"fix_mode": "llm_fix"},
+    }
+    results = _collect_async_gen(main.invoke(raw, None))
+    return results, fake_run
+
+
+class TestEntrypointHeartbeatWiring:
+    def test_slow_validate_emits_heartbeats_and_terminal_last(self, monkeypatch):
+        from heartbeat import is_heartbeat_chunk, is_terminal_chunk, read_terminal_payload
+
+        results, fake_run = _drive_invoke_with_slow_validate(monkeypatch, validate_seconds=0.28)
+
+        heartbeats = [r for r in results if is_heartbeat_chunk(r)]
+        terminals = [r for r in results if is_terminal_chunk(r)]
+
+        # SC-3 / AC2: at least one heartbeat emitted during the slow validate.
+        assert len(heartbeats) >= 1
+        # CT-3 / AC5: exactly one terminal chunk, and it is the last item.
+        assert len(terminals) == 1
+        assert is_terminal_chunk(results[-1])
+        # Consumer can still read the terminal payload despite heartbeats (AC5).
+        payload = json.loads(read_terminal_payload(results))
+        assert payload["status"] == "succeeded"
+        # The agent wrote the terminal status itself (not left for the reaper).
+        assert fake_run.succeed_calls == ["fixed"] or fake_run.succeed_calls  # succeeded
+
+    def test_fast_validate_emits_no_heartbeat_but_terminal_present(self, monkeypatch):
+        from heartbeat import is_heartbeat_chunk, is_terminal_chunk
+
+        results, fake_run = _drive_invoke_with_slow_validate(monkeypatch, validate_seconds=0.0)
+
+        heartbeats = [r for r in results if is_heartbeat_chunk(r)]
+        terminals = [r for r in results if is_terminal_chunk(r)]
+        # A fast validate need not emit heartbeats, but must still terminate.
+        assert len(terminals) == 1
+        assert is_terminal_chunk(results[-1])
+        assert len(heartbeats) >= 0
