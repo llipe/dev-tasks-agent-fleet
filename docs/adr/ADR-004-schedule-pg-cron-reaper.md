@@ -115,8 +115,14 @@ terminal status — the exact failure class the reaper exists to cover:
   died around 19:36 and was marked `timed_out` at 20:37. This is the accepted D8
   tradeoff — `last_heartbeat_at` (declared, unused in v1) is the lever if it ever
   needs tightening.
-- **Reaped runs leave orphan `run_steps`.** `reap_stale_runs()` does not close
-  open steps, unlike the agent's own failure path (§8). Tracked as #99.
+- **Reaped runs left orphan `run_steps` — resolved in #99.** As recorded at the time of this
+  verification, `reap_stale_runs()` did not close open steps, unlike the agent's own failure path
+  (§8), so every reaped run left an in-flight step pinned `running`. Issue
+  [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) closed this under the present
+  decision context (a small behavioural correction, not a new decision): the reaper now closes open
+  `run_steps` as `failed` (`finished_at=now()`, attributing `error_message`) on both the `timed_out`
+  and `failed_to_start` branches, reusing the existing `step_status` enum value (no migration). See
+  `technical-guidelines.md` §7/§8.
 - **This ADR is recorded on partial verification: 5 of 7 acceptance criteria.**
   AC5 (healthy long-running `llm_fix` not reaped early, plus the cold-start gap
   measurement) is blocked by #98, since no long run can currently complete; the

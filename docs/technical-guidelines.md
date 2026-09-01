@@ -13,6 +13,7 @@
 | 1.6     | 2026-08-31 | Documentation-gate pass for issue #94 (PR #96) under the same decision record, [ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md) — no new decision taken. Corrected the sections written while the reaper was still unscheduled: §2 and §3 now state the job is registered `* * * * *` and empirically confirmed, §7 records the current scheduling state plus the `RUNTIME_TIMEOUT`/`START_TIMEOUT` event contract and the #99 orphan-step caveat, §14 adds the reaper observability surface (`cron.job_run_details` + the explanatory event), and §18 records the residual verification carried by #101 (AC5, AC6, AC4 `queued` half) and marks the 185.7 s cold-start figure invalid so it is not cited as a measurement. | technical-writer |
 | 1.7     | 2026-09-01 | Documented the repeated `prompt`-wrapper unwrap + distinct double-wrap diagnostic (issue #97, PR #102): added a §8 "Invocation payload contract" subsection recording that `unwrap_payload` now unwraps lone-`prompt` wrappers repeatedly (bounded by `_MAX_UNWRAP_DEPTH=16`, guarded by `_is_lone_prompt_wrapper`) to tolerate the `agentcore` CLI ≥0.28.0 double-wrap, and that a still-wrapper-only payload emits an "appears double-wrapped" diagnostic via `classify_invalid_payload` while `error_code` stays `INVALID_PARAMS` (no new error code, no schema change, no migration); flipped the §18 #97 row from Open to Resolved. Current-state status correction only — no enforceable-rule change. See [ADR-005](adr/ADR-005-repeated-prompt-unwrap-and-diagnostic.md). | technical-writer |
 | 1.8     | 2026-09-01 | Documented the `validate`-step keep-alive fix (issue #98, PR #103): added a §8 subsection recording the heartbeat keep-alive (`heartbeat.run_with_heartbeat` live-yields chunks during `validate`/`llm_fix`), the four-clock consistency invariant enforced by `config.assert_clock_invariant()` (`TOOL_COMMAND_TIMEOUT ≤ TEST_TIMEOUT ≤ IDLE_SESSION_TIMEOUT ≤ MAX_LIFETIME ≤ REAPER_THRESHOLD_SECONDS`, heartbeat ≤ idle/2), the `idleRuntimeSessionTimeout` 300 → 900 change (requires redeploy), and the best-effort SIGTERM backstop (`signal_backstop.py`; SIGKILL/OOM stays reaper-only); flipped the §18 #98 row to Resolved (code) with live AC2/AC3 verification pending. Introduces an enforceable clock-consistency rule (fail-fast at startup) plus the heartbeat keep-alive and SIGTERM-backstop mechanisms — recorded as a decision in [ADR-006](adr/ADR-006-long-step-keepalive-and-clock-invariant.md). | developer / technical-writer |
+| 1.9     | 2026-09-01 | Documented the reaper orphan-`run_steps` fix (issue #99): `reap_stale_runs()` now closes any open `run_steps` (`status='failed'`, `finished_at=now()`, attributing `error_message`) on **both** its branches (`timed_out` and `failed_to_start`), in symmetry with the agent failure path (§8). Refreshed §7 (orphan-step caveat reworded from open-defect to resolved; one stale-window caveat remains), added the §8 "Reaper mirrors the agent's step-closure" note, and flipped the §18 #99 row Open → Resolved. Reuses the existing `step_status` enum value `failed` (no new enum value, no migration); the DDL change lives in `docs/reference/001_schema.sql` and is applied via `create or replace function`. | developer |
 
 ## 1. Overview
 
@@ -148,10 +149,12 @@ now carries `create extension if not exists pg_cron;` and
 its tail (the extension still has to be enabled with sufficient privilege, so the Supabase-dashboard
 note is retained). Each reaped run gets `error_code = RUNTIME_TIMEOUT` or `START_TIMEOUT` plus one
 `run_events` row at `max(seq)+1` with `level = error`, `data.reaped_by = reap_stale_runs`, and
-`data.reason`. Two caveats on the current implementation: the function does **not** close open
-`run_steps`, so a reaped run keeps its in-flight step pinned `running` (#99); and because the
-thresholds mirror AgentCore's own limits, a container that dies early still reads `running` until its
-boundary (~61 minutes in the observed case — see §18). Operator procedures and the verification
+`data.reason`. As of issue #99 the function also **closes any open `run_steps`** for a reaped run
+(sets `status = 'failed'`, `finished_at = now()`, and an attributing `error_message`), in symmetry
+with the agent's own failure path (§8) — so a reaped run no longer leaves an in-flight step pinned
+`running`. One caveat remains: because the thresholds mirror AgentCore's own limits, a container that
+dies early still reads `running` until its boundary (~61 minutes in the observed case — see §18).
+Operator procedures and the verification
 evidence are in [`runbooks/issue-94-reaper-verification.md`](runbooks/issue-94-reaper-verification.md).
 
 `last_heartbeat_at` is declared in the schema but not used for detection in v1 — it comes into play only if agents appear that hang well below their timeout (backlog).
@@ -224,6 +227,17 @@ Behavioral properties:
 | Exit without `succeed()` | Closes with `outcome = not_applicable` to avoid leaving the run dangling |
 | Truncation | Messages to 8 KB |
 | Transport change | Isolated to the `_SupabaseClient` class (~40 lines) — no generic transport abstraction because today it does not pay for itself |
+
+**Reaper mirrors the agent's step-closure (issue #99).** The "Agent failure" row above closes open
+steps as `failed` from the *agent* side. The `pg_cron` reaper is the *database*-side counterpart for
+runs the agent never closed itself: on both its branches (`timed_out` and `failed_to_start`),
+`reap_stale_runs()` now runs `update run_steps set status='failed', finished_at=now(), error_message=<reaper attribution> where run_id=<run> and status in ('running','pending')`
+after materializing the run-level terminal state. `failed` reuses the existing `step_status` enum
+value (no new enum value, no migration), and the predicate leaves already-terminal steps
+(`succeeded`/`failed`/`skipped`) untouched. A `failed_to_start` run normally has no steps; the update
+is a safe 0-row no-op in that case. This closes the orphan-step defect from §7/§18 and removes the
+"perpetually pulsing step inside a terminal run" the Phase 2 Run Detail panel (`DESIGN.md` §5.3) would
+otherwise have to special-case.
 
 **Per-execution write volume (R5, distinct from R3 which is growth over time).** Not actively mitigated in v1 — the chosen approach is "evaluate later" if an actual agent evidences the problem (e.g., one that tails builds or long test runs). First lever if it occurs: raise the minimum captured log level (`INFO+` instead of `DEBUG+`).
 
@@ -325,7 +339,7 @@ the stack. These are **open** and tracked as their own issues:
 |---|---|---|---|
 | [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) | `unwrap_payload()` strips exactly one `prompt` wrapper, but `agentcore` CLI ≥0.28.0 wraps the prompt argument itself — the documented pre-wrapped form arrives double-wrapped and dies with a generic `INVALID_PARAMS` | Any invocation using the README / #77-runbook examples fails; the error gives no hint of the real cause | **Resolved (PR #102):** `unwrap_payload()` now strips nested lone-`prompt` wrappers in a loop (bounded by `_MAX_UNWRAP_DEPTH=16`), and a still-wrapper-only payload emits a distinct "appears double-wrapped" diagnostic while `error_code` stays `INVALID_PARAMS`. See §8 and [ADR-005](adr/ADR-005-repeated-prompt-unwrap-and-diagnostic.md). |
 | [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | A run died during the `validate` step without reporting terminal status. The entrypoint yields only its final result, so a run streams nothing for its whole duration against `idleRuntimeSessionTimeout: 300`; `TEST_TIMEOUT` defaults to 600 s, twice that. Root cause unconfirmed (idle-timeout vs. OOM both fit) | If runs cannot survive ~5 min, `maxLifetime: 3600` is moot and no long `llm_fix` run completes. **Blocks issue #94 AC5** | **Resolved (code) / live-verify pending (PR #103):** root cause confirmed as output-idle reclamation from CloudWatch (clean silence on run `f63ac9f3-…`, no OOM signature). `validate`/`llm_fix` now live-yield heartbeat chunks (`heartbeat.py`), `idleRuntimeSessionTimeout` raised 300 → 900, and the four timeout clocks are enforced consistent by `config.assert_clock_invariant()`. Best-effort SIGTERM backstop added; SIGKILL/OOM stays reaper-only. See §8. AC2 (>5 min validate) and AC3 (>20 min llm_fix) require a runtime redeploy to verify live. |
-| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` transitions `runs` and writes the explanatory event but never closes open `run_steps` — unlike the agent's own failure path (§8), which closes them as `failed` | Every reaped run leaves an orphan step pinned `running`; the Phase 2 Run Detail panel (DESIGN.md §5.3) would render a perpetually pulsing step inside a terminal run | Open |
+| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` transitions `runs` and writes the explanatory event but never closes open `run_steps` — unlike the agent's own failure path (§8), which closes them as `failed` | Every reaped run leaves an orphan step pinned `running`; the Phase 2 Run Detail panel (DESIGN.md §5.3) would render a perpetually pulsing step inside a terminal run | **Resolved:** `reap_stale_runs()` now closes open `run_steps` (`status='failed'`, `finished_at=now()`, attributing `error_message`) on **both** branches (`timed_out` and `failed_to_start`), mirroring the agent path (§8). Reuses the existing `step_status` enum value `failed` (no migration); leaves already-terminal steps untouched; safe 0-row no-op when a run has no steps. See §7/§8. |
 | [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) | Per D1 the control plane inserts the `queued` `runs` row; the agent SDK only PATCHes it. A direct `agentcore invoke` therefore leaves the run invisible — PostgREST returns HTTP 200 on a zero-match UPDATE | Runs appear to vanish with no error anywhere; documented contract omits the insert requirement | Open |
 
 **Verified-correct reaper behaviour worth recording** (from the same exercise, real run
