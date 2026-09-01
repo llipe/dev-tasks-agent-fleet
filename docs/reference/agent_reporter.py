@@ -58,6 +58,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _parse_content_range_count(header: str | None) -> int | None:
+    """Extrae la cantidad de filas afectadas del header PostgREST `Content-Range`.
+
+    Formato: `<inicio>-<fin>/<total>` o `*/<total>` (p. ej. `0-0/1`, `*/0`).
+    Devuelve el total como int, o `None` si el header falta o no se puede parsear.
+    """
+    if not header or "/" not in header:
+        return None
+    total = header.rsplit("/", 1)[1].strip()
+    if not total.isdigit():
+        return None
+    return int(total)
+
+
 def _truncate(text: str) -> str:
     raw = text.encode("utf-8")
     if len(raw) <= MAX_MESSAGE_BYTES:
@@ -108,6 +122,40 @@ class _SupabaseClient:
 
     def update(self, table: str, filt: str, patch: dict) -> bool:
         return self._request("PATCH", f"/{table}?{filt}", patch)
+
+    def update_expect_rows(self, table: str, filt: str, patch: dict) -> int | None:
+        """PATCH que devuelve la cantidad de filas afectadas.
+
+        Usa `Prefer: count=exact` y lee el header `Content-Range` (p. ej.
+        `0-0/1` = 1 fila, `*/0` = 0 filas). Devuelve la cantidad de filas, o
+        `None` si la request falló o el conteo no pudo determinarse. No falla
+        nunca hacia arriba: al igual que `_request`, un fallo cae al stderr.
+        """
+        url = f"{self.base}/{table}?{filt}"
+        body = json.dumps(patch, default=str).encode("utf-8")
+        headers = dict(self.headers)
+        # headers-only evita traer el cuerpo; count=exact puebla Content-Range.
+        headers["Prefer"] = "return=headers-only,count=exact"
+        detail = ""
+        for attempt in range(HTTP_RETRIES):
+            req = urllib.request.Request(url, data=body, method="PATCH")
+            for k, v in headers.items():
+                req.add_header(k, v)
+            try:
+                with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+                    if 200 <= resp.status < 300:
+                        return _parse_content_range_count(resp.headers.get("Content-Range"))
+                    detail = resp.read().decode("utf-8", "ignore")[:500]
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", "ignore")[:500]
+                if 400 <= exc.code < 500 and exc.code != 429:
+                    break  # error de contrato: reintentar no sirve
+            except Exception as exc:  # noqa: BLE001
+                detail = repr(exc)
+            if attempt < HTTP_RETRIES - 1:
+                time.sleep(0.5 * (2 ** attempt))
+        print(f"[agent_reporter] fallo al escribir PATCH /{table}?{filt}: {detail}", file=sys.stderr)
+        return None
 
 
 class _RunLogHandler(logging.Handler):
@@ -206,8 +254,22 @@ class RunReporter:
         return False
 
     def start(self) -> None:
-        self._db.update("runs", f"id=eq.{self.run_id}",
-                        {"status": "running", "started_at": _now()})
+        affected = self._db.update_expect_rows(
+            "runs", f"id=eq.{self.run_id}",
+            {"status": "running", "started_at": _now()})
+        if affected == 0:
+            # Cero filas: no existe la fila `runs` para este run_id. El control
+            # plane debe INSERTar la fila `queued` antes de invocar (D1, #100).
+            # PostgREST devuelve 200 en un UPDATE sin match, así que sin este
+            # aviso el run quedaría invisible y sin error. Avisar, no abortar:
+            # el reporte nunca debe matar al agente.
+            print(
+                f"[agent_reporter] ADVERTENCIA: start() no encontró la fila runs "
+                f"id={self.run_id} (0 filas afectadas). ¿El control plane INSERTó "
+                f"la fila 'queued' antes de invocar? El run será invisible en "
+                f"runs/v_runs. Ver issue #100.",
+                file=sys.stderr,
+            )
         if self._capture_logging:
             self._attach_logging()
         self.log("Ejecución iniciada.", level="info")
