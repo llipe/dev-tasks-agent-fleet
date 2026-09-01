@@ -24,6 +24,8 @@ agents/dependency-update/
 │   ├── updater.py         # Apply updates + reconcile lockfile
 │   ├── fix_agent.py       # Strands LLM fix agent + tools
 │   ├── pull_request.py    # Branch, PR creation, body builder
+│   ├── heartbeat.py       # Long-step keep-alive: live-yield heartbeat chunks (#98)
+│   ├── signal_backstop.py # Best-effort SIGTERM terminal-report backstop (#98)
 │   ├── Dockerfile         # ARM64 container: Python 3.13 + Node 26 + pnpm + npm + gh
 │   ├── pyproject.toml     # Python dependencies (pinned)
 │   └── tests/
@@ -228,12 +230,25 @@ curl http://localhost:8080/ping
 | Setting | Value | Location |
 |---------|-------|----------|
 | `maxLifetime` | 3600s | `agentcore/agentcore.json` |
-| `idleRuntimeSessionTimeout` | 300s | `agentcore/agentcore.json` |
+| `idleRuntimeSessionTimeout` | 900s | `agentcore/agentcore.json` |
 | `max_runtime_seconds` | 3600 | `002_seed.sql` (agents table) |
 | `grace_seconds` | 120 | `002_seed.sql` (agents table) |
 | `start_timeout_seconds` | 300 | `002_seed.sql` (agents table) |
 
-**Important:** `max_runtime_seconds` in the database seed MUST equal `maxLifetime` in `agentcore.json`, and `start_timeout_seconds` MUST equal `idleRuntimeSessionTimeout`. The database values drive the panel's reaper (stale execution detection), while the AgentCore values enforce the actual container kill. If they drift, the panel may show a run as "running" after AgentCore has already killed it, or vice versa.
+**Important:** these clocks are cross-checked in code. `idleRuntimeSessionTimeout` was raised
+300 → 900 (issue #98) so a bounded `TEST_TIMEOUT` (600s) validation, kept alive by a 120s
+heartbeat, cannot trip idle reclamation mid-`validate`; the change requires an AgentCore
+redeploy to take effect. At entrypoint start `config.assert_clock_invariant()` fails fast
+(`ClockConsistencyError`) unless
+`TOOL_COMMAND_TIMEOUT ≤ TEST_TIMEOUT ≤ IDLE_SESSION_TIMEOUT ≤ MAX_LIFETIME ≤ REAPER_THRESHOLD_SECONDS`
+and `HEARTBEAT_INTERVAL ≤ IDLE_SESSION_TIMEOUT / 2`. The `IDLE_SESSION_TIMEOUT` / `MAX_LIFETIME`
+constants MUST mirror `agentcore.json` `lifecycleConfiguration`, and `REAPER_THRESHOLD_SECONDS`
+(default 3720) MUST equal the database `max_runtime_seconds` (3600) + `grace_seconds` (120) — the
+values that drive the panel's reaper. `start_timeout_seconds` (300) is the independent
+`queued → failed_to_start` clock and is **not** tied to `idleRuntimeSessionTimeout`. If the
+container and database clocks drift, the panel may show a run as "running" after AgentCore has
+already killed it, or vice versa. See `docs/technical-guidelines.md` §7/§8 and
+[ADR-006](../../docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md).
 
 ### Environment Variables (set by AgentCore / Secrets Manager)
 
@@ -247,6 +262,10 @@ curl http://localhost:8080/ping
 | `MODEL_ID` | No | Bedrock model for the LLM fix loop (default: `us.anthropic.claude-sonnet-4-6`) |
 | `TOOL_COMMAND_TIMEOUT` | No | Per-command timeout for the fix agent's `shell` tool, in seconds (default: 180) |
 | `TEST_TIMEOUT` | No | Timeout for the validation test run, in seconds (default: 600) |
+| `IDLE_SESSION_TIMEOUT` | No | Mirror of `agentcore.json` `idleRuntimeSessionTimeout`; used by the clock-consistency check (default: 900) |
+| `MAX_LIFETIME` | No | Mirror of `agentcore.json` `maxLifetime`; used by the clock-consistency check (default: 3600) |
+| `REAPER_THRESHOLD_SECONDS` | No | Mirror of the DB `max_runtime_seconds` (3600) + `grace_seconds` (120); reaper backstop bound (default: 3720) |
+| `HEARTBEAT_INTERVAL` | No | Keep-alive cadence during long steps, in seconds; must be `≤ IDLE_SESSION_TIMEOUT / 2` (default: 120) |
 
 ## Testing
 

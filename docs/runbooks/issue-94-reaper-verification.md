@@ -416,6 +416,11 @@ tight and healthy runs risk being reaped.
 > repos also yield `0 in_range` advisories, so the LLM fix loop is never reached and runs finish
 > in ~2 minutes regardless.
 >
+> _Update:_ #98 is **resolved in code** (PR #103 — heartbeat keep-alive + `idleRuntimeSessionTimeout`
+> 300 → 900; see `technical-guidelines.md` §8 and [ADR-006](../adr/ADR-006-long-step-keepalive-and-clock-invariant.md)),
+> but the fix needs an AgentCore redeploy to take effect, so live AC5 verification stays carried by
+> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101).
+>
 > **On the cold-start measurement.** One attempt produced `insert_to_start = 185.7 s` on run
 > `f63ac9f3-…`, but that figure is **invalid** — it includes the human delay between running the
 > INSERT and running `agentcore invoke`. The agent's first log (`19:34:47.530`) and `started_at`
