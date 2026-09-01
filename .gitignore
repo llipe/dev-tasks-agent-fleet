@@ -36,6 +36,10 @@ packages/shared/generated/__pycache__
 # issue and PR prose, so these drafts stay local.
 workstream/.pr-body-*.md
 
+# Supabase CLI local link metadata (contains pooler URL / project ref). Created
+# by `supabase link` for live DB verification; regenerated on demand, never committed.
+supabase/.temp/
+
 # Exclude kiro's mcp config
 .kiro/settings/mcp.json
 

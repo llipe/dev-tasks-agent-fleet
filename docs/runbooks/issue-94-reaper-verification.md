@@ -286,12 +286,16 @@ Three properties confirmed by this single run:
    `running | running` — correctly *not* yet terminal. After the reap, both `status` and
    `effective_status` read `timed_out`. The view leads and the reaper follows, then they agree.
 
-> ⚠️ **Gap observed — the reaper does not close open steps.** `run_steps.seq=7` (`validate`) remains
-> `status='running'` with `finished_at=null` inside a now-terminal `timed_out` run.
-> `reap_stale_runs()` updates `runs` and writes the `run_events` row but never touches `run_steps`,
-> unlike the agent's own failure path which closes open steps as `failed`
-> (technical-guidelines §8). Every reaped run therefore leaves an orphan step pinned in `running`.
-> Tracked as a follow-up (does not affect any issue #94 acceptance criterion).
+> ⚠️ **Gap observed during #94 — now resolved in [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99).**
+> At the time of this #94 run, `run_steps.seq=7` (`validate`) remained `status='running'` with
+> `finished_at=null` inside a now-terminal `timed_out` run: `reap_stale_runs()` updated `runs` and
+> wrote the `run_events` row but never touched `run_steps`, unlike the agent's own failure path which
+> closes open steps as `failed` (technical-guidelines §8). Every reaped run therefore left an orphan
+> step pinned in `running`. This did not affect any issue #94 acceptance criterion and was tracked as
+> a follow-up. **Resolved in #99:** `reap_stale_runs()` now closes open `run_steps`
+> (`status='failed'`, `finished_at=now()`, attributing `error_message`) on both branches
+> (`timed_out` and `failed_to_start`), mirroring the agent path. See `technical-guidelines.md`
+> §7/§8 and [ADR-004](../adr/ADR-004-schedule-pg-cron-reaper.md).
 
 ### Cleanup synthetic rows
 
@@ -550,7 +554,7 @@ reaper itself behaved correctly in every observed case.
 |-------|-------|----------|----------------|
 | [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) | `unwrap_payload` double-wrap breaks `agentcore` CLI ≥0.28.0 invocations | high | Two invocations died with `INVALID_PARAMS` before switching to the bare-payload `--prompt-file` form (§4.1) |
 | [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | Run dies during `validate` step without reporting terminal status | high | Real run `f63ac9f3-…` hung mid-`validate`; reaper had to clean it up 3732 s later (§3 real-run block). **Blocks AC5.** **Resolved (code) in PR #103** — root cause confirmed as AgentCore output-idle reclamation (clean CloudWatch silence on this run, no OOM signature); the entrypoint now live-yields heartbeat chunks during `validate`/`llm_fix`, `idleRuntimeSessionTimeout` raised 300 → 900, and the timeout clocks are enforced consistent by `config.assert_clock_invariant()`. Live AC2/AC3 verification pending a runtime redeploy. See `technical-guidelines.md` §8. |
-| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` leaves open `run_steps` in `running` | medium | Same run: `validate` step still `running` inside a terminal `timed_out` run (Known limitations §2) |
+| [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` leaves open `run_steps` in `running` | medium | Same run: `validate` step still `running` inside a terminal `timed_out` run (Known limitations §2). **Resolved** — the reaper now closes open steps on both branches; see §2. |
 | [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) | Control plane must insert the `queued` runs row before invoking | medium | Direct `agentcore invoke` left runs invisible — agent only PATCHes, never INSERTs (§4.0) |
 
 Dependency note: **#98 blocks AC5** of this issue. #97 and #100 are prerequisites for anyone
@@ -573,7 +577,7 @@ A fifth issue carries the **unfinished verification** rather than a defect:
 | `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Resolved in [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) (PR #102): `unwrap_payload` now loops, so the pre-wrapped form works verbatim; bare inner JSON via `--prompt-file` (§4.1) also works. A still-wrapper-only payload now logs "appears double-wrapped" |
 | Row reaped `failed_to_start`, `started_at=null`, no agent events | Agent never reported start — broken `SUPABASE_URL`, `run_id` mismatch, or invalid payload | Check §4.1 payload, §5.5 restore, and that the invoke `run_id` matches the inserted row exactly |
 | Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container — [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) |
-| Step stuck `running` inside a terminal run | Reaper does not close open steps | Known gap — [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) |
+| Step stuck `running` inside a terminal run | Reaper did not close open steps (pre-#99 runs only) | Resolved in [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99): the reaper now closes open steps as `failed` on both branches. A step still stuck this way comes from a run reaped before the fix — pending a confirmation-gated backfill |
 | `v_runs` and `runs` disagree | Expected between threshold and the next tick — that is the two-layer design | None; confirm they converge after the tick |
 | Reaper appears to do nothing | Job unscheduled (e.g. left unscheduled after a §3.3 retry) | Re-run `cron.schedule` (§1.3) and check `cron.job` |
 
@@ -594,14 +598,22 @@ A real `llm_fix` invocation (`f63ac9f3-…`) died during the `validate` step
 Consequence for verification: AC5's "real 20+ minute `llm_fix` run" may not be achievable until
 that is resolved — use the synthetic interlock proof in §4.4 instead.
 
-### 2 — Reaper leaves open `run_steps` dangling → [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99)
+### 2 — Reaper left open `run_steps` dangling → resolved in [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99)
 
-`reap_stale_runs()` transitions `runs` and writes the explanatory `run_events` row, but does not
-close open `run_steps`. A reaped run keeps its in-flight step at `status='running'`,
-`finished_at=null` indefinitely — unlike the agent's own failure path, which closes open steps as
-`failed`. Phase 2 impact: the Run Detail steps panel (DESIGN.md §5.3) would render a
-perpetually-running step inside a terminal run. Tracked as a follow-up; no issue #94 acceptance
-criterion asserts step closure.
+**At the time of the #94 verification,** `reap_stale_runs()` transitioned `runs` and wrote the
+explanatory `run_events` row, but did not close open `run_steps`. A reaped run kept its in-flight
+step at `status='running'`, `finished_at=null` indefinitely — unlike the agent's own failure path,
+which closes open steps as `failed`. Phase 2 impact would have been the Run Detail steps panel
+(DESIGN.md §5.3) rendering a perpetually-running step inside a terminal run. It was tracked as a
+follow-up; no issue #94 acceptance criterion asserted step closure.
+
+**Resolved in #99.** `reap_stale_runs()` now closes any open `run_steps` (`status='failed'`,
+`finished_at=now()`, attributing `error_message`) on **both** branches (`timed_out` and
+`failed_to_start`), in symmetry with the agent path. It reuses the existing `step_status` enum value
+`failed` (no new enum value, no migration), leaves already-terminal steps untouched, and is a safe
+0-row no-op when a run has no steps. See `technical-guidelines.md` §7/§8 and
+[ADR-004](../adr/ADR-004-schedule-pg-cron-reaper.md). One pre-existing historical orphan step (from
+runs reaped before this fix) remains and is left for a confirmation-gated backfill.
 
 ### 3 — The ~60-minute stale window is by design, not a defect
 

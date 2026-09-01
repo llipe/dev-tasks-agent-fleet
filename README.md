@@ -130,7 +130,7 @@ deploy-time gate; deployment is via the AgentCore CLI / CDK (Phase 1) and Fly.io
 | --- | --- |
 | [`docs/product-context.md`](docs/product-context.md) | Problem statement, users, goals, roadmap, constraints |
 | [`docs/technical-guidelines.md`](docs/technical-guidelines.md) | Stack, architecture patterns, data model, security, deployment |
-| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule) |
+| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant) |
 | [`docs/runbooks/`](docs/runbooks/) | Operator procedures requiring live AWS/Supabase access — deployment + E2E (#77), `pg_cron` reaper scheduling + stale-run verification (#94) |
 | [`agents/dependency-update/README.md`](agents/dependency-update/README.md) | Agent pipeline, deployment, environment variables, timeouts |
 | [`TESTING.md`](TESTING.md) | Testing contract — layers, commands, coverage, gaps |
