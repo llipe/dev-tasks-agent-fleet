@@ -163,18 +163,21 @@ end-to-end invocation checks lives in
 ## Invocation
 
 Invoke the deployed runtime with `agentcore invoke`. The runtime contract is a payload
-wrapped in a `prompt` key (a JSON string); the agent unwraps **exactly one** level
-transparently.
+wrapped in a `prompt` key (a JSON string); the agent unwraps nested `prompt` wrappers
+transparently (see the CLI-version note below).
 
-> ⚠️ **`agentcore` CLI ≥ 0.28.0 — pass the bare payload, not the pre-wrapped form.**
-> The CLI treats its argument *as* the prompt and wraps it itself, so an already-wrapped
-> `'{"prompt": "{...}"}'` arrives double-wrapped: one unwrap leaves a payload whose only key is
-> `prompt`, and validation fails with a generic
-> `INVALID_PARAMS` / `"Invalid payload — missing required fields"`. Until
-> [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) fixes `unwrap_payload()`, write
-> the **inner JSON only** (no `prompt` key) to a file and invoke with `--prompt-file`:
+> **`agentcore` CLI ≥ 0.28.0 — the CLI wraps the prompt argument itself.**
+> The CLI treats its invoke argument *as* the prompt and wraps it as `{"prompt": "<arg>"}`.
+> Passing an already-wrapped `'{"prompt": "{...}"}'` therefore arrives **double-wrapped**. As of
+> [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97), `unwrap_payload()` strips nested
+> `prompt` wrappers in a loop, so **both** the bare inner JSON and the pre-wrapped form work. If a
+> payload is still wrapper-only after unwrapping, the run fails `INVALID_PARAMS` with a specific
+> "appears double-wrapped" log line (not the generic missing-fields message).
+>
+> The examples below were validated against **`agentcore` CLI 0.28.x**. Two equivalent forms:
 >
 > ```bash
+> # (a) bare inner JSON via --prompt-file (recommended for hand-invocation)
 > cat > /tmp/invoke.json <<'JSON'
 > {"run_id":"<uuid>","repository_org":"my-org","repository_name":"checkout-api","params":{"fix_mode":"audit_only"}}
 > JSON
@@ -188,7 +191,7 @@ transparently.
 > §4.0 and §4.1.
 
 The wrapped form below is the contract the Phase 2 control plane will send over
-`InvokeAgentRuntime`; it is **not** currently usable from the CLI (see the warning above).
+`InvokeAgentRuntime`, and (since #97) is also accepted verbatim from the CLI ≥ 0.28.0:
 
 ```bash
 # audit_only (default) — report findings, no PR
