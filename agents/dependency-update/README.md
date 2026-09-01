@@ -168,6 +168,65 @@ Invoke the deployed runtime with `agentcore invoke`. The runtime contract is a p
 wrapped in a `prompt` key (a JSON string); the agent unwraps nested `prompt` wrappers
 transparently (see the CLI-version note below).
 
+### Prerequisite — insert the `queued` row before invoking (D1)
+
+**The caller must INSERT the `runs` row before invoking; the agent only updates it.** Per D1 and
+specification §14 the control plane generates `run_id` and inserts the `runs` row in `queued`
+*before* calling AgentCore. The agent SDK **never inserts** — `RunReporter.start()` issues a PATCH
+(`UPDATE runs SET status='running', started_at=… WHERE id=<run_id>`). The Phase 2 panel does this
+automatically; when you invoke by hand (`agentcore invoke`), **you** must insert the row first.
+
+Ready-to-paste insert (mirrors operator runbook
+[`issue-94-reaper-verification.md`](../../docs/runbooks/issue-94-reaper-verification.md) §4.0;
+lists every NOT-NULL column and returns the `id` to use as `run_id`):
+
+```sql
+insert into runs (
+  id, agent_id, agent_version, repository_id, installation_id,
+  status, queued_at, max_runtime_seconds, grace_seconds, start_timeout_seconds
+)
+select gen_random_uuid(), a.id, a.version, r.id, r.installation_id,
+       'queued', now(), 3600, 120, 300
+from agents a
+join repositories r on r.full_name = 'my-org/checkout-api'
+where a.slug = 'dependency-update'
+returning id;   -- use this UUID as run_id in the invoke payload below
+```
+
+The `returning id` value is the `run_id` you put in the invoke payload. (You may instead generate
+the UUID yourself and pass the same literal to both the `INSERT` and the payload — either way the
+row must exist first and the two `run_id`s must match exactly.)
+
+#### Failure mode — run invisible (silent no-op)
+
+If you invoke **without** inserting the row, the agent's `start()` PATCH matches **zero** rows.
+PostgREST returns **HTTP 200 on a zero-match UPDATE** (a silent no-op at the database), so:
+
+- **Symptom:** the run never appears in `runs` or `v_runs`, and the agent does **not** fail — it
+  runs to completion writing nothing durable. As of
+  [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) this is no longer *completely*
+  silent: `start()` sends the PATCH with `Prefer: count=exact`, reads the `Content-Range` count,
+  and on a **confirmed** zero-row match logs a loud stderr warning naming #100 (then continues —
+  reporting never kills the agent). Check the runtime's CloudWatch stderr for that warning if a run
+  seems to vanish. (An *unknown* count — request failed or header absent — does not warn, to avoid
+  false alarms.) This class of bug cost real debugging time during #94 verification.
+- **Cause:** no `queued` row existed for the PATCH to match.
+- **Fix:** insert the `queued` row first (above), then invoke with the matching `run_id`.
+
+**Secondary symptom (not a bug):** if a `queued` row *is* pre-inserted but the agent never starts
+(e.g. a rejected payload), the reaper marks it `failed_to_start` with `started_at = null` and zero
+agent-written events. That is correct reaper behavior on an orphan
+([#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) also closes any open steps), not a
+reaper defect — see runbook §2 / §4.0.
+
+**Quick diagnosis — "my run is invisible":**
+
+1. Did you `INSERT` the `queued` row before invoking? (the #1 cause — and since #100, look for the
+   loud `start()` zero-row warning in CloudWatch stderr, which confirms this case)
+2. Does the invoke payload `run_id` match the inserted row's `id` **exactly**?
+3. Is `SUPABASE_URL` reachable from the runtime? (an unreachable URL also drops the write — see
+   runbook §5)
+
 > **`agentcore` CLI ≥ 0.28.0 — the CLI wraps the prompt argument itself.**
 > The CLI treats its invoke argument *as* the prompt and wraps it as `{"prompt": "<arg>"}`.
 > Passing an already-wrapped `'{"prompt": "{...}"}'` therefore arrives **double-wrapped**. As of
@@ -186,11 +245,8 @@ transparently (see the CLI-version note below).
 > agentcore invoke --prompt-file /tmp/invoke.json
 > ```
 >
-> Also note that a direct CLI invoke does **not** create the `runs` row — the control plane inserts
-> it and the agent only PATCHes, so a hand-invoked run stays invisible with no error
-> ([#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100)). Insert the `queued` row
-> first; see [`docs/runbooks/issue-94-reaper-verification.md`](../../docs/runbooks/issue-94-reaper-verification.md)
-> §4.0 and §4.1.
+> Reminder: this still requires the `queued` row to exist first (see *Prerequisite* above) — a
+> direct CLI invoke does not create it.
 
 The wrapped form below is the contract the Phase 2 control plane will send over
 `InvokeAgentRuntime`, and (since #97) is also accepted verbatim from the CLI ≥ 0.28.0:
@@ -203,9 +259,9 @@ agentcore invoke '{"prompt": "{\"run_id\":\"<uuid>\",\"repository_org\":\"my-org
 agentcore invoke '{"prompt": "{\"run_id\":\"<uuid>\",\"repository_org\":\"my-org\",\"repository_name\":\"checkout-api\",\"params\":{\"fix_mode\":\"llm_fix\",\"max_fix_attempts\":3}}"}'
 ```
 
-`run_id` MUST be a UUID generated by the caller (the control plane inserts the
-`runs` row in `queued` before invoking). `repository_org` and `repository_name`
-are required; `params` is validated against the agent's `params_schema` and
+`run_id` MUST be a caller-generated UUID that already exists as a `queued` `runs` row (see
+*Prerequisite — insert the `queued` row before invoking* above). `repository_org` and
+`repository_name` are required; `params` is validated against the agent's `params_schema` and
 defaulted (`fix_mode=audit_only`, `fail_on_findings=true`, `max_fix_attempts=3`).
 An invalid payload terminates `failed / not_applicable / INVALID_PARAMS` before
 any clone.
