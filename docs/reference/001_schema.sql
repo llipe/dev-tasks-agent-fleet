@@ -288,6 +288,15 @@ begin
            'El sistema marcó esta ejecución como timed_out: el agente nunca reportó término.',
            jsonb_build_object('reaped_by', 'reap_stale_runs', 'reason', 'RUNTIME_TIMEOUT');
 
+    -- Cerrar los steps que quedaron abiertos, en simetría con la ruta de
+    -- fallo del propio agente (technical-guidelines §8). No asume que existan.
+    update run_steps
+       set status = 'failed',
+           finished_at = now(),
+           error_message = 'Cerrado por reap_stale_runs: la ejecución fue marcada timed_out (RUNTIME_TIMEOUT).'
+     where run_id = v_run.id
+       and status in ('running', 'pending');
+
     v_count := v_count + 1;
   end loop;
 
@@ -312,6 +321,15 @@ begin
            'error',
            'La invocación nunca reportó inicio. Revisar el runtime en AgentCore.',
            jsonb_build_object('reaped_by', 'reap_stale_runs', 'reason', 'START_TIMEOUT');
+
+    -- Un failed_to_start normalmente no tiene steps, pero no lo asumimos:
+    -- el update es un no-op seguro (0 filas) cuando no hay steps abiertos.
+    update run_steps
+       set status = 'failed',
+           finished_at = now(),
+           error_message = 'Cerrado por reap_stale_runs: la invocación fue marcada failed_to_start (START_TIMEOUT).'
+     where run_id = v_run.id
+       and status in ('running', 'pending');
 
     v_count := v_count + 1;
   end loop;
