@@ -25,6 +25,10 @@ Set on the AgentCore runtime (not baked into the image, not committed). Read by 
 | `AGENT_LOG_LEVEL` | No | `INFO` | Minimum log level captured by the SDK handler | #77 |
 | `TEST_TIMEOUT` | No | `600` | Validation timeout (seconds) | #72 |
 | `TOOL_COMMAND_TIMEOUT` | No | `180` | Per-command timeout for fix-agent tools (seconds) | #75 |
+| `IDLE_SESSION_TIMEOUT` | No | `900` | Mirror of `agentcore.json` `idleRuntimeSessionTimeout`; used by the clock-consistency check | #98 |
+| `MAX_LIFETIME` | No | `3600` | Mirror of `agentcore.json` `maxLifetime`; used by the clock-consistency check | #98 |
+| `REAPER_THRESHOLD_SECONDS` | No | `3720` | Mirror of Supabase `max_runtime_seconds` (3600) + `grace_seconds` (120) | #98 |
+| `HEARTBEAT_INTERVAL` | No | `120` | Cadence (seconds) of keep-alive heartbeat chunks during long steps; must be `≤ IDLE_SESSION_TIMEOUT/2` | #98 |
 
 > Note: `SUPABASE_SERVICE_ROLE_KEY` is NOT set as an env var. The agent fetches it from
 > Secrets Manager at startup (D15/D24) and sets it into the environment in-process.
@@ -266,6 +270,18 @@ cdk bootstrap "aws://$AWS_ACCOUNT_ID/$AWS_REGION"
 ---
 
 ### Step 7 — Deploy the agent runtime + set env vars
+
+> **Issue #98 — redeploy required for the lifecycle change.** `agentcore/agentcore.json`
+> now sets `idleRuntimeSessionTimeout: 900` (raised from 300) so a bounded `TEST_TIMEOUT`
+> (600 s) validation run, kept alive by a 120 s heartbeat, cannot trip idle reclamation
+> mid-`validate`. This value lives in the runtime's `lifecycleConfiguration` and only takes
+> effect after **re-running `agentcore deploy -y`** below. The mirror constants
+> (`IDLE_SESSION_TIMEOUT`, `MAX_LIFETIME`, `REAPER_THRESHOLD_SECONDS`, `HEARTBEAT_INTERVAL`)
+> are enforced consistent in-code by `assert_clock_invariant()` at entrypoint start; if you
+> override any of them via env var, keep the ordering
+> `TOOL_COMMAND_TIMEOUT ≤ TEST_TIMEOUT ≤ IDLE_SESSION_TIMEOUT ≤ MAX_LIFETIME ≤ REAPER_THRESHOLD_SECONDS`
+> and `HEARTBEAT_INTERVAL ≤ IDLE_SESSION_TIMEOUT/2`, or the agent will refuse to start
+> (`ClockConsistencyError`).
 
 ```bash
 cd agents/dependency-update

@@ -33,13 +33,22 @@ from config import (
     DEFAULT_FAIL_ON_FINDINGS,
     DEFAULT_FIX_MODE,
     DEFAULT_MAX_FIX_ATTEMPTS,
+    HEARTBEAT_INTERVAL,
     MAX_FIX_ATTEMPTS_CEILING,
     SUPABASE_URL,
+    assert_clock_invariant,
 )
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
 from fix_agent import _read_pkg_dependencies, run_fix_loop, verify_no_mandate_violation
+from heartbeat import (
+    HeartbeatResult,
+    is_heartbeat_chunk,
+    run_with_heartbeat,
+    terminal_chunk,
+)
 from pull_request import PullRequestError, build_pr_body, open_pr_if_needed
 from scrubber import scrub, scrub_process_error
+from signal_backstop import install_termination_backstop
 from toolchain import (
     ToolchainError,
     detect_package_manager,
@@ -465,6 +474,16 @@ def _report_terminal(
 
 
 # ---------------------------------------------------------------------------
+# Heartbeat keep-alive (issue #98)
+# ---------------------------------------------------------------------------
+#
+# The reusable, unit-tested heartbeat logic lives in heartbeat.py. The
+# entrypoint drives run_with_heartbeat inline (live-yielding heartbeat chunks as
+# they occur) so the AgentCore response stream is never idle during a long
+# blocking step. Nothing here touches the vendored agent_reporter.py (D13).
+
+
+# ---------------------------------------------------------------------------
 # Main orchestrator (spec §8.2)
 # ---------------------------------------------------------------------------
 
@@ -481,6 +500,12 @@ async def invoke(payload: dict, context):
     secrets: list[str] = []
 
     try:
+        # Fail fast if the timeout clocks are inconsistent (issue #98, AC4):
+        # a TEST_TIMEOUT above the container idle bound, or a heartbeat interval
+        # at/above it, would let the container be reclaimed mid-step. Better to
+        # refuse to start than to die silently at `validate`.
+        assert_clock_invariant()
+
         # --- Unwrap and validate payload (req 9, 10) ---
         payload = unwrap_payload(payload)
         validated = validate_payload(payload)
@@ -499,7 +524,7 @@ async def invoke(payload: dict, context):
             else:
                 log.error("Invalid payload — missing required fields")
             result = build_return_payload("failed", "not_applicable", "INVALID_PARAMS")
-            yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+            yield terminal_chunk(json.dumps(result))
             return
 
         payload = apply_defaults(validated)
@@ -517,6 +542,11 @@ async def invoke(payload: dict, context):
         os.environ["RUN_PARAMS"] = json.dumps(payload)
 
         with RunReporter.from_env() as run:
+            # Best-effort terminal-report backstop for an interceptable abrupt
+            # stop (SIGTERM). A true SIGKILL/OOM cannot be intercepted — that
+            # path is documented as reaper-only (issue #98, AC6).
+            install_termination_backstop(lambda: run, lambda: secrets)
+
             # --- Step: resolve_credentials ---
             with run.step("resolve_credentials"):
                 token_ctx = resolve_github_credentials(org)
@@ -600,7 +630,7 @@ async def invoke(payload: dict, context):
                     advisories_unknown=buckets["unknown"],
                 )
                 _report_terminal(run, status, outcome, error_code, metrics=build_metrics(result))
-                yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+                yield terminal_chunk(json.dumps(result))
                 return
 
             # --- llm_fix mode continues below ---
@@ -629,7 +659,7 @@ async def invoke(payload: dict, context):
                     _report_terminal(
                         run, status, outcome, error_code, metrics=build_metrics(result)
                     )
-                    yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+                    yield terminal_chunk(json.dumps(result))
                     return
 
                 # Reconcile lockfile (req 30)
@@ -654,13 +684,31 @@ async def invoke(payload: dict, context):
                         )
 
                 log.info(
-                    "Update applied: %d packages changed",
+                    "Update applied: %d package version(s) changed "
+                    "(working tree also has changes → proceeding to validate; "
+                    "lockfile-only reconciliation shows 0 here). See issue #98 EC-9.",
                     len(pkg_changes),
                 )
 
             # --- Step: validate ---
+            # The longest blocking step: `pnpm test` on a large monorepo can run
+            # for minutes. Run it in a worker thread and yield heartbeat chunks
+            # live so the AgentCore response stream never goes idle and the
+            # container is not reclaimed mid-step (issue #98, AC2).
             with run.step("validate"):
-                val_result = run_validation(workspace, pm, scripts)
+                _val_holder: dict = {}
+
+                def _do_validation():
+                    return run_validation(workspace, pm, scripts)
+
+                async for _item in run_with_heartbeat(_do_validation, interval=HEARTBEAT_INTERVAL):
+                    if isinstance(_item, HeartbeatResult):
+                        if _item.error is not None:
+                            raise _item.error
+                        _val_holder["result"] = _item.value
+                    elif is_heartbeat_chunk(_item):
+                        yield _item
+                val_result = _val_holder["result"]
                 log.info("Validation: passed=%s", val_result.passed)
 
             # --- Step: llm_fix (only if validation failed and attempts > 0) ---
@@ -673,13 +721,30 @@ async def invoke(payload: dict, context):
                         "Validation failed — invoking LLM fix agent (max_attempts=%d)",
                         params["max_fix_attempts"],
                     )
-                    val_result = run_fix_loop(
-                        workspace,
-                        pm,
-                        scripts,
-                        params["max_fix_attempts"],
-                        val_result,
-                    )
+                    # The LLM fix loop is the longest step of all (multiple model
+                    # calls + re-validation). Heartbeat it live too (issue #98,
+                    # AC3).
+                    _fix_holder: dict = {}
+
+                    def _do_fix_loop():
+                        return run_fix_loop(
+                            workspace,
+                            pm,
+                            scripts,
+                            params["max_fix_attempts"],
+                            val_result,
+                        )
+
+                    async for _item in run_with_heartbeat(
+                        _do_fix_loop, interval=HEARTBEAT_INTERVAL
+                    ):
+                        if isinstance(_item, HeartbeatResult):
+                            if _item.error is not None:
+                                raise _item.error
+                            _fix_holder["result"] = _item.value
+                        elif is_heartbeat_chunk(_item):
+                            yield _item
+                    val_result = _fix_holder["result"]
 
             # req 49: if fix succeeded, re-run lint/format/typecheck
             if val_result.passed and val_result.llm_used:
@@ -709,7 +774,7 @@ async def invoke(payload: dict, context):
                         outcome="needs_review",
                         metrics=build_metrics(result),
                     )
-                    yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+                    yield terminal_chunk(json.dumps(result))
                     return
 
             # Check validation after potential fix
@@ -730,7 +795,7 @@ async def invoke(payload: dict, context):
                     advisories_unknown=_bucket_counts(reclassified)["unknown"],
                 )
                 _report_terminal(run, status, outcome, error_code, metrics=build_metrics(result))
-                yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+                yield terminal_chunk(json.dumps(result))
                 return
 
             # --- Step: open_pr ---
@@ -816,22 +881,22 @@ async def invoke(payload: dict, context):
             else:
                 _report_terminal(run, status, outcome, error_code, metrics=metrics)
 
-            yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+            yield terminal_chunk(json.dumps(result))
 
     except CredentialError as exc:
         log.error("Credential error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except ToolchainError as exc:
         log.error("Toolchain error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except UpdaterError as exc:
         log.error("Updater error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except PullRequestError as exc:
         # A push/PR-create failure after the workspace changes are staged.
@@ -839,7 +904,7 @@ async def invoke(payload: dict, context):
         # succeeded — only the PR handoff failed) rather than UNHANDLED_ERROR.
         log.error("Pull request error: %s", scrub(str(exc), secrets))
         result = build_return_payload("failed", "needs_review", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except Exception:
         # Unhandled exception — req 59: RunReporter context manager handles
@@ -847,7 +912,7 @@ async def invoke(payload: dict, context):
         tb = traceback.format_exc()
         log.error("Unhandled exception:\n%s", scrub(tb, secrets))
         result = build_return_payload("failed", "not_applicable", "UNHANDLED_ERROR")
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
 
 # ---------------------------------------------------------------------------

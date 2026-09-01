@@ -416,6 +416,11 @@ tight and healthy runs risk being reaped.
 > repos also yield `0 in_range` advisories, so the LLM fix loop is never reached and runs finish
 > in ~2 minutes regardless.
 >
+> _Update:_ #98 is **resolved in code** (PR #103 — heartbeat keep-alive + `idleRuntimeSessionTimeout`
+> 300 → 900; see `technical-guidelines.md` §8 and [ADR-006](../adr/ADR-006-long-step-keepalive-and-clock-invariant.md)),
+> but the fix needs an AgentCore redeploy to take effect, so live AC5 verification stays carried by
+> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101).
+>
 > **On the cold-start measurement.** One attempt produced `insert_to_start = 185.7 s` on run
 > `f63ac9f3-…`, but that figure is **invalid** — it includes the human delay between running the
 > INSERT and running `agentcore invoke`. The agent's first log (`19:34:47.530`) and `started_at`
@@ -544,7 +549,7 @@ reaper itself behaved correctly in every observed case.
 | Issue | Title | Severity | Discovered how |
 |-------|-------|----------|----------------|
 | [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) | `unwrap_payload` double-wrap breaks `agentcore` CLI ≥0.28.0 invocations | high | Two invocations died with `INVALID_PARAMS` before switching to the bare-payload `--prompt-file` form (§4.1) |
-| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | Run dies during `validate` step without reporting terminal status | high | Real run `f63ac9f3-…` hung mid-`validate`; reaper had to clean it up 3732 s later (§3 real-run block). **Blocks AC5.** |
+| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | Run dies during `validate` step without reporting terminal status | high | Real run `f63ac9f3-…` hung mid-`validate`; reaper had to clean it up 3732 s later (§3 real-run block). **Blocks AC5.** **Resolved (code) in PR #103** — root cause confirmed as AgentCore output-idle reclamation (clean CloudWatch silence on this run, no OOM signature); the entrypoint now live-yields heartbeat chunks during `validate`/`llm_fix`, `idleRuntimeSessionTimeout` raised 300 → 900, and the timeout clocks are enforced consistent by `config.assert_clock_invariant()`. Live AC2/AC3 verification pending a runtime redeploy. See `technical-guidelines.md` §8. |
 | [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` leaves open `run_steps` in `running` | medium | Same run: `validate` step still `running` inside a terminal `timed_out` run (Known limitations §2) |
 | [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) | Control plane must insert the `queued` runs row before invoking | medium | Direct `agentcore invoke` left runs invisible — agent only PATCHes, never INSERTs (§4.0) |
 

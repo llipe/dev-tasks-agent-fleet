@@ -22,7 +22,7 @@
         { "name": "MODEL_ID", "value": "us.anthropic.claude-sonnet-4-6" }
       ],
       "lifecycleConfiguration": {
-        "idleRuntimeSessionTimeout": 300,
+        "idleRuntimeSessionTimeout": 900,
         "maxLifetime": 3600
       }
     }
