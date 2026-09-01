@@ -17,14 +17,40 @@ Scenarios:
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 
 from main import (
     apply_defaults,
     build_return_payload,
+    classify_invalid_payload,
     unwrap_payload,
     validate_payload,
 )
+
+# Fixed seed for the property-based tactics (test plan §6). On failure, the
+# logged (seed, k, payload) triple reproduces the exact vector deterministically.
+_PROP_SEED = "97_0831"
+
+
+def _wrap_n(inner: dict, n: int) -> dict:
+    """Wrap ``inner`` in ``n`` nested ``{"prompt": "<json>"}`` layers.
+
+    n=0 returns the bare inner dict; n=1 is the single-wrap the control plane
+    sends; n>=2 is the double-wrap produced by agentcore CLI >= 0.28.0 when the
+    caller passes an already-wrapped argument.
+    """
+    current: dict = inner
+    for _ in range(n):
+        current = {"prompt": json.dumps(current)}
+    return current
+
+
+_VALID_INNER = {
+    "run_id": "abc-123",
+    "repository_org": "myorg",
+    "repository_name": "myrepo",
+}
 
 # ---------------------------------------------------------------------------
 # Payload unwrapping tests (req 9)
@@ -64,6 +90,177 @@ class TestUnwrapPayload:
         raw = {"prompt": "[1, 2, 3]"}
         result = unwrap_payload(raw)
         assert result == raw
+
+
+# ---------------------------------------------------------------------------
+# Double-wrap / repeated-unwrap tests (issue #97, AC-1 / AC-4)
+# agentcore CLI >= 0.28.0 wraps the prompt argument itself, so an already-
+# wrapped payload arrives double-wrapped.
+# ---------------------------------------------------------------------------
+
+
+class TestUnwrapPayloadDoubleWrap:
+    """Repeated unwrap of nested prompt wrappers (issue #97)."""
+
+    def test_unwraps_double_wrapped(self):
+        """E2E-1: a double-wrapped valid payload is fully unwrapped."""
+        raw = _wrap_n(_VALID_INNER, 2)
+        assert raw != _VALID_INNER  # guard: fixture really is double-wrapped
+        result = unwrap_payload(raw)
+        assert result == _VALID_INNER
+        assert validate_payload(result) is not None  # run proceeds
+
+    def test_unwraps_triple_wrapped(self):
+        """E2E-6: three prompt layers unwrap via loop, not fixed depth."""
+        raw = _wrap_n(_VALID_INNER, 3)
+        result = unwrap_payload(raw)
+        assert result == _VALID_INNER
+
+    def test_single_wrap_still_unwraps(self):
+        """E2E-3 / AC-2: single-wrap (control-plane form) still resolves."""
+        raw = _wrap_n(_VALID_INNER, 1)
+        assert unwrap_payload(raw) == _VALID_INNER
+
+    def test_bare_still_passthrough(self):
+        """E2E-2 / AC-2: bare payload passes through unchanged."""
+        assert unwrap_payload(dict(_VALID_INNER)) == _VALID_INNER
+
+    def test_idempotent_across_depths(self):
+        """CT-1: same inner dict resolved for 1..N prompt layers."""
+        results = [unwrap_payload(_wrap_n(_VALID_INNER, k)) for k in range(0, 6)]
+        assert all(r == _VALID_INNER for r in results)
+
+    def test_always_returns_dict(self):
+        """CT-5: unwrap always returns a dict for every branch."""
+        for raw in (
+            dict(_VALID_INNER),
+            _wrap_n(_VALID_INNER, 2),
+            {"prompt": "not json{{{"},
+            {"prompt": "[1,2,3]"},
+            {"prompt": 42},
+            {"prompt": '{"prompt": "{}"}'},
+            {},
+        ):
+            assert isinstance(unwrap_payload(raw), dict)
+
+    # --- do-not-over-unwrap boundary (EC-10, EC-11) ---
+
+    def test_does_not_unwrap_prompt_with_sibling_keys(self):
+        """EC-10: dict with prompt + other keys is not treated as a wrapper."""
+        raw = {"prompt": json.dumps(_VALID_INNER), "run_id": "keep-me"}
+        # Only-key guard: this is not a lone-prompt wrapper, so it is returned as-is.
+        assert unwrap_payload(raw) == raw
+
+    def test_does_not_strip_legit_inner_prompt_field(self):
+        """EC-11: a valid inner payload that itself carries a prompt field
+        (alongside the required fields) must NOT be unwrapped further."""
+        inner = {**_VALID_INNER, "prompt": "this is a legitimate field value"}
+        raw = {"prompt": json.dumps(inner)}
+        result = unwrap_payload(raw)
+        assert result == inner
+        assert validate_payload(result) is not None
+
+    # --- termination / safety (BR-1, EC-4, EC-9, EC-12, EC-13) ---
+
+    def test_wrapper_only_empty_inner_stops_safely(self):
+        """E2E-4 / EC-9: double-wrapped empty inner stops; validate → None."""
+        raw = {"prompt": json.dumps({"prompt": "{}"})}
+        result = unwrap_payload(raw)
+        assert result == {}
+        assert validate_payload(result) is None
+
+    def test_prompt_scalar_json_falls_back(self):
+        """EC-4: prompt parsing to a JSON scalar does not crash; falls back."""
+        for scalar in ('"x"', "5", "null", "true"):
+            raw = {"prompt": scalar}
+            assert unwrap_payload(raw) == raw
+
+    def test_empty_dict_passthrough(self):
+        """EC-13: empty dict returned unchanged."""
+        assert unwrap_payload({}) == {}
+
+    def test_deep_wrapper_only_chain_terminates(self):
+        """EC-12: a deep lone-prompt chain ending in {} terminates safely."""
+        raw = _wrap_n({}, 8)
+        result = unwrap_payload(raw)
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Invalid-payload diagnostic classification (issue #97, AC-3)
+# The wrapper-only case must be distinguishable from genuinely-missing-fields.
+# Extracted as a pure helper so it is testable in the covered surface
+# (main.py's @app.entrypoint is coverage-excluded).
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyInvalidPayload:
+    """classify_invalid_payload distinguishes wrapper-only vs missing-fields."""
+
+    def test_wrapper_only_after_unwrap(self):
+        """E2E-4 / EC-15: a payload whose only key is prompt → 'wrapper_only'."""
+        # This is the shape left after one unwrap of a double-wrapped payload.
+        assert classify_invalid_payload({"prompt": "{}"}) == "wrapper_only"
+
+    def test_missing_fields(self):
+        """E2E-5 / EC-14: a partial real payload → 'missing_fields'."""
+        assert classify_invalid_payload({"run_id": "abc"}) == "missing_fields"
+
+    def test_empty_dict_is_missing_fields(self):
+        """EC-13: empty dict is missing-fields, not wrapper-only."""
+        assert classify_invalid_payload({}) == "missing_fields"
+
+    def test_prompt_with_siblings_is_missing_fields(self):
+        """A dict with prompt + other (still-insufficient) keys is not wrapper-only."""
+        assert classify_invalid_payload({"prompt": "x", "foo": "bar"}) == "missing_fields"
+
+    def test_distinct_reasons(self):
+        """CT-4: the two invalid reasons are distinct values."""
+        assert classify_invalid_payload({"prompt": "{}"}) != classify_invalid_payload(
+            {"run_id": "abc"}
+        )
+
+
+# ---------------------------------------------------------------------------
+# Property-based tactics (issue #97, test plan §6) — seed 97_0831
+# ---------------------------------------------------------------------------
+
+
+class TestUnwrapPayloadProperties:
+    """Randomized depth/shape properties with deterministic replay."""
+
+    def test_any_depth_valid_payload_unwraps(self):
+        """PB-1: valid inner wrapped k times (0..8) always resolves to inner."""
+        rng = random.Random(_PROP_SEED)
+        for _ in range(200):
+            k = rng.randint(0, 8)
+            inner = {
+                "run_id": f"id-{rng.randint(0, 9999)}",
+                "repository_org": f"org-{rng.randint(0, 99)}",
+                "repository_name": f"repo-{rng.randint(0, 99)}",
+            }
+            raw = _wrap_n(inner, k)
+            result = unwrap_payload(raw)
+            assert result == inner, f"seed={_PROP_SEED} k={k} payload={raw!r}"
+
+    def test_always_dict_and_terminates(self):
+        """PB-2: unwrap returns a dict for arbitrary k-deep chains incl. bad tails."""
+        rng = random.Random(f"{_PROP_SEED}-pb2")
+        for _ in range(200):
+            k = rng.randint(0, 8)
+            tail = rng.choice([{}, {"prompt": "not json{{{"}, {"prompt": "[1,2,3]"}])
+            raw = _wrap_n(tail, k)
+            result = unwrap_payload(raw)
+            assert isinstance(result, dict), f"seed={_PROP_SEED} k={k} payload={raw!r}"
+
+    def test_sibling_key_stops_unwrap(self):
+        """PB-3: a non-prompt sibling key at the outer layer stops unwrapping."""
+        rng = random.Random(f"{_PROP_SEED}-pb3")
+        for _ in range(200):
+            sibling = f"k{rng.randint(0, 999)}"
+            raw = {"prompt": json.dumps(_VALID_INNER), sibling: "v"}
+            # outer dict is not a lone-prompt wrapper → returned as-is
+            assert unwrap_payload(raw) == raw, f"seed={_PROP_SEED} sibling={sibling}"
 
 
 # ---------------------------------------------------------------------------

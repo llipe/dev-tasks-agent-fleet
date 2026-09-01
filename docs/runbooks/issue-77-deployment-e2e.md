@@ -228,15 +228,18 @@ Example policy statement (scope the resources — do **not** use `*`):
 ## E2E validation
 
 > ⚠️ **Read before running 7.7–7.10 — two invocation gotchas found after these steps were
-> executed** (details and workarounds in
+> executed** (details in
 > [`issue-94-reaper-verification.md`](issue-94-reaper-verification.md) §4.0 and §4.1):
 >
-> 1. **`agentcore` CLI ≥ 0.28.0 wraps the prompt argument itself.** The pre-wrapped
->    `'{"prompt": "{...}"}'` form used in the commands below therefore arrives **double-wrapped**
->    and dies with a generic `INVALID_PARAMS`. Pass the **bare inner JSON** instead —
->    `agentcore invoke --prompt-file /tmp/invoke.json`, where the file has no `prompt` key.
->    Tracked as [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97); the commands below
->    are kept verbatim as the record of what was executed under the older CLI.
+> 1. **`agentcore` CLI ≥ 0.28.0 wraps the prompt argument itself** — so the pre-wrapped
+>    `'{"prompt": "{...}"}'` form used in the commands below arrived **double-wrapped** and died
+>    with a generic `INVALID_PARAMS` when this runbook was executed.
+>    **Resolved in [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97):**
+>    `unwrap_payload()` now strips nested `prompt` wrappers in a loop, so the pre-wrapped commands
+>    below work verbatim again against CLI ≥ 0.28.0 (and a still-wrapper-only payload now fails with
+>    a specific "appears double-wrapped" message instead of the generic one). The commands are kept
+>    as the record of what was executed; the equivalent bare-JSON form
+>    (`agentcore invoke --prompt-file /tmp/invoke.json`, file has no `prompt` key) also works.
 > 2. **A direct `agentcore invoke` does not create the `runs` row.** Per D1 the control plane
 >    (front-end, Phase 2) inserts the `queued` row and the agent only PATCHes it, so a run invoked
 >    by hand stays invisible in `runs`/`v_runs` with no error anywhere. Insert the `queued` row
@@ -244,8 +247,8 @@ Example policy statement (scope the resources — do **not** use `*`):
 >    [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100).
 
 Generate a UUID per run (`uuidgen` or `python3 -c "import uuid;print(uuid.uuid4())"`).
-The payload is wrapped in a `prompt` key (JSON string) — see the CLI caveat above before copying
-the commands.
+The payload is wrapped in a `prompt` key (JSON string); as of #97 the CLI ≥ 0.28.0 double-wrap is
+handled, so the commands below are usable as written.
 
 ### 7.7 — audit_only on a clean repo
 

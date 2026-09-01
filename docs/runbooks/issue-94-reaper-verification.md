@@ -337,10 +337,17 @@ returning id;
 ### 4.1 Invoke — payload shape (⚠️ CLI 0.28.0)
 
 `agentcore invoke [prompt]` treats its argument **as** the prompt and wraps it itself as
-`{"prompt": "<arg>"}`. The agent's `unwrap_payload()` strips exactly **one** level. So passing an
-already-wrapped `{"prompt": "{...}"}` arrives **double-wrapped**; one unwrap leaves
-`{"prompt": "{...}"}`, whose only key is `prompt`, and validation fails with a generic
-`INVALID_PARAMS` / `"Invalid payload — missing required fields"`.
+`{"prompt": "<arg>"}`. At the time this exercise was run, the agent's `unwrap_payload()` stripped
+exactly **one** level, so passing an already-wrapped `{"prompt": "{...}"}` arrived
+**double-wrapped**; one unwrap left `{"prompt": "{...}"}`, whose only key is `prompt`, and validation
+failed with a generic `INVALID_PARAMS` / `"Invalid payload — missing required fields"`.
+
+> **Resolved in [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) (PR #102).**
+> `unwrap_payload()` now strips nested lone-`prompt` wrappers in a loop, so the pre-wrapped form is
+> accepted verbatim again on CLI ≥ 0.28.0, and a still-wrapper-only payload fails with a distinct
+> "appears double-wrapped" message instead of the generic one. The bare-inner-JSON `--prompt-file`
+> form below still works and remains the recommended hand-invocation path. This section is kept as
+> the record of what was executed during the #94 verification.
 
 **Pass the bare inner JSON.** Write `/tmp/invoke-94.json` with no `prompt` key:
 
@@ -356,8 +363,9 @@ agentcore invoke --prompt-file /tmp/invoke-94.json
 
 Notes:
 - `repository_name` is the **repo name only** — not `org/repo`.
-- The README §Invocation and #77 runbook §7.7–7.10 examples use the pre-wrapped form and are
-  **wrong for CLI ≥ 0.28.0** (they worked on the CLI version current at #77). Tracked separately.
+- The README §Invocation and #77 runbook §7.7–7.10 examples use the pre-wrapped form; they failed
+  on CLI ≥ 0.28.0 when this exercise ran but now work verbatim again (both docs updated in PR #102,
+  see [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97)).
 
 Confirm it started:
 
@@ -557,7 +565,7 @@ A fifth issue carries the **unfinished verification** rather than a defect:
 | Symptom | Cause | Fix |
 |---|---|---|
 | Run invisible in `runs`/`v_runs` after invoke | No row inserted; agent only PATCHes (D1) | Insert the `queued` row first (§4.0) — [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) |
-| `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Pass bare inner JSON via `--prompt-file` (§4.1) — [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) |
+| `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Resolved in [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) (PR #102): `unwrap_payload` now loops, so the pre-wrapped form works verbatim; bare inner JSON via `--prompt-file` (§4.1) also works. A still-wrapper-only payload now logs "appears double-wrapped" |
 | Row reaped `failed_to_start`, `started_at=null`, no agent events | Agent never reported start — broken `SUPABASE_URL`, `run_id` mismatch, or invalid payload | Check §4.1 payload, §5.5 restore, and that the invoke `run_id` matches the inserted row exactly |
 | Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container — [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) |
 | Step stuck `running` inside a terminal run | Reaper does not close open steps | Known gap — [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) |

@@ -64,22 +64,77 @@ log = app.logger
 
 _REQUIRED_FIELDS = ("run_id", "repository_org", "repository_name")
 
+# Max nested ``prompt`` layers to strip. One layer is the historical control-plane
+# form; two layers is the agentcore CLI >= 0.28.0 double-wrap (issue #97). The
+# bound is a defensive guard against a pathological lone-``prompt`` chain — real
+# payloads never approach it.
+_MAX_UNWRAP_DEPTH = 16
+
 
 def unwrap_payload(raw: dict) -> dict:
     """
     Handle the AgentCore ``prompt`` wrapper (req 9).
 
     AgentCore CLI/SDK wraps the JSON payload inside a ``prompt`` key as a JSON
-    string. Unwrap transparently so the rest of the pipeline sees the inner payload.
+    string. Historically this was a single wrap, so the pipeline received the
+    inner payload after one unwrap.
+
+    As of ``agentcore`` CLI >= 0.28.0 the CLI treats its invoke argument *as*
+    the prompt and wraps it itself. An already-wrapped argument therefore
+    arrives **double-wrapped** (``{"prompt": "{\\"prompt\\": \\"{...}\\"}"}``).
+    To tolerate both conventions we unwrap **repeatedly**: keep unwrapping while
+    the current value is a dict whose *only* key is ``prompt`` and whose string
+    value parses to a JSON dict. See issue #97.
+
+    Termination and safety (BR-1): the loop stops on any dict that is not a
+    lone-``prompt`` wrapper (so a legitimate inner payload carrying its own
+    ``prompt`` field or sibling keys is never over-unwrapped), on a non-string
+    ``prompt`` value, and on a ``prompt`` string that does not parse to a JSON
+    dict (invalid JSON, arrays, scalars) — in every case the current value is
+    returned unchanged. Always returns a ``dict``.
     """
-    if "prompt" in raw and isinstance(raw["prompt"], str):
+    current = raw
+    # Bound the loop defensively; real payloads are wrapped at most a couple of
+    # times, and each iteration must strip exactly one lone-``prompt`` layer.
+    for _ in range(_MAX_UNWRAP_DEPTH):
+        if not _is_lone_prompt_wrapper(current):
+            return current
         try:
-            inner = json.loads(raw["prompt"])
-            if isinstance(inner, dict):
-                return inner
+            inner = json.loads(current["prompt"])
         except (json.JSONDecodeError, TypeError):
-            pass
-    return raw
+            return current
+        if not isinstance(inner, dict):
+            return current
+        current = inner
+    return current
+
+
+def _is_lone_prompt_wrapper(payload: dict) -> bool:
+    """True when ``payload`` is a dict whose only key is a string ``prompt``.
+
+    This is the shape produced by an AgentCore prompt wrapper. A dict with
+    ``prompt`` plus sibling keys is *not* a wrapper (EC-10), so it is left
+    untouched by :func:`unwrap_payload`.
+    """
+    return (
+        isinstance(payload, dict)
+        and list(payload.keys()) == ["prompt"]
+        and isinstance(payload["prompt"], str)
+    )
+
+
+def classify_invalid_payload(payload: str | dict) -> str:
+    """Classify why a post-unwrap payload failed validation (issue #97, AC-3).
+
+    Returns ``"wrapper_only"`` when the payload's only key is ``prompt`` — the
+    tell-tale of a still-wrapped (e.g. double-wrapped) payload that could not be
+    unwrapped to real fields — otherwise ``"missing_fields"``. Pure and
+    importable so the distinction is testable without the coverage-excluded
+    entrypoint.
+    """
+    if isinstance(payload, dict) and list(payload.keys()) == ["prompt"]:
+        return "wrapper_only"
+    return "missing_fields"
 
 
 def validate_payload(payload: dict) -> dict | None:
@@ -431,7 +486,18 @@ async def invoke(payload: dict, context):
         validated = validate_payload(payload)
 
         if validated is None:
-            log.error("Invalid payload — missing required fields")
+            if classify_invalid_payload(payload) == "wrapper_only":
+                # The payload's only key is still ``prompt`` after unwrapping —
+                # the signature of a double-wrapped invocation (agentcore CLI
+                # >= 0.28.0 wraps the prompt argument itself). See issue #97.
+                log.error(
+                    "Invalid payload — appears double-wrapped (only key is "
+                    "'prompt' after unwrapping). Pass the bare inner JSON, not a "
+                    "pre-wrapped '{\"prompt\": ...}' string; e.g. "
+                    "`agentcore invoke --prompt-file <inner.json>`."
+                )
+            else:
+                log.error("Invalid payload — missing required fields")
             result = build_return_payload("failed", "not_applicable", "INVALID_PARAMS")
             yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
             return
