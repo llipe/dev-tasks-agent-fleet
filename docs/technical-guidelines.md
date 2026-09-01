@@ -12,6 +12,7 @@
 | 1.5     | 2026-08-31 | Recorded the `pg_cron` reaper activation and its verification (issue #94): added §18 "Open defects discovered during reaper verification" registering #97/#98/#99/#100, the empirically verified reaper properties (fires 12.3 s after the 3720 s threshold, writes the explanatory event at `max(seq)+1`, two-layer convergence confirmed), and the accepted ~61-minute stale window from the D8 threshold choice. See [ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md). | developer |
 | 1.6     | 2026-08-31 | Documentation-gate pass for issue #94 (PR #96) under the same decision record, [ADR-004](adr/ADR-004-schedule-pg-cron-reaper.md) — no new decision taken. Corrected the sections written while the reaper was still unscheduled: §2 and §3 now state the job is registered `* * * * *` and empirically confirmed, §7 records the current scheduling state plus the `RUNTIME_TIMEOUT`/`START_TIMEOUT` event contract and the #99 orphan-step caveat, §14 adds the reaper observability surface (`cron.job_run_details` + the explanatory event), and §18 records the residual verification carried by #101 (AC5, AC6, AC4 `queued` half) and marks the 185.7 s cold-start figure invalid so it is not cited as a measurement. | technical-writer |
 | 1.7     | 2026-09-01 | Documented the repeated `prompt`-wrapper unwrap + distinct double-wrap diagnostic (issue #97, PR #102): added a §8 "Invocation payload contract" subsection recording that `unwrap_payload` now unwraps lone-`prompt` wrappers repeatedly (bounded by `_MAX_UNWRAP_DEPTH=16`, guarded by `_is_lone_prompt_wrapper`) to tolerate the `agentcore` CLI ≥0.28.0 double-wrap, and that a still-wrapper-only payload emits an "appears double-wrapped" diagnostic via `classify_invalid_payload` while `error_code` stays `INVALID_PARAMS` (no new error code, no schema change, no migration); flipped the §18 #97 row from Open to Resolved. Current-state status correction only — no enforceable-rule change. See [ADR-005](adr/ADR-005-repeated-prompt-unwrap-and-diagnostic.md). | technical-writer |
+| 1.8     | 2026-09-01 | Documented the `validate`-step keep-alive fix (issue #98, PR #103): added a §8 subsection recording the heartbeat keep-alive (`heartbeat.run_with_heartbeat` live-yields chunks during `validate`/`llm_fix`), the four-clock consistency invariant enforced by `config.assert_clock_invariant()` (`TOOL_COMMAND_TIMEOUT ≤ TEST_TIMEOUT ≤ IDLE_SESSION_TIMEOUT ≤ MAX_LIFETIME ≤ REAPER_THRESHOLD_SECONDS`, heartbeat ≤ idle/2), the `idleRuntimeSessionTimeout` 300 → 900 change (requires redeploy), and the best-effort SIGTERM backstop (`signal_backstop.py`; SIGKILL/OOM stays reaper-only); flipped the §18 #98 row to Resolved (code) with live AC2/AC3 verification pending. **NOTE: introduces an enforceable clock-consistency rule — ADR pending (technical-writer doc gate).** | developer |
 
 ## 1. Overview
 
@@ -170,6 +171,46 @@ evidence are in [`runbooks/issue-94-reaper-verification.md`](runbooks/issue-94-r
 - **Standard `logging.Handler`**, attached to the root logger — captures noise from third-party libraries (`boto3`, `httpx`), which is exactly what you want to see when something fails.
 - **Explicit lifecycle API** (`RunReporter.from_env()`, `run.step(...)`, `run.succeed(...)`, `run.fail(...)`, `run.artifact(...)`) — the lifecycle does not fit naturally in a `logger.info()`.
 
+**Long-step keep-alive + timeout-clock invariant (issue #98).** The `@app.entrypoint`
+handler is an async generator that historically yielded only at terminal points, so during a
+long blocking step (notably `pnpm test` inside `validate`) the AgentCore response stream was
+idle. Once idle past `idleRuntimeSessionTimeout`, AgentCore reclaimed the container before the
+agent could write a terminal status — the run sat `running` until the reaper marked it
+`timed_out` (root cause confirmed from CloudWatch on run `f63ac9f3-…`; the container log ended
+cleanly on the last `update`-step line with no exception/OOM/terminal line). The fix keeps the
+stream alive: `validate` and `llm_fix` run under `heartbeat.run_with_heartbeat`, which executes
+the blocking step in a worker thread and **live-yields lightweight heartbeat chunks** every
+`HEARTBEAT_INTERVAL` seconds. Heartbeat chunks (`{"heartbeat": {...}}`) are structurally
+distinct from the terminal result payload (the existing `event.contentBlockDelta.delta.text`
+shape), the terminal payload is always the last chunk emitted, and a consumer reads it with
+`heartbeat.read_terminal_payload` (heartbeats ignored). The reusable logic lives in
+`heartbeat.py`, **not** in the vendored `agent_reporter.py` (D13 — the copy must not diverge).
+
+The four timeout "clocks" MUST stay mutually consistent so no inner bound can outlive an outer
+one; `config.assert_clock_invariant()` enforces this at entrypoint start (fail-fast with
+`ClockConsistencyError` rather than a silent mid-step death), and a unit test asserts the
+shipped constants satisfy it:
+
+```
+TOOL_COMMAND_TIMEOUT (180)  <=  TEST_TIMEOUT (600)  <=  IDLE_SESSION_TIMEOUT (900)
+                            <=  MAX_LIFETIME (3600)  <=  REAPER_THRESHOLD_SECONDS (3720)
+    and   0 < HEARTBEAT_INTERVAL (120)  <=  IDLE_SESSION_TIMEOUT / 2
+```
+
+`IDLE_SESSION_TIMEOUT`/`MAX_LIFETIME` mirror `agentcore/agentcore.json`
+`lifecycleConfiguration` (`idleRuntimeSessionTimeout` was raised 300 → 900 for this fix — a
+runtime redeploy is required, see the pending-manual-config runbook), and
+`REAPER_THRESHOLD_SECONDS` mirrors the Supabase run snapshot (`max_runtime_seconds` +
+`grace_seconds`). The reaper remains the **outer** backstop, never a competitor to a
+legitimately-running container.
+
+**Abrupt-termination backstop (issue #98, AC6).** `RunReporter.__exit__` guarantees a terminal
+write on any *normal* Python exit, but not on an abrupt kill. `signal_backstop.py` adds a
+best-effort SIGTERM handler that marks the active run `failed / SIGNAL_TERMINATION` (message
+secret-scrubbed, handler never raises) so an interceptable stop does not wait for the reaper. A
+true **SIGKILL / OOM cannot be intercepted** by any process — that path is by design covered
+only by the pg_cron reaper.
+
 The agent authenticates to PostgREST directly (D15) using the Supabase service role key fetched from AWS Secrets Manager at startup — not from an env var.
 
 Behavioral properties:
@@ -217,6 +258,7 @@ The canonical testing contract lives in [`TESTING.md`](../TESTING.md) — this s
 - **PR-creation test surface (issue #76).** The `open_pr` step adds a Layer 1 + Layer 2 surface with `git`/`gh` mocked: `tests/unit/test_pr_body.py` (branch naming + conditional PR-body sections, cap-at-30, AI-warning, validation table — 19 tests) and `tests/component/test_pr_creation.py` (idempotency short-circuit, `--body-file` never inline, never-push-to-default, credential-helper push, commit-message contract — 14 tests), plus additions to `tests/component/test_pipeline.py` (token-staleness re-mint). `pull_request.py` reports ~95% line coverage.
 - **Run-metric under-report fix test surface (issue #90).** The metric-computation fix adds a Layer 1 + Layer 2 surface: `tests/unit/test_audit.py` gains `TestCountAdvisoriesFixed` (advisory ID-set diff — unknown-bucket fixtures, equal sets, all-fixed, empty-before, no-negative result, dedupe) and monorepo-recursion cases for `_parse_list_json` / `snapshot_lockfile_packages` (workspace + transitive capture, command-shape assertions), backed by new fixtures (`audit_pnpm_before.json`, `audit_pnpm_after.json`, `list_pnpm_monorepo.json`); `tests/component/test_pipeline.py` gains `test_security_summary_uses_id_set_diff_not_bucket_count` asserting the PR body Security Summary and Package Changes agree with the real diff (no contradictory `fixed: 0`). Full suite: **362 tests passing**.
 - **Known gaps (tracked, non-blocking).** No Layer 3 product-evaluation/eval harness exists for the LLM path (semantic/groundedness) — the fix-agent *code path* is tested but its output *quality* is not. The `main.py` orchestrator is coverage-excluded, so the req-49→req-50→`open_pr` guard ordering, the PR-before-`MAJOR_UPDATE_REQUIRED` sequencing, and the `pull_request` artifact emission are verified by inspection, not by an automated test. `agent_reporter.py` (buffering/retry/`seq`) has no committed tests. Security-negative coverage of the GitHub App / Supabase auth path in `credentials.py` is largely absent because the token endpoint is mocked. See `TESTING.md` (Coverage, Security-Negative Tests) for the ranked gap analysis.
+- **`validate`-step keep-alive test surface (issue #98).** The heartbeat fix adds a Layer 1 + Layer 2 surface exercised without a live runtime: `tests/unit/test_heartbeat.py` (chunk contract, `run_with_heartbeat` short/long/exception/bounded-count, terminal-last property RT-1, consumer parser + fuzz RT-3), `tests/unit/test_clock_invariant.py` (shipped-config consistency, rejection of each violated relation SC-4, heartbeat ≤ idle/2 EC-2, property RT-2), `tests/unit/test_signal_backstop.py` (best-effort SIGTERM report, already-terminal no-op, secret-scrub EC-7, never-raises), and `TestEntrypointHeartbeatWiring` in `tests/component/test_pipeline.py` (a slow mocked `validate` emits ≥1 heartbeat and a single terminal chunk last, SC-3). `heartbeat.py` ~94%, `config.py` ~96% line coverage; `signal_backstop.py`'s signal-registration path is not unit-covered (its reportable core is). Full suite: **414 tests passing**.
 - **Front-end (Phase 2).** No JS/TS application test package exists yet (Next.js is Phase 2). The `agentcore/cdk/` package has a single CDK synth smoke test under `jest`. Framework and coverage strategy for the front-end are defined when Phase 2 implementation begins.
 
 ## 12. Code Quality & Standards
@@ -281,7 +323,7 @@ the stack. These are **open** and tracked as their own issues:
 | Issue | Defect | Impact | Status |
 |---|---|---|---|
 | [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) | `unwrap_payload()` strips exactly one `prompt` wrapper, but `agentcore` CLI ≥0.28.0 wraps the prompt argument itself — the documented pre-wrapped form arrives double-wrapped and dies with a generic `INVALID_PARAMS` | Any invocation using the README / #77-runbook examples fails; the error gives no hint of the real cause | **Resolved (PR #102):** `unwrap_payload()` now strips nested lone-`prompt` wrappers in a loop (bounded by `_MAX_UNWRAP_DEPTH=16`), and a still-wrapper-only payload emits a distinct "appears double-wrapped" diagnostic while `error_code` stays `INVALID_PARAMS`. See §8 and [ADR-005](adr/ADR-005-repeated-prompt-unwrap-and-diagnostic.md). |
-| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | A run died during the `validate` step without reporting terminal status. The entrypoint yields only its final result, so a run streams nothing for its whole duration against `idleRuntimeSessionTimeout: 300`; `TEST_TIMEOUT` defaults to 600 s, twice that. Root cause unconfirmed (idle-timeout vs. OOM both fit) | If runs cannot survive ~5 min, `maxLifetime: 3600` is moot and no long `llm_fix` run completes. **Blocks issue #94 AC5** | Open |
+| [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) | A run died during the `validate` step without reporting terminal status. The entrypoint yields only its final result, so a run streams nothing for its whole duration against `idleRuntimeSessionTimeout: 300`; `TEST_TIMEOUT` defaults to 600 s, twice that. Root cause unconfirmed (idle-timeout vs. OOM both fit) | If runs cannot survive ~5 min, `maxLifetime: 3600` is moot and no long `llm_fix` run completes. **Blocks issue #94 AC5** | **Resolved (code) / live-verify pending (PR #103):** root cause confirmed as output-idle reclamation from CloudWatch (clean silence on run `f63ac9f3-…`, no OOM signature). `validate`/`llm_fix` now live-yield heartbeat chunks (`heartbeat.py`), `idleRuntimeSessionTimeout` raised 300 → 900, and the four timeout clocks are enforced consistent by `config.assert_clock_invariant()`. Best-effort SIGTERM backstop added; SIGKILL/OOM stays reaper-only. See §8. AC2 (>5 min validate) and AC3 (>20 min llm_fix) require a runtime redeploy to verify live. |
 | [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99) | `reap_stale_runs()` transitions `runs` and writes the explanatory event but never closes open `run_steps` — unlike the agent's own failure path (§8), which closes them as `failed` | Every reaped run leaves an orphan step pinned `running`; the Phase 2 Run Detail panel (DESIGN.md §5.3) would render a perpetually pulsing step inside a terminal run | Open |
 | [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100) | Per D1 the control plane inserts the `queued` `runs` row; the agent SDK only PATCHes it. A direct `agentcore invoke` therefore leaves the run invisible — PostgREST returns HTTP 200 on a zero-match UPDATE | Runs appear to vanish with no error anywhere; documented contract omits the insert requirement | Open |
 
