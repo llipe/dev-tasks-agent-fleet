@@ -577,7 +577,7 @@ A fifth issue carries the **unfinished verification** rather than a defect:
 | `INVALID_PARAMS` / "missing required fields" | Payload double-wrapped by CLI ≥0.28.0 | Resolved in [#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97) (PR #102): `unwrap_payload` now loops, so the pre-wrapped form works verbatim; bare inner JSON via `--prompt-file` (§4.1) also works. A still-wrapper-only payload now logs "appears double-wrapped" |
 | Row reaped `failed_to_start`, `started_at=null`, no agent events | Agent never reported start — broken `SUPABASE_URL`, `run_id` mismatch, or invalid payload | Check §4.1 payload, §5.5 restore, and that the invoke `run_id` matches the inserted row exactly |
 | Run stuck `running`, last step open, no terminal report | Agent died mid-step without reporting | The reaper covers it at `started_at + 3720s`. Investigate the container — [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98) |
-| Step stuck `running` inside a terminal run | Reaper did not close open steps (pre-#99 runs only) | Resolved in [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99): the reaper now closes open steps as `failed` on both branches. A step still stuck this way comes from a run reaped before the fix — pending a confirmation-gated backfill |
+| Step stuck `running` inside a terminal run | Reaper did not close open steps (pre-#99 runs only) | Resolved in [#99](https://github.com/llipe/dev-tasks-agent-fleet/issues/99): the reaper now closes open steps as `failed` on both branches, and the one pre-fix historical orphan was backfilled. If you ever see this again it can only come from a run reaped by an old function body — re-apply the current `reap_stale_runs()` |
 | `v_runs` and `runs` disagree | Expected between threshold and the next tick — that is the two-layer design | None; confirm they converge after the tick |
 | Reaper appears to do nothing | Job unscheduled (e.g. left unscheduled after a §3.3 retry) | Re-run `cron.schedule` (§1.3) and check `cron.job` |
 
@@ -612,8 +612,9 @@ follow-up; no issue #94 acceptance criterion asserted step closure.
 `failed_to_start`), in symmetry with the agent path. It reuses the existing `step_status` enum value
 `failed` (no new enum value, no migration), leaves already-terminal steps untouched, and is a safe
 0-row no-op when a run has no steps. See `technical-guidelines.md` §7/§8 and
-[ADR-004](../adr/ADR-004-schedule-pg-cron-reaper.md). One pre-existing historical orphan step (from
-runs reaped before this fix) remains and is left for a confirmation-gated backfill.
+[ADR-004](../adr/ADR-004-schedule-pg-cron-reaper.md). The single pre-existing historical orphan step
+(from a run reaped before this fix) was **backfilled** as part of #99 (closed as `failed` with a
+`Backfilled by issue #99` message); a DB-wide check confirms zero `run_steps` left in `running`.
 
 ### 3 — The ~60-minute stale window is by design, not a defect
 

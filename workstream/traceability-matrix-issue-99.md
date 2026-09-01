@@ -63,3 +63,10 @@
 - **Result:** reap returned count **5** (TC-1/2/3/4 + EC-1); healthy TC-5 excluded. **19/19** behavioral assertions PASS; EC-3 idempotency, CT-1 enum-unchanged, CT-2 shape-parity all PASS.
 - **Final DB state:** 0 synthetic rows remaining, cron active, deployed reaper closes steps = true, 1 pre-existing orphan left untouched pending the confirmation-gated backfill (Task 4).
 - **All 4 ACs: PASS. All 5 BRs: PASS.**
+
+## Backfill Record (Task 4 — historical orphan cleanup)
+
+- **User confirmation:** "clean the orphan" (go-ahead given after sizing).
+- **Sized before:** exactly 1 orphan step (real run `f63ac9f3-…`, `validate`) `running`/`finished_at=null` under a `timed_out` run.
+- **Applied:** `update run_steps set status='failed', finished_at=coalesce(r.finished_at, now()), error_message='Backfilled by issue #99: step left open by a pre-fix reaper run.'` scoped to steps `running`/`pending` under `timed_out`/`failed_to_start` runs — 1 row updated.
+- **Verified after:** `orphan_steps_remaining = 0`; `run_steps` in `running` DB-wide = **0**. The consumer invariant (no open step inside a terminal run) now holds across the whole database.

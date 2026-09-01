@@ -64,14 +64,14 @@ Each sub-task is tagged with who executes it:
   - [x] 3.3 **[MANUAL/DEV]** ⚠️ Live-DB change. Applied via `supabase db query --linked` against the `dev-tasks-agent-fleet` cloud project (user directed testing against Supabase cloud). Ran under deterministic mode (cron unscheduled during tests, re-scheduled after).
   - [x] 3.4 **[DEV]** Verify applied state: `select position('update run_steps' in prosrc) from pg_proc where proname='reap_stale_runs'` → 2 occurrences confirmed; cron re-scheduled and active.
 
-- [ ] 4.0 Handle existing orphan steps (AC — backfill or document)
+- [x] 4.0 Handle existing orphan steps (AC — backfill or document)
 
-  > Note: Live pre-check found **exactly 1** pre-existing orphan step under a `timed_out` run (the real `f63ac9f3-…` `validate` step). ⏳ AWAITING USER CONFIRMATION before applying the backfill (see 4.3).
+  > Note: Live pre-check found **exactly 1** pre-existing orphan step under a `timed_out` run (the real `f63ac9f3-…` `validate` step). BACKFILL APPLIED per user go-ahead; post-backfill invariant = 0 orphan steps and 0 `run_steps` in `running` DB-wide.
 
-  - [x] 4.1 **[DEV]** Provide a backfill query that closes orphan steps belonging to already-terminal runs: `update run_steps s set status='failed', finished_at=coalesce(r.finished_at, now()), error_message='<backfilled: closed by reaper fix #99>' from runs r where s.run_id = r.id and r.status in ('timed_out','failed_to_start') and s.status in ('running','pending');`
+  - [x] 4.1 **[DEV]** Provide a backfill query that closes orphan steps belonging to already-terminal runs: `update run_steps s set status='failed', finished_at=coalesce(r.finished_at, now()), error_message='Backfilled by issue #99...' from runs r where s.run_id = r.id and r.status in ('timed_out','failed_to_start') and s.status in ('running','pending');`
   - [x] 4.2 **[DEV]** Document rollback/impact of the backfill (it only touches steps of already-terminal runs; sized via `select count(*)` = **1**).
-  - [ ] 4.3 **[MANUAL]** ⚠️ Live-DB data change — **confirmation gate**. Sizing done (count=1); AWAITING user go/no-go to apply the backfill (or explicitly decide to leave the single historical orphan and record that decision instead).
-  - [ ] 4.4 **[MANUAL]** Verify: orphan-step count returns `0` (if backfill applied).
+  - [x] 4.3 **[MANUAL/DEV]** ⚠️ Live-DB data change — user confirmed ("clean the orphan"). Applied against `dev-tasks-agent-fleet` via `supabase db query --linked`. 1 step updated (`failed`, `finished_at`=run's `finished_at`, backfill message).
+  - [x] 4.4 **[DEV]** Verify: orphan-step count returns **0**; `run_steps` in `running` DB-wide = **0**. Confirmed.
 
 - [x] 5.0 Verify Acceptance Criteria
 
@@ -96,5 +96,5 @@ Each sub-task is tagged with who executes it:
 
   - [x] 7.1 Confirm out-of-scope items were not touched: no run-level transitions/thresholds changed, no `cron.schedule` change, no application code, no heartbeat/cancellation/retention work. **Verified by the verifier audit** (out-of-scope boundary HELD).
   - [x] 7.2 Run `verifier` in Audit Mode against the delivered change; post the human-readable summary to PR and issue #99 (via `github-ops`, `--body-file`). **Done** — Fidelity High, drift None; posted to PR #104 + issue #99. `workstream/fidelity-report-issue-99.md`.
-  - [ ] 7.3 Sync the GitHub issue #99 Scope + this task checklist to final state and post a completion summary comment (via `github-ops`, `--body-file`).
-  - [ ] 7.4 Convert the PR from draft to ready for review; notify the user for review + merge (PR targets `main` → user approves and merges).
+  - [x] 7.3 Sync the GitHub issue #99 Scope + this task checklist to final state and post a completion summary comment (via `github-ops`, `--body-file`). **Done** — issue body Scope items 1–4 marked `[x]`, backfill left `[ ]` pending decision; completion comment posted to issue #99 and PR #104.
+  - [x] 7.4 Convert the PR from draft to ready for review; notify the user for review + merge (PR targets `main` → user approves and merges). **Done (ready)** — PR #104 marked Ready for Review; user notified. Merge/close still pending user approval + backfill decision.
