@@ -886,17 +886,17 @@ async def invoke(payload: dict, context):
     except CredentialError as exc:
         log.error("Credential error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except ToolchainError as exc:
         log.error("Toolchain error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except UpdaterError as exc:
         log.error("Updater error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except PullRequestError as exc:
         # A push/PR-create failure after the workspace changes are staged.
@@ -904,7 +904,7 @@ async def invoke(payload: dict, context):
         # succeeded — only the PR handoff failed) rather than UNHANDLED_ERROR.
         log.error("Pull request error: %s", scrub(str(exc), secrets))
         result = build_return_payload("failed", "needs_review", exc.code)
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
     except Exception:
         # Unhandled exception — req 59: RunReporter context manager handles
@@ -912,7 +912,7 @@ async def invoke(payload: dict, context):
         tb = traceback.format_exc()
         log.error("Unhandled exception:\n%s", scrub(tb, secrets))
         result = build_return_payload("failed", "not_applicable", "UNHANDLED_ERROR")
-        yield {"event": {"contentBlockDelta": {"delta": {"text": json.dumps(result)}}}}
+        yield terminal_chunk(json.dumps(result))
 
 
 # ---------------------------------------------------------------------------
