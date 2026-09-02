@@ -150,7 +150,7 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
     - **Full `make validate` green (exit 0)** with the live local stack up. Python branch: "all gates passed" (lint/format/typecheck/test-cov/audit — no known vulnerabilities). JS/TS branch: lint ✓, format:check ✓, typecheck ✓, test ✓ (**4 passed** — integration executes, not skips), audit ✓ (1 moderate `ajv` below the `--audit-level=high` gate).
   - [ ] 1.28 Mark PR ready for review, notify the user, and close #115 only after the PR is approved and merged
 
-- [ ] 2.0 Implement Story S-103 ([#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116)): English-only SQL surface and seed fix
+- [x] 2.0 Implement Story S-103 ([#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116)): English-only SQL surface and seed fix
 
   > Note: extends **F3**. Three defects share this story — Spanish `params_schema` labels that feed the invoke form, Spanish text written into `run_events.message` (`001_schema.sql:288`) and `runs.error_message` (`:315`) by `reap_stale_runs()` and rendered verbatim by the Run Detail log viewer, and the stale `start_timeout_seconds (300) = idleRuntimeSessionTimeout` claim that issue #98 invalidated by raising that timeout to 900. Must land before S-113 (#126).
 
