@@ -154,8 +154,8 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
 
   > Note: extends **F3**. Three defects share this story — Spanish `params_schema` labels that feed the invoke form, Spanish text written into `run_events.message` (`001_schema.sql:288`) and `runs.error_message` (`:315`) by `reap_stale_runs()` and rendered verbatim by the Run Detail log viewer, and the stale `start_timeout_seconds (300) = idleRuntimeSessionTimeout` claim that issue #98 invalidated by raising that timeout to 900. Must land before S-113 (#126).
 
-  - [ ] 2.1 Create branch `story/S-103-english-sql-surface` from latest `main` (after #115 merges); confirm #116 is open
-  - [ ] 2.2 Write the Layer 2.5 reaper tests **first**, asserting current behavior with the existing Spanish strings, so the change is provably behavior-preserving
+  - [x] 2.1 Create branch `story/S-103-english-sql-surface` from latest `main` (after #115 merges); confirm #116 is open
+  - [x] 2.2 Write the Layer 2.5 reaper tests **first**, asserting current behavior with the existing Spanish strings, so the change is provably behavior-preserving
   - [ ] 2.3 First commit; open draft PR against `main` with `Closes #116`
   - [ ] 2.4 Author `supabase/migrations/<ts>_english_reaper_messages.sql` — `create or replace function reap_stale_runs()` with English message text, preserving `error_code` values (`RUNTIME_TIMEOUT` / `START_TIMEOUT`), `seq = max(seq)+1`, `data.reaped_by` / `data.reason`, and the issue #99 open-`run_steps` closure on **both** branches
   - [ ] 2.5 Re-run the reaper tests with the expected strings flipped to English; confirm every non-message assertion is untouched
