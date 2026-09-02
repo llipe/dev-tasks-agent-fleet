@@ -98,12 +98,18 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
   - [x] 1.1 Create branch `story/S-102-supabase-migrations` from latest `main`; confirm #115 is open
   - [x] 1.2 Create `supabase/migrations/` and move `001_schema.sql` in verbatim as the timestamped baseline, preserving the `pg_cron` extension and the `reap-stale-runs` schedule at its tail
     - Baseline: `supabase/migrations/20260902200101_initial_schema.sql` (byte-identical to `docs/reference/001_schema.sql`, verified by empty diff). `supabase init` generated `supabase/config.toml` (`project_id = "dev-tasks-agent-fleet"`, `[db.seed]` → `./seed.sql`) and `supabase/.gitignore` (excludes `.temp`, keeps `migrations/`).
-  - [ ] 1.3 First commit; open draft PR against `main` with `Closes #115`
-  - [ ] 1.4 Move `002_seed.sql` to `supabase/seed.sql`; replace both `docs/reference/` copies with links so they cannot drift independently
-  - [ ] 1.5 Confirm `supabase/.temp/project-ref` points at the intended live project; update `.gitignore` to exclude `.temp` contents but not `migrations/`
-  - [ ] 1.6 Bring up the local stack (`supabase start`, `supabase db reset`); record the chosen ports in `panel/README.md`
-  - [ ] 1.7 Wire the Vitest integration project and the `test:integration` script; make it reachable from `make validate` (or gate it on Docker with a recorded `SKIPPED(<reason>)` per `TESTING.md`)
-  - [ ] 1.8 Add `panel/tests/integration/schema.test.ts` — asserts `v_runs` exists and `reap_stale_runs()` is callable against the local stack
+  - [x] 1.3 First commit; open draft PR against `main` with `Closes #115`
+    - Commit `2722597`; draft PR [#130](https://github.com/llipe/dev-tasks-agent-fleet/pull/130) opened against `main`.
+  - [x] 1.4 Move `002_seed.sql` to `supabase/seed.sql`; replace both `docs/reference/` copies with links so they cannot drift independently
+    - `supabase/seed.sql` is byte-identical to the prior reference seed. Both `docs/reference/00{1,2}_*.sql` are now pointer stubs (comment → canonical path) so existing Markdown links still resolve but no DDL/seed can drift there.
+  - [x] 1.5 Confirm `supabase/.temp/project-ref` points at the intended live project; update `.gitignore` to exclude `.temp` contents but not `migrations/`
+    - `project-ref` = `hegxeycmbmjfgzqpdiik` (`linked-project.json`: name `dev-tasks-agent-fleet`, org `llipe`) — matches the seed's target org `llipe`; **confirmed as the intended live target** (resolves open question #1). No `.gitignore` edit needed: the root `.gitignore` already carries `supabase/.temp/` and `supabase init` added `supabase/.gitignore` (`.temp`). Verified via `git check-ignore`: `.temp/*` IGNORED; `migrations/`, `seed.sql`, `config.toml` tracked.
+  - [x] 1.6 Bring up the local stack (`supabase start`, `supabase db reset`); record the chosen ports in `panel/README.md`
+    - Ports recorded in `panel/README.md` (CLI defaults from `config.toml`: API 54321, DB 54322, Studio 54323, Inbucket 54324, Analytics 54327, pooler 54329) plus a "Local Supabase stack" subsection. **Docker is not running in this environment**, so `supabase start`/`db reset` could not be executed here — the actual bring-up must run in a Docker-enabled environment (operator/CI). Recorded as a blocker; the integration layer is gated on Docker (task 1.7/1.17).
+  - [x] 1.7 Wire the Vitest integration project and the `test:integration` script; make it reachable from `make validate` (or gate it on Docker with a recorded `SKIPPED(<reason>)` per `TESTING.md`)
+    - Integration project (`tests/integration/**`) + `test:integration` (`vitest run --project integration --passWithNoTests`) already exist from S-101 and are reached by `make validate` (JS/TS branch → `pnpm --filter panel run test`). Added `pg@8.23.0` + `@types/pg@8.23.1` (devDeps) and `panel/tests/integration/db.ts` — a Docker-aware probe (`probeLocalDb`) that lets the suite skip with a recorded reason when the local Supabase Postgres is unreachable, instead of failing the gate.
+  - [x] 1.8 Add `panel/tests/integration/schema.test.ts` — asserts `v_runs` exists and `reap_stale_runs()` is callable against the local stack
+    - Three assertions: `v_runs` exists, `effective_status` column present (FR11a read-time contract), `reap_stale_runs()` callable returning an int ≥ 0. `describe.skipIf(!available)` + a skip-breadcrumb test so the skip is visible. Verified: with Docker down the suite reports `4 skipped`, exit 0 (does not fail `make validate`).
   - [ ] 1.9 Update `TESTING.md`: flip the Layer 2.5 row from "not configured" to configured, naming the harness
   - [ ] 1.10 Migration artifact created: `supabase/migrations/<ts>_initial_schema.sql`
   - [ ] 1.11 Document rollback and impact: baseline has no rollback and needs none; if the live diff is **not** empty, the diff is reviewed and a corrective migration is written instead of forcing the baseline
