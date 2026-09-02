@@ -18,14 +18,18 @@ The project is delivered in two phases:
   App, and reports its lifecycle/events back to Supabase (falling back to CloudWatch/stderr
   when the API is unreachable).
 - **Phase 2 — Panel UI:** a Next.js app on Fly.io that visualizes runs (list, detail, live
-  log tail via Supabase Realtime) and provides the schema-driven invocation form. Not yet
-  in the repository.
+  log tail via Supabase Realtime) and provides the schema-driven invocation form. The `panel`
+  package is **scaffolded in the repo** (Next.js 15 App Router, React 19, TypeScript strict —
+  issue #114 / S-101); routes, the invocation form, live tail, and Fly deployment land in later
+  Phase 2 stories.
 
 ## Repository layout
 
 ```
 .
-├── Makefile                 # Repo-root aggregate — delegates to the active package
+├── Makefile                 # Repo-root aggregate — runs a Python branch AND a JS/TS branch (both must pass)
+├── package.json             # Workspace root — canonical scripts delegate to `panel` via pnpm --filter
+├── pnpm-workspace.yaml       # Workspace members: panel, agents/dependency-update/agentcore/cdk
 ├── TESTING.md               # Canonical testing contract (layers, commands, coverage)
 ├── DESIGN.md                # Nocturne design system for the Phase 2 panel
 ├── docs/                    # Product context, technical guidelines, PRDs, specs, ADRs
@@ -33,6 +37,10 @@ The project is delivered in two phases:
 │   ├── technical-guidelines.md
 │   ├── reference/           # Schema DDL, seed, agent_reporter.py, credentials.ts
 │   └── requirements/        # PRDs
+├── panel/                   # Phase 2 Next.js (App Router) front-end — scaffolded in S-101
+│   ├── app/                 # layout.tsx + page.tsx placeholders (DESIGN §1.2 Inter link)
+│   ├── tests/               # Vitest unit/component/integration projects
+│   └── README.md            # Panel-specific docs (scripts, conventions, SD2)
 ├── agents/
 │   └── dependency-update/   # The active Phase 1 agent (Python, AgentCore Container)
 │       ├── agentcore/       # Runtime config + CDK infra
@@ -50,20 +58,22 @@ deployment, environment variables, runtime timeouts) live in
 
 - **Python `>=3.13`** — the agent's dev/local runtime. CI runs a **3.13 + 3.14** matrix
   (3.14 is the AgentCore production runtime).
+- **Node.js `>=22` and pnpm `10.11.0`** — for the Phase 2 `panel` package (workspace member).
 - **`make`** — the canonical command surface.
 - For local agent runs and deployment (see the agent README): the
   [AgentCore CLI](agents/dependency-update/README.md), Docker (ARM64), and the `gh` CLI.
 
 ## Getting started
 
-Install the active package and its dev tooling (pytest, ruff, mypy, pip-audit):
+Install both workspace branches — the Python agent package and the JS/TS `panel` package:
 
 ```bash
 make install
 ```
 
-This delegates to the agent package and runs `pip install -e '.[dev]'`. Working inside a
-virtualenv is recommended:
+`make install` runs both branches: the Python branch (`pip install -e '.[dev]'` in the agent
+package — pytest, ruff, mypy, pip-audit) and the JS/TS branch (`pnpm install --frozen-lockfile`
+for the workspace). Working inside a virtualenv is recommended for the Python side:
 
 ```bash
 python -m venv agents/dependency-update/app/dependencyUpdate/.venv
@@ -73,20 +83,20 @@ make install
 
 ## Key commands
 
-Run these from the repository root. Each target delegates to the active package's
-`Makefile`, so you get the same behavior locally and in CI.
+Run these from the repository root. The aggregate targets now run **two branches** — the
+Python agent package and the JS/TS `panel` package — and fail if either branch fails, so you
+get the same behavior locally and in CI. Each branch is also runnable on its own with the
+`-py` / `-js` suffix (e.g. `make validate-py`, `make validate-js`).
 
 | Command             | What it does                                                        |
 | ------------------- | ------------------------------------------------------------------- |
-| `make install`      | Install the package with dev dependencies (`pip install -e '.[dev]'`) |
-| `make lint`         | Static analysis — `ruff check .`                                    |
-| `make format`       | Auto-format — `ruff format .`                                       |
-| `make format-check` | Verify formatting without writing — `ruff format --check .`         |
-| `make typecheck`    | Type analysis — `mypy .`                                            |
-| `make test`         | Run the full test suite — `python -m pytest`                        |
-| `make test-cov`     | Tests with coverage — `python -m pytest --cov --cov-report=term-missing` |
-| `make audit`        | Dependency vulnerability scan — `pip-audit . --strict`              |
-| `make validate`     | **Aggregate quality gate** — lint + format-check + typecheck + test-cov + audit (fail-fast) |
+| `make install`      | Install both branches — `pip install -e '.[dev]'` (agent) + `pnpm install --frozen-lockfile` (workspace) |
+| `make lint`         | Static analysis — `ruff check .` (Python) + `eslint` (panel)        |
+| `make format-check` | Verify formatting — `ruff format --check .` (Python) + `prettier --check` (panel) |
+| `make typecheck`    | Type analysis — `mypy .` (Python) + `tsc --noEmit` (panel)          |
+| `make test`         | Run the full test suite — `python -m pytest` (Python) + `vitest run` (panel) |
+| `make audit`        | Dependency vulnerability scan — `pip-audit . --strict` (Python) + `pnpm audit` (panel) |
+| `make validate`     | **Aggregate quality gate** — Python branch + JS/TS branch, both must pass (fail-fast) |
 
 `make validate` is the gate to run before opening or updating a PR — it mirrors exactly
 what CI enforces.
@@ -120,9 +130,16 @@ policy, and current structural gaps.
 
 ## Continuous integration
 
-CI runs the Python quality gate as explicit steps — lint → format-check → typecheck →
-test+coverage → audit — on a **Python 3.13 + 3.14** matrix. There is currently no
-deploy-time gate; deployment is via the AgentCore CLI / CDK (Phase 1) and Fly.io (Phase 2).
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs two jobs on every push to
+`main` and every PR targeting `main`, with no `paths:` filter:
+
+- **`python-quality`** — the Python gate as explicit steps (lint → format-check → typecheck →
+  test+coverage → audit) on a **Python 3.13 + 3.14** matrix.
+- **`panel-quality`** — the JS/TS gate for the `panel` package (Node 22 + pnpm): lint →
+  format:check → typecheck → test:coverage → audit.
+
+There is currently no deploy-time gate; deployment is via the AgentCore CLI / CDK (Phase 1) and
+Fly.io (Phase 2).
 
 ## Documentation map
 
