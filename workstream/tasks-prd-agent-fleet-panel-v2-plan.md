@@ -165,7 +165,7 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
   - [x] 2.9 Update `docs/technical-guidelines.md` §8 clock table if the resolved relation changes, noting the interaction with the accepted ~61-minute stale window (§18)
   - [x] 2.10 Add `panel/tests/integration/seed-schema.test.ts` — all four properties carry English titles; no non-ASCII prose remains in the seeded `params_schema`
   - [x] 2.11 Migration artifacts created: `<ts>_english_reaper_messages.sql` and `<ts>_seed_params_schema_english.sql`
-  - [ ] 2.12 Document rollback and impact: the function migration is reversible by re-applying the prior body (include it verbatim in the PR description); the seed migration is reversible by re-applying the prior `params_schema` JSON. Impact of a bad function body — the reaper stops materializing terminal states, which is the only layer that records *why* an unreported run ended
+  - [x] 2.12 Document rollback and impact: the function migration is reversible by re-applying the prior body (include it verbatim in the PR description); the seed migration is reversible by re-applying the prior `params_schema` JSON. Impact of a bad function body — the reaper stops materializing terminal states, which is the only layer that records *why* an unreported run ended
   - [ ] 2.13 **User confirmation gate** — present both migrations, the local-stack test evidence, and the rollback text; wait for explicit approval before applying to the live project
   - [ ] 2.14 Apply after confirmation to the live project
   - [ ] 2.15 Verify applied state: `select prosrc from pg_proc where proname = 'reap_stale_runs'` contains the English text; `cron.job` still lists `reap-stale-runs`; `agents.params_schema` reads back English
