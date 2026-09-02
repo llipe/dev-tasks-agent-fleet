@@ -144,7 +144,8 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
     - Verified: baseline registered via `migration repair` (history-only, no DDL); post-apply `db diff` unchanged (205 platform-only lines) confirms zero DDL ran against our objects.
   - [x] 1.24 Verify Acceptance Criterion: `test:integration` exists and is reachable from the aggregate gate (or explicitly gated with a reason)
     - Verified: `test:integration` in `panel/package.json`; `make validate` → `test` → `test-js` → `pnpm --filter panel run test` (all Vitest projects incl. integration). Docker-gated skip recorded.
-  - [ ] 1.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
+  - [x] 1.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
+    - AC→evidence table posted to PR #130 (AC1 file diff, AC2 stub check, AC3/AC6 local-stack + integration run, AC4/AC5 diff + repair evidence in the runbook, AC7 TESTING.md diff). qa-engineer coverage_gate = SKIPPED (no app logic in scope; harness reachable). verifier audit = Fidelity High, 3 Minor non-blocking drifts, summary posted.
   - [x] 1.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
     - **Full `make validate` green (exit 0)** with the live local stack up. Python branch: "all gates passed" (lint/format/typecheck/test-cov/audit — no known vulnerabilities). JS/TS branch: lint ✓, format:check ✓, typecheck ✓, test ✓ (**4 passed** — integration executes, not skips), audit ✓ (1 moderate `ajv` below the `--audit-level=high` gate).
   - [ ] 1.28 Mark PR ready for review, notify the user, and close #115 only after the PR is approved and merged
