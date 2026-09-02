@@ -33,9 +33,9 @@ const NON_ASCII = /[^\x00-\x7F]/;
 async function readParamsSchema(): Promise<ParamsSchema> {
   return withDb((c) =>
     c
-      .query<{ params_schema: ParamsSchema }>(
-        `select params_schema from agents where slug = 'dependency-update'`,
-      )
+      .query<{
+        params_schema: ParamsSchema;
+      }>(`select params_schema from agents where slug = 'dependency-update'`)
       .then((r) => r.rows[0]?.params_schema),
   );
 }

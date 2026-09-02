@@ -78,12 +78,7 @@ async function insertStaleQueuedRun(c: Client, agentId: string): Promise<string>
   return id;
 }
 
-async function insertStep(
-  c: Client,
-  runId: string,
-  seq: number,
-  status: string,
-): Promise<string> {
+async function insertStep(c: Client, runId: string, seq: number, status: string): Promise<string> {
   const id = randomUUID();
   await c.query(
     `insert into run_steps (id, run_id, seq, key, status, started_at)
@@ -250,9 +245,9 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — reap_stale_runs()", () =>
       await expect(c.query(`select reap_stale_runs()`)).resolves.toBeDefined();
 
       const stepCount = await c
-        .query<{ n: string }>(`select count(*)::text as n from run_steps where run_id = $1`, [
-          runId,
-        ])
+        .query<{
+          n: string;
+        }>(`select count(*)::text as n from run_steps where run_id = $1`, [runId])
         .then((r) => r.rows[0]?.n);
       expect(stepCount).toBe("0");
     });
