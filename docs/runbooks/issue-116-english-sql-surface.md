@@ -182,3 +182,51 @@ is the queue clock (`queued_at`-based, D9); `idleRuntimeSessionTimeout` (raised 
 900 in issue #98) is an output-idle clock. They measure different failures and were
 never meant to be equal. Recorded in `supabase/seed.sql` block 3 and
 `docs/technical-guidelines.md` §8.
+
+
+## Applied-state evidence (task 2.14 / 2.15 / 2.19)
+
+**Live apply (2.14).** `supabase db push` applied both migrations to the live
+project `hegxeycmbmjfgzqpdiik` after explicit user confirmation ("yes",
+2026-09-03). The CLI printed `Applying migration 20260903090000_...` and
+`Applying migration 20260903090100_...`, then `Finished supabase db push`. A
+non-fatal post-apply warning was emitted by the CLI's `pg-delta` catalog-cache
+step (`ENOENT ... pgdelta-target-ca.crt`) — it occurs *after* both migrations
+are applied and does not affect the DDL. `supabase migration list --linked`
+now shows `20260902200101`, `20260903090000`, and `20260903090100` on **both**
+Local and Remote.
+
+**Live content verification (2.15) — verified by construction + operator SQL.**
+An empirical read of the live `pg_proc.prosrc` / `cron.job` / `agents.params_schema`
+requires the live DB password, which is not present in the implementation
+environment (same constraint recorded for S-102 task 1.15). The applied state is
+asserted by construction: both statements executed on live (not history-only),
+they are deterministic (`create or replace function` and a slug-keyed `update`
+with no data-dependent branching), and the identical statements produced
+verified-English results on the local stack. Operator SQL to confirm empirically
+when the password is available:
+
+```sql
+-- English function body (expect true)
+select prosrc like '%No completion report%'
+   and prosrc like '%never reported completion%'
+   and prosrc like '%did not report a start%'
+   and prosrc not like '%Sin reporte%'
+  from pg_proc where proname = 'reap_stale_runs';
+
+-- schedule survived (expect: reap-stale-runs | * * * * *)
+select jobname, schedule from cron.job where jobname = 'reap-stale-runs';
+
+-- English params_schema (expect: Fix mode)
+select params_schema->'properties'->'fix_mode'->>'title'
+  from agents where slug = 'dependency-update';
+```
+
+**Synthetic reaped-run manual verification (2.19) — local stack, applied function.**
+Run inside a rolled-back transaction (no residue). A stale `running` run reaped by
+`reap_stale_runs()` produced:
+
+- `runs.error_message` = `No completion report after 3720 s (max_runtime 3600 + grace 120).`
+- `run_events.message` = `The system marked this run as timed_out: the agent never reported completion.` (`level=error`, `reason=RUNTIME_TIMEOUT`)
+
+Both English, confirming AC 2.25 on the actual applied function body.

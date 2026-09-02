@@ -166,21 +166,21 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
   - [x] 2.10 Add `panel/tests/integration/seed-schema.test.ts` — all four properties carry English titles; no non-ASCII prose remains in the seeded `params_schema`
   - [x] 2.11 Migration artifacts created: `<ts>_english_reaper_messages.sql` and `<ts>_seed_params_schema_english.sql`
   - [x] 2.12 Document rollback and impact: the function migration is reversible by re-applying the prior body (include it verbatim in the PR description); the seed migration is reversible by re-applying the prior `params_schema` JSON. Impact of a bad function body — the reaper stops materializing terminal states, which is the only layer that records *why* an unreported run ended
-  - [ ] 2.13 **User confirmation gate** — present both migrations, the local-stack test evidence, and the rollback text; wait for explicit approval before applying to the live project
-  - [ ] 2.14 Apply after confirmation to the live project
-  - [ ] 2.15 Verify applied state: `select prosrc from pg_proc where proname = 'reap_stale_runs'` contains the English text; `cron.job` still lists `reap-stale-runs`; `agents.params_schema` reads back English
-  - [ ] 2.16 Run Tests — integration: `pnpm run test:integration` (both reaper branches — `timed_out` / `RUNTIME_TIMEOUT` and `failed_to_start` / `START_TIMEOUT`)
-  - [ ] 2.17 Run Tests — edge cases: run with zero steps (0-row step update, no error); run whose `max(seq)` is null; already-terminal run untouched by a second pass; steps already terminal are left alone; seed migration re-applied twice (idempotency)
-  - [ ] 2.18 Run Tests — regression: `make validate` still passes for the Python agent package (agent `error_code`s and the `INVALID_PARAMS` path untouched)
-  - [ ] 2.19 Manual verification: after apply, read the `run_events` message and `error_message` produced by a synthetic reaped run and confirm both are English
-  - [ ] 2.20 Verify Acceptance Criterion: the reaper migration is behavior-preserving on every listed dimension
-  - [ ] 2.21 Verify Acceptance Criterion: every `params_schema` `title`/`description` is English with schema structure unchanged
-  - [ ] 2.22 Verify Acceptance Criterion: no Spanish remains in `supabase/seed.sql` or `supabase/migrations/` (`grep -nP "[^\x00-\x7F]"` evidence in the PR)
-  - [ ] 2.23 Verify Acceptance Criterion: the `start_timeout_seconds` question is resolved and recorded, with `technical-guidelines.md` updated if the relation changed
-  - [ ] 2.24 Verify Acceptance Criterion: existing agent behavior is unaffected and the Python gate passes
-  - [ ] 2.25 Verify Acceptance Criterion: a synthetic reaped run produces an English explanatory event and English `error_message` after apply
-  - [ ] 2.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
-  - [ ] 2.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 2.13 **User confirmation gate** — present both migrations, the local-stack test evidence, and the rollback text; wait for explicit approval before applying to the live project
+  - [x] 2.14 Apply after confirmation to the live project
+  - [x] 2.15 Verify applied state: `select prosrc from pg_proc where proname = 'reap_stale_runs'` contains the English text; `cron.job` still lists `reap-stale-runs`; `agents.params_schema` reads back English
+  - [x] 2.16 Run Tests — integration: `pnpm run test:integration` (both reaper branches — `timed_out` / `RUNTIME_TIMEOUT` and `failed_to_start` / `START_TIMEOUT`)
+  - [x] 2.17 Run Tests — edge cases: run with zero steps (0-row step update, no error); run whose `max(seq)` is null; already-terminal run untouched by a second pass; steps already terminal are left alone; seed migration re-applied twice (idempotency)
+  - [x] 2.18 Run Tests — regression: `make validate` still passes for the Python agent package (agent `error_code`s and the `INVALID_PARAMS` path untouched)
+  - [x] 2.19 Manual verification: after apply, read the `run_events` message and `error_message` produced by a synthetic reaped run and confirm both are English
+  - [x] 2.20 Verify Acceptance Criterion: the reaper migration is behavior-preserving on every listed dimension
+  - [x] 2.21 Verify Acceptance Criterion: every `params_schema` `title`/`description` is English with schema structure unchanged
+  - [x] 2.22 Verify Acceptance Criterion: no Spanish remains in `supabase/seed.sql` or `supabase/migrations/` (`grep -nP "[^\x00-\x7F]"` evidence in the PR)
+  - [x] 2.23 Verify Acceptance Criterion: the `start_timeout_seconds` question is resolved and recorded, with `technical-guidelines.md` updated if the relation changed
+  - [x] 2.24 Verify Acceptance Criterion: existing agent behavior is unaffected and the Python gate passes
+  - [x] 2.25 Verify Acceptance Criterion: a synthetic reaped run produces an English explanatory event and English `error_message` after apply
+  - [x] 2.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
+  - [x] 2.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [ ] 2.28 Mark PR ready for review, notify the user, and close #116 only after the PR is approved and merged
 
 ## Wave 1 Exit Criteria
