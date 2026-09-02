@@ -1,0 +1,3 @@
+packages:
+  - panel
+  - agents/dependency-update/agentcore/cdk

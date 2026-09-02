@@ -1,0 +1,29 @@
+{
+  "name": "dev-tasks-agent-fleet",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent Fleet Control Plane — monorepo root (panel + agents + schema).",
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "pnpm --filter panel run lint",
+    "lint:fix": "pnpm --filter panel run lint:fix",
+    "format": "pnpm --filter panel run format",
+    "format:check": "pnpm --filter panel run format:check",
+    "typecheck": "pnpm --filter panel run typecheck",
+    "test": "pnpm --filter panel run test",
+    "test:unit": "pnpm --filter panel run test:unit",
+    "test:integration": "pnpm --filter panel run test:integration",
+    "test:e2e": "pnpm --filter panel run test:e2e",
+    "audit": "pnpm --filter panel run audit",
+    "validate": "pnpm --filter panel run validate"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.18": "8.5.26",
+      "sharp@<0.34.4": "0.35.4"
+    }
+  }
+}

@@ -36,6 +36,8 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
 - `.github/workflows/ci.yml` — Node job
 - `TESTING.md` — `panel` package row and layer assignments
 
+> **Implementation note (S-101 delivery).** Two spec-pin deviations, both recorded and driven by pre-commit re-confirmation (task 0.6): (1) `next` + `eslint-config-next` pinned to **15.5.25** (the 15.5 `backport` line) instead of `15.5.4`, because `15.5.4` is now the subject of a critical RCE advisory plus multiple highs — staying within the same 15.5 minor; `pnpm.overrides` additionally pin `postcss>=8.5.18` and `sharp>=0.34.4` (transitive via `next`) to clear the `audit` gate. (2) **Vitest 3.2.4** (+ `@vitest/coverage-v8` 3.2.4) instead of a 2.x line, required for the config-level `projects` API used to define the unit/component/integration layers. `react`/`react-dom@19.1.1`, `ajv@8.17.1`, `ajv-formats@3.0.1`, `@phosphor-icons/react@2.1.10` are pinned exactly as specified. Font loading follows `/DESIGN.md` §1.2 `<link>` markup with a scoped, justified lint disable. One residual **moderate** audit advisory remains (below the `--audit-level=high` gate). AC→evidence mapping is posted on PR #129.
+
 **Migrations and local stack (S-102)**
 
 - `supabase/migrations/<ts>_initial_schema.sql` — `001_schema.sql` verbatim baseline
@@ -59,34 +61,35 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
 
   > Note: closes **F7** — no JS/TS package is currently reachable from `make validate` or CI, which `TESTING.md` classifies as a harness defect. The gate must be wired in the same PR that creates the package, so the panel is never briefly outside it.
 
-  - [ ] 0.1 Create branch `story/S-101-workspace-panel-scaffold` from latest `main`; confirm #114 is open
-  - [ ] 0.2 Initialize project structure and package management: `pnpm-workspace.yaml` + root `package.json` with delegating canonical scripts (`lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`)
-  - [ ] 0.3 First commit; open draft PR against `main` with `Closes #114`
-  - [ ] 0.4 Scaffold `panel/` — Next.js 15 App Router, TypeScript strict, `app/layout.tsx` with the `/DESIGN.md` §1.2 Inter preconnect, placeholder `app/page.tsx`
-  - [ ] 0.5 Configure environment variables: `.env.example` with server-only variables; assert no `NEXT_PUBLIC_SUPABASE_*` key exists anywhere
-  - [ ] 0.6 Set up development environment — pin dependencies exactly per spec §16 (`next@15.5.4`, `react`/`react-dom@19.1.1`, `ajv@8.17.1`, `ajv-formats@3.0.1`, `@phosphor-icons/react@2.1.10`; re-confirm each is current before pinning), plus ESLint and Prettier
-  - [ ] 0.7 Wire Vitest + React Testing Library + `@vitest/coverage-v8` with unit/component/integration projects; add `panel/tests/smoke.test.ts`
-  - [ ] 0.8 Add the Playwright dev dependency and `playwright.config.ts` stub (scenarios land in S-114 / #127)
-  - [ ] 0.9 Add the ESLint restricted-import rule forbidding `lib/supabase/server.ts` in client components (SD2 guard, added before the module exists)
-  - [ ] 0.10 Extend the root `Makefile` `validate` target with a JS/TS branch alongside the existing Python branch
-  - [ ] 0.11 Add the CI Node job to `.github/workflows/ci.yml`; confirm no path filter excludes `panel/`
-  - [ ] 0.12 Create initial documentation: `panel/README.md` (setup, scripts, local ports, `force-dynamic` convention) and the `panel` package row in `TESTING.md`
-  - [ ] 0.13 Verify local development environment: `pnpm install --frozen-lockfile`, `pnpm --filter panel build`, `pnpm --filter panel dev` serves the placeholder at `localhost:3000`
-  - [ ] 0.14 Run Tests — unit: `pnpm run test:unit` (smoke test passes, coverage report emitted)
-  - [ ] 0.15 Run Tests — edge case: inject a deliberately failing JS test, confirm `make validate` exits non-zero, then remove it
-  - [ ] 0.16 Run Tests — edge case: `pnpm install --frozen-lockfile` on a clean checkout produces no lockfile drift
-  - [ ] 0.17 Verify Acceptance Criterion: `pnpm-workspace.yaml` and root `package.json` exist; `pnpm install` succeeds from a clean checkout
-  - [ ] 0.18 Verify Acceptance Criterion: `panel/` builds and serves a placeholder route
-  - [ ] 0.19 Verify Acceptance Criterion: all canonical scripts exist at the root and delegate to `panel/`
-  - [ ] 0.20 Verify Acceptance Criterion: `make validate` runs both branches and fails if either fails
-  - [ ] 0.21 Verify Acceptance Criterion: CI Node job runs the JS/TS branch on the story PR
-  - [ ] 0.22 Verify Acceptance Criterion: Vitest coverage is wired from the first commit, proven by a passing test
-  - [ ] 0.23 Verify Acceptance Criterion: `TESTING.md` carries the `panel` package row with layer assignments and reachability
-  - [ ] 0.24 Verify Acceptance Criterion: no `NEXT_PUBLIC_SUPABASE_*` variable exists (`grep -r` evidence); `.env.example` documents server-only variables
-  - [ ] 0.25 Map every acceptance criterion to its test evidence (command output or file diff) and record the mapping in the PR
-  - [ ] 0.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 0.27 Migration lifecycle: **not applicable** — no schema or data-model change in this story; opt-out recorded here and in the issue
+  - [x] 0.1 Create branch `story/S-101-workspace-panel-scaffold` from latest `main`; confirm #114 is open
+  - [x] 0.2 Initialize project structure and package management: `pnpm-workspace.yaml` + root `package.json` with delegating canonical scripts (`lint`, `lint:fix`, `format`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`)
+  - [x] 0.3 First commit; open draft PR against `main` with `Closes #114`
+  - [x] 0.4 Scaffold `panel/` — Next.js 15 App Router, TypeScript strict, `app/layout.tsx` with the `/DESIGN.md` §1.2 Inter preconnect, placeholder `app/page.tsx`
+  - [x] 0.5 Configure environment variables: `.env.example` with server-only variables; assert no `NEXT_PUBLIC_SUPABASE_*` key exists anywhere
+  - [x] 0.6 Set up development environment — pin dependencies exactly per spec §16 (`next@15.5.4`, `react`/`react-dom@19.1.1`, `ajv@8.17.1`, `ajv-formats@3.0.1`, `@phosphor-icons/react@2.1.10`; re-confirm each is current before pinning), plus ESLint and Prettier
+  - [x] 0.7 Wire Vitest + React Testing Library + `@vitest/coverage-v8` with unit/component/integration projects; add `panel/tests/smoke.test.ts`
+  - [x] 0.8 Add the Playwright dev dependency and `playwright.config.ts` stub (scenarios land in S-114 / #127)
+  - [x] 0.9 Add the ESLint restricted-import rule forbidding `lib/supabase/server.ts` in client components (SD2 guard, added before the module exists)
+  - [x] 0.10 Extend the root `Makefile` `validate` target with a JS/TS branch alongside the existing Python branch
+  - [x] 0.11 Add the CI Node job to `.github/workflows/ci.yml`; confirm no path filter excludes `panel/`
+  - [x] 0.12 Create initial documentation: `panel/README.md` (setup, scripts, local ports, `force-dynamic` convention) and the `panel` package row in `TESTING.md`
+  - [x] 0.13 Verify local development environment: `pnpm install --frozen-lockfile`, `pnpm --filter panel build`, `pnpm --filter panel dev` serves the placeholder at `localhost:3000`
+  - [x] 0.14 Run Tests — unit: `pnpm run test:unit` (smoke test passes, coverage report emitted)
+  - [x] 0.15 Run Tests — edge case: inject a deliberately failing JS test, confirm `make validate` exits non-zero, then remove it
+  - [x] 0.16 Run Tests — edge case: `pnpm install --frozen-lockfile` on a clean checkout produces no lockfile drift
+  - [x] 0.17 Verify Acceptance Criterion: `pnpm-workspace.yaml` and root `package.json` exist; `pnpm install` succeeds from a clean checkout
+  - [x] 0.18 Verify Acceptance Criterion: `panel/` builds and serves a placeholder route
+  - [x] 0.19 Verify Acceptance Criterion: all canonical scripts exist at the root and delegate to `panel/`
+  - [x] 0.20 Verify Acceptance Criterion: `make validate` runs both branches and fails if either fails
+  - [x] 0.21 Verify Acceptance Criterion: CI Node job runs the JS/TS branch on the story PR
+  - [x] 0.22 Verify Acceptance Criterion: Vitest coverage is wired from the first commit, proven by a passing test
+  - [x] 0.23 Verify Acceptance Criterion: `TESTING.md` carries the `panel` package row with layer assignments and reachability
+  - [x] 0.24 Verify Acceptance Criterion: no `NEXT_PUBLIC_SUPABASE_*` variable exists (`grep -r` evidence); `.env.example` documents server-only variables
+  - [x] 0.25 Map every acceptance criterion to its test evidence (command output or file diff) and record the mapping in the PR
+  - [x] 0.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 0.27 Migration lifecycle: **not applicable** — no schema or data-model change in this story; opt-out recorded here and in the issue
   - [ ] 0.28 Mark PR ready for review, notify the user, and close #114 only after the PR is approved and merged
+    - PR #129 marked **ready for review** and user notified (completion gate passed). Merge + issue close pending — `main` PRs are approved and merged by the user.
 
 - [ ] 1.0 Implement Story S-102 ([#115](https://github.com/llipe/dev-tasks-agent-fleet/issues/115)): Adopt Supabase CLI migrations
 
