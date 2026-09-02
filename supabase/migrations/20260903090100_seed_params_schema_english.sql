@@ -1,5 +1,5 @@
 -- =====================================================================
--- S-103 (issue #116) — English-only SQL surface: params_schema labels
+-- S-103 (issue #116) -- English-only SQL surface: params_schema labels
 --
 -- Translates the operator-facing `title`/`description` of every property in
 -- the `dependency-update` agent's params_schema from Spanish to English.
@@ -8,7 +8,7 @@
 --
 -- Structure is unchanged: `type`, `additionalProperties: false`, `required`,
 -- each property's `type`/`enum`/`default`/`minimum`/`maximum` are identical to
--- the seeded schema — only human-readable text changes. Idempotent: a plain
+-- the seeded schema -- only human-readable text changes. Idempotent: a plain
 -- UPDATE keyed on the slug; re-applying is a no-op on an already-English row.
 --
 -- Reversible: re-apply the prior (Spanish) params_schema JSON (reproduced in

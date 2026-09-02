@@ -1,5 +1,5 @@
 -- =====================================================================
--- S-103 (issue #116) — English-only SQL surface: reap_stale_runs()
+-- S-103 (issue #116) -- English-only SQL surface: reap_stale_runs()
 --
 -- Behavior-preserving `create or replace` of the reaper. Only the
 -- operator-facing TEXT changes (the two run_events messages and the two
@@ -53,7 +53,7 @@ begin
            jsonb_build_object('reaped_by', 'reap_stale_runs', 'reason', 'RUNTIME_TIMEOUT');
 
     -- Close any steps left open, mirroring the agent's own failure path
-    -- (technical-guidelines §8). Does not assume steps exist.
+    -- (technical-guidelines section 8). Does not assume steps exist.
     update run_steps
        set status = 'failed',
            finished_at = now(),

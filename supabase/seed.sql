@@ -1,5 +1,5 @@
 -- =====================================================================
--- Agent Fleet — manual seed
+-- Agent Fleet -- manual seed
 -- Idempotent: safe to re-run without duplicating anything.
 -- EDIT ONLY BLOCK 1 AND THE REPO LIST IN BLOCK 2.
 -- =====================================================================
@@ -48,7 +48,7 @@ on conflict (installation_id, full_name) do update
 --    long an accepted invocation may sit before the agent reports a start. It
 --    is NOT the same as idleRuntimeSessionTimeout (an output-idle clock, raised
 --    to 900 in issue #98) and must not be equated with it. See S-103 / issue
---    #116 and technical-guidelines.md §8.
+--    #116 and technical-guidelines.md section 8.
 -- ---------------------------------------------------------------------
 insert into agents (
   slug, name, description, version,
