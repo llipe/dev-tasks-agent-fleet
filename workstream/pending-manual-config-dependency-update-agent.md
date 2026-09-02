@@ -357,19 +357,47 @@ aws iam put-role-policy \
 
 Requires the two fixture repos (see Open Question 1). Once they exist:
 
+> **Payload contract (authoritative — `main.py` `_REQUIRED_FIELDS`).** The agent requires three
+> **flat, top-level** strings: `run_id`, `repository_org`, `repository_name` (repo name only, not
+> `org/repo`). Optional: `params` (dict) and `base_branch` (default `main`). The nested
+> `params.repository.full_name` form previously shown here was **wrong** and is rejected as
+> `failed`/`not_applicable`/`INVALID_PARAMS` before any clone (issue #89 / PRD v2.2 F1).
+>
+> **Two invocation prerequisites (both mandatory):**
+> 1. **Pre-insert the `queued` `runs` row before invoking** (D1 / [#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100)). A direct `agentcore invoke` does not create the row — the agent only PATCHes it — so a skipped insert leaves the run invisible. The `run_id` in the payload must match the inserted row exactly.
+> 2. **Pass the bare inner JSON via `--prompt-file`**, not an inline pre-wrapped `{"prompt": ...}` string ([#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97): the `agentcore` CLI ≥0.28.0 wraps its argument itself, so an already-wrapped inline payload arrives double-wrapped and fails `INVALID_PARAMS`).
+>
+> The reaper-verification runbook [`issue-94-reaper-verification.md`](../docs/runbooks/issue-94-reaper-verification.md) §4.0–§4.1 documents the full pre-insert + invoke flow.
+
 ```bash
 cd agents/dependency-update
 
 # 9a. audit_only on a clean repo → succeeded/no_vulnerabilities, Supabase rows written
-agentcore invoke '{"run_id":"<uuid>","params":{"repository":{"full_name":"<org>/fixture-dep-update-clean"},"fix_mode":"audit_only"}}'
+#     Write the bare inner JSON to a file, then invoke with --prompt-file.
+cat > /tmp/invoke-9a.json <<'JSON'
+{"run_id": "<uuid>", "repository_org": "<org>", "repository_name": "fixture-dep-update-clean", "params": {"fix_mode": "audit_only"}}
+JSON
+agentcore invoke --prompt-file /tmp/invoke-9a.json
 
 # 9b. llm_fix on a repo with available updates → PR opened
-agentcore invoke '{"run_id":"<uuid>","params":{"repository":{"full_name":"<org>/fixture-dep-update-breaking"},"fix_mode":"llm_fix"}}'
+cat > /tmp/invoke-9b.json <<'JSON'
+{"run_id": "<uuid>", "repository_org": "<org>", "repository_name": "fixture-dep-update-breaking", "params": {"fix_mode": "llm_fix", "max_fix_attempts": 3}}
+JSON
+agentcore invoke --prompt-file /tmp/invoke-9b.json
 
 # 9c. second invoke while PR open → succeeded/not_applicable (idempotency)
+#     Reuse the 9b payload with a fresh run_id (and a fresh pre-inserted queued row).
+
 # 9d. invalid payload → failed/INVALID_PARAMS, no clone
-agentcore invoke '{"params":{}}'
+cat > /tmp/invoke-9d.json <<'JSON'
+{}
+JSON
+agentcore invoke --prompt-file /tmp/invoke-9d.json
 ```
+
+> `run_id` must be the id of a `queued` `runs` row inserted beforehand (prerequisite 1 above);
+> `repository_org`/`repository_name` are the org and the **bare repo name** split from the
+> `repositories.full_name` on its single `/`.
 
 Verify in Supabase after each: `runs`, `run_steps`, `run_events`, `run_artifacts`, and
 `runs.metrics` (llm_used, fix_attempts, vuln counts).
