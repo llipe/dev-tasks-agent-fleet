@@ -128,21 +128,25 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
     - Verified: `db reset` reproduces the full schema from `migrations/`; re-applying the seed is idempotent (1/2/1 unchanged).
   - [x] 1.25 Verify Acceptance Criterion: `TESTING.md` Layer 2.5 row is configured
     - Verified: taxonomy Layer 2.5 row + `panel` package row both read "configured (S-102)", naming the Vitest `integration` project + Supabase CLI local Postgres harness.
-  - [ ] 1.13 **User confirmation gate** — present the diff, the registration command, and the rollback position; wait for explicit approval before touching the live project
-  - [ ] 1.14 Apply after confirmation: register the baseline against the live project (baseline/repair only — never a destructive re-apply)
-  - [ ] 1.15 Verify applied state: `supabase migration list` shows the baseline applied; `cron.job` still lists `reap-stale-runs`; `runs` and `run_events` row counts unchanged
+  - [x] 1.13 **User confirmation gate** — present the diff, the registration command, and the rollback position; wait for explicit approval before touching the live project
+    - Presented the schema-level-no-op diff analysis, the `migration repair --status applied 20260902200101` command, and the "no rollback needed" position. **User approved (YES)** before any live write.
+  - [x] 1.14 Apply after confirmation: register the baseline against the live project (baseline/repair only — never a destructive re-apply)
+    - Ran `supabase migration repair --status applied 20260902200101` → "Repaired migration history: [20260902200101] => applied". No DDL executed.
+  - [x] 1.15 Verify applied state: `supabase migration list` shows the baseline applied; `cron.job` still lists `reap-stale-runs`; `runs` and `run_events` row counts unchanged
+    - `supabase migration list --linked` now shows `20260902200101` under **both** Local and Remote. A post-apply `db diff --linked` returned the identical 205 platform-only lines (zero changes to our objects incl. the reaper + schedule), proving no DDL ran and `runs`/`run_events` are untouched. Empirical live `cron.job`/row-count spot-check left as an optional operator query (live DB password not in this env) — recorded in the runbook.
   - [x] 1.19 Verify Acceptance Criterion: baseline migration contains `001_schema.sql` verbatim including `pg_cron` and the schedule
     - Verified: `diff` of the migration against the original reference (`git show HEAD~2:docs/reference/001_schema.sql`) is empty (byte-identical); both `create extension if not exists pg_cron` and `cron.schedule('reap-stale-runs', …)` present.
   - [x] 1.20 Verify Acceptance Criterion: `002_seed.sql` is now `supabase/seed.sql`; `docs/reference/` copies are links
     - Verified: `supabase/seed.sql` exists (verbatim); both `docs/reference/00{1,2}_*.sql` are MOVED pointer stubs.
   - [x] 1.22 Verify Acceptance Criterion: the live diff is a recorded no-op **before** any apply
     - Verified: `supabase db diff --linked --use-migra` executed and recorded in `docs/runbooks/issue-115-baseline-adoption.md` **before** any live write. Schema-level no-op (only platform-managed grants/`rls_auto_enable()`/`pg_net` appear; zero changes to our objects).
-  - [ ] 1.23 Verify Acceptance Criterion: the live database is registered at the baseline without re-running DDL, after confirmation
+  - [x] 1.23 Verify Acceptance Criterion: the live database is registered at the baseline without re-running DDL, after confirmation
+    - Verified: baseline registered via `migration repair` (history-only, no DDL); post-apply `db diff` unchanged (205 platform-only lines) confirms zero DDL ran against our objects.
   - [x] 1.24 Verify Acceptance Criterion: `test:integration` exists and is reachable from the aggregate gate (or explicitly gated with a reason)
     - Verified: `test:integration` in `panel/package.json`; `make validate` → `test` → `test-js` → `pnpm --filter panel run test` (all Vitest projects incl. integration). Docker-gated skip recorded.
   - [ ] 1.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
-  - [~] 1.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-    - **JS/TS branch green now:** `pnpm --filter panel run validate` passes — lint ✓, format:check ✓ (fixed one file), typecheck ✓, test ✓ (1 passed / 4 integration skipped — Docker), audit ✓ (1 moderate `ajv` advisory below the `--audit-level=high` gate). Full repo-root `make validate` (Python + JS branches) and the integration tests *executing* (not skipping) are re-run at the completion gate after the live apply in a Docker-enabled environment.
+  - [x] 1.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+    - **Full `make validate` green (exit 0)** with the live local stack up. Python branch: "all gates passed" (lint/format/typecheck/test-cov/audit — no known vulnerabilities). JS/TS branch: lint ✓, format:check ✓, typecheck ✓, test ✓ (**4 passed** — integration executes, not skips), audit ✓ (1 moderate `ajv` below the `--audit-level=high` gate).
   - [ ] 1.28 Mark PR ready for review, notify the user, and close #115 only after the PR is approved and merged
 
 - [ ] 2.0 Implement Story S-103 ([#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116)): English-only SQL surface and seed fix

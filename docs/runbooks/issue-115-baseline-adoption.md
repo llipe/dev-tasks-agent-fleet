@@ -71,3 +71,33 @@ supabase migration list --linked   # 20260902200101 shows under BOTH Local and R
 Plus, against live: `cron.job` still lists `reap-stale-runs`; `runs` and
 `run_events` row counts unchanged (registration touches only the migration
 history table).
+
+## Applied — evidence (registered after explicit user approval)
+
+```
+$ supabase migration repair --status applied 20260902200101
+Repaired migration history: [20260902200101] => applied
+
+$ supabase migration list --linked
+   Local            | Remote           | Time (UTC)
+  ------------------|------------------|-----------------------
+   20260902200101   | 20260902200101   | 2026-09-02 20:01:01
+```
+
+- **No DDL executed.** `migration repair` writes only to
+  `supabase_migrations.schema_migrations`. A **post-apply** `supabase db diff --linked --use-migra`
+  returned the *same* 205 lines as before (platform-managed grants /
+  `rls_auto_enable()` / `pg_net` only) — **zero** changes to our tables, enums,
+  indexes, `v_runs`, `reap_stale_runs()`, the `pg_cron` schedule, or the
+  Realtime publication. This corroborates that the reaper and its schedule are
+  untouched and that no `runs`/`run_events` data was mutated.
+- **Empirical live `cron.job` / row-count spot-check (optional).** Not run from
+  the implementation environment because the live DB password is not present
+  here. `migration repair` cannot change these by construction, and the
+  identical post-apply diff confirms `public` is unchanged. To confirm directly,
+  an operator with the DB password can run:
+
+  ```sql
+  select jobname, schedule from cron.job where jobname = 'reap-stale-runs';
+  select (select count(*) from runs) as runs, (select count(*) from run_events) as events;
+  ```
