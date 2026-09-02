@@ -1,17 +1,17 @@
 -- =====================================================================
--- Agent Fleet — seed manual
--- Idempotente: se puede volver a correr sin duplicar nada.
--- EDITAR SOLO EL BLOQUE 1 Y LA LISTA DE REPOS DEL BLOQUE 2.
+-- Agent Fleet — manual seed
+-- Idempotent: safe to re-run without duplicating anything.
+-- EDIT ONLY BLOCK 1 AND THE REPO LIST IN BLOCK 2.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 1. GitHub App installation   <<< EDITAR
+-- 1. GitHub App installation   <<< EDIT
 -- ---------------------------------------------------------------------
 insert into github_installations (github_org_slug, installation_id, app_id, private_key_secret_arn)
 values (
-  'llipe',                                                    -- slug de la organización
-  156226839,                                                  -- installation_id de GitHub
-  4687256,                                                    -- app_id de GitHub
+  'llipe',                                                    -- organization slug
+  156226839,                                                  -- GitHub installation_id
+  4687256,                                                    -- GitHub app_id
   'arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2'
 )
 on conflict (github_org_slug) do update
@@ -20,8 +20,8 @@ on conflict (github_org_slug) do update
       private_key_secret_arn = excluded.private_key_secret_arn;
 
 -- ---------------------------------------------------------------------
--- 2. Repositorios              <<< EDITAR LA LISTA
---    Agregar una línea por repo. Formato: (full_name, default_branch)
+-- 2. Repositories              <<< EDIT THE LIST
+--    Add one line per repo. Format: (full_name, default_branch)
 -- ---------------------------------------------------------------------
 with inst as (
   select id from github_installations where github_org_slug = 'llipe'
@@ -40,11 +40,15 @@ on conflict (installation_id, full_name) do update
       archived_at    = null;
 
 -- ---------------------------------------------------------------------
--- 3. Agente dependency-update
---    runtime_arn ya refleja el runtime desplegado (issue #77). Actualizar sólo
---    si se redespliega con un nombre de runtime distinto.
---    max_runtime_seconds (3600) DEBE coincidir con maxLifetime en agentcore.json.
---    start_timeout_seconds (300) DEBE coincidir con idleRuntimeSessionTimeout.
+-- 3. dependency-update agent
+--    runtime_arn already reflects the deployed runtime (issue #77). Update it
+--    only if you redeploy under a different runtime name.
+--    max_runtime_seconds (3600) MUST match maxLifetime in agentcore.json.
+--    start_timeout_seconds (300) is the queue clock (queued_at-based, D9): how
+--    long an accepted invocation may sit before the agent reports a start. It
+--    is NOT the same as idleRuntimeSessionTimeout (an output-idle clock, raised
+--    to 900 in issue #98) and must not be equated with it. See S-103 / issue
+--    #116 and technical-guidelines.md §8.
 -- ---------------------------------------------------------------------
 insert into agents (
   slug, name, description, version,
@@ -55,15 +59,15 @@ insert into agents (
 values (
   'dependency-update',
   'Dependency Update',
-  'Corre npm audit sobre un repositorio y, opcionalmente, corrige las vulnerabilidades con un LLM y abre un PR.',
+  'Runs npm audit against a repository and, optionally, fixes the vulnerabilities with an LLM and opens a PR.',
   '0.1.0',
-  -- runtime_arn: reportado por `agentcore status` tras el deploy (issue #77).
+  -- runtime_arn: reported by `agentcore status` after the deploy (issue #77).
   'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0',
   'DEFAULT',
   true,
-  3600,  -- 60 min: DEBE igualar maxLifetime en agentcore.json
+  3600,  -- 60 min: MUST equal maxLifetime in agentcore.json
   120,   -- grace_seconds
-  300,   -- start_timeout_seconds: DEBE igualar idleRuntimeSessionTimeout en agentcore.json
+  300,   -- start_timeout_seconds: queue clock (D9), NOT idleRuntimeSessionTimeout
   '{"fix_mode":"audit_only","fail_on_findings":true,"max_fix_attempts":3}'::jsonb,
   $json${
     "type": "object",
@@ -72,29 +76,29 @@ values (
     "properties": {
       "fix_mode": {
         "type": "string",
-        "title": "Modo de corrección",
-        "description": "audit_only reporta hallazgos. llm_fix intenta corregir y abrir un PR.",
+        "title": "Fix mode",
+        "description": "audit_only reports findings. llm_fix attempts a fix and opens a PR.",
         "enum": ["audit_only", "llm_fix"],
         "default": "audit_only"
       },
       "fail_on_findings": {
         "type": "boolean",
-        "title": "Fallar si hay hallazgos",
-        "description": "Solo aplica en modo audit_only.",
+        "title": "Fail if findings exist",
+        "description": "Only applies in audit_only mode.",
         "default": true
       },
       "max_fix_attempts": {
         "type": "integer",
-        "title": "Intentos máximos del agente LLM",
-        "description": "Solo aplica en modo llm_fix. 0 desactiva el agente LLM. Rango 0..5.",
+        "title": "Max LLM agent attempts",
+        "description": "Only applies in llm_fix mode. 0 disables the LLM agent. Range 0..5.",
         "minimum": 0,
         "maximum": 5,
         "default": 3
       },
       "base_branch": {
         "type": "string",
-        "title": "Rama base del PR",
-        "description": "Rama contra la que se abre el PR. Por defecto la rama por defecto del repo (main).",
+        "title": "PR base branch",
+        "description": "Branch the PR is opened against. Defaults to the repo default branch (main).",
         "default": "main"
       }
     }
@@ -114,8 +118,8 @@ on conflict (slug) do update
       params_schema         = excluded.params_schema;
 
 -- ---------------------------------------------------------------------
--- 4. Verificación
+-- 4. Verification
 -- ---------------------------------------------------------------------
-select 'installations' as tabla, count(*) from github_installations
+select 'installations' as table_name, count(*) from github_installations
 union all select 'repositories', count(*) from repositories
 union all select 'agents',       count(*) from agents;

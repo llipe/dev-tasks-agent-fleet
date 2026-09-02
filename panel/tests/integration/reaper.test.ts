@@ -13,10 +13,12 @@ import { probeLocalDb, withDb } from "./db";
 //   - the issue #99 open-run_steps closure on BOTH branches
 //   - the human-readable message + error_message text
 //
-// This file is authored test-first against the CURRENT (Spanish) message text
-// so the S-103 English migration can be proven behavior-preserving: every
-// non-message assertion must survive the migration untouched, and only the
-// text-content expectations flip to English (task 2.5).
+// This file was authored test-first against the CURRENT (Spanish) message
+// text (commit 90099f7), then flipped to English once the S-103 migration
+// landed — proving the migration is behavior-preserving: every non-message
+// assertion (status, error_code, seq, data.reaped_by/reason, step closure)
+// is byte-identical across the flip; only the text-content expectations
+// changed.
 //
 // Docker-gated: when the local stack is down the whole suite skips with a
 // recorded reason (TESTING.md), so it stays reachable from `make validate`
@@ -136,8 +138,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — reap_stale_runs()", () =>
       expect(run.status).toBe("timed_out");
       expect(run.error_code).toBe("RUNTIME_TIMEOUT");
       expect(run.finished_at).not.toBeNull();
-      // CURRENT (Spanish) error_message text — flips to English in task 2.5.
-      expect(run.error_message).toContain("Sin reporte de término");
+      // English error_message text (S-103 migration applied).
+      expect(run.error_message).toContain("No completion report after");
     });
   });
 
@@ -170,9 +172,9 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — reap_stale_runs()", () =>
       expect(ev[0].level).toBe("error");
       expect(ev[0].data.reaped_by).toBe("reap_stale_runs");
       expect(ev[0].data.reason).toBe("RUNTIME_TIMEOUT");
-      // CURRENT (Spanish) message — flips to English in task 2.5.
+      // English message (S-103 migration applied).
       expect(ev[0].message).toContain("timed_out");
-      expect(ev[0].message).toContain("el agente nunca reportó término");
+      expect(ev[0].message).toContain("the agent never reported completion");
     });
   });
 
@@ -221,8 +223,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — reap_stale_runs()", () =>
         .then((r) => r.rows[0]);
       expect(run.status).toBe("failed_to_start");
       expect(run.error_code).toBe("START_TIMEOUT");
-      // CURRENT (Spanish) error_message — flips to English in task 2.5.
-      expect(run.error_message).toContain("no reportó inicio");
+      // English error_message (S-103 migration applied).
+      expect(run.error_message).toContain("did not report a start");
 
       const ev = await c
         .query(
@@ -233,8 +235,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — reap_stale_runs()", () =>
         )
         .then((r) => r.rows[0]);
       expect(ev.data.reason).toBe("START_TIMEOUT");
-      // CURRENT (Spanish) message — flips to English in task 2.5.
-      expect(ev.message).toContain("nunca reportó inicio");
+      // English message (S-103 migration applied).
+      expect(ev.message).toContain("never reported a start");
     });
   });
 

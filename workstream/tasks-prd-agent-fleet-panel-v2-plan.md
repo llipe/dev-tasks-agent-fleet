@@ -156,15 +156,15 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
 
   - [x] 2.1 Create branch `story/S-103-english-sql-surface` from latest `main` (after #115 merges); confirm #116 is open
   - [x] 2.2 Write the Layer 2.5 reaper tests **first**, asserting current behavior with the existing Spanish strings, so the change is provably behavior-preserving
-  - [ ] 2.3 First commit; open draft PR against `main` with `Closes #116`
-  - [ ] 2.4 Author `supabase/migrations/<ts>_english_reaper_messages.sql` — `create or replace function reap_stale_runs()` with English message text, preserving `error_code` values (`RUNTIME_TIMEOUT` / `START_TIMEOUT`), `seq = max(seq)+1`, `data.reaped_by` / `data.reason`, and the issue #99 open-`run_steps` closure on **both** branches
-  - [ ] 2.5 Re-run the reaper tests with the expected strings flipped to English; confirm every non-message assertion is untouched
-  - [ ] 2.6 Author `supabase/migrations/<ts>_seed_params_schema_english.sql` — English `title`/`description` for `fix_mode`, `fail_on_findings`, `max_fix_attempts`, and `base_branch`, with `additionalProperties: false` and `required` unchanged
-  - [ ] 2.7 Update `supabase/seed.sql` to match so a fresh `db reset` and the live project converge; translate the remaining Spanish comments and block headers
-  - [ ] 2.8 Investigate the `start_timeout_seconds` / `idleRuntimeSessionTimeout` claim; resolve it in one direction (correct the comment, or change the value with a stated rationale) and record which
-  - [ ] 2.9 Update `docs/technical-guidelines.md` §8 clock table if the resolved relation changes, noting the interaction with the accepted ~61-minute stale window (§18)
-  - [ ] 2.10 Add `panel/tests/integration/seed-schema.test.ts` — all four properties carry English titles; no non-ASCII prose remains in the seeded `params_schema`
-  - [ ] 2.11 Migration artifacts created: `<ts>_english_reaper_messages.sql` and `<ts>_seed_params_schema_english.sql`
+  - [x] 2.3 First commit; open draft PR against `main` with `Closes #116`
+  - [x] 2.4 Author `supabase/migrations/<ts>_english_reaper_messages.sql` — `create or replace function reap_stale_runs()` with English message text, preserving `error_code` values (`RUNTIME_TIMEOUT` / `START_TIMEOUT`), `seq = max(seq)+1`, `data.reaped_by` / `data.reason`, and the issue #99 open-`run_steps` closure on **both** branches
+  - [x] 2.5 Re-run the reaper tests with the expected strings flipped to English; confirm every non-message assertion is untouched
+  - [x] 2.6 Author `supabase/migrations/<ts>_seed_params_schema_english.sql` — English `title`/`description` for `fix_mode`, `fail_on_findings`, `max_fix_attempts`, and `base_branch`, with `additionalProperties: false` and `required` unchanged
+  - [x] 2.7 Update `supabase/seed.sql` to match so a fresh `db reset` and the live project converge; translate the remaining Spanish comments and block headers
+  - [x] 2.8 Investigate the `start_timeout_seconds` / `idleRuntimeSessionTimeout` claim; resolve it in one direction (correct the comment, or change the value with a stated rationale) and record which
+  - [x] 2.9 Update `docs/technical-guidelines.md` §8 clock table if the resolved relation changes, noting the interaction with the accepted ~61-minute stale window (§18)
+  - [x] 2.10 Add `panel/tests/integration/seed-schema.test.ts` — all four properties carry English titles; no non-ASCII prose remains in the seeded `params_schema`
+  - [x] 2.11 Migration artifacts created: `<ts>_english_reaper_messages.sql` and `<ts>_seed_params_schema_english.sql`
   - [ ] 2.12 Document rollback and impact: the function migration is reversible by re-applying the prior body (include it verbatim in the PR description); the seed migration is reversible by re-applying the prior `params_schema` JSON. Impact of a bad function body — the reaper stops materializing terminal states, which is the only layer that records *why* an unreported run ended
   - [ ] 2.13 **User confirmation gate** — present both migrations, the local-stack test evidence, and the rollback text; wait for explicit approval before applying to the live project
   - [ ] 2.14 Apply after confirmation to the live project

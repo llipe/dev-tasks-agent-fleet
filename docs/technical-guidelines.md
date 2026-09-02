@@ -214,6 +214,19 @@ runtime redeploy is required, see the pending-manual-config runbook), and
 `grace_seconds`). The reaper remains the **outer** backstop, never a competitor to a
 legitimately-running container.
 
+**`start_timeout_seconds` is a queue clock, not `idleRuntimeSessionTimeout` (issue #116 / S-103).**
+The seed formerly asserted that `agents.start_timeout_seconds (300)` "MUST equal
+`idleRuntimeSessionTimeout`". That equivalence was never correct and is now removed. The two measure
+different failures on different clocks: `start_timeout_seconds` is the **queue clock** (`queued_at`-based,
+D9) — how long an *accepted* invocation may sit before the agent reports a *start*, after which the
+reaper marks it `failed_to_start` (§7 table, row 2). `idleRuntimeSessionTimeout` is an **output-idle
+clock** — how long AgentCore tolerates a *running* container producing no stream output before it
+reclaims it (the issue #98 clock, raised 300 → 900). Issue #98 raising the idle clock to 900 exposed
+the stale comment but did not create the mismatch. The resolution is **direction A: correct the
+comment, keep the value at 300** — the queue clock has no reason to track the idle clock, so no value
+change and therefore no change to the four-clock invariant above. Recorded in `supabase/seed.sql`
+block 3.
+
 **Abrupt-termination backstop (issue #98, AC6).** `RunReporter.__exit__` guarantees a terminal
 write on any *normal* Python exit, but not on an abrupt kill. `signal_backstop.py` adds a
 best-effort SIGTERM handler that marks the active run `failed / SIGNAL_TERMINATION` (message
