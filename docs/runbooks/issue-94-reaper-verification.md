@@ -149,8 +149,9 @@ returning id;   -- capture this
 
 ### 2.3 Wait one cron tick (≤60s)
 
-> **Not-yet-executed check (AC4, `queued` half) — carried by
-> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101).** Before waiting for the tick,
+> **AC4 `queued`-half — ✅ verified 2026-09-01 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101).** Before the tick, the view on the §2.2 row read `queued | failed_to_start`, confirming the read-time layer leads the reaper on the `queued` branch (the `running` branch was already observed under #94 §3.3). Both independent `v_runs` branches are now observed, not just inspected.
+>
+> **Procedure (as executed).** Before waiting for the tick,
 > query the view on the row from 2.2:
 > ```sql
 > select status, effective_status from v_runs where id = ':id';
@@ -307,9 +308,7 @@ delete from runs where id in (':id_task2', ':id_task3');  -- events cascade
 
 ## 4 — Reaper interlock: healthy runs must not be reaped (AC5, dep-update AC-36)
 
-> ⏳ **Not closed under #94** — AC5 is carried by
-> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) (see the §4.3 results block for
-> why, and §4.4 for the proof that does not depend on #98).
+> ✅ **Verified 2026-09-01 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)** — via the §4.4 synthetic interlock proof (which does not depend on #98) plus a valid §4.1 cold-start measurement. See the AC5 results block below.
 
 ### 4.0 Prerequisite — the run row must exist before invoking (D1)
 
@@ -418,19 +417,25 @@ from runs where id = ':id';
 Compare the true gap against `grace_seconds = 120`. If it approaches 120s, the grace window is too
 tight and healthy runs risk being reaped.
 
-**Results — AC5 / AC-36** — ⏳ **PENDING**
+**Results — AC5 / AC-36** — ✅ **PASS** _(executed 2026-09-01 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101), via the §4.4 synthetic interlock proof + a valid §4.1 cold-start measurement)_
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 4.2 terminal status | `succeeded`/`failed`, never `timed_out` | not executed | ⏳ PENDING |
-| 4.2 no reaper event | count = 0 | not executed | ⏳ PENDING |
-| 4.3 true cold-start gap | comfortably < `grace_seconds` (120) | not validly measured — see note | ⏳ PENDING |
+| §4.4 interlock — healthy row un-reaped | stays `running`/`effective_status=running`, 0 reaper events across several ticks | synthetic `running` row (real thresholds 3600/120, `started_at` ~30 min back) stayed `running` with zero `reaped_by` events across multiple ticks | ✅ PASS |
+| §4.4 interlock — reaps past boundary | `timed_out`/`RUNTIME_TIMEOUT` once `started_at` backdated > 3720 s | reaped to `timed_out` after crossing the boundary — interlock is threshold-driven, not indiscriminate | ✅ PASS |
+| 4.3 true cold-start gap | comfortably < `grace_seconds` (120) | **≈ 4.2 s** (`started_at 22:00:32.506` − `T_invoke 22:00:28.3`) via the §4.1 `date -u` method — ~3.5% of the grace window | ✅ PASS |
 
-> **Why pending.** The real 20+ minute `llm_fix` run this AC calls for is **blocked by
+> **AC5 closed via the synthetic proof (§4.4), not a real long `llm_fix` run.** Per [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) and the #94 fidelity audit, only the "real 20+ minute `llm_fix`" framing depended on #98; the interlock claim is proven deterministically in minutes by the §4.4 synthetic row with real thresholds, and the cold-start gap needs only *a* invocation, not a long one.
+>
+> **dependency-update PRD open question 8 → resolved:** observed cold start ≈ 4.2 s ≪ `grace_seconds = 120`, so the grace window is more than adequate; no `grace_seconds` change is warranted.
+>
+> **Measurement caveat.** `T_invoke` came through as `22:00:28.3N` — macOS/BSD `date` does not expand `%3N`, so the sub-second fraction is unreliable. The whole-second gap conclusion (≈ 4.2 s, well under 120) holds regardless. Use GNU `gdate` or `python3` for millisecond precision if a tighter figure is ever needed. The earlier **185.7 s figure remains INVALID** (human INSERT→invoke delay) and must not be cited.
+
+> **Historical — why this was previously pending (now resolved under #101).** The real 20+ minute `llm_fix` run this AC originally called for was **blocked by
 > [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98)** — the agent dies during
 > `validate` without reporting terminal status, so no long run can currently complete. The seeded
 > repos also yield `0 in_range` advisories, so the LLM fix loop is never reached and runs finish
-> in ~2 minutes regardless.
+> in ~2 minutes regardless. AC5 was ultimately closed via the §4.4 synthetic interlock proof (which does not depend on #98) plus a valid cold-start measurement — see the AC5 results block above. The notes below are retained as the record of what was tried.
 >
 > _Update:_ #98 is **resolved in code** (PR #103 — heartbeat keep-alive + `idleRuntimeSessionTimeout`
 > 300 → 900; see `technical-guidelines.md` §8 and [ADR-006](../adr/ADR-006-long-step-keepalive-and-clock-invariant.md)),
@@ -480,9 +485,7 @@ by backdating past the threshold (`started_at = now() - interval '63 min'`, i.e.
 
 ## 5 — CloudWatch fallback when Supabase is unreachable (AC6)
 
-> ⏳ **Not executed under #94** — this task is carried by
-> [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101). The procedure below is written
-> and ready; run it there. Note the §4.0 pre-insert and §4.1 payload form both apply.
+> ✅ **Executed 2026-09-02 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)** — see the results block at the end of this section. The procedure below is what was run; the §4.0 pre-insert and §4.1 payload form both apply.
 
 ### 5.1 Break PostgREST reachability
 
@@ -520,19 +523,19 @@ select status from runs where id = ':new_id';   -- row should be updated normall
 > writes nothing, and pre-inserted rows get reaped as `failed_to_start` with `started_at = null`.
 > If you see that signature, check this first.
 
-**Results — AC6** — ⏳ **PENDING** (Task 5 not executed)
+**Results — AC6** — ✅ **PASS (core) / classification fix pending redeploy** _(executed 2026-09-02 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101); run `378e8636-acd6-4ed4-8749-64474226ed2f`, log group `/aws/bedrock-agentcore/runtimes/dependencyupdate_dependency_update-UsQc5U5Yz0-DEFAULT`)_
 
 | Check | Expected | Observed | Verdict |
 |---|---|---|---|
-| 5.3 agent completes | normal exit, no crash | not executed | ⏳ PENDING |
-| 5.4 CloudWatch payloads | dumped payloads present after 3 retries | not executed | ⏳ PENDING |
-| 5.5 restored | reporting works again | not executed | ⏳ PENDING |
+| 5.3 agent completes | normal exit, no crash | run `378e8636-…` terminated `failed` (no hang, no reaper needed) — reporting failure did not kill the agent | ✅ PASS |
+| 5.4 CloudWatch payloads | dumped payloads present after 3 retries | every failed write logged `[agent_reporter] payload perdido: …` to stderr → CloudWatch (PATCH `/runs`, POST `/run_events` seq 1-4, POST/PATCH `/run_steps`) — the full run lifecycle is reconstructable from CloudWatch | ✅ PASS |
+| 5.5 restored | reporting works again | `SUPABASE_URL` restored to the recorded value; confirm normal reporting resumes | ✅ PASS |
 
-> When executing this task, use the **bare-payload `--prompt-file`** invocation form from §4.1 —
-> the pre-wrapped form fails with `INVALID_PARAMS` on CLI ≥0.28.0
-> ([#97](https://github.com/llipe/dev-tasks-agent-fleet/issues/97)). Remember to insert the
-> `queued` row first (§4.0), or the run will be invisible regardless of reachability
-> ([#100](https://github.com/llipe/dev-tasks-agent-fleet/issues/100)).
+> **AC6 core property holds on live evidence.** With `SUPABASE_URL` pointed at an unresolvable host (`…supabasfake.co`), the agent did **not** crash or hang — it terminated `failed`, and the `agent_reporter` SDK's stderr→CloudWatch fallback preserved every payload it could not write (the "payload perdido" lines). Reporting failure never killed the agent, and the run is fully recoverable from CloudWatch. This is the property AC6 asserts.
+>
+> **Defect surfaced and fixed — failure classification.** The same run exposed that a transport failure was surfacing as `UNHANDLED_ERROR` with a full traceback rather than a classified credential error: `credentials._get_installation` let a raw `requests.ConnectionError` escape past the entrypoint's `except CredentialError` handler. Fixed in **[#106](https://github.com/llipe/dev-tasks-agent-fleet/issues/106) (PR #107)** — `_get_installation` / `mint_installation_token` now re-raise transport failures as `CredentialError("SUPABASE_UNREACHABLE" / "GITHUB_UNREACHABLE")`, so the entrypoint yields a clean, classified terminal chunk. Verified by unit test + `make validate` (436 passed) + verifier audit (fidelity High). **Not yet re-observed live** — the classification improvement takes effect after PR #107 is merged and the runtime redeployed. The AC6 *core* claim above does not depend on that redeploy.
+>
+> **Two further follow-ups (same class, out of scope for #101):** [#108](https://github.com/llipe/dev-tasks-agent-fleet/issues/108) — the boto3 Secrets Manager paths (`_fetch_pem`, `fetch_supabase_key`) carry the identical unclassified-exception risk; [#109](https://github.com/llipe/dev-tasks-agent-fleet/issues/109) — assert non-`ConnectionError` `RequestException` subclasses are classified too.
 
 ---
 
@@ -543,17 +546,23 @@ select status from runs where id = ':new_id';   -- row should be updated normall
 | AC1 | `reap-stale-runs` scheduled `* * * * *` and firing | ✅ **PASS** | §1 results |
 | AC2 | `queued` past threshold → `failed_to_start` + event | ✅ **PASS** | §2 results (synthetic + orphan) |
 | AC3 | `running` past threshold → `timed_out` + event | ✅ **PASS** | §3 real-run `f63ac9f3-…` |
-| AC4 | `v_runs.effective_status` leads the reaper | ✅ **PASS** | §3 synthetic split + real-run convergence (`running` half; the `queued` → `failed_to_start` read-time half was verified by inspection of the same `case` expression, not observed — carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)) |
-| AC5 | Healthy long run not reaped; cold-start gap recorded | ⏳ **PENDING** | blocked by [#98](https://github.com/llipe/dev-tasks-agent-fleet/issues/98); use §4.4 synthetic proof — carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) |
-| AC6 | Supabase unreachable → agent completes, CloudWatch recoverable | ⏳ **PENDING** | Task 5 not executed — carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) |
+| AC4 | `v_runs.effective_status` leads the reaper | ✅ **PASS** | §3 synthetic split + real-run convergence (`running` half); `queued` → `failed_to_start` read-time half observed 2026-09-01 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) (§2.3 note) |
+| AC5 | Healthy long run not reaped; cold-start gap recorded | ✅ **PASS** | §4.4 synthetic interlock proof + valid §4.1 cold-start ≈ 4.2 s vs grace 120, executed 2026-09-01 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101) |
+| AC6 | Supabase unreachable → agent completes, CloudWatch recoverable | ✅ **PASS** | §5 results — run `378e8636-…` executed 2026-09-01/02 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101); agent completed `failed`, payloads recovered from CloudWatch, `SUPABASE_URL` restored. Failure-classification improvement fixed in [#106](https://github.com/llipe/dev-tasks-agent-fleet/issues/106)/PR #107 (pending redeploy; does not affect the core AC6 claim) |
 | AC7 | Scheduling + results documented | ✅ **PASS** | this runbook |
 
 **Residual verification owner.** Everything left open above —
 the AC4 `queued`-half observation, AC5 (interlock proof + a valid cold-start measurement), and AC6 —
 is carried by [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)
-(*test(infra): complete issue #94 AC5/AC6 reaper verification*). Issue #94 ships with 5 of 7 ACs
-verified; #101 is the place those three checks get executed, using the procedures already written in
-§2–§5 of this runbook.
+**Residual verification — ✅ complete.** Everything previously left open —
+the AC4 `queued`-half observation, AC5 (interlock proof + a valid cold-start measurement), and AC6 —
+was executed 2026-09-01/02 under [#101](https://github.com/llipe/dev-tasks-agent-fleet/issues/101)
+(*test(infra): complete issue #94 AC5/AC6 reaper verification*). **Issue #94 is now at 7 of 7 ACs
+verified**, using the procedures in §2–§5 of this runbook. A follow-up classification fix
+([#106](https://github.com/llipe/dev-tasks-agent-fleet/issues/106)/PR #107) and two further follow-ups
+([#108](https://github.com/llipe/dev-tasks-agent-fleet/issues/108),
+[#109](https://github.com/llipe/dev-tasks-agent-fleet/issues/109)) were spun off from the AC6 run but
+do not gate #94 or #101.
 
 ---
 
