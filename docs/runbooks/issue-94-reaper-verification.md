@@ -644,3 +644,107 @@ a container that dies early still shows `running` until the 3720 s boundary. Run
 around 19:36 and was only marked `timed_out` at 20:37 — a ~61-minute window where the panel shows a
 plausible-but-stale `running`. This is the accepted D8 tradeoff; operators should not read it as a
 reaper failure.
+
+
+---
+
+## 6 — Post-verification database cleanup
+
+The verification tasks (§2–§5) write **test data** to the live Supabase database: synthetic
+`runs` rows (with cascade children in `run_events` / `run_steps` / `run_artifacts`), plus one or two
+real throwaway invocations for the AC5 cold-start measurement and the AC6 fallback test. Clean these
+up when verification is complete so the `runs` table reflects only real activity.
+
+> ⚠️ **Restore `SUPABASE_URL` first (§5.5).** If the AC6 broken-URL change is still in effect, the
+> agent/reaper will keep generating orphan `failed_to_start` rows and any cleanup is immediately
+> re-dirtied. Confirm a normal run reports to Supabase before cleaning.
+
+### 6.1 What NOT to touch — the seed
+
+`002_seed.sql` populates three tables idempotently; the verification only **reads** them and never
+writes them. **Leave them untouched:**
+
+| Table | Seed content | Role |
+|-------|--------------|------|
+| `github_installations` | 1 row (`llipe`) | Required for the GitHub App token flow |
+| `repositories` | `llipe/memo-cli`, `llipe/tf-ecommerce-mgmt` | Required targets for invocations |
+| `agents` | `dependency-update` (thresholds `3600/120/300`) | Required for any run |
+
+Deleting or altering these breaks the agent. Cleanup is confined to the `runs` table and its
+cascade children.
+
+### 6.2 Inspect before deleting
+
+```sql
+select id, status, outcome, error_code,
+       max_runtime_seconds, grace_seconds, start_timeout_seconds,
+       queued_at, started_at, finished_at
+from runs
+order by queued_at desc;
+```
+
+On a Phase-1 system (the Next.js panel is Phase 2 and does not exist yet) every row here is
+verification data — there are typically only a handful.
+
+### 6.3 What the verification created
+
+| Source | Signature | Task |
+|--------|-----------|------|
+| Synthetic reaper rows (AC2/AC3/AC4) | small thresholds — `max_runtime_seconds=60`, `grace_seconds=10`, `start_timeout_seconds=60` | §2.2, §3.2 (deleted inline at §3.6, confirm none survived) |
+| Synthetic interlock rows (AC5) | `running`→`timed_out`, **real** thresholds (3600/120), backdated `started_at` | §4.4 |
+| Cold-start measurement run (AC5) | one real invocation on `tf-ecommerce-mgmt`, throwaway | §4.1 |
+| AC6 pre-inserted `queued` row | reaped to `failed_to_start`, `started_at=null`, **no** agent events (invoked while `SUPABASE_URL` was broken, so the agent never wrote the run) | §4.0 + §5 |
+| AC6 restore-check run | a normal run written after §5.5 restore | §5.5 |
+
+Note the AC6 run itself (`378e8636-…`) will usually **not** be in `runs` — it was invoked against a
+broken `SUPABASE_URL`, so the agent could not write it (its payloads went to CloudWatch instead,
+which is the point of AC6). Only its **pre-inserted `queued` orphan** (if §4.0 was done) persists.
+
+### 6.4 Delete the test rows
+
+Children (`run_events`, `run_steps`, `run_artifacts`) cascade via `on delete cascade`, so deleting
+the `runs` row is sufficient.
+
+**Targeted (recommended if any real runs might exist):**
+
+```sql
+-- Synthetic reaper rows: small thresholds never occur in real runs
+-- (real runs always carry the seeded 3600 / 120 / 300).
+delete from runs
+where (max_runtime_seconds, grace_seconds, start_timeout_seconds) <> (3600, 120, 300);
+
+-- Reaped orphans from the interlock / AC6 tests: reaped by the reaper with no
+-- agent ever attached. Inspect the matching SELECT first.
+delete from runs
+where error_code in ('RUNTIME_TIMEOUT', 'START_TIMEOUT')
+  and started_at is null;
+```
+
+**Full wipe (only on a pure verification DB with no real runs):**
+
+```sql
+-- Every runs row is verification data on a Phase-1 system. The seed tables
+-- (installations / repositories / agents) are NOT affected.
+delete from runs;
+```
+
+### 6.5 Confirm clean state
+
+```sql
+-- runs empty (or only real activity remains)
+select count(*) as remaining_runs from runs;
+
+-- no orphaned children (all cascade-deleted with their run)
+select
+  (select count(*) from run_events)    as events,
+  (select count(*) from run_steps)     as steps,
+  (select count(*) from run_artifacts) as artifacts;
+
+-- seed intact (must still be 1 / 2 / 1)
+select 'installations' as tabla, count(*) from github_installations
+union all select 'repositories', count(*) from repositories
+union all select 'agents',       count(*) from agents;
+```
+
+Expect the seed verification to read `installations=1`, `repositories=2`, `agents=1` — unchanged
+from `002_seed.sql` §4.
