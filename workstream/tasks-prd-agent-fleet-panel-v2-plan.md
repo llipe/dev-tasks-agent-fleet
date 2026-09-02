@@ -89,6 +89,7 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
   - [x] 0.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 0.27 Migration lifecycle: **not applicable** — no schema or data-model change in this story; opt-out recorded here and in the issue
   - [ ] 0.28 Mark PR ready for review, notify the user, and close #114 only after the PR is approved and merged
+    - PR #129 marked **ready for review** and user notified (completion gate passed). Merge + issue close pending — `main` PRs are approved and merged by the user.
 
 - [ ] 1.0 Implement Story S-102 ([#115](https://github.com/llipe/dev-tasks-agent-fleet/issues/115)): Adopt Supabase CLI migrations
 
