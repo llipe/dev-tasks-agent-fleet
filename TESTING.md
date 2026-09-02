@@ -178,47 +178,70 @@ line while asserting nothing meaningful. Thresholds are a floor, not a goal.
 
 Source-to-test ratio: **most source modules now have tests** — the deterministic pipeline (`audit`, `classifier`, `eligibility`, `toolchain`, `validator`, `updater`, `pull_request`), the secret scrubber, credentials, and the LLM fix loop are all exercised. The remaining untested surface is `agent_reporter.py` (SDK, no committed tests) and `main.py` (orchestrator, coverage-excluded by convention). Ranked by residual risk: (1) `main.py` orchestration guards (inspection-only), (2) `agent_reporter.py` buffering/retry/`seq` behavior, (3) the **LLM output-quality** dimension of `fix_agent.py` (Layer 3 eval harness absent — the code path is tested, its semantic output is not), and (4) the security-negative auth cases in `credentials.py` (see below).
 
-### Database / reaper layer — structural gap (added issue #94)
+### Database / reaper layer — structural gap (added issue #94; partly closed S-102/S-103)
 
-The stale-run reaper is **production behaviour with zero automated coverage.** `reap_stale_runs()`,
-`v_runs.effective_status`, and the explanatory `run_events` contract exist in exactly one file —
-`docs/reference/001_schema.sql` — and that file is applied by hand through the Supabase SQL Editor.
-A repo-wide search for `reap_stale_runs`, `v_runs`, and `effective_status` across `*.py`, `*.ts`,
-`*.sql`, `*.toml`, `*.yml`, and `Makefile` returns hits in that one file and nowhere else. No test,
-no migration runner, and no CI step touches it. `coverage_gate` therefore says nothing about this
-layer, in either direction.
+> **Update (S-102 / #115 and S-103 / #116).** Two facts this section originally asserted are now
+> false and have been corrected. (1) The canonical DDL no longer lives in
+> `docs/reference/001_schema.sql` applied by hand through the SQL Editor — the schema moved to the
+> Supabase CLI migration `supabase/migrations/20260902200101_initial_schema.sql` (S-102), with
+> `reap_stale_runs()` since carried forward by `supabase/migrations/20260903090000_english_reaper_messages.sql`
+> (S-103); `docs/reference/001_schema.sql` is now a zero-DDL pointer stub. (2) The reaper contract is
+> **no longer coverage-free** — S-102 stood up a Layer 2.5 harness (Vitest `integration` project in
+> `panel`, real local Postgres via the Supabase CLI) and S-103 added executable assertions against it.
+> The gap table below is retained for the parts that remain open, with per-row status updated.
 
-Issue #94 verified the reaper against the live database and the evidence is genuine — but it is
-**one-shot manual evidence, not a regression detector.** The runbook records AC1–AC4 and AC7 as PASS
-(`docs/runbooks/issue-94-reaper-verification.md`); AC5 and AC6 are PENDING. Nothing in the repo will
-notice if the deployed function, the view, or the cron schedule later drifts from the DDL in
-`001_schema.sql`, because nothing compares them.
+The stale-run reaper now has **automated Layer 2.5 coverage** (was: "zero automated coverage").
+`reap_stale_runs()`, `v_runs.effective_status`, and the explanatory `run_events` contract are defined
+in the canonical migrations under `supabase/migrations/` (no longer `docs/reference/001_schema.sql`,
+which is a pointer stub) and are applied by the Supabase CLI (`supabase db reset` / `supabase db push`),
+not by hand. The Layer 2.5 suite in `panel/tests/integration/` exercises them against a real local
+Postgres:
 
-Ranked by residual risk:
+- **`reaper.test.ts` (7 tests, added S-103):** stale `running` → `timed_out` with `RUNTIME_TIMEOUT`;
+  stale `queued` → `failed_to_start` with `START_TIMEOUT`; the explanatory event written at
+  `seq = max(seq)+1` carrying `reaped_by`/`reason`; open `run_steps` closed as `failed` on the
+  `timed_out` branch (the #99 contract); and a safe no-op when a `queued` run has no steps.
+- **`seed-schema.test.ts` (4 tests, added S-103):** the seeded `params_schema` top-level structure is
+  unchanged, all four properties carry English titles, the whole serialized schema is ASCII (no
+  Spanish prose), and the enum/range/default constraint structure survives the label translation.
+- **`schema.test.ts` (3 tests, S-102 baseline):** `v_runs` exists, exposes `effective_status`, and
+  `reap_stale_runs()` is callable and returns an integer count.
+
+Issue #94 verified the reaper against the live database and the evidence is genuine, and S-103 turned
+several of the previously one-shot manual checks into repeatable assertions. Ranked gaps **1, 3, and
+4 below are wholly or partly closed** by the Layer 2.5 suite; the residual open items (the full
+must-not-reap negative table, deployed-vs-migration drift detection, concurrency, and the
+`agent_reporter.py` write side) are noted per-row.
+
+Ranked by residual risk (status updated for S-102/S-103):
 
 | # | Gap | Risk | Why it ranks here | Evidence today |
 |---|-----|------|-------------------|----------------|
-| 1 | **Reaper "must NOT reap" behaviour is unverified in both directions.** The negative half of the CT-1 state-transition contract — within-grace rows stay `running`, `started_at IS NULL` is skipped, future-dated `started_at` is skipped, already-terminal rows are never mutated — has no automated test *and* no executed manual check. | **HIGH** | Every executed case was past-threshold, so all observed evidence is of the reaper firing. A regression that reaps too eagerly would kill healthy long runs — the exact failure the D8 grace window exists to prevent — and would be invisible to every check that has run. AC5 (the one check that would have caught it on a real run) is PENDING, blocked by #98. | EC-1..EC-5 and EC-8 are catalogued in `workstream/test-plan-issue-94.md` and mapped in the traceability matrix as negative pairings, but the matrix records no executed result for them. EC-9 (`seq` monotonicity) was confirmed incidentally. |
-| 2 | **DDL drift between `001_schema.sql` and the deployed database is undetectable.** The schema file is a reference artifact applied manually; there is no migration runner, no checksum, no `schema diff` step. | **HIGH** | Issue #94 was itself a drift defect of this class — the scheduling block sat commented out while the design docs described a scheduled reaper. The same class of gap will recur silently. #100 (control plane must insert the `queued` row) is a second instance: a documented contract that no code or test enforces. | None. Verified by inspection only. |
-| 3 | **Two-layer consistency (CT-2) has no repeatable assertion.** `runs.status == v_runs.effective_status` after the reaper fires, and `effective_status` == eventual `status` before it fires, were each observed once. | **MED** | This is the invariant the Phase 2 Run Detail panel is built on (DESIGN.md §5.3, PRD FR11a). A view-vs-function divergence would surface as the UI showing a terminal run as `running` — quiet, plausible, and wrong. | One synthetic observation + one real-run convergence, both manual. |
-| 4 | **Event-schema contract (CT-3) is asserted by eye.** `level='error'`, `data.reaped_by`, `data.reason ∈ {START_TIMEOUT, RUNTIME_TIMEOUT}`, `seq = max(seq)+1`. | **MED** | The explanatory event is the *only* source of "why did this run die" (product-context success metric 3). The related orphan-`run_steps` defect (#99) — where the reaper wrote the event but left open `run_steps` pinned `running` — was fixed in the DDL and verified once against live Supabase (`test-plan-issue-99.md`, 19/19 assertions PASS), but that verification is manual: no committed automated assertion guards either the event schema or the new step-closure behaviour, so a regression in `reap_stale_runs()` would still go unnoticed here. | Real-run event inspected once (`seq=10`, no `uq_run_events_seq` collision); #99 step-closure confirmed once against live Supabase, no repeatable test. |
+| 1 | **Reaper "must NOT reap" negative table is only partly ported.** `reaper.test.ts` (S-103) now asserts the positive transitions (`running`→`timed_out`, `queued`→`failed_to_start`) and a safe no-op for a `queued` run with no steps, but the full negative half of the CT-1 contract — within-grace rows stay `running`, `started_at IS NULL` is skipped, future-dated `started_at` is skipped, already-terminal rows are never mutated — is still not all expressed as executable assertions. | **MED** (was HIGH) | The reaper now has a live harness and its positive path is regression-guarded, so an "always reaps" break would be caught. The remaining risk is the *eager*-reap direction (reaping a healthy within-grace run), whose negative cases are catalogued but not all executed. AC5 (the real-run must-not-reap check) is still PENDING, blocked by #98. | **Partly closed (S-103):** `panel/tests/integration/reaper.test.ts` executes the positive transitions + `seq=max+1` event + #99 step-closure + queued-no-steps no-op. EC-1..EC-5/EC-8 negative rows from `workstream/test-plan-issue-94.md` are ported for the covered cases; the remaining within-grace/null/future-dated negatives are the residual. |
+| 2 | **Drift between the deployed database and the canonical migration is undetectable.** The Layer 2.5 harness applies the migrations to a *local* Postgres, but there is no checksum or `schema diff` step comparing the deployed (remote) function/view/schedule against `supabase/migrations/`. | **HIGH** | Issue #94 was itself a drift defect of this class — the scheduling block sat commented out while the design docs described a scheduled reaper. The migration move (S-102) removes the "applied by hand" failure mode locally, but nothing yet asserts remote == migration. #100 (control plane must insert the `queued` row) is a second instance: a documented contract that no code or test enforces. | Local-apply is now covered by the Supabase CLI harness; remote-vs-migration drift verified by inspection only. |
+| 3 | **Two-layer consistency (CT-2) has no repeatable assertion.** `runs.status == v_runs.effective_status` after the reaper fires, and `effective_status` == eventual `status` before it fires, were each observed once. | **MED** | This is the invariant the Phase 2 Run Detail panel is built on (DESIGN.md §5.3, PRD FR11a). A view-vs-function divergence would surface as the UI showing a terminal run as `running` — quiet, plausible, and wrong. | **Partly closed (S-103):** `schema.test.ts` asserts `v_runs.effective_status` exists as a column and `reaper.test.ts` asserts `runs.status` after the reaper fires; the *pre-fire* `effective_status == eventual status` read-time branch is not yet a committed assertion. |
+| 4 | **Event-schema contract (CT-3).** `level='error'`, `data.reaped_by`, `data.reason ∈ {START_TIMEOUT, RUNTIME_TIMEOUT}`, `seq = max(seq)+1`, plus the #99 step-closure. | **LOW** (was MED) | The explanatory event is the *only* source of "why did this run die" (product-context success metric 3). | **Closed (S-103):** `reaper.test.ts` asserts the explanatory event at `seq = max(seq)+1` carrying `reaped_by`/`reason`, and asserts open `run_steps` are closed as `failed` on the `timed_out` branch (the #99 contract) — both now repeatable Layer 2.5 assertions, no longer "asserted by eye". |
 | 5 | **Concurrency / idempotency of `for update skip locked` (EC-5, EC-6) unverified.** Two overlapping ticks must transition a row once and write exactly one event. | **MED** | A double-fire produces a `seq` collision that aborts the whole tick, so one bad row stalls reaping for every run. Low likelihood at one tick per minute; high blast radius. | Not executed. |
 | 6 | **`agent_reporter.py` is the write side of this same contract and has no committed tests** (buffering, 3-retry backoff, 4xx-not-retried, `seq` assignment, stderr/CloudWatch fallback). | **MED** | It is coverage-omitted, so the 94% figure excludes it entirely. AC6 — the CloudWatch fallback — is PENDING, meaning neither the automated nor the manual path covers it. Follow-up #97 (`unwrap_payload` double-wrap) and #98 (run dies without reporting terminal status) are both failures in this reporting surface. | None (design doc notes prior ad-hoc testing with a fake client). |
 
-**Is this in scope to fix now? No.** Closing gaps 1–5 requires a Layer 2.5 harness that does not exist
-— a local Postgres with `pg_cron` (testcontainers, `docker-compose`, or the Supabase CLI) plus pgTAP
-or a Python DB-integration suite. Standing that up means new dependencies and new CI infrastructure,
-which is an approved-task decision, not something to smuggle into an infrastructure-verification PR.
-Gap 6 (`agent_reporter.py`) is closable at Layer 1/2 with no new dependencies, but it is a different
-module than issue #94 touched and belongs in its own change.
+**Is this in scope, and what remains?** The Layer 2.5 harness that this section originally called for
+**now exists** — the Vitest `integration` project in `panel` running against a real local Postgres via
+the Supabase CLI (S-102 / #115), with the reaper and seed-schema contracts asserted against it
+(S-103 / #116). The originally-recommended follow-up is therefore **substantially delivered**: gap 4
+is closed, gaps 1 and 3 are partly closed, and the migrations apply clean in the harness so a broken
+`reap_stale_runs()` fails CI locally. What remains open: the full must-not-reap negative table (gap 1
+residual), remote-vs-migration drift detection (gap 2), concurrency/idempotency of
+`for update skip locked` (gap 5), and the `agent_reporter.py` write side (gap 6). Gap 6 is closable at
+Layer 1/2 with no new dependencies but is a different module and belongs in its own change.
 
-**Recommended follow-up issue (not filed by `qa-engineer` — hand to the user):**
-*"Add a Layer 2.5 database harness and pin the reaper contract with automated tests."* Scope: choose a
-local Postgres+`pg_cron` runner; port CT-1 (full transition table, **including the must-not-reap
-rows**), CT-2, CT-3, and EC-1..EC-6/EC-9 from `workstream/test-plan-issue-94.md` into executable
-assertions; apply `001_schema.sql` clean in the harness so DDL drift fails CI; wire the suite into
-`make validate` and `ci.yml`. This single issue covers ranked gaps 1–5 and would have caught #99
-(orphan `run_steps`) as an assertion rather than a manual observation.
+**Recommended follow-up issue (residual scope — hand to the user):**
+*"Complete the Layer 2.5 reaper contract: port the remaining must-not-reap negatives and add
+remote-vs-migration drift detection."* Scope: port the still-uncovered CT-1 negative rows (within-grace
+stays `running`, `started_at IS NULL` skipped, future-dated `started_at` skipped, already-terminal
+never mutated) and EC-5/EC-6 concurrency into the existing `panel/tests/integration/` suite; add a
+`supabase db diff`-style check comparing the deployed function/view/schedule against
+`supabase/migrations/` so remote drift fails CI. The positive transitions, the explanatory-event
+schema, and the #99 step-closure are already covered by `reaper.test.ts` (S-103).
 
 **Related open follow-ups from issue #94** (already registered in `docs/technical-guidelines.md` §18,
 `docs/adr/ADR-004-schedule-pg-cron-reaper.md`, and the verification runbook — repeated here for their
