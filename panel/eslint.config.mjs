@@ -34,10 +34,7 @@ const eslintConfig = [
         {
           patterns: [
             {
-              group: [
-                "**/lib/supabase/server",
-                "@/lib/supabase/server",
-              ],
+              group: ["**/lib/supabase/server", "@/lib/supabase/server"],
               message:
                 "SD2: lib/supabase/server.ts is server-only (holds the service role key). Do not import it from a client component. Read Supabase in Server Components or route handlers only.",
             },
