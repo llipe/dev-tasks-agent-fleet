@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "repo": "dev-tasks-agent-fleet",
+  "org": "llipe",
+  "domain": "agent-management",
+  "relates_to": [],
+  "defaults": {
+    "source": "agent",
+    "search_scope": "repo"
+  }
+}
