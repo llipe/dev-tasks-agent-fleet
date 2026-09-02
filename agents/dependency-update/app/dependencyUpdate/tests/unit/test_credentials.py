@@ -6,6 +6,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from credentials import (
     CredentialError,
@@ -123,6 +124,27 @@ class TestGetInstallation:
         assert exc_info.value.code == "NO_INSTALLATION"
         assert "noorg" in exc_info.value.message
 
+    @patch("credentials.requests")
+    def test_transport_failure_raises_credential_error(self, mock_requests):
+        """A DNS/connection failure (e.g. unreachable SUPABASE_URL, issue #106)
+        must surface as a classified CredentialError, not a raw requests
+        exception — so the entrypoint's `except CredentialError` handler yields a
+        clean terminal chunk instead of falling through to UNHANDLED_ERROR."""
+        # Preserve real exception classes on the mocked module so the code under
+        # test can reference requests.RequestException / ConnectionError.
+        mock_requests.RequestException = requests.RequestException
+        mock_requests.ConnectionError = requests.ConnectionError
+        mock_requests.get.side_effect = requests.ConnectionError(
+            "Failed to resolve 'proj.supabasfake.co'"
+        )
+
+        with pytest.raises(CredentialError) as exc_info:
+            _get_installation("myorg", "https://proj.supabasfake.co", "sbp_key")
+
+        assert exc_info.value.code == "SUPABASE_UNREACHABLE"
+        # The classified error must not leak the raw requests exception type.
+        assert not isinstance(exc_info.value, requests.RequestException)
+
 
 # ---------------------------------------------------------------------------
 # mint_installation_token
@@ -155,6 +177,23 @@ class TestMintInstallationToken:
         assert "/installations/200/access_tokens" in post_url
 
         assert token == "ghs_installation_token"
+
+    @patch("credentials.requests")
+    @patch("credentials.jwt")
+    def test_transport_failure_raises_credential_error(self, mock_jwt, mock_requests):
+        """A transport failure reaching GitHub during token exchange (issue #106)
+        must surface as a classified CredentialError, not a raw requests
+        exception."""
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        mock_requests.RequestException = requests.RequestException
+        mock_requests.ConnectionError = requests.ConnectionError
+        mock_requests.post.side_effect = requests.ConnectionError("api.github.com unreachable")
+
+        with pytest.raises(CredentialError) as exc_info:
+            mint_installation_token(app_id=100, installation_id=200, pem="-----BEGIN RSA...")
+
+        assert exc_info.value.code == "GITHUB_UNREACHABLE"
+        assert not isinstance(exc_info.value, requests.RequestException)
 
 
 # ---------------------------------------------------------------------------

@@ -73,7 +73,18 @@ def _get_installation(org: str, supabase_url: str, supabase_key: str) -> dict:
         "Authorization": f"Bearer {supabase_key}",
         "Accept": "application/json",
     }
-    resp = requests.get(url, headers=headers, timeout=15)
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+    except requests.RequestException as exc:
+        # A transport failure (DNS/connection/timeout) reaching Supabase is a
+        # credential-resolution failure — classify it so the entrypoint's
+        # `except CredentialError` handler yields a clean terminal chunk rather
+        # than letting a raw requests exception fall through to
+        # UNHANDLED_ERROR (issue #106).
+        raise CredentialError(
+            "SUPABASE_UNREACHABLE",
+            f"Could not reach Supabase to resolve installation for org '{org}': {exc}",
+        ) from exc
     resp.raise_for_status()
 
     rows = resp.json()
@@ -114,14 +125,22 @@ def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
         pem,
         algorithm="RS256",
     )
-    resp = requests.post(
-        f"https://api.github.com/app/installations/{installation_id}/access_tokens",
-        headers={
-            "Authorization": f"Bearer {assertion}",
-            "Accept": "application/vnd.github+json",
-        },
-        timeout=30,
-    )
+    try:
+        resp = requests.post(
+            f"https://api.github.com/app/installations/{installation_id}/access_tokens",
+            headers={
+                "Authorization": f"Bearer {assertion}",
+                "Accept": "application/vnd.github+json",
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        # Classify a transport failure reaching GitHub as a credential error
+        # (issue #106), consistent with _get_installation.
+        raise CredentialError(
+            "GITHUB_UNREACHABLE",
+            f"Could not reach GitHub to mint installation token: {exc}",
+        ) from exc
     resp.raise_for_status()
     return resp.json()["token"]
 
