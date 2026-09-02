@@ -16,6 +16,7 @@
 | 1.9     | 2026-09-01 | Documented the reaper orphan-`run_steps` fix (issue #99): `reap_stale_runs()` now closes any open `run_steps` (`status='failed'`, `finished_at=now()`, attributing `error_message`) on **both** its branches (`timed_out` and `failed_to_start`), in symmetry with the agent failure path (§8). Refreshed §7 (orphan-step caveat reworded from open-defect to resolved; one stale-window caveat remains), added the §8 "Reaper mirrors the agent's step-closure" note, and flipped the §18 #99 row Open → Resolved. Reuses the existing `step_status` enum value `failed` (no new enum value, no migration); the DDL change lives in `docs/reference/001_schema.sql` and is applied via `create or replace function`. | developer |
 | 1.10    | 2026-09-01 | Documented the insert-then-invoke contract + defensive `start()` guard (issue #100): added the §8 behavioral-property row recording that `RunReporter.start()` now issues its `running` PATCH with `Prefer: count=exact`, reads `Content-Range`, and on a **confirmed** zero-row match (no `queued` row inserted — D1) logs a loud stderr warning naming #100 and continues (reporting never kills the agent; an unknown count does not warn). The change is mirrored byte-identically into both `agent_reporter.py` copies (D13). Agent-doc changes (README §Invocation prerequisite + silent-no-op diagnosis) are current-state only; the SDK guard is a small behavioral addition under the existing D1/D15 reporting-contract context, no new enforceable rule. | developer |
 | 1.11    | 2026-09-02 | Documented the Phase 2 JS/TS kickoff (issue #114 / S-101): the previously-deferred front-end sections now describe the shipped reality. §12 replaced "no `package.json` at root" with the real pnpm workspace + `panel` ESLint/Prettier/TypeScript-strict toolchain and canonical scripts; §9 records the pnpm workspace, the `panel/` Next.js App Router package, and the two-branch `make validate`; §16 pins the `panel` render/validation dependency tree (`next` 15.5.25 backport line off the RCE-carrying 15.5.4, `react` 19.1.1, `ajv` 8.17.1, Vitest 3.2.4, Playwright 1.56.0; root `pnpm.overrides` for postcss/sharp; one sub-high `ajv` advisory noted; `@aws-sdk/*` + `@supabase/supabase-js` deferred to S-104/S-105/S-111); §11 flips the front-end test line from "no JS/TS test package yet" to the Vitest projects + Playwright stub; §13 notes the panel scaffold exists but is not yet deployed; §1/§2 Phase-2 markers refined to "scaffold exists, not yet deployed". Current-state status correction only — the pnpm/canonical-scripts standard, SD2 server-only Supabase, and the F7 aggregate-gate rule all trace to existing decisions (spec/PRD + §11/`TESTING.md`), so no new enforceable guideline changed and no ADR is required (precedent: rows 1.3/1.4/1.6/1.7). The `next` 15.5.4→15.5.x spec pin write-back is routed to `product-engineer`, not made here. | technical-writer |
+| 1.12    | 2026-09-02 | Documented Supabase CLI migration adoption (issue #115 / S-102, PR #130): the canonical schema/seed moved to `supabase/migrations/20260902200101_initial_schema.sql` (byte-identical to the former reference DDL, incl. `pg_cron` + the `reap-stale-runs` schedule) and `supabase/seed.sql`, applied by `supabase db reset`; `supabase/config.toml` added. §7 header rewritten to name the migration + seed as canonical and `docs/reference/001_schema.sql`/`002_seed.sql` as non-canonical zero-DDL pointer stubs; §7 reaper current-state prose re-pointed from `001_schema.sql` to the migration; §8 GitHub App manual-seed link re-pointed to `supabase/seed.sql`; §9 artifact table split into canonical (migration/seed/config.toml) and stub rows. Current-state status correction only — migration adoption is the SD3 decision already recorded in the spec/story, no new architectural decision, so no ADR is required (precedent: rows 1.3/1.4/1.6/1.7/1.11). Layer 2.5 integration-harness/`TESTING.md`/`panel/README.md` changes were already made on-branch and are the `qa-engineer`/implementer surface, not re-authored here. PRD Phase-1 reference-file links left as historical requirements text. | technical-writer |
 
 ## 1. Overview
 
@@ -100,7 +101,9 @@ Guiding principle: **the agent reports state explicitly**; nothing is reconstruc
 
 ## 7. Data & Database Guidelines
 
-Reference DDL: [`001_schema.sql`](reference/001_schema.sql) (full schema: tables, enums, indexes, view, reaper function, RLS). Reference seed: [`002_seed.sql`](reference/002_seed.sql) (idempotent via `on conflict`).
+**Canonical schema and seed (issue #115 / S-102 — Supabase CLI migrations).** The schema is now a Supabase CLI migration: [`supabase/migrations/20260902200101_initial_schema.sql`](../supabase/migrations/20260902200101_initial_schema.sql) is the canonical, executed source of truth (full schema: tables, enums, indexes, view, reaper function, RLS — byte-identical to the former reference DDL, including `pg_cron` and the `reap-stale-runs` schedule), and the canonical seed is [`supabase/seed.sql`](../supabase/seed.sql) (idempotent via `on conflict`), applied by `supabase db reset`. Local project config lives in `supabase/config.toml`.
+
+The former reference files [`docs/reference/001_schema.sql`](reference/001_schema.sql) and [`docs/reference/002_seed.sql`](reference/002_seed.sql) are **no longer canonical** — they are now zero-DDL pointer stubs kept only so existing Markdown links still resolve. Do not add DDL/seed SQL to them; edit the migration (or add a new timestamped migration) and `supabase/seed.sql` instead.
 
 **Entities and relationships:**
 
@@ -145,8 +148,9 @@ queued ──▶ running ──▶ succeeded | failed | canceled
 | `status = running` and `now() > started_at + max_runtime_seconds + grace_seconds` | `timed_out` |
 | `status = queued` and `now() > queued_at + start_timeout_seconds` | `failed_to_start` |
 
-**Current state (issue #94, ADR-004).** The schedule is **active**, not pending: `001_schema.sql`
-now carries `create extension if not exists pg_cron;` and
+**Current state (issue #94, ADR-004).** The schedule is **active**, not pending: the canonical
+migration ([`supabase/migrations/20260902200101_initial_schema.sql`](../supabase/migrations/20260902200101_initial_schema.sql))
+carries `create extension if not exists pg_cron;` and
 `select cron.schedule('reap-stale-runs', '* * * * *', $$select reap_stale_runs()$$);` uncommented at
 its tail (the extension still has to be enabled with sufficient privilege, so the Supabase-dashboard
 note is retained). Each reaped run gets `error_code = RUNTIME_TIMEOUT` or `START_TIMEOUT` plus one
@@ -244,7 +248,7 @@ otherwise have to special-case.
 
 **Per-execution write volume (R5, distinct from R3 which is growth over time).** Not actively mitigated in v1 — the chosen approach is "evaluate later" if an actual agent evidences the problem (e.g., one that tails builds or long test runs). First lever if it occurs: raise the minimum captured log level (`INFO+` instead of `DEBUG+`).
 
-**GitHub App.** The agent reads the private key and `installation_id` from Secrets Manager and issues a short-lived installation token to clone the repo and open the PR. Automatic repo sync from the GitHub App is backlog — v1 uses manual seed ([`002_seed.sql`](reference/002_seed.sql)).
+**GitHub App.** The agent reads the private key and `installation_id` from Secrets Manager and issues a short-lived installation token to clone the repo and open the PR. Automatic repo sync from the GitHub App is backlog — v1 uses the manual seed ([`supabase/seed.sql`](../supabase/seed.sql)).
 
 ## 9. Code Organization & Structure
 
@@ -252,8 +256,10 @@ Artifacts already defined at design level (see specification §14):
 
 | File/directory | Role |
 |---|---|
-| [`001_schema.sql`](reference/001_schema.sql) | Full DDL: tables, enums, indexes, `v_runs` view, `reap_stale_runs()` function, RLS |
-| [`002_seed.sql`](reference/002_seed.sql) | Idempotent seed: installation, repo list, `dependency-update` agent |
+| [`supabase/migrations/20260902200101_initial_schema.sql`](../supabase/migrations/20260902200101_initial_schema.sql) | **Canonical** schema (Supabase CLI migration, issue #115 / S-102): full DDL — tables, enums, indexes, `v_runs` view, `reap_stale_runs()` function, RLS, `pg_cron` + `reap-stale-runs` schedule |
+| [`supabase/seed.sql`](../supabase/seed.sql) | **Canonical** idempotent seed applied by `supabase db reset`: installation, repo list, `dependency-update` agent |
+| `supabase/config.toml` | Local Supabase project config (issue #115 / S-102) |
+| [`docs/reference/001_schema.sql`](reference/001_schema.sql) / [`docs/reference/002_seed.sql`](reference/002_seed.sql) | **Non-canonical pointer stubs** (issue #115 / S-102). Zero-DDL; kept only so existing Markdown links resolve — edit the migration + `supabase/seed.sql`, never these |
 | [`agent_reporter.py`](reference/agent_reporter.py) | Reporting SDK, copied to each agent repo |
 | [`credentials.ts`](reference/credentials.ts) | AWS credential provider with Fly OIDC / local branches |
 | `panel/` front-end | Next.js 15 (App Router) package under `panel/`, the primary member of the repo-root pnpm workspace — scaffolded in Phase 2 (issue #114 / S-101). Placeholder `app/layout.tsx` (DESIGN §1.2 Inter `<link>`) + `app/page.tsx`; routes, schema-generated forms, and live tail land in later Phase 2 stories. React 19, TypeScript strict, ESLint + Prettier, Vitest (unit/component/integration projects) + Playwright config stub. |

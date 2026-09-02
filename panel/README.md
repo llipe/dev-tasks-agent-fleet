@@ -46,11 +46,33 @@ Python agent gate.
 
 ## Local ports
 
-| Service             | Port   |
-| ------------------- | ------ |
-| Next.js dev / start | `3000` |
+| Service                       | Port    |
+| ----------------------------- | ------- |
+| Next.js dev / start           | `3000`  |
+| Supabase API (PostgREST/auth) | `54321` |
+| Supabase DB (Postgres)        | `54322` |
+| Supabase Studio               | `54323` |
+| Supabase Inbucket (email)     | `54324` |
+| Supabase Analytics            | `54327` |
+| Supabase DB pooler            | `54329` |
 
-(Supabase local-stack ports are recorded here in S-102 when the CLI stack lands.)
+These are the Supabase CLI defaults declared in `supabase/config.toml`. Adjust
+there if any collide with something you already run locally.
+
+## Local Supabase stack (S-102)
+
+The schema and seed are Supabase CLI migrations (`supabase/migrations/`,
+`supabase/seed.sql`). To run a local Postgres that mirrors the live project:
+
+```bash
+supabase start        # boots the local stack (requires Docker running)
+supabase db reset     # applies all migrations, then runs supabase/seed.sql
+```
+
+`db reset` recreates the database from `migrations/` and applies the seed
+idempotently (`on conflict` paths), so it is safe to re-run. Requires Docker;
+if Docker is unavailable the Layer 2.5 integration tests are skipped with a
+recorded reason (see `TESTING.md`).
 
 ## Conventions
 

@@ -40,6 +40,8 @@
     "eslint": "9.18.0",
     "eslint-config-next": "15.5.25",
     "jsdom": "25.0.1",
+    "pg": "8.23.0",
+    "@types/pg": "8.23.1",
     "playwright": "1.56.0",
     "@playwright/test": "1.56.0",
     "prettier": "3.4.2",

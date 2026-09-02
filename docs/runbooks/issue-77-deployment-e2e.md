@@ -1,5 +1,16 @@
 # Operator Runbook — Issue #77: Deployment, IAM, Seed Apply & E2E Validation
 
+> **⚠️ Schema/seed workflow superseded (issue #115 / S-102).** As of the Supabase CLI
+> migration adoption, the canonical schema is
+> `supabase/migrations/20260902200101_initial_schema.sql` and the canonical seed is
+> `supabase/seed.sql`, applied via the Supabase CLI (`supabase db push` / `supabase db reset`),
+> **not** by pasting `docs/reference/001_schema.sql` / `002_seed.sql` into the SQL Editor — those
+> files are now zero-DDL pointer stubs and pasting them applies nothing. The steps below are
+> retained as the historical record of the issue #77 validation pass; for the "put the real ARN
+> into the seed" edit (7.4) and the apply step (7.5), edit `supabase/seed.sql` and apply through
+> the CLI instead. See `docs/technical-guidelines.md` §7/§9 and
+> `docs/runbooks/issue-115-baseline-adoption.md`.
+
 > **Audience:** the human operator with AWS + Supabase + GitHub App access.
 > **Why this exists:** these steps require live infrastructure credentials,
 > carry migration/IAM blast radius, and cannot be performed by the developer
