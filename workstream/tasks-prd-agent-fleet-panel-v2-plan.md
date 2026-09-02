@@ -95,8 +95,9 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
 
   > Note: closes **F6** and unblocks Layer 2.5 (`TESTING.md` records it as "not configured — and now a live gap") plus safe local development (**SR7**/R7). The live project holds real Phase 1 run data, so the baseline must be proven a no-op before it is registered.
 
-  - [ ] 1.1 Create branch `story/S-102-supabase-migrations` from latest `main`; confirm #115 is open
-  - [ ] 1.2 Create `supabase/migrations/` and move `001_schema.sql` in verbatim as the timestamped baseline, preserving the `pg_cron` extension and the `reap-stale-runs` schedule at its tail
+  - [x] 1.1 Create branch `story/S-102-supabase-migrations` from latest `main`; confirm #115 is open
+  - [x] 1.2 Create `supabase/migrations/` and move `001_schema.sql` in verbatim as the timestamped baseline, preserving the `pg_cron` extension and the `reap-stale-runs` schedule at its tail
+    - Baseline: `supabase/migrations/20260902200101_initial_schema.sql` (byte-identical to `docs/reference/001_schema.sql`, verified by empty diff). `supabase init` generated `supabase/config.toml` (`project_id = "dev-tasks-agent-fleet"`, `[db.seed]` → `./seed.sql`) and `supabase/.gitignore` (excludes `.temp`, keeps `migrations/`).
   - [ ] 1.3 First commit; open draft PR against `main` with `Closes #115`
   - [ ] 1.4 Move `002_seed.sql` to `supabase/seed.sql`; replace both `docs/reference/` copies with links so they cannot drift independently
   - [ ] 1.5 Confirm `supabase/.temp/project-ref` points at the intended live project; update `.gitignore` to exclude `.temp` contents but not `migrations/`
