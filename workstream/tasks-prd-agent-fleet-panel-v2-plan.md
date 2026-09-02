@@ -110,25 +110,34 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
     - Integration project (`tests/integration/**`) + `test:integration` (`vitest run --project integration --passWithNoTests`) already exist from S-101 and are reached by `make validate` (JS/TS branch → `pnpm --filter panel run test`). Added `pg@8.23.0` + `@types/pg@8.23.1` (devDeps) and `panel/tests/integration/db.ts` — a Docker-aware probe (`probeLocalDb`) that lets the suite skip with a recorded reason when the local Supabase Postgres is unreachable, instead of failing the gate.
   - [x] 1.8 Add `panel/tests/integration/schema.test.ts` — asserts `v_runs` exists and `reap_stale_runs()` is callable against the local stack
     - Three assertions: `v_runs` exists, `effective_status` column present (FR11a read-time contract), `reap_stale_runs()` callable returning an int ≥ 0. `describe.skipIf(!available)` + a skip-breadcrumb test so the skip is visible. Verified: with Docker down the suite reports `4 skipped`, exit 0 (does not fail `make validate`).
-  - [ ] 1.9 Update `TESTING.md`: flip the Layer 2.5 row from "not configured" to configured, naming the harness
-  - [ ] 1.10 Migration artifact created: `supabase/migrations/<ts>_initial_schema.sql`
-  - [ ] 1.11 Document rollback and impact: baseline has no rollback and needs none; if the live diff is **not** empty, the diff is reviewed and a corrective migration is written instead of forcing the baseline
-  - [ ] 1.12 Produce the live-vs-baseline diff (`supabase db diff`) and record the output as no-op evidence
+  - [x] 1.9 Update `TESTING.md`: flip the Layer 2.5 row from "not configured" to configured, naming the harness
+    - Flipped both the taxonomy Layer 2.5 row and the `panel` package-table row to "configured (S-102)", naming the Vitest `integration` project + Supabase CLI local Postgres harness and the Docker-gated skip.
+  - [x] 1.10 Migration artifact created: `supabase/migrations/<ts>_initial_schema.sql`
+    - `supabase/migrations/20260902200101_initial_schema.sql` — byte-identical to `docs/reference/001_schema.sql` (verified by empty `diff`), incl. `pg_cron` + `reap-stale-runs` schedule.
+  - [x] 1.11 Document rollback and impact: baseline has no rollback and needs none; if the live diff is **not** empty, the diff is reviewed and a corrective migration is written instead of forcing the baseline
+    - **Rollback:** none — this is a baseline that records already-existing live state (SD3); registering it runs no DDL against the live DB, so there is nothing to roll back. **Impact:** if the live-vs-baseline diff (task 1.12) is **not** empty, the baseline is NOT forced — instead the diff is reviewed and a corrective migration is authored. Recorded here and in the PR description.
+  - [~] 1.12 Produce the live-vs-baseline diff (`supabase db diff`) and record the output as no-op evidence
+    - **BLOCKED on Docker (environmental).** `supabase db diff --linked` provisions a *shadow database* and requires the Docker daemon, which is not running in this environment (confirmed: "Cannot connect to the Docker daemon … failed to provision the shadow database"). The diff must be produced by the operator in a Docker-enabled environment. Established what does not need Docker: `supabase migration list --linked` connected to the live project and shows **Local `20260902200101` / Remote (empty)** — the live DB has the schema objects (from the original manual `001_schema.sql` run) but **no migration history yet**, which is exactly the SD3 adopt-not-reapply case. Operator command to run and paste into the PR before apply: `supabase db diff --linked --use-migra` (expected: empty / no-op).
   - [ ] 1.13 **User confirmation gate** — present the diff, the registration command, and the rollback position; wait for explicit approval before touching the live project
   - [ ] 1.14 Apply after confirmation: register the baseline against the live project (baseline/repair only — never a destructive re-apply)
   - [ ] 1.15 Verify applied state: `supabase migration list` shows the baseline applied; `cron.job` still lists `reap-stale-runs`; `runs` and `run_events` row counts unchanged
   - [ ] 1.16 Run Tests — integration: `pnpm run test:integration` against the local stack
   - [ ] 1.17 Run Tests — edge cases: seed applied twice produces no duplicates; `db reset` from empty; baseline applied against a database that already has the objects is a no-op, not an error; Docker absent → integration layer skips with a recorded reason
+    - **Partially verified (Docker-independent half):** "Docker absent → integration layer skips with a recorded reason" is confirmed (`test:integration` → 4 skipped, exit 0). The seed-idempotency, `db reset`-from-empty, and already-applied-no-op cases require the local stack (Docker) and are carried forward for the operator's Docker-enabled run.
   - [ ] 1.18 Manual verification: `psql` against the local stack confirming schema objects, seeded rows, and the reaper schedule
-  - [ ] 1.19 Verify Acceptance Criterion: baseline migration contains `001_schema.sql` verbatim including `pg_cron` and the schedule
-  - [ ] 1.20 Verify Acceptance Criterion: `002_seed.sql` is now `supabase/seed.sql`; `docs/reference/` copies are links
+  - [x] 1.19 Verify Acceptance Criterion: baseline migration contains `001_schema.sql` verbatim including `pg_cron` and the schedule
+    - Verified: `diff` of the migration against the original reference (`git show HEAD~2:docs/reference/001_schema.sql`) is empty (byte-identical); both `create extension if not exists pg_cron` and `cron.schedule('reap-stale-runs', …)` present.
+  - [x] 1.20 Verify Acceptance Criterion: `002_seed.sql` is now `supabase/seed.sql`; `docs/reference/` copies are links
+    - Verified: `supabase/seed.sql` exists (verbatim); both `docs/reference/00{1,2}_*.sql` are MOVED pointer stubs.
   - [ ] 1.21 Verify Acceptance Criterion: `supabase start` + `db reset` reproduce schema and an idempotent seed
   - [ ] 1.22 Verify Acceptance Criterion: the live diff is a recorded no-op **before** any apply
   - [ ] 1.23 Verify Acceptance Criterion: the live database is registered at the baseline without re-running DDL, after confirmation
-  - [ ] 1.24 Verify Acceptance Criterion: `test:integration` exists and is reachable from the aggregate gate (or explicitly gated with a reason)
+  - [x] 1.24 Verify Acceptance Criterion: `test:integration` exists and is reachable from the aggregate gate (or explicitly gated with a reason)
+    - Verified: `test:integration` in `panel/package.json`; `make validate` → `test` → `test-js` → `pnpm --filter panel run test` (all Vitest projects incl. integration). Docker-gated skip recorded.
   - [ ] 1.25 Verify Acceptance Criterion: `TESTING.md` Layer 2.5 row is configured
   - [ ] 1.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
-  - [ ] 1.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [~] 1.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+    - **JS/TS branch green now:** `pnpm --filter panel run validate` passes — lint ✓, format:check ✓ (fixed one file), typecheck ✓, test ✓ (1 passed / 4 integration skipped — Docker), audit ✓ (1 moderate `ajv` advisory below the `--audit-level=high` gate). Full repo-root `make validate` (Python + JS branches) and the integration tests *executing* (not skipping) are re-run at the completion gate after the live apply in a Docker-enabled environment.
   - [ ] 1.28 Mark PR ready for review, notify the user, and close #115 only after the PR is approved and merged
 
 - [ ] 2.0 Implement Story S-103 ([#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116)): English-only SQL surface and seed fix

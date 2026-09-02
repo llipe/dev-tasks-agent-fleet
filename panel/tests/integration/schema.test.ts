@@ -53,7 +53,9 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — baseline schema", () => {
     // On a freshly-reset DB with no stale runs this returns 0, but the point is
     // that the function exists, is callable, and returns the reaped-count int.
     const count = await withDb((c) =>
-      c.query<{ reap_stale_runs: number }>(`select reap_stale_runs()`).then((r) => r.rows[0]?.reap_stale_runs),
+      c
+        .query<{ reap_stale_runs: number }>(`select reap_stale_runs()`)
+        .then((r) => r.rows[0]?.reap_stale_runs),
     );
     expect(typeof count).toBe("number");
     expect(count).toBeGreaterThanOrEqual(0);
