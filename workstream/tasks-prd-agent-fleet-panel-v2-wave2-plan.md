@@ -57,16 +57,23 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ### Server-side data layer (S-104)
 
-- `panel/lib/supabase/server.ts` — per-request client factory, server-only env validation (SD2)
-- `panel/lib/supabase/queries.ts` — the eight typed query helpers
+- `panel/lib/supabase/server.ts` — per-request client factory, server-only env validation (SD2), `server-only` hard guard
+- `panel/lib/supabase/queries.ts` — the eight typed query helpers (`getRunEvents` paged for the SD11 2000 cap under PostgREST `max_rows=1000`)
 - `panel/lib/supabase/types.ts` — row types for the six read objects
+- `panel/lib/supabase/errors.ts` — shared `DATABASE_ERROR` shape (pg code logged, never returned)
+- `panel/lib/supabase/route-config.ts` — documented canonical `force-dynamic`/`revalidate`/`fetchCache` values (declared inline per-route; Next does not honor re-exports)
 - `panel/lib/domain/status.ts` — `effectiveStatus(run, now)`, the TypeScript mirror of `v_runs` (SD4)
+- `panel/app/dev/agent-count/page.tsx` — manual-verification server route (server-fetched agent count, `force-dynamic`)
 - `panel/tests/unit/status.test.ts` — truth table incl. exact-boundary rows
-- `panel/tests/unit/bundle-secrets.test.ts` — build-artifact grep, security-negative
+- `panel/tests/unit/server-env.test.ts` — fail-fast env validation (EC-12)
+- `panel/tests/unit/eslint-server-import.test.ts` — proves the SD2 lint rule fires (EC-13)
+- `panel/tests/unit/bundle-secrets.test.ts` — sentinel-build artifact grep, security-negative (opt-in `RUN_BUNDLE_SECRET_TEST=1`)
 - `panel/tests/integration/status-parity.test.ts` — SQL↔TS parity (SR3)
 - `panel/tests/integration/rls-deny-all.test.ts` — anon-key zero rows, security-negative
 - `panel/tests/integration/queries.test.ts` — helper shapes against seeded data
-- `panel/eslint.config.mjs` — SD2 restricted-import rule (exists; now gains a test proving it fires)
+- `panel/tests/stubs/server-only.ts` — test-only `server-only` no-op alias (vitest)
+- `panel/eslint.config.mjs` — SD2 restricted-import rule scoped to `components/**` (now proven to fire)
+- `panel/vitest.config.ts` — `server-only` alias for unit/integration projects
 - `panel/README.md` — `force-dynamic` convention, server-only read boundary
 - `.env.example` — anon key added for the deny-all test only (local stack)
 
