@@ -98,8 +98,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: resolves **F2** (SD2) and **F4** (SD4). RLS is deny-all with zero policies, so the browser cannot read Supabase at all — this story establishes that boundary in code before any screen exists. It also lands `effectiveStatus`, the TypeScript mirror of the `v_runs` `case` expression, plus the Layer 2.5 test that pins the two implementations to each other (**SR3**). Read-only story: no migration.
 
-  - [ ] 1.1 Create branch `story/S-104-server-data-layer` from latest `main`; confirm #117 is open
-  - [ ] 1.2 Write `effectiveStatus` and its unit truth table **first** (test-first, implementation step 2): `lib/domain/status.ts` pure, `now`-injected, mirroring `v_runs` lines 240–248 exactly — `running` past `started_at + max_runtime + grace` → `timed_out`; `queued` past `queued_at + start_timeout` → `failed_to_start`; otherwise pass through
+  - [x] 1.1 Create branch `story/S-104-server-data-layer` from latest `main`; confirm #117 is open
+  - [x] 1.2 Write `effectiveStatus` and its unit truth table **first** (test-first, implementation step 2): `lib/domain/status.ts` pure, `now`-injected, mirroring `v_runs` lines 240–248 exactly — `running` past `started_at + max_runtime + grace` → `timed_out`; `queued` past `queued_at + start_timeout` → `failed_to_start`; otherwise pass through
   - [ ] 1.3 First commit; open draft PR against `main` with `Closes #117`
   - [ ] 1.4 Add `lib/supabase/types.ts` — row types for `agents`, `repositories`, `v_runs`, `run_steps`, `run_events`, `run_artifacts` (hand-written or CLI-generated; record which and why)
   - [ ] 1.5 Add `lib/supabase/server.ts` — per-request client factory reading `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, with fail-fast env validation (a missing or malformed variable throws a named startup error, never yields an `undefined` client)
