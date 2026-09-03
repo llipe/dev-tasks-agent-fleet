@@ -7,6 +7,7 @@
 | 1.0     | 2026-08-27 | Initial version. Derived from PRD v2.2 (Phase 2 scope only) and research artifact at commit `411b027`. Records twelve specification decisions (SD1-SD12) and resolves fix proposals F1-F7. | product-engineer |
 | 1.1     | 2026-08-27 | Reconciled against `origin/main` at `c8d515e` (issue #77 deployment merged). F1 re-verified unchanged. `prompt` wrapping now has partial evidence from the deployment runbook (§9.1, OQ2). SD11 gains a sizing note: the seeded `max_runtime_seconds` is 3600, not the 900 assumed from schema defaults, so a run can emit ~4x the log volume. | product-engineer |
 | 1.2     | 2026-09-02 | Story-generation pass. **F3 scope extended** beyond the seed's `params_schema` labels: `001_schema.sql` writes Spanish operator-facing text into `run_events.message` (line 288) and `runs.error_message` (line 315) from `reap_stale_runs()`, both rendered verbatim by the Run Detail log viewer — so §5's "no schema changes" now admits one reversible `create or replace function` migration, carried by story S-103 under the SD3 confirmation gate. Also recorded: `002_seed.sql:48` asserts `start_timeout_seconds (300)` must equal `idleRuntimeSessionTimeout`, which issue #98 raised to 900 — resolved in S-103. **Open Question 3 answered without a probe:** `001_schema.sql:131` declares `runs.max_runtime_seconds integer not null` with no default, while `grace_seconds`/`start_timeout_seconds` are `not null` with defaults (60/300) that no longer match the seeded agent — so the panel must send all three explicitly (folded into S-112). See [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) v1.0 § Scope Delta. | product-engineer |
+| 1.3     | 2026-09-03 | Wave 1 write-back pass. Three corrections, no scope or decision change. (1) **§16 `next` pin corrected `15.5.4` → `15.5.25`** — the version this spec named was published, then became the subject of a critical RCE advisory plus multiple highs; S-101 shipped the 15.5 backport line instead (same minor) and `technical-guidelines.md` row 1.11 routed the write-back here. `eslint-config-next` tracks it; two transitive `pnpm.overrides` (`postcss>=8.5.18`, `sharp>=0.34.4`) are recorded as the audit-gate consequence. (2) **Vitest recorded as 3.2.4**, not an unpinned dev entry — the config-level `projects` API that defines the Layer 1/2/2.5 split is 3.x-only, so the version is load-bearing for SD12, not incidental. (3) **§2 and SD3 re-pointed at the canonical schema location** — S-102 moved the DDL to `supabase/migrations/20260902200101_initial_schema.sql` and reduced `docs/reference/00{1,2}_*.sql` to zero-DDL pointer stubs, so every reference in this spec to a `001_schema.sql` line number now resolves against the migration (byte-identical, line numbers preserved). The four `@aws-sdk/*` packages remain deliberately unpinned here; their shared minor is decided and recorded at S-111 (#124) per the §16 rule. | product-engineer |
 
 ---
 
@@ -26,7 +27,7 @@ The dominant technical risk is not the UI. It is the two cross-language boundari
 | [`/DESIGN.md`](../DESIGN.md) v1.0 | All — visual source of truth |
 | [`workstream/research-phase2-panel-spec-inputs-2026-08-27.md`](research-phase2-panel-spec-inputs-2026-08-27.md) | All slices; commit `411b027` |
 | [`TESTING.md`](../TESTING.md) | Layer taxonomy, canonical scripts, reachability rules |
-| [`docs/reference/001_schema.sql`](../docs/reference/001_schema.sql) | Lines 11-23 enums, 81-99 agents, 212-213 publication, 234-251 `v_runs`, 332-338 RLS |
+| [`supabase/migrations/20260902200101_initial_schema.sql`](../supabase/migrations/20260902200101_initial_schema.sql) | Lines 11-23 enums, 81-99 agents, 212-213 publication, 234-251 `v_runs`, 332-338 RLS. **Canonical since S-102** — byte-identical to the former `docs/reference/001_schema.sql`, so every `001_schema.sql:<n>` citation in this spec resolves here unchanged. `docs/reference/00{1,2}_*.sql` are now zero-DDL pointer stubs |
 | [`docs/reference/credentials.ts`](../docs/reference/credentials.ts) | Adopted with F5 corrections |
 
 **Staleness note.** The research artifact records commit `411b027`. Re-verify its findings if HEAD has advanced materially before implementation starts.
@@ -200,6 +201,8 @@ erDiagram
 ### SD3 — Adopt Supabase CLI migrations
 
 Resolves **F6**. Create `supabase/migrations/` with `001_schema.sql` moved in verbatim as the first timestamped migration, so the already-applied live database matches without a destructive re-apply. `002_seed.sql` becomes `supabase/seed.sql`. The `docs/reference/` copies are replaced by links to the migration files so they cannot drift independently.
+
+> **Delivered (S-102 / #115, S-103 / #116).** The baseline is `supabase/migrations/20260902200101_initial_schema.sql`; the live project was registered at it via `migration repair` after the diff was recorded as a schema-level no-op and the user confirmed. S-103 then shipped the two English-surface migrations below. Both reference files are zero-DDL pointer stubs. This subsection is retained as the decision record; current state lives in `docs/technical-guidelines.md` §7.
 
 **Migration lifecycle — requires explicit user confirmation before apply.** The live Supabase project holds real Phase 1 run data. Every apply step is gated on human confirmation; no migration is applied autonomously.
 
@@ -562,19 +565,23 @@ Rollback: the panel is stateless, so rollback is redeploying the prior image. Th
 
 | Package | Version | Purpose |
 |---|---|---|
-| `next` | `15.5.4` | App Router framework |
+| `next` | `15.5.25` | App Router framework. **Corrected from `15.5.4` in v1.3** — that version became the subject of a critical RCE advisory plus multiple highs, so S-101 pinned the 15.5 backport line instead (same minor, audit-clean). `eslint-config-next` tracks the same version |
 | `react` / `react-dom` | `19.1.1` | — |
 | `@supabase/supabase-js` | `2.58.0` | Server-side reads + Realtime relay |
-| `@aws-sdk/client-bedrock-agentcore` | pin at implementation time | `InvokeAgentRuntime` |
-| `@aws-sdk/client-sts` | pin at implementation time | `AssumeRoleWithWebIdentity` (already a `credentials.ts` dep) |
-| `@aws-sdk/credential-providers` | pin at implementation time | Local chain branch |
-| `@aws-sdk/types` | pin at implementation time | `credentials.ts` type imports |
+| `@aws-sdk/client-bedrock-agentcore` | pin at implementation time — **S-111 (#124)** | `InvokeAgentRuntime` |
+| `@aws-sdk/client-sts` | pin at implementation time — **S-111 (#124)** | `AssumeRoleWithWebIdentity` (already a `credentials.ts` dep) |
+| `@aws-sdk/credential-providers` | pin at implementation time — **S-111 (#124)** | Local chain branch |
+| `@aws-sdk/types` | pin at implementation time — **S-111 (#124)** | `credentials.ts` type imports |
 | `ajv` / `ajv-formats` | `8.17.1` / `3.0.1` | `params_schema` validation (SD8) |
 | `@phosphor-icons/react` | `2.1.10` | `/DESIGN.md` §10 icon set |
-| `vitest`, `@vitest/coverage-v8`, `@testing-library/react`, `@playwright/test` | dev | SD12 |
+| `vitest` / `@vitest/coverage-v8` | `3.2.4` | SD12. **The version is load-bearing:** the config-level `projects` API that defines the Layer 1 / 2 / 2.5 split is 3.x-only |
+| `@testing-library/react`, `@playwright/test` | dev | SD12 |
 | `typescript`, `eslint`, `prettier` | dev | `technical-guidelines.md` §12 canonical scripts |
+| `pnpm.overrides`: `postcss` / `sharp` | `>=8.5.18` / `>=0.34.4` | Transitive via `next`; pinned at the root to clear the `audit` gate (S-101) |
 
-Versions must be confirmed current at implementation time. All four `@aws-sdk/*` packages **must** be pinned to the same minor to avoid duplicate transitive versions — they are listed without pins here because guessing an AWS SDK minor in a spec is how lockfiles end up with three copies of `@smithy/core`. `next`, `react`, and the others are pinned as best-known-current and must be re-confirmed rather than trusted.
+Versions must be confirmed current at implementation time. All four `@aws-sdk/*` packages **must** be pinned to the same minor to avoid duplicate transitive versions — they are listed without pins here because guessing an AWS SDK minor in a spec is how lockfiles end up with three copies of `@smithy/core`. The remaining pins are best-known-current and must be re-confirmed rather than trusted.
+
+**S-101 proved that last sentence is not boilerplate.** `next@15.5.4` was correct when this spec was written and was a critical vulnerability by the time it was installed. Re-confirmation at pin time is a required step, not a courtesy, and a deviation it produces is recorded here rather than left as an undocumented divergence between spec and lockfile.
 
 ### Risks
 
