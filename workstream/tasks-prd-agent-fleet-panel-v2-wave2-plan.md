@@ -181,6 +181,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 2.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
     - Opt-out rationale: S-105 adds only front-end presentation (CSS tokens, React primitives, pure formatters, a dev-only gallery route). No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
   - [ ] 2.28 Mark PR ready for review, notify the user, and close #118 only after the PR is approved and merged
+    - [x] PR #133 converted draft → ready for review; user notified (completion comment)
+    - [ ] Close #118 — pending user review + merge to `main` (merge authority: user)
 
 - [ ] 3.0 Implement Story S-111 ([#124](https://github.com/llipe/dev-tasks-agent-fleet/issues/124)): AWS credential provider — Fly OIDC and local chain
 
