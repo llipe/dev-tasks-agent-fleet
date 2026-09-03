@@ -69,9 +69,9 @@ describe("effectiveStatus — running clock (timed_out)", () => {
   it("running run with null max_runtime_seconds passes through, not reaped (CT-4)", () => {
     // Defensive: the column is `not null` in the live schema, but a null must
     // never coerce to 0 and reap the run.
-    expect(
-      effectiveStatus(running({ maxRuntimeSeconds: null }), T0 + 10 * RUNNING_WINDOW_MS),
-    ).toBe("running");
+    expect(effectiveStatus(running({ maxRuntimeSeconds: null }), T0 + 10 * RUNNING_WINDOW_MS)).toBe(
+      "running",
+    );
   });
 });
 

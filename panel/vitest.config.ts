@@ -11,6 +11,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),
+      // Test-only: neutralize the `server-only` guard so modules that import it
+      // (lib/supabase/server.ts) can be unit-tested under the node environment.
+      // The real guard still fires in `next build`. See tests/stubs/server-only.ts.
+      "server-only": fileURLToPath(new URL("./tests/stubs/server-only.ts", import.meta.url)),
     },
   },
   test: {

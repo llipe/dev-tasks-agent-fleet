@@ -30,8 +30,7 @@ import {
 const probe = await probeLocalDb();
 
 const API_URL = process.env.SUPABASE_URL ?? process.env.API_URL ?? "http://127.0.0.1:54321";
-const SERVICE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SERVICE_ROLE_KEY ?? "";
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SERVICE_ROLE_KEY ?? "";
 const keyPresent = SERVICE_KEY.trim().length > 0;
 const skipReason = !probe.available
   ? probe.reason

@@ -99,9 +99,10 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — RLS deny-all (anon reads zero ro
         // A permission-denied / not-exposed error is a valid deny outcome.
         expect(error, `table ${table} errored (acceptable deny)`).toBeTruthy();
       } else {
-        expect(data ?? [], `table ${table} leaked ${data?.length ?? 0} row(s) to anon`).toHaveLength(
-          0,
-        );
+        expect(
+          data ?? [],
+          `table ${table} leaked ${data?.length ?? 0} row(s) to anon`,
+        ).toHaveLength(0);
       }
     }
   });

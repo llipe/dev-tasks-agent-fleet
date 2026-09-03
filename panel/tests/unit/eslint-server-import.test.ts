@@ -70,11 +70,11 @@ interface EslintFileResult {
 
 function lintJson(file: string): EslintFileResult[] {
   try {
-    const out = execFileSync(
-      "pnpm",
-      ["exec", "eslint", "--no-ignore", "--format", "json", file],
-      { cwd: panelDir, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
-    );
+    const out = execFileSync("pnpm", ["exec", "eslint", "--no-ignore", "--format", "json", file], {
+      cwd: panelDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+    });
     return JSON.parse(out) as EslintFileResult[];
   } catch (err) {
     // ESLint exits non-zero when it reports errors; the JSON is still on stdout.

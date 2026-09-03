@@ -43,10 +43,7 @@ export class DatabaseError extends Error {
  * query errored, otherwise returns `data`. Centralizes the "log the pg code,
  * never return it" rule so every helper is consistent.
  */
-export function unwrap<T>(
-  operation: string,
-  result: { data: T | null; error: unknown | null },
-): T {
+export function unwrap<T>(operation: string, result: { data: T | null; error: unknown | null }): T {
   if (result.error) {
     throw new DatabaseError(operation, result.error);
   }

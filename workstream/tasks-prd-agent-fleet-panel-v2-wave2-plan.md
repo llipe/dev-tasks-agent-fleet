@@ -114,20 +114,20 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 1.14 Add the security-negative build-artifact test `tests/unit/bundle-secrets.test.ts` — no built client chunk contains the service role key. **Build with a sentinel value** (e.g. `SUPABASE_SERVICE_ROLE_KEY=SENTINEL_MUST_NOT_APPEAR_IN_BUNDLE`) and grep the real build output for the sentinel plus the variable identifier — G3: a grep for a key that does not exist in CI is a test that cannot fail, which is worse than no test
   - [x] 1.15 Add a test proving the SD2 ESLint restricted-import rule actually fires when `lib/supabase/server` is imported from a client component (the rule exists from S-101 but has never been proven to trigger)
   - [x] 1.16 Add the manual verification path: a placeholder route rendering a server-fetched agent count (proves the read boundary end-to-end with no UI)
-  - [ ] 1.17 Run Tests — unit: `pnpm run test:unit` — `effectiveStatus` truth table (`queued` fresh/stale, `running` fresh/stale, each terminal status pass-through, `running` with null `started_at`, exact-boundary equality, negative and zero `grace_seconds`)
-  - [ ] 1.18 Run Tests — integration: `pnpm run test:integration` against the local stack (parity matrix, anon deny-all across all tables and the view, helper shapes)
-  - [ ] 1.19 Run Tests — edge cases: empty result sets; a run whose agent has `requires_repository = false` (no repository); empty `run_events`; absent or malformed `SUPABASE_*` env var → clear startup error, not a silent `undefined` client; a row with null `max_runtime_seconds` must **not** silently derive `timed_out`
+  - [x] 1.17 Run Tests — unit: `pnpm run test:unit` — `effectiveStatus` truth table (`queued` fresh/stale, `running` fresh/stale, each terminal status pass-through, `running` with null `started_at`, exact-boundary equality, negative and zero `grace_seconds`)
+  - [x] 1.18 Run Tests — integration: `pnpm run test:integration` against the local stack (parity matrix, anon deny-all across all tables and the view, helper shapes)
+  - [x] 1.19 Run Tests — edge cases: empty result sets; a run whose agent has `requires_repository = false` (no repository); empty `run_events`; absent or malformed `SUPABASE_*` env var → clear startup error, not a silent `undefined` client; a row with null `max_runtime_seconds` must **not** silently derive `timed_out`
   - [x] 1.20 Manual verification: `pnpm --filter panel dev`, confirm the placeholder route renders the server-fetched agent count from the local stack
-  - [ ] 1.21 Verify Acceptance Criterion: `lib/supabase/server.ts` creates a per-request client from a server-only env var, and importing it from a client component fails lint
-  - [ ] 1.22 Verify Acceptance Criterion: all eight typed query helpers exist and are covered
-  - [ ] 1.23 Verify Acceptance Criterion: `lib/domain/status.ts` implements SD4 exactly
-  - [ ] 1.24 Verify Acceptance Criterion: the Layer 2.5 parity test proves agreement with `v_runs.effective_status` across the fixture matrix including exact-boundary rows
-  - [ ] 1.25 Verify Acceptance Criterion: the anon-key client reads zero rows from every table and from `v_runs`
-  - [ ] 1.26 Verify Acceptance Criterion: no client chunk contains the service role key
-  - [ ] 1.27 Verify Acceptance Criterion: run routes are `force-dynamic` and no Next.js data cache is introduced for run data
-  - [ ] 1.28 Map acceptance criteria to test evidence and record the mapping in the PR: AC1 → lint-rule test + import failure; AC2 → helper unit/integration tests; AC3 → `status.test.ts`; AC4 → `status-parity.test.ts`; AC5 → `rls-deny-all.test.ts`; AC6 → `bundle-secrets.test.ts`; AC7 → route config assertion
-  - [ ] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
+  - [x] 1.21 Verify Acceptance Criterion: `lib/supabase/server.ts` creates a per-request client from a server-only env var, and importing it from a client component fails lint
+  - [x] 1.22 Verify Acceptance Criterion: all eight typed query helpers exist and are covered
+  - [x] 1.23 Verify Acceptance Criterion: `lib/domain/status.ts` implements SD4 exactly
+  - [x] 1.24 Verify Acceptance Criterion: the Layer 2.5 parity test proves agreement with `v_runs.effective_status` across the fixture matrix including exact-boundary rows
+  - [x] 1.25 Verify Acceptance Criterion: the anon-key client reads zero rows from every table and from `v_runs`
+  - [x] 1.26 Verify Acceptance Criterion: no client chunk contains the service role key
+  - [x] 1.27 Verify Acceptance Criterion: run routes are `force-dynamic` and no Next.js data cache is introduced for run data
+  - [x] 1.28 Map acceptance criteria to test evidence and record the mapping in the PR: AC1 → lint-rule test + import failure; AC2 → helper unit/integration tests; AC3 → `status.test.ts`; AC4 → `status-parity.test.ts`; AC5 → `rls-deny-all.test.ts`; AC6 → `bundle-secrets.test.ts`; AC7 → route config assertion
+  - [x] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
   - [ ] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
 
 - [ ] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
