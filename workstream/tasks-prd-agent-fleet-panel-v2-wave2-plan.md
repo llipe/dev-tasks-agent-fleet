@@ -100,17 +100,17 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   - [x] 1.1 Create branch `story/S-104-server-data-layer` from latest `main`; confirm #117 is open
   - [x] 1.2 Write `effectiveStatus` and its unit truth table **first** (test-first, implementation step 2): `lib/domain/status.ts` pure, `now`-injected, mirroring `v_runs` lines 240–248 exactly — `running` past `started_at + max_runtime + grace` → `timed_out`; `queued` past `queued_at + start_timeout` → `failed_to_start`; otherwise pass through
-  - [ ] 1.3 First commit; open draft PR against `main` with `Closes #117`
-  - [ ] 1.4 Add `lib/supabase/types.ts` — row types for `agents`, `repositories`, `v_runs`, `run_steps`, `run_events`, `run_artifacts` (hand-written or CLI-generated; record which and why)
-  - [ ] 1.5 Add `lib/supabase/server.ts` — per-request client factory reading `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, with fail-fast env validation (a missing or malformed variable throws a named startup error, never yields an `undefined` client)
-  - [ ] 1.6 Re-confirm and pin `@supabase/supabase-js` (spec §16 names `2.58.0` — verify it is current and audit-clean before pinning, per the S-101 precedent); run `pnpm run audit`
-  - [ ] 1.7 Add the eight typed query helpers to `lib/supabase/queries.ts`: enabled agents; one agent by slug; enabled non-archived repositories; runs by agent slug (newest-first, from `v_runs`); one run by id; `run_steps` by run; `run_events` by run (bounded, `seq`-ordered); `run_artifacts` by run
-  - [ ] 1.8 Surface PostgREST failures as `DATABASE_ERROR` (500) with the Postgres code logged and never returned (spec §13); add the error shape to a shared module
-  - [ ] 1.9 Establish the `export const dynamic = "force-dynamic"` convention for run routes and document it in `panel/README.md`; introduce no Next.js data cache for run data
-  - [ ] 1.10 Add the anon key to `.env.example` as a **test-only, local-stack** variable with a comment stating it exists solely for the deny-all test and is never read by application code
-  - [ ] 1.11 Write the Layer 2.5 parity test `tests/integration/status-parity.test.ts` — `effectiveStatus` vs `v_runs.effective_status` over a shared fixture matrix including exact-boundary rows; use the `probeLocalDb` Docker guard from `tests/integration/db.ts`
-  - [ ] 1.12 Write the Layer 2.5 security-negative test `tests/integration/rls-deny-all.test.ts` — an anon-key client reads **zero rows** from every table **and** from `v_runs`
-  - [ ] 1.13 Write `tests/integration/queries.test.ts` — each helper returns the expected shape against seeded data
+  - [x] 1.3 First commit; open draft PR against `main` with `Closes #117`
+  - [x] 1.4 Add `lib/supabase/types.ts` — row types for `agents`, `repositories`, `v_runs`, `run_steps`, `run_events`, `run_artifacts` (hand-written or CLI-generated; record which and why)
+  - [x] 1.5 Add `lib/supabase/server.ts` — per-request client factory reading `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, with fail-fast env validation (a missing or malformed variable throws a named startup error, never yields an `undefined` client)
+  - [x] 1.6 Re-confirm and pin `@supabase/supabase-js` (spec §16 names `2.58.0` — verify it is current and audit-clean before pinning, per the S-101 precedent); run `pnpm run audit`
+  - [x] 1.7 Add the eight typed query helpers to `lib/supabase/queries.ts`: enabled agents; one agent by slug; enabled non-archived repositories; runs by agent slug (newest-first, from `v_runs`); one run by id; `run_steps` by run; `run_events` by run (bounded, `seq`-ordered); `run_artifacts` by run
+  - [x] 1.8 Surface PostgREST failures as `DATABASE_ERROR` (500) with the Postgres code logged and never returned (spec §13); add the error shape to a shared module
+  - [x] 1.9 Establish the `export const dynamic = "force-dynamic"` convention for run routes and document it in `panel/README.md`; introduce no Next.js data cache for run data
+  - [x] 1.10 Add the anon key to `.env.example` as a **test-only, local-stack** variable with a comment stating it exists solely for the deny-all test and is never read by application code
+  - [x] 1.11 Write the Layer 2.5 parity test `tests/integration/status-parity.test.ts` — `effectiveStatus` vs `v_runs.effective_status` over a shared fixture matrix including exact-boundary rows; use the `probeLocalDb` Docker guard from `tests/integration/db.ts`
+  - [x] 1.12 Write the Layer 2.5 security-negative test `tests/integration/rls-deny-all.test.ts` — an anon-key client reads **zero rows** from every table **and** from `v_runs`
+  - [x] 1.13 Write `tests/integration/queries.test.ts` — each helper returns the expected shape against seeded data
   - [ ] 1.14 Add the security-negative build-artifact test `tests/unit/bundle-secrets.test.ts` — no built client chunk contains the service role key. **Build with a sentinel value** (e.g. `SUPABASE_SERVICE_ROLE_KEY=SENTINEL_MUST_NOT_APPEAR_IN_BUNDLE`) and grep the real build output for the sentinel plus the variable identifier — G3: a grep for a key that does not exist in CI is a test that cannot fail, which is worse than no test
   - [ ] 1.15 Add a test proving the SD2 ESLint restricted-import rule actually fires when `lib/supabase/server` is imported from a client component (the rule exists from S-101 but has never been proven to trigger)
   - [ ] 1.16 Add the manual verification path: a placeholder route rendering a server-fetched agent count (proves the read boundary end-to-end with no UI)

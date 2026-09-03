@@ -79,12 +79,29 @@ recorded reason (see `TESTING.md`).
 - **Server Components by default.** Add `"use client"` only when a component needs
   state, effects, browser APIs, or event handlers.
 - **`force-dynamic` for data routes.** Pages and route handlers that read live run
-  state export `export const dynamic = "force-dynamic"` so Next does not statically
-  cache operator-facing data. (Applied per-route as data-reading screens land.)
-- **SD2 — server-only Supabase.** All Supabase access is server-side. There is no
-  `NEXT_PUBLIC_SUPABASE_*` variable anywhere; the service role key is server-only.
-  An ESLint restricted-import rule forbids importing `lib/supabase/server.ts` from
-  client components.
+  state must not be statically cached, and must not introduce a Next.js Data Cache
+  for run data (run status changes second-to-second — a cached read would show a
+  stale status, the exact failure SD4's read-time derivation prevents). Re-export
+  the shared route config so every data route opts out consistently:
+
+  ```ts
+  export { dynamic, revalidate, fetchCache } from "@/lib/supabase/route-config";
+  ```
+
+  `dynamic = "force-dynamic"` opts out of static rendering; `revalidate = 0` and
+  `fetchCache = "force-no-store"` ensure no data-cache layer. Applied per-route as
+  data-reading screens land.
+
+- **SD2 — server-only Supabase read boundary.** All Supabase access is server-side.
+  There is no `NEXT_PUBLIC_SUPABASE_*` variable anywhere; the service role key
+  (`SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS) is server-only. Reads go through
+  `lib/supabase/server.ts` (`createServerClient` — a per-request factory with
+  fail-fast env validation) and the typed helpers in `lib/supabase/queries.ts`, only
+  from Server Components or route handlers. An ESLint restricted-import rule forbids
+  importing `lib/supabase/server.ts` from client components, and
+  `tests/unit/eslint-server-import.test.ts` proves the rule fires. PostgREST failures
+  surface as `DATABASE_ERROR` (500) with the Postgres code logged, never returned to
+  the client (`lib/supabase/errors.ts`).
 
 ## Deployment precondition (placeholder)
 
