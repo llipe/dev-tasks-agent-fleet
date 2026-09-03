@@ -14,6 +14,20 @@ Sources: [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fle
 
 Wave 1 predecessor: [`tasks-prd-agent-fleet-panel-v2-plan.md`](tasks-prd-agent-fleet-panel-v2-plan.md) — S-101/S-102/S-103, merged and closed.
 
+### Published GitHub artifacts
+
+Every task checklist below is mirrored into its issue body, and the Design Mode compliance test plan is posted as an issue comment. GitHub is the source of truth for execution status.
+
+| Story | Issue | Task checklist | Compliance test plan (Design Mode) |
+| --- | --- | --- | --- |
+| S-104 | https://github.com/llipe/dev-tasks-agent-fleet/issues/117 | in issue body — 31 items (1.1–1.31) | https://github.com/llipe/dev-tasks-agent-fleet/issues/117#issuecomment-5527052056 |
+| S-105 | https://github.com/llipe/dev-tasks-agent-fleet/issues/118 | in issue body — 28 items (2.1–2.28) | https://github.com/llipe/dev-tasks-agent-fleet/issues/118#issuecomment-5527052417 |
+| S-111 | https://github.com/llipe/dev-tasks-agent-fleet/issues/124 | in issue body — 30 items (3.1–3.30) | https://github.com/llipe/dev-tasks-agent-fleet/issues/124#issuecomment-5527052764 |
+
+Local test-plan artifact: [`test-plan-wave2-S-104-S-105-S-111.md`](test-plan-wave2-S-104-S-105-S-111.md) — 12 contract scenarios, 20 edge cases, all 22 ACs mapped.
+
+**Flagged-gap status.** The test plan raised six gaps. **G1** (Fly OIDC boundary has no verified provider) and **G2** (Docker-gated Layer 2.5 skip turns the SR3 parity test and the RLS deny-all test into no-ops) are **deferred by decision** and are not carried as tasks in this plan — both are recorded in the test plan and in the issue comments so they are not lost. G2 affects what "done" means for tasks 1.11 and 1.12, and G1 affects how AC-111.2 must be reported at close, so both should be revisited before the respective story closes. G3 (sentinel key for the bundle-secret test), G4 (make the token-discipline check mechanical), G5 (AC-111.6 is route-level verifiable only in S-112), and G6 (derived-status-to-`StatusPill` composition is Wave 3) are actioned inline in tasks 1.14, 2.10, 3.11/3.26, and the Deferred section respectively.
+
 **Project type:** existing codebase. The `panel` package, pnpm workspace, gates, and Layer 2.5 harness all exist from Wave 1, so there is **no Task 0** — every dependency and script this wave needs is already wired.
 
 ### Dependency state
@@ -97,7 +111,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [ ] 1.11 Write the Layer 2.5 parity test `tests/integration/status-parity.test.ts` — `effectiveStatus` vs `v_runs.effective_status` over a shared fixture matrix including exact-boundary rows; use the `probeLocalDb` Docker guard from `tests/integration/db.ts`
   - [ ] 1.12 Write the Layer 2.5 security-negative test `tests/integration/rls-deny-all.test.ts` — an anon-key client reads **zero rows** from every table **and** from `v_runs`
   - [ ] 1.13 Write `tests/integration/queries.test.ts` — each helper returns the expected shape against seeded data
-  - [ ] 1.14 Add the security-negative build-artifact test `tests/unit/bundle-secrets.test.ts` — no built client chunk contains the service role key; wire it so it runs against a real build output, not a stub
+  - [ ] 1.14 Add the security-negative build-artifact test `tests/unit/bundle-secrets.test.ts` — no built client chunk contains the service role key. **Build with a sentinel value** (e.g. `SUPABASE_SERVICE_ROLE_KEY=SENTINEL_MUST_NOT_APPEAR_IN_BUNDLE`) and grep the real build output for the sentinel plus the variable identifier — G3: a grep for a key that does not exist in CI is a test that cannot fail, which is worse than no test
   - [ ] 1.15 Add a test proving the SD2 ESLint restricted-import rule actually fires when `lib/supabase/server` is imported from a client component (the rule exists from S-101 but has never been proven to trigger)
   - [ ] 1.16 Add the manual verification path: a placeholder route rendering a server-fetched agent count (proves the read boundary end-to-end with no UI)
   - [ ] 1.17 Run Tests — unit: `pnpm run test:unit` — `effectiveStatus` truth table (`queued` fresh/stale, `running` fresh/stale, each terminal status pass-through, `running` with null `started_at`, exact-boundary equality, negative and zero `grace_seconds`)
@@ -129,7 +143,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [ ] 2.7 Keep components presentational and server-render-safe; mark only the interactive ones (`Toggle`, `NavItem`) as client components
   - [ ] 2.8 Implement `LogLine` as the 4-column grid (`82px 46px 108px minmax(0,1fr)`) with `pre-wrap`, never truncating message content (`/DESIGN.md` §7.5)
   - [ ] 2.9 Wire `@phosphor-icons/react` icons per `/DESIGN.md` §10, rendered on `currentColor`; remove any Unicode glyph stand-in inherited from the prototype
-  - [ ] 2.10 Add a token-discipline check — stylelint or an equivalent lint rule rejecting hardcoded hex, font-family, and pixel spacing values in `components/` and `styles/` (AC2 says "where practical"; record what was practical and what falls to review)
+  - [ ] 2.10 Add a **mechanical** token-discipline check — a stylelint rule or grep-based unit test over `components/**` and `styles/**` rejecting `#[0-9a-f]{3,8}`, `font-family:` literals, and bare `px` in spacing properties. G4: AC2's "where practical" is where this becomes review-only, and review does not scale past twelve components into Wave 3's screens — land a rule, not a judgment, and record anything genuinely not mechanizable
   - [ ] 2.11 Document the `color-mix()` browser floor (Chrome 111+, Safari 16.2+, Firefox 113+) in `panel/README.md`
   - [ ] 2.12 Add the dev-only `panel/app/dev/gallery/page.tsx` rendering every component variant side by side; confirm it is excluded from the production build
   - [ ] 2.13 Run Tests — unit: `pnpm run test:unit` — table-driven formatter tests including zero, negative, and sub-second durations, exactly-1-minute boundaries, far-past relative times, and short-ID casing
@@ -177,7 +191,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [ ] 3.22 Verify Acceptance Criterion: `credentialSource()` reports the active branch and is logged on every invoke
   - [ ] 3.23 Verify Acceptance Criterion: all comments are English and the embedded `curl` probe command is retained
   - [ ] 3.24 Verify Acceptance Criterion: `CREDENTIALS_UNAVAILABLE` (500) is defined distinctly from `INVOCATION_FAILED` (502) in the error taxonomy — noting that the taxonomy's *route-level* test lands in S-112 (#125)
-  - [ ] 3.25 Record the two deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128, and **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe
+  - [ ] 3.25 Record the deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128; **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe; and per **G5**, AC6 is assertable here only at the `invoke.ts` boundary — its route-level guarantee, like AC8's taxonomy test, lands with S-112 (#125), so neither is reported as fully complete on this story
   - [ ] 3.26 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC5 → `credentials.test.ts`; AC6 → log assertion; AC7 → file review; AC8 → definition here, route-level test in S-112
   - [ ] 3.27 Verify no secret material appears in any log output
   - [ ] 3.28 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
@@ -203,3 +217,4 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 - **The SSE relay** (`lib/` + route, SD6) lands with S-110; S-104's `run_events` helper is the bounded initial read only (SD11, 2,000 events).
 - **`run_steps` steps panel** is deferred to v3 (C8); S-104 still exposes the helper because step names label log lines.
 - **Route-level error-taxonomy tests** for `CREDENTIALS_UNAVAILABLE` vs `INVOCATION_FAILED` land with S-112's route handler.
+- **Derived status reaching `StatusPill`** (test plan **G6**) is not provable in Wave 2. CT-1 proves `effectiveStatus` is correct and AC-105.4 proves the pill renders six statuses, but the composition happens in Wave 3 — recorded as a required scenario for the S-107 (#120) and S-108 (#121) plans rather than something to discover mid-Wave-3.

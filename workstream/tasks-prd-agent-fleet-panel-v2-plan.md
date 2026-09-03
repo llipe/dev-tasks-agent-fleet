@@ -10,6 +10,14 @@ This plan covers **Wave 1 only** — the three stories with no UI dependency, wh
 | 1.0 | S-102 | [#115](https://github.com/llipe/dev-tasks-agent-fleet/issues/115) | Adopt Supabase CLI migrations |
 | 2.0 | S-103 | [#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116) | English-only SQL surface and seed fix |
 
+### Published GitHub artifacts (all merged and closed)
+
+| Story | Issue | Pull Request | Merged |
+|---|---|---|---|
+| S-101 | https://github.com/llipe/dev-tasks-agent-fleet/issues/114 | https://github.com/llipe/dev-tasks-agent-fleet/pull/129 | 2026-09-02T19:56:08Z |
+| S-102 | https://github.com/llipe/dev-tasks-agent-fleet/issues/115 | https://github.com/llipe/dev-tasks-agent-fleet/pull/130 | 2026-09-02T21:45:30Z |
+| S-103 | https://github.com/llipe/dev-tasks-agent-fleet/issues/116 | https://github.com/llipe/dev-tasks-agent-fleet/pull/131 | 2026-09-03T13:31:02Z |
+
 Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and planned in later waves — **Wave 2** (S-104, S-105, S-111) is planned in [`tasks-prd-agent-fleet-panel-v2-wave2-plan.md`](tasks-prd-agent-fleet-panel-v2-wave2-plan.md). Sources: [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) v1.0, [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.2.
 
 **Project type:** greenfield for the JS/TS side (no root `package.json`, no `panel/`), existing codebase for Python and SQL. Task 0.0 is therefore a real project-setup task, not a formality.
