@@ -1,0 +1,72 @@
+/* /DESIGN.md §3.1 — Button (outlined, never filled) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* -- Sizes ------------------------------------------------------------- */
+.size_default {
+  min-height: 36px;
+  padding: 5.6px 10.08px;
+  font-size: 14px;
+}
+
+.size_md {
+  min-height: 32px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+
+.size_sm {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+/* -- Variants ---------------------------------------------------------- */
+.primary {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.primary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.secondary {
+  border-color: var(--color-divider);
+  color: var(--color-text);
+}
+.secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.secondary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+}
+
+.ghost {
+  border-color: transparent;
+  color: var(--color-accent);
+}
+.ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.ghost:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}

@@ -1,0 +1,21 @@
+/* /DESIGN.md §8.1 — status dot */
+.dot {
+  display: inline-block;
+  width: var(--st-size, 7px);
+  height: var(--st-size, 7px);
+  border-radius: 50%;
+  background: var(--st-color);
+  flex: none;
+}
+
+/* running/queued — pulsing (§6.1) */
+.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 7px var(--st-color);
+}
+
+/* failed_to_start — hollow (border only, §8.1) */
+.hollow {
+  background: transparent;
+  border: 1px solid var(--st-color);
+}

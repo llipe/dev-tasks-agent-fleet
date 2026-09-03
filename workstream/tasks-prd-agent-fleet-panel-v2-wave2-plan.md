@@ -148,9 +148,9 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 2.3 First commit; open draft PR against `main` with `Closes #118`
   - [x] 2.4 Write the formatter unit tests **first**, then `panel/lib/format.ts` implementing `/DESIGN.md` §7: 24h `HH:MM:SS`, relative times, `Xm XXs` durations, `running · Xm`, short uppercase-mono run IDs, step progress `n/m`, event counts, status legends
   - [x] 2.5 Add `panel/styles/globals.css` with the `pulse`, `spin`, and `rise` keyframes and the hover/focus rules from `/DESIGN.md` §6, including `:focus-visible` as a 2px accent outline at 2px offset with browser default rings suppressed
-  - [ ] 2.6 Build the primitives in dependency order (test-first per component): `KLabel`, `Tag`, `Button`, `Input`, `StatusDot`, `StatusPill`, `Toggle`, `Breadcrumb`, `NavItem`, `StatusBar`, `RunStrip`, `LogLine`
-  - [ ] 2.7 Keep components presentational and server-render-safe; mark only the interactive ones (`Toggle`, `NavItem`) as client components
-  - [ ] 2.8 Implement `LogLine` as the 4-column grid (`82px 46px 108px minmax(0,1fr)`) with `pre-wrap`, never truncating message content (`/DESIGN.md` §7.5)
+  - [x] 2.6 Build the primitives in dependency order (test-first per component): `KLabel`, `Tag`, `Button`, `Input`, `StatusDot`, `StatusPill`, `Toggle`, `Breadcrumb`, `NavItem`, `StatusBar`, `RunStrip`, `LogLine`
+  - [x] 2.7 Keep components presentational and server-render-safe; mark only the interactive ones (`Toggle`, `NavItem`) as client components
+  - [x] 2.8 Implement `LogLine` as the 4-column grid (`82px 46px 108px minmax(0,1fr)`) with `pre-wrap`, never truncating message content (`/DESIGN.md` §7.5)
   - [ ] 2.9 Wire `@phosphor-icons/react` icons per `/DESIGN.md` §10, rendered on `currentColor`; remove any Unicode glyph stand-in inherited from the prototype
   - [ ] 2.10 Add a **mechanical** token-discipline check — a stylelint rule or grep-based unit test over `components/**` and `styles/**` rejecting `#[0-9a-f]{3,8}`, `font-family:` literals, and bare `px` in spacing properties. G4: AC2's "where practical" is where this becomes review-only, and review does not scale past twelve components into Wave 3's screens — land a rule, not a judgment, and record anything genuinely not mechanizable
   - [ ] 2.11 Document the `color-mix()` browser floor (Chrome 111+, Safari 16.2+, Firefox 113+) in `panel/README.md`
