@@ -154,7 +154,13 @@ export default function GalleryPage() {
       </Section>
 
       <Section title="Log lines">
-        <div style={{ width: "100%", background: "var(--color-surface)", borderRadius: "var(--radius-md)" }}>
+        <div
+          style={{
+            width: "100%",
+            background: "var(--color-surface)",
+            borderRadius: "var(--radius-md)",
+          }}
+        >
           <LogLine
             timestamp={formatClock(now, "UTC")}
             level="info"

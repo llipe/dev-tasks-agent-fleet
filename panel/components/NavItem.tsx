@@ -31,7 +31,12 @@ export function NavItem({
   collapsed = false,
   className,
 }: NavItemProps) {
-  const classes = [styles.navitem, active && styles.active, collapsed && styles.collapsed, className]
+  const classes = [
+    styles.navitem,
+    active && styles.active,
+    collapsed && styles.collapsed,
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
   return (

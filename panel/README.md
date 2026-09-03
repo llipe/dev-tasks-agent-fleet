@@ -126,12 +126,12 @@ recorded reason (see `TESTING.md`).
     `tests/unit/token-discipline.test.ts` mechanically rejects any color hex literal
     and any `font-family:` literal under `components/**` and `styles/globals.css`
     (`tokens.css` is the single exempt home of the literals). **Not mechanized:**
-    "bare `px` in spacing" is intentionally *not* rejected — the Nocturne prototype
+    "bare `px` in spacing" is intentionally _not_ rejected — the Nocturne prototype
     fixes exact pixel dimensions that are not part of the six-step `--space-*` scale
     (grid track sizes like `LogLine`'s `82px 46px 108px`, dot/knob diameters, control
     min-heights, 1–3px radii). A blanket no-`px` rule would reject faithful
     reproduction of the visual contract, so dimensional `px` is allowed and remains a
-    review point; the spacing *scale* is tokenized and used for padding/gap where a
+    review point; the spacing _scale_ is tokenized and used for padding/gap where a
     scale step applies.
 
 - **Icons — `@phosphor-icons/react`.** Icons come from `@phosphor-icons/react/ssr`

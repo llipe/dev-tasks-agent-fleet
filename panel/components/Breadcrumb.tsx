@@ -23,10 +23,7 @@ export interface BreadcrumbProps {
 
 export function Breadcrumb({ items, className }: BreadcrumbProps) {
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className={[styles.crumbs, className].filter(Boolean).join(" ")}
-    >
+    <nav aria-label="Breadcrumb" className={[styles.crumbs, className].filter(Boolean).join(" ")}>
       {items.map((item, i) => {
         const isLast = i === items.length - 1;
         const active = item.active ?? isLast;

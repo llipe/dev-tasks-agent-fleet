@@ -182,9 +182,7 @@ describe("formatStatusLegend — §7.3 status legend", () => {
 
 describe("formatStatusLegendCompact — §7.3 card glyph legend", () => {
   it("renders the glyph legend", () => {
-    expect(formatStatusLegendCompact({ ok: 65, fail: 11, timeout: 6 })).toBe(
-      "65 ✓ · 11 ✕ · 6 ⧗",
-    );
+    expect(formatStatusLegendCompact({ ok: 65, fail: 11, timeout: 6 })).toBe("65 ✓ · 11 ✕ · 6 ⧗");
   });
 
   it("omits zero buckets", () => {
