@@ -10,7 +10,7 @@ This plan covers **Wave 1 only** — the three stories with no UI dependency, wh
 | 1.0 | S-102 | [#115](https://github.com/llipe/dev-tasks-agent-fleet/issues/115) | Adopt Supabase CLI migrations |
 | 2.0 | S-103 | [#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116) | English-only SQL surface and seed fix |
 
-Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and planned in a later wave. Sources: [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) v1.0, [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.2.
+Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and planned in later waves — **Wave 2** (S-104, S-105, S-111) is planned in [`tasks-prd-agent-fleet-panel-v2-wave2-plan.md`](tasks-prd-agent-fleet-panel-v2-wave2-plan.md). Sources: [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) v1.0, [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.2.
 
 **Project type:** greenfield for the JS/TS side (no root `package.json`, no `panel/`), existing codebase for Python and SQL. Task 0.0 is therefore a real project-setup task, not a formality.
 
@@ -57,7 +57,7 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
 
 ## Tasks
 
-- [ ] 0.0 Project Setup — Implement Story S-101 ([#114](https://github.com/llipe/dev-tasks-agent-fleet/issues/114)): pnpm workspace and panel scaffold
+- [x] 0.0 Project Setup — Implement Story S-101 ([#114](https://github.com/llipe/dev-tasks-agent-fleet/issues/114)): pnpm workspace and panel scaffold
 
   > Note: closes **F7** — no JS/TS package is currently reachable from `make validate` or CI, which `TESTING.md` classifies as a harness defect. The gate must be wired in the same PR that creates the package, so the panel is never briefly outside it.
 
@@ -88,10 +88,10 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
   - [x] 0.25 Map every acceptance criterion to its test evidence (command output or file diff) and record the mapping in the PR
   - [x] 0.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 0.27 Migration lifecycle: **not applicable** — no schema or data-model change in this story; opt-out recorded here and in the issue
-  - [ ] 0.28 Mark PR ready for review, notify the user, and close #114 only after the PR is approved and merged
-    - PR #129 marked **ready for review** and user notified (completion gate passed). Merge + issue close pending — `main` PRs are approved and merged by the user.
+  - [x] 0.28 Mark PR ready for review, notify the user, and close #114 only after the PR is approved and merged
+    - PR #129 marked **ready for review** and user notified (completion gate passed). **Merged by the user 2026-09-02T19:56:08Z**; #114 closed.
 
-- [ ] 1.0 Implement Story S-102 ([#115](https://github.com/llipe/dev-tasks-agent-fleet/issues/115)): Adopt Supabase CLI migrations
+- [x] 1.0 Implement Story S-102 ([#115](https://github.com/llipe/dev-tasks-agent-fleet/issues/115)): Adopt Supabase CLI migrations
 
   > Note: closes **F6** and unblocks Layer 2.5 (`TESTING.md` records it as "not configured — and now a live gap") plus safe local development (**SR7**/R7). The live project holds real Phase 1 run data, so the baseline must be proven a no-op before it is registered.
 
@@ -148,7 +148,8 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
     - AC→evidence table posted to PR #130 (AC1 file diff, AC2 stub check, AC3/AC6 local-stack + integration run, AC4/AC5 diff + repair evidence in the runbook, AC7 TESTING.md diff). qa-engineer coverage_gate = SKIPPED (no app logic in scope; harness reachable). verifier audit = Fidelity High, 3 Minor non-blocking drifts, summary posted.
   - [x] 1.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
     - **Full `make validate` green (exit 0)** with the live local stack up. Python branch: "all gates passed" (lint/format/typecheck/test-cov/audit — no known vulnerabilities). JS/TS branch: lint ✓, format:check ✓, typecheck ✓, test ✓ (**4 passed** — integration executes, not skips), audit ✓ (1 moderate `ajv` below the `--audit-level=high` gate).
-  - [ ] 1.28 Mark PR ready for review, notify the user, and close #115 only after the PR is approved and merged
+  - [x] 1.28 Mark PR ready for review, notify the user, and close #115 only after the PR is approved and merged
+    - PR #130 marked ready and user notified. **Merged by the user 2026-09-02T21:45:30Z**; #115 closed.
 
 - [x] 2.0 Implement Story S-103 ([#116](https://github.com/llipe/dev-tasks-agent-fleet/issues/116)): English-only SQL surface and seed fix
 
@@ -181,13 +182,16 @@ Remaining Phase 2 stories (S-104 … S-115 / #117 … #128) are published and pl
   - [x] 2.25 Verify Acceptance Criterion: a synthetic reaped run produces an English explanatory event and English `error_message` after apply
   - [x] 2.26 Map every acceptance criterion to its test evidence and record the mapping in the PR
   - [x] 2.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 2.28 Mark PR ready for review, notify the user, and close #116 only after the PR is approved and merged
+  - [x] 2.28 Mark PR ready for review, notify the user, and close #116 only after the PR is approved and merged
+    - PR #131 marked ready and user notified. **Merged by the user 2026-09-03T13:31:02Z**; #116 closed.
 
 ## Wave 1 Exit Criteria
 
-- [ ] `make validate` runs Python and JS/TS branches; CI enforces both on every PR to `main`
-- [ ] Layer 2.5 exists and is reachable from the aggregate gate
-- [ ] `supabase/migrations/` is the canonical schema source; the live database is registered at the baseline
-- [ ] No Spanish operator-facing string remains in the SQL surface the panel renders
-- [ ] The `start_timeout_seconds` invariant is resolved and documented
-- [ ] F3, F6, and F7 are closed; #114, #115, #116 merged and closed
+- [x] `make validate` runs Python and JS/TS branches; CI enforces both on every PR to `main`
+- [x] Layer 2.5 exists and is reachable from the aggregate gate
+- [x] `supabase/migrations/` is the canonical schema source; the live database is registered at the baseline
+- [x] No Spanish operator-facing string remains in the SQL surface the panel renders
+- [x] The `start_timeout_seconds` invariant is resolved and documented
+- [x] F3, F6, and F7 are closed; #114, #115, #116 merged and closed
+
+**Wave 1 closed 2026-09-03.** All three PRs merged (#129, #130, #131) and all three issues closed. Continues in [`tasks-prd-agent-fleet-panel-v2-wave2-plan.md`](tasks-prd-agent-fleet-panel-v2-wave2-plan.md).
