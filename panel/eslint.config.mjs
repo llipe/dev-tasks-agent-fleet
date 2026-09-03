@@ -19,15 +19,29 @@ const eslintConfig = [
       "next-env.d.ts",
       "playwright-report/**",
       "test-results/**",
+      // Transient SD2-rule test fixtures (created/removed by
+      // tests/unit/eslint-server-import.test.ts). The test lints them
+      // explicitly with --no-ignore; this keeps a routine `eslint .` clean if a
+      // run is interrupted and leaves one behind.
+      "components/__sd2_fixture__/**",
+      "lib/__sd2_fixture_server__.ts",
     ],
   },
   {
-    // SD2 guard: the server-only Supabase client must never be imported into a
-    // client component (it carries the service role key). The module does not
-    // exist yet — the rule lands before it, so the first import that violates
-    // SD2 fails lint. Client components are those carrying the "use client"
-    // pragma; this restricted-import rule is the coarse, always-on backstop.
-    files: ["**/*.ts", "**/*.tsx"],
+    // SD2 guard (lint-time hint). The server-only Supabase client carries the
+    // service role key and must never enter the client bundle. The HARD guard
+    // is the `import "server-only"` pragma at the top of lib/supabase/server.ts:
+    // if that module is ever pulled into a client bundle, `next build` fails
+    // with a precise React Server Components error that no `eslint-disable` can
+    // suppress. This lint rule is the fast, pre-build hint on top of it.
+    //
+    // The restriction is scoped to the general component tree where "use client"
+    // components live (components/**), plus a catch-all — but NOT the legitimate
+    // server contexts (the server lib itself and App Router server entrypoints:
+    // page/layout/route), which import the client on purpose. Server Components
+    // are precisely where reading Supabase is correct (SD2), so blocking them
+    // would be wrong; `server-only` still guards them at build time.
+    files: ["components/**/*.ts", "components/**/*.tsx"],
     rules: {
       "no-restricted-imports": [
         "error",

@@ -2,17 +2,28 @@
  * SD2 — server-only Supabase client factory.
  *
  * This module holds the service role key, which bypasses RLS (D15). It MUST
- * never be imported into a client component. An ESLint `no-restricted-imports`
- * rule (`panel/eslint.config.mjs`) enforces that at the boundary, and
- * `tests/unit/eslint-server-import.test.ts` proves the rule fires. There is no
- * `NEXT_PUBLIC_SUPABASE_*` variable anywhere — the URL and key are read from
- * server-only environment variables.
+ * never enter a client bundle. Two guards enforce that:
+ *
+ *  1. **`import "server-only"` (hard, build-time).** If this module is ever
+ *     pulled into a client component's bundle, `next build` fails with a
+ *     precise React Server Components error that no `eslint-disable` can
+ *     suppress. This is the real guarantee.
+ *  2. **SD2 ESLint rule (fast, lint-time hint).** `no-restricted-imports` in
+ *     `panel/eslint.config.mjs` flags an import of this module from a client
+ *     component (`components/**`); `tests/unit/eslint-server-import.test.ts`
+ *     proves it fires. It is scoped to the client component tree, not the
+ *     server contexts (Server Components / route handlers) that import this
+ *     module on purpose — those are guarded by `server-only` instead.
+ *
+ * There is no `NEXT_PUBLIC_SUPABASE_*` variable anywhere — the URL and key are
+ * read from server-only environment variables.
  *
  * A fresh client is created per request rather than module-scoped: run routes
  * are `force-dynamic` (no request should share a client instance across the
  * server), and a per-request factory keeps the boundary explicit.
  */
 
+import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -50,7 +61,6 @@ export function readSupabaseEnv(env: NodeJS.ProcessEnv = process.env): SupabaseE
   // Reject a value that is present but not a parseable URL, so a typo fails
   // here rather than as an opaque fetch error on the first query.
   try {
-    // eslint-disable-next-line no-new
     new URL(url);
   } catch {
     throw new SupabaseConfigError(`SUPABASE_URL is not a valid URL: received "${url}".`);
