@@ -136,6 +136,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
   - [ ] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
+    - [x] PR #132 converted draft → ready for review; user notified (completion comment #issuecomment-5528755881)
+    - [ ] Close #117 — pending user review + merge to `main` (merge authority: user)
 
 - [ ] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
 
