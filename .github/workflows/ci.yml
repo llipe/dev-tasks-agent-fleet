@@ -85,4 +85,10 @@ jobs:
         run: pnpm --filter panel run test:coverage
 
       - name: Dependency audit (pnpm audit)
+        # Runs a resilient wrapper (panel/scripts/audit.mjs): a real high/
+        # critical advisory fails the gate, a clean/moderate-only audit passes,
+        # and an unreachable npm advisory registry (ERR_SOCKET_TIMEOUT etc.) is
+        # retried then soft-passed with a loud warning rather than reddening CI
+        # on a third-party network blip.
+        timeout-minutes: 5
         run: pnpm --filter panel run audit

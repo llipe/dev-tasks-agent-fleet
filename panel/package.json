@@ -17,7 +17,7 @@
     "test:integration": "vitest run --project integration --passWithNoTests",
     "test:e2e": "playwright test",
     "test:coverage": "vitest run --coverage",
-    "audit": "pnpm audit --prod --audit-level=high",
+    "audit": "node scripts/audit.mjs",
     "validate": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test && pnpm run audit"
   },
   "dependencies": {
