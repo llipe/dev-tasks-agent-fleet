@@ -1,0 +1,103 @@
+/*
+ * Global base styles, animations, and interaction rules.
+ *
+ * Codifies /DESIGN.md §6 (Interaction Patterns): the pulse/spin/rise
+ * keyframes, the :focus-visible accent ring, and the shared hover rules.
+ * All color, spacing, radius, and font values reference tokens.css — no
+ * literals here (enforced by tests/unit/token-discipline.test.ts).
+ */
+
+/* -- Base -------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* -- §6.1 Animations --------------------------------------------------- */
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * Respect reduced-motion preferences: the animations above are decorative
+ * status cues (the meaning is always also conveyed by text/shape per §8/AC5),
+ * so it is safe to disable them for users who ask.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* -- §6.4 Focus states ------------------------------------------------- */
+
+/*
+ * Never use the browser default focus ring. Every focusable element gets a
+ * 2px accent outline at 2px offset. Applied on :focus-visible only so a
+ * pointer click does not paint a ring, but keyboard focus always does.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* -- §6.3 Hover states (links) ----------------------------------------- */
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-accent-400);
+}

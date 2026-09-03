@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import "@/styles/tokens.css";
+import "@/styles/globals.css";
 
 export const metadata: Metadata = {
   title: "Agent Fleet Control Panel",
