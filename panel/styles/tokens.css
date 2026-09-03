@@ -1,0 +1,90 @@
+/*
+ * Nocturne design tokens — the single source of truth for every color,
+ * spacing, radius, font, and shadow value in the panel.
+ *
+ * Transcribed verbatim from /DESIGN.md §2 (Design Tokens). DESIGN.md §11.1
+ * mandates that implementation reference these custom properties and NEVER
+ * hardcode a hex value, font name, or pixel spacing. The mechanical
+ * token-discipline check (tests/unit/token-discipline.test.ts) enforces that
+ * rule over components/** and styles/globals.css; this file is the one
+ * intentional home for the literal values, so it is the sole exemption.
+ *
+ * color-mix() is used throughout (browser floor: Chrome 111+, Safari 16.2+,
+ * Firefox 113+ — documented in panel/README.md).
+ */
+
+:root {
+  /* -- §2.1 Colors — Core ------------------------------------------------ */
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-text: #e9e9ed;
+  --color-accent: #9184d9;
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+
+  /* -- §2.2 Colors — Neutral ramp (100-900) ------------------------------ */
+  --color-neutral-100: #f3f5fe;
+  --color-neutral-200: #e4e7f5;
+  --color-neutral-300: #cfd3e5;
+  --color-neutral-400: #b2b6ca;
+  --color-neutral-500: #9397ab;
+  --color-neutral-600: #75798c;
+  --color-neutral-700: #595d6c;
+  --color-neutral-800: #3f424d;
+  --color-neutral-900: #292b31;
+
+  /* -- §2.3 Colors — Accent ramp (100-900) ------------------------------- */
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc;
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a;
+  --color-accent-900: #2b2741;
+
+  /*
+   * -- §2.4 Colors — Status (app-level, SD10) ---------------------------
+   * These are the trap S-105 exists to avoid: they are NOT in the Nocturne
+   * DS stylesheet — they were defined per-page in the prototype and must be
+   * declared explicitly here. Every StatusPill and StatusDot depends on them.
+   *   running        -> --color-accent (reused, no separate token)
+   *   failed_to_start-> --faint         (reused, no separate token)
+   */
+  --st-ok: #74b58f;
+  --st-fail: #d1706b;
+  --st-timeout: #d1a45e;
+
+  /* -- §2.5 Colors — Utility aliases ------------------------------------- */
+  --rule: var(--color-divider);
+  --muted: color-mix(in srgb, var(--color-text) 55%, transparent);
+  --faint: color-mix(in srgb, var(--color-text) 38%, transparent);
+
+  /* -- §2.6 Typography --------------------------------------------------- */
+  --font-heading: "Inter", system-ui, sans-serif;
+  --font-heading-weight: 500;
+  --font-body: "Inter", system-ui, sans-serif;
+  --mono: ui-monospace, Menlo, monospace;
+
+  /* -- §2.7 Spacing (0.7x compact scale) --------------------------------- */
+  --space-1: 2.8px;
+  --space-2: 5.6px;
+  --space-3: 8.4px;
+  --space-4: 11.2px;
+  --space-6: 16.8px;
+  --space-8: 22.4px;
+
+  /* -- §2.8 Border radius ------------------------------------------------ */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  /* -- §2.9 Shadows / Elevation ------------------------------------------ */
+  --shadow-sm: 0 0 0 1px #3f424d;
+  --shadow-md:
+    0 0 0 1px #595d6c,
+    0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg:
+    0 0 0 1px #9397ab,
+    0 16px 40px rgba(0, 0, 0, 0.65);
+}

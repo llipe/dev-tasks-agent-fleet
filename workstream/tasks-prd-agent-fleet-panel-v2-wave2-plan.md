@@ -143,8 +143,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: `/DESIGN.md` §2 defines the token set and §11.2 enumerates the twelve-component inventory the four screens compose from. **SD10** is the trap this story exists to avoid: the four app-level status colors (`--st-ok`, `--st-fail`, `--st-timeout`, plus accent for `running` and muted for `failed_to_start`) are **not** in the Nocturne stylesheet — they are prototype-page-local and must be defined explicitly. Every status pill and dot depends on them. Largest story in the phase (L).
 
-  - [ ] 2.1 Create branch `story/S-105-design-tokens-primitives` from latest `main`; confirm #118 is open
-  - [ ] 2.2 Transcribe `/DESIGN.md` §2 into `panel/styles/tokens.css` — core colors, neutral 100–900, accent 100–900, the four SD10 `--st-*` status colors, utility aliases (`--rule`, `--muted`, `--faint`), typography, spacing, radii, shadows; import it in the root layout
+  - [x] 2.1 Create branch `story/S-105-design-tokens-primitives` from latest `main`; confirm #118 is open
+  - [x] 2.2 Transcribe `/DESIGN.md` §2 into `panel/styles/tokens.css` — core colors, neutral 100–900, accent 100–900, the four SD10 `--st-*` status colors, utility aliases (`--rule`, `--muted`, `--faint`), typography, spacing, radii, shadows; import it in the root layout
   - [ ] 2.3 First commit; open draft PR against `main` with `Closes #118`
   - [ ] 2.4 Write the formatter unit tests **first**, then `panel/lib/format.ts` implementing `/DESIGN.md` §7: 24h `HH:MM:SS`, relative times, `Xm XXs` durations, `running · Xm`, short uppercase-mono run IDs, step progress `n/m`, event counts, status legends
   - [ ] 2.5 Add `panel/styles/globals.css` with the `pulse`, `spin`, and `rise` keyframes and the hover/focus rules from `/DESIGN.md` §6, including `:focus-visible` as a 2px accent outline at 2px offset with browser default rings suppressed
