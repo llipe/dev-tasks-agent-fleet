@@ -36,6 +36,11 @@ packages/shared/generated/__pycache__
 # issue and PR prose, so these drafts stay local.
 workstream/.pr-body-*.md
 
+# Transient ESLint fixture files created/removed by the SD2 rule test
+# (panel/tests/unit/eslint-server-import.test.ts).
+panel/components/__sd2_fixture__/
+panel/lib/__sd2_fixture_server__.ts
+
 # Supabase CLI local link metadata (contains pooler URL / project ref). Created
 # by `supabase link` for live DB verification; regenerated on demand, never committed.
 supabase/.temp/

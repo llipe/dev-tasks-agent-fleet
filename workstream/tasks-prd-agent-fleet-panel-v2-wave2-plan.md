@@ -57,16 +57,23 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ### Server-side data layer (S-104)
 
-- `panel/lib/supabase/server.ts` — per-request client factory, server-only env validation (SD2)
-- `panel/lib/supabase/queries.ts` — the eight typed query helpers
+- `panel/lib/supabase/server.ts` — per-request client factory, server-only env validation (SD2), `server-only` hard guard
+- `panel/lib/supabase/queries.ts` — the eight typed query helpers (`getRunEvents` paged for the SD11 2000 cap under PostgREST `max_rows=1000`)
 - `panel/lib/supabase/types.ts` — row types for the six read objects
+- `panel/lib/supabase/errors.ts` — shared `DATABASE_ERROR` shape (pg code logged, never returned)
+- `panel/lib/supabase/route-config.ts` — documented canonical `force-dynamic`/`revalidate`/`fetchCache` values (declared inline per-route; Next does not honor re-exports)
 - `panel/lib/domain/status.ts` — `effectiveStatus(run, now)`, the TypeScript mirror of `v_runs` (SD4)
+- `panel/app/dev/agent-count/page.tsx` — manual-verification server route (server-fetched agent count, `force-dynamic`)
 - `panel/tests/unit/status.test.ts` — truth table incl. exact-boundary rows
-- `panel/tests/unit/bundle-secrets.test.ts` — build-artifact grep, security-negative
+- `panel/tests/unit/server-env.test.ts` — fail-fast env validation (EC-12)
+- `panel/tests/unit/eslint-server-import.test.ts` — proves the SD2 lint rule fires (EC-13)
+- `panel/tests/unit/bundle-secrets.test.ts` — sentinel-build artifact grep, security-negative (opt-in `RUN_BUNDLE_SECRET_TEST=1`)
 - `panel/tests/integration/status-parity.test.ts` — SQL↔TS parity (SR3)
 - `panel/tests/integration/rls-deny-all.test.ts` — anon-key zero rows, security-negative
 - `panel/tests/integration/queries.test.ts` — helper shapes against seeded data
-- `panel/eslint.config.mjs` — SD2 restricted-import rule (exists; now gains a test proving it fires)
+- `panel/tests/stubs/server-only.ts` — test-only `server-only` no-op alias (vitest)
+- `panel/eslint.config.mjs` — SD2 restricted-import rule scoped to `components/**` (now proven to fire)
+- `panel/vitest.config.ts` — `server-only` alias for unit/integration projects
 - `panel/README.md` — `force-dynamic` convention, server-only read boundary
 - `.env.example` — anon key added for the deny-all test only (local stack)
 
@@ -98,37 +105,39 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: resolves **F2** (SD2) and **F4** (SD4). RLS is deny-all with zero policies, so the browser cannot read Supabase at all — this story establishes that boundary in code before any screen exists. It also lands `effectiveStatus`, the TypeScript mirror of the `v_runs` `case` expression, plus the Layer 2.5 test that pins the two implementations to each other (**SR3**). Read-only story: no migration.
 
-  - [ ] 1.1 Create branch `story/S-104-server-data-layer` from latest `main`; confirm #117 is open
-  - [ ] 1.2 Write `effectiveStatus` and its unit truth table **first** (test-first, implementation step 2): `lib/domain/status.ts` pure, `now`-injected, mirroring `v_runs` lines 240–248 exactly — `running` past `started_at + max_runtime + grace` → `timed_out`; `queued` past `queued_at + start_timeout` → `failed_to_start`; otherwise pass through
-  - [ ] 1.3 First commit; open draft PR against `main` with `Closes #117`
-  - [ ] 1.4 Add `lib/supabase/types.ts` — row types for `agents`, `repositories`, `v_runs`, `run_steps`, `run_events`, `run_artifacts` (hand-written or CLI-generated; record which and why)
-  - [ ] 1.5 Add `lib/supabase/server.ts` — per-request client factory reading `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, with fail-fast env validation (a missing or malformed variable throws a named startup error, never yields an `undefined` client)
-  - [ ] 1.6 Re-confirm and pin `@supabase/supabase-js` (spec §16 names `2.58.0` — verify it is current and audit-clean before pinning, per the S-101 precedent); run `pnpm run audit`
-  - [ ] 1.7 Add the eight typed query helpers to `lib/supabase/queries.ts`: enabled agents; one agent by slug; enabled non-archived repositories; runs by agent slug (newest-first, from `v_runs`); one run by id; `run_steps` by run; `run_events` by run (bounded, `seq`-ordered); `run_artifacts` by run
-  - [ ] 1.8 Surface PostgREST failures as `DATABASE_ERROR` (500) with the Postgres code logged and never returned (spec §13); add the error shape to a shared module
-  - [ ] 1.9 Establish the `export const dynamic = "force-dynamic"` convention for run routes and document it in `panel/README.md`; introduce no Next.js data cache for run data
-  - [ ] 1.10 Add the anon key to `.env.example` as a **test-only, local-stack** variable with a comment stating it exists solely for the deny-all test and is never read by application code
-  - [ ] 1.11 Write the Layer 2.5 parity test `tests/integration/status-parity.test.ts` — `effectiveStatus` vs `v_runs.effective_status` over a shared fixture matrix including exact-boundary rows; use the `probeLocalDb` Docker guard from `tests/integration/db.ts`
-  - [ ] 1.12 Write the Layer 2.5 security-negative test `tests/integration/rls-deny-all.test.ts` — an anon-key client reads **zero rows** from every table **and** from `v_runs`
-  - [ ] 1.13 Write `tests/integration/queries.test.ts` — each helper returns the expected shape against seeded data
-  - [ ] 1.14 Add the security-negative build-artifact test `tests/unit/bundle-secrets.test.ts` — no built client chunk contains the service role key. **Build with a sentinel value** (e.g. `SUPABASE_SERVICE_ROLE_KEY=SENTINEL_MUST_NOT_APPEAR_IN_BUNDLE`) and grep the real build output for the sentinel plus the variable identifier — G3: a grep for a key that does not exist in CI is a test that cannot fail, which is worse than no test
-  - [ ] 1.15 Add a test proving the SD2 ESLint restricted-import rule actually fires when `lib/supabase/server` is imported from a client component (the rule exists from S-101 but has never been proven to trigger)
-  - [ ] 1.16 Add the manual verification path: a placeholder route rendering a server-fetched agent count (proves the read boundary end-to-end with no UI)
-  - [ ] 1.17 Run Tests — unit: `pnpm run test:unit` — `effectiveStatus` truth table (`queued` fresh/stale, `running` fresh/stale, each terminal status pass-through, `running` with null `started_at`, exact-boundary equality, negative and zero `grace_seconds`)
-  - [ ] 1.18 Run Tests — integration: `pnpm run test:integration` against the local stack (parity matrix, anon deny-all across all tables and the view, helper shapes)
-  - [ ] 1.19 Run Tests — edge cases: empty result sets; a run whose agent has `requires_repository = false` (no repository); empty `run_events`; absent or malformed `SUPABASE_*` env var → clear startup error, not a silent `undefined` client; a row with null `max_runtime_seconds` must **not** silently derive `timed_out`
-  - [ ] 1.20 Manual verification: `pnpm --filter panel dev`, confirm the placeholder route renders the server-fetched agent count from the local stack
-  - [ ] 1.21 Verify Acceptance Criterion: `lib/supabase/server.ts` creates a per-request client from a server-only env var, and importing it from a client component fails lint
-  - [ ] 1.22 Verify Acceptance Criterion: all eight typed query helpers exist and are covered
-  - [ ] 1.23 Verify Acceptance Criterion: `lib/domain/status.ts` implements SD4 exactly
-  - [ ] 1.24 Verify Acceptance Criterion: the Layer 2.5 parity test proves agreement with `v_runs.effective_status` across the fixture matrix including exact-boundary rows
-  - [ ] 1.25 Verify Acceptance Criterion: the anon-key client reads zero rows from every table and from `v_runs`
-  - [ ] 1.26 Verify Acceptance Criterion: no client chunk contains the service role key
-  - [ ] 1.27 Verify Acceptance Criterion: run routes are `force-dynamic` and no Next.js data cache is introduced for run data
-  - [ ] 1.28 Map acceptance criteria to test evidence and record the mapping in the PR: AC1 → lint-rule test + import failure; AC2 → helper unit/integration tests; AC3 → `status.test.ts`; AC4 → `status-parity.test.ts`; AC5 → `rls-deny-all.test.ts`; AC6 → `bundle-secrets.test.ts`; AC7 → route config assertion
-  - [ ] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
+  - [x] 1.1 Create branch `story/S-104-server-data-layer` from latest `main`; confirm #117 is open
+  - [x] 1.2 Write `effectiveStatus` and its unit truth table **first** (test-first, implementation step 2): `lib/domain/status.ts` pure, `now`-injected, mirroring `v_runs` lines 240–248 exactly — `running` past `started_at + max_runtime + grace` → `timed_out`; `queued` past `queued_at + start_timeout` → `failed_to_start`; otherwise pass through
+  - [x] 1.3 First commit; open draft PR against `main` with `Closes #117`
+  - [x] 1.4 Add `lib/supabase/types.ts` — row types for `agents`, `repositories`, `v_runs`, `run_steps`, `run_events`, `run_artifacts` (hand-written or CLI-generated; record which and why)
+  - [x] 1.5 Add `lib/supabase/server.ts` — per-request client factory reading `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, with fail-fast env validation (a missing or malformed variable throws a named startup error, never yields an `undefined` client)
+  - [x] 1.6 Re-confirm and pin `@supabase/supabase-js` (spec §16 names `2.58.0` — verify it is current and audit-clean before pinning, per the S-101 precedent); run `pnpm run audit`
+  - [x] 1.7 Add the eight typed query helpers to `lib/supabase/queries.ts`: enabled agents; one agent by slug; enabled non-archived repositories; runs by agent slug (newest-first, from `v_runs`); one run by id; `run_steps` by run; `run_events` by run (bounded, `seq`-ordered); `run_artifacts` by run
+  - [x] 1.8 Surface PostgREST failures as `DATABASE_ERROR` (500) with the Postgres code logged and never returned (spec §13); add the error shape to a shared module
+  - [x] 1.9 Establish the `export const dynamic = "force-dynamic"` convention for run routes and document it in `panel/README.md`; introduce no Next.js data cache for run data
+  - [x] 1.10 Add the anon key to `.env.example` as a **test-only, local-stack** variable with a comment stating it exists solely for the deny-all test and is never read by application code
+  - [x] 1.11 Write the Layer 2.5 parity test `tests/integration/status-parity.test.ts` — `effectiveStatus` vs `v_runs.effective_status` over a shared fixture matrix including exact-boundary rows; use the `probeLocalDb` Docker guard from `tests/integration/db.ts`
+  - [x] 1.12 Write the Layer 2.5 security-negative test `tests/integration/rls-deny-all.test.ts` — an anon-key client reads **zero rows** from every table **and** from `v_runs`
+  - [x] 1.13 Write `tests/integration/queries.test.ts` — each helper returns the expected shape against seeded data
+  - [x] 1.14 Add the security-negative build-artifact test `tests/unit/bundle-secrets.test.ts` — no built client chunk contains the service role key. **Build with a sentinel value** (e.g. `SUPABASE_SERVICE_ROLE_KEY=SENTINEL_MUST_NOT_APPEAR_IN_BUNDLE`) and grep the real build output for the sentinel plus the variable identifier — G3: a grep for a key that does not exist in CI is a test that cannot fail, which is worse than no test
+  - [x] 1.15 Add a test proving the SD2 ESLint restricted-import rule actually fires when `lib/supabase/server` is imported from a client component (the rule exists from S-101 but has never been proven to trigger)
+  - [x] 1.16 Add the manual verification path: a placeholder route rendering a server-fetched agent count (proves the read boundary end-to-end with no UI)
+  - [x] 1.17 Run Tests — unit: `pnpm run test:unit` — `effectiveStatus` truth table (`queued` fresh/stale, `running` fresh/stale, each terminal status pass-through, `running` with null `started_at`, exact-boundary equality, negative and zero `grace_seconds`)
+  - [x] 1.18 Run Tests — integration: `pnpm run test:integration` against the local stack (parity matrix, anon deny-all across all tables and the view, helper shapes)
+  - [x] 1.19 Run Tests — edge cases: empty result sets; a run whose agent has `requires_repository = false` (no repository); empty `run_events`; absent or malformed `SUPABASE_*` env var → clear startup error, not a silent `undefined` client; a row with null `max_runtime_seconds` must **not** silently derive `timed_out`
+  - [x] 1.20 Manual verification: `pnpm --filter panel dev`, confirm the placeholder route renders the server-fetched agent count from the local stack
+  - [x] 1.21 Verify Acceptance Criterion: `lib/supabase/server.ts` creates a per-request client from a server-only env var, and importing it from a client component fails lint
+  - [x] 1.22 Verify Acceptance Criterion: all eight typed query helpers exist and are covered
+  - [x] 1.23 Verify Acceptance Criterion: `lib/domain/status.ts` implements SD4 exactly
+  - [x] 1.24 Verify Acceptance Criterion: the Layer 2.5 parity test proves agreement with `v_runs.effective_status` across the fixture matrix including exact-boundary rows
+  - [x] 1.25 Verify Acceptance Criterion: the anon-key client reads zero rows from every table and from `v_runs`
+  - [x] 1.26 Verify Acceptance Criterion: no client chunk contains the service role key
+  - [x] 1.27 Verify Acceptance Criterion: run routes are `force-dynamic` and no Next.js data cache is introduced for run data
+  - [x] 1.28 Map acceptance criteria to test evidence and record the mapping in the PR: AC1 → lint-rule test + import failure; AC2 → helper unit/integration tests; AC3 → `status.test.ts`; AC4 → `status-parity.test.ts`; AC5 → `rls-deny-all.test.ts`; AC6 → `bundle-secrets.test.ts`; AC7 → route config assertion
+  - [x] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
   - [ ] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
+    - [x] PR #132 converted draft → ready for review; user notified (completion comment #issuecomment-5528755881)
+    - [ ] Close #117 — pending user review + merge to `main` (merge authority: user)
 
 - [ ] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
 
