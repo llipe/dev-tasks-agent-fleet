@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 
+import { RowChevronIcon } from "./icons";
 import styles from "./Breadcrumb.module.css";
 
 /**
@@ -33,7 +34,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
           <Fragment key={`${item.label}-${i}`}>
             {i > 0 && (
               <span className={styles.sep} aria-hidden="true">
-                ›
+                <RowChevronIcon size={12} weight="bold" />
               </span>
             )}
             {active || !item.href ? (
