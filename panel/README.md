@@ -35,7 +35,7 @@ or from `panel/` directly with `pnpm run <script>`:
 | `typecheck`        | `tsc --noEmit`                                                 |
 | `test`             | Vitest (all projects)                                          |
 | `test:unit`        | Vitest — unit project (Layer 1)                                |
-| `test:integration` | Vitest — integration project (Layer 2.5, S-102)                |
+| `test:integration` | Vitest — integration project (Layer 2.5, S-102/S-104)          |
 | `test:e2e`         | Playwright (Layer E2E, S-114)                                  |
 | `test:coverage`    | Vitest with v8 coverage                                        |
 | `audit`            | `pnpm audit` (prod, high+)                                     |
@@ -81,15 +81,20 @@ recorded reason (see `TESTING.md`).
 - **`force-dynamic` for data routes.** Pages and route handlers that read live run
   state must not be statically cached, and must not introduce a Next.js Data Cache
   for run data (run status changes second-to-second — a cached read would show a
-  stale status, the exact failure SD4's read-time derivation prevents). Re-export
-  the shared route config so every data route opts out consistently:
+  stale status, the exact failure SD4's read-time derivation prevents). Declare the
+  route config **inline** in each data route — Next.js does **not** honor
+  route-segment config re-exported from another module (it silently falls back to
+  defaults), so copy the canonical values from `lib/supabase/route-config.ts` directly:
 
   ```ts
-  export { dynamic, revalidate, fetchCache } from "@/lib/supabase/route-config";
+  export const dynamic = "force-dynamic";
+  export const revalidate = 0;
+  export const fetchCache = "force-no-store";
   ```
 
   `dynamic = "force-dynamic"` opts out of static rendering; `revalidate = 0` and
-  `fetchCache = "force-no-store"` ensure no data-cache layer. Applied per-route as
+  `fetchCache = "force-no-store"` ensure no data-cache layer. `lib/supabase/route-config.ts`
+  holds these as the single documented source of truth. Applied per-route as
   data-reading screens land.
 
 - **SD2 — server-only Supabase read boundary.** All Supabase access is server-side.
