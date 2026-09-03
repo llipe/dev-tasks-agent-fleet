@@ -47,6 +47,24 @@ export default defineConfig({
           name: "integration",
           environment: "node",
           include: ["tests/integration/**/*.test.{ts,tsx}"],
+          // Layer 2.5 tests all mutate ONE shared local Supabase Postgres, and
+          // reap_stale_runs() is a GLOBAL operation (it reaps every stale run in
+          // the DB). Under parallelism, one file's reap_stale_runs() call can reap
+          // another file's freshly-inserted stale run before that file closes its
+          // run_steps, producing a cross-file race (e.g. "expected 'running' to be
+          // 'failed'"). `singleFork` runs every integration file in ONE worker
+          // process, sequentially, so the shared-DB tests never interleave.
+          // Scoped to `integration` ONLY — `unit` and `component` keep their
+          // parallel speed.
+          pool: "forks",
+          poolOptions: {
+            forks: {
+              singleFork: true,
+            },
+          },
+          sequence: {
+            concurrent: false,
+          },
         },
       },
     ],

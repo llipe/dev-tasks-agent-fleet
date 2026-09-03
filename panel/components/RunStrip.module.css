@@ -1,0 +1,25 @@
+/* /DESIGN.md §3.9 — 24-bar run strip */
+.strip {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 22px;
+  width: 100%;
+}
+
+.bar {
+  flex: 1;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--bar-color);
+}
+
+/* future/empty slots — 33% height, faint */
+.empty {
+  height: 33%;
+  background: color-mix(in srgb, var(--color-text) 13%, transparent);
+}
+
+.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}

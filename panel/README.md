@@ -108,6 +108,39 @@ recorded reason (see `TESTING.md`).
   surface as `DATABASE_ERROR` (500) with the Postgres code logged, never returned to
   the client (`lib/supabase/errors.ts`).
 
+- **Design system — Nocturne tokens (S-105).** Every color, font, spacing-scale,
+  radius, and shadow value comes from a CSS custom property defined in
+  `styles/tokens.css` (transcribed from `/DESIGN.md` §2, including the four SD10
+  `--st-*` status colors). `styles/globals.css` holds the `pulse`/`spin`/`rise`
+  keyframes and the `:focus-visible` accent ring. The twelve primitive components
+  live in `components/` with a token-only CSS module each; formatters are in
+  `lib/format.ts` (`/DESIGN.md` §7).
+
+  - **`color-mix()` browser floor.** The tokens and component styles use
+    `color-mix(in srgb, …)` extensively (tints, dividers, hover states). This
+    requires **Chrome/Edge 111+, Safari 16.2+, Firefox 113+** (`/DESIGN.md` §11.1).
+    The panel does not ship a fallback for older engines — it targets current
+    evergreen browsers only.
+
+  - **Token discipline is a gate, not a review note.**
+    `tests/unit/token-discipline.test.ts` mechanically rejects any color hex literal
+    and any `font-family:` literal under `components/**` and `styles/globals.css`
+    (`tokens.css` is the single exempt home of the literals). **Not mechanized:**
+    "bare `px` in spacing" is intentionally _not_ rejected — the Nocturne prototype
+    fixes exact pixel dimensions that are not part of the six-step `--space-*` scale
+    (grid track sizes like `LogLine`'s `82px 46px 108px`, dot/knob diameters, control
+    min-heights, 1–3px radii). A blanket no-`px` rule would reject faithful
+    reproduction of the visual contract, so dimensional `px` is allowed and remains a
+    review point; the spacing _scale_ is tokenized and used for padding/gap where a
+    scale step applies.
+
+- **Icons — `@phosphor-icons/react`.** Icons come from `@phosphor-icons/react/ssr`
+  (the SSR entrypoint, so they render in Server Components) on `currentColor`
+  (`/DESIGN.md` §10). Import by semantic role from `components/icons.tsx`
+  (`AgentsIcon`, `RowChevronIcon`, …) rather than by Phosphor name; no Unicode glyph
+  stand-ins from the prototype remain. The `✓ ✕ ⧗` glyphs in `formatStatusLegendCompact`
+  are DESIGN §7.3 content, not icon stand-ins.
+
 ## Deployment precondition (placeholder)
 
 The panel has no user authentication in v1 (D16). Its only mitigation is that the

@@ -80,14 +80,19 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 ### Design system (S-105)
 
 - `panel/styles/tokens.css` — every `/DESIGN.md` §2 token incl. the four SD10 `--st-*` colors
-- `panel/styles/globals.css` — `pulse`/`spin`/`rise` keyframes, `:focus-visible`, hover rules (§6)
-- `panel/components/{KLabel,Tag,Button,Input,StatusDot,StatusPill,Toggle,Breadcrumb,NavItem,StatusBar,RunStrip,LogLine}.tsx` — the §11.2 inventory
+- `panel/styles/globals.css` — `pulse`/`spin`/`rise` keyframes, `:focus-visible`, hover rules, reduced-motion guard (§6)
+- `panel/components/{KLabel,Tag,Button,Input,StatusDot,StatusPill,Toggle,Breadcrumb,NavItem,StatusBar,RunStrip,LogLine}.tsx` + one token-only `.module.css` each — the §11.2 inventory
+- `panel/components/status-meta.ts` — shared status→label/color/pulse/hollow map for `StatusDot`/`StatusPill` (single source, incl. unknown-status neutral fallback)
+- `panel/components/icons.tsx` — `/DESIGN.md` §10 semantic icon map over `@phosphor-icons/react/ssr` (on `currentColor`)
 - `panel/lib/format.ts` — `/DESIGN.md` §7 formatters
 - `panel/tests/unit/format.test.ts` — table-driven formatter tests
-- `panel/tests/component/*.test.tsx` — one suite per primitive
-- `panel/app/dev/gallery/page.tsx` — dev-only variant gallery, excluded from production build
-- `panel/app/layout.tsx` — imports the token sheet
-- `/DESIGN.md` — impact notes if any prototype detail cannot be reproduced
+- `panel/tests/unit/token-discipline.test.ts` — mechanical hex/font-family gate over `components/**` + `styles/globals.css`
+- `panel/tests/component/*.test.tsx` — one suite per primitive (12 suites, 67 tests)
+- `panel/app/dev/gallery/page.tsx` + `ToggleDemo.tsx` — dev-only variant gallery, 404 in production build
+- `panel/app/layout.tsx` — imports the token + globals sheets
+- `panel/tests/setup.ts` — registers RTL `afterEach(cleanup)` (config has no `globals:true`)
+- `panel/vitest.config.ts` — `integration` project pinned single-threaded (shared-DB race fix)
+- `panel/README.md` — Nocturne design-system conventions (color-mix floor, token discipline, icons)
 
 ### AWS credentials (S-111)
 
@@ -143,34 +148,41 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: `/DESIGN.md` §2 defines the token set and §11.2 enumerates the twelve-component inventory the four screens compose from. **SD10** is the trap this story exists to avoid: the four app-level status colors (`--st-ok`, `--st-fail`, `--st-timeout`, plus accent for `running` and muted for `failed_to_start`) are **not** in the Nocturne stylesheet — they are prototype-page-local and must be defined explicitly. Every status pill and dot depends on them. Largest story in the phase (L).
 
-  - [ ] 2.1 Create branch `story/S-105-design-tokens-primitives` from latest `main`; confirm #118 is open
-  - [ ] 2.2 Transcribe `/DESIGN.md` §2 into `panel/styles/tokens.css` — core colors, neutral 100–900, accent 100–900, the four SD10 `--st-*` status colors, utility aliases (`--rule`, `--muted`, `--faint`), typography, spacing, radii, shadows; import it in the root layout
-  - [ ] 2.3 First commit; open draft PR against `main` with `Closes #118`
-  - [ ] 2.4 Write the formatter unit tests **first**, then `panel/lib/format.ts` implementing `/DESIGN.md` §7: 24h `HH:MM:SS`, relative times, `Xm XXs` durations, `running · Xm`, short uppercase-mono run IDs, step progress `n/m`, event counts, status legends
-  - [ ] 2.5 Add `panel/styles/globals.css` with the `pulse`, `spin`, and `rise` keyframes and the hover/focus rules from `/DESIGN.md` §6, including `:focus-visible` as a 2px accent outline at 2px offset with browser default rings suppressed
-  - [ ] 2.6 Build the primitives in dependency order (test-first per component): `KLabel`, `Tag`, `Button`, `Input`, `StatusDot`, `StatusPill`, `Toggle`, `Breadcrumb`, `NavItem`, `StatusBar`, `RunStrip`, `LogLine`
-  - [ ] 2.7 Keep components presentational and server-render-safe; mark only the interactive ones (`Toggle`, `NavItem`) as client components
-  - [ ] 2.8 Implement `LogLine` as the 4-column grid (`82px 46px 108px minmax(0,1fr)`) with `pre-wrap`, never truncating message content (`/DESIGN.md` §7.5)
-  - [ ] 2.9 Wire `@phosphor-icons/react` icons per `/DESIGN.md` §10, rendered on `currentColor`; remove any Unicode glyph stand-in inherited from the prototype
-  - [ ] 2.10 Add a **mechanical** token-discipline check — a stylelint rule or grep-based unit test over `components/**` and `styles/**` rejecting `#[0-9a-f]{3,8}`, `font-family:` literals, and bare `px` in spacing properties. G4: AC2's "where practical" is where this becomes review-only, and review does not scale past twelve components into Wave 3's screens — land a rule, not a judgment, and record anything genuinely not mechanizable
-  - [ ] 2.11 Document the `color-mix()` browser floor (Chrome 111+, Safari 16.2+, Firefox 113+) in `panel/README.md`
-  - [ ] 2.12 Add the dev-only `panel/app/dev/gallery/page.tsx` rendering every component variant side by side; confirm it is excluded from the production build
-  - [ ] 2.13 Run Tests — unit: `pnpm run test:unit` — table-driven formatter tests including zero, negative, and sub-second durations, exactly-1-minute boundaries, far-past relative times, and short-ID casing
-  - [ ] 2.14 Run Tests — component (Layer 2): `pnpm run test` — each component renders all its variants; `StatusPill` renders accessible text for every status; `Toggle` fires `onChange` and is keyboard-operable; `LogLine` wraps rather than truncates an 8 KB message
-  - [ ] 2.15 Run Tests — edge cases: unknown status value renders a neutral fallback instead of crashing; `RunStrip` with fewer than 24 runs renders 33%-height placeholders; `StatusBar` with all-zero segments; an extremely long agent name gets single-line ellipsis, and the card variant gets a 2-line clamp
-  - [ ] 2.16 Manual/UI verification: `pnpm --filter panel dev` → `/dev/gallery`, compared side by side against the prototype at `docs/prototype/` (`_ds` stylesheet plus the six screen files)
-  - [ ] 2.17 Verify Acceptance Criterion: `styles/tokens.css` defines every `/DESIGN.md` §2 token, including the four SD10 status colors
-  - [ ] 2.18 Verify Acceptance Criterion: no component contains a hardcoded hex, font family, or pixel spacing value
-  - [ ] 2.19 Verify Acceptance Criterion: all twelve `/DESIGN.md` §11.2 components exist and are unit-tested, with the documented variant sets (`Button` primary/secondary/ghost × sm/md/default + disabled; `Tag` accent/neutral/outline)
-  - [ ] 2.20 Verify Acceptance Criterion: `StatusPill`/`StatusDot` cover all six statuses including `failed_to_start` (hollow dot) and the `running`/`queued` pulse animation
-  - [ ] 2.21 Verify Acceptance Criterion: status meaning is conveyed by text and never by color alone; `:focus-visible` is a 2px accent outline at 2px offset and default rings are suppressed
-  - [ ] 2.22 Verify Acceptance Criterion: `lib/format.ts` implements every `/DESIGN.md` §7 convention
-  - [ ] 2.23 Verify Acceptance Criterion: icons come from `@phosphor-icons/react` on `currentColor`, with no Unicode stand-ins remaining
-  - [ ] 2.24 Record `/DESIGN.md` impact notes in the PR — any prototype detail that could not be reproduced, and any token or component clarification added
-  - [ ] 2.25 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC2 → token file review + stylelint output; AC3–AC5 → component tests; AC6 → `format.test.ts`; AC7 → import audit
-  - [ ] 2.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 2.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
+  - [x] 2.1 Create branch `story/S-105-design-tokens-primitives` from latest `main`; confirm #118 is open
+  - [x] 2.2 Transcribe `/DESIGN.md` §2 into `panel/styles/tokens.css` — core colors, neutral 100–900, accent 100–900, the four SD10 `--st-*` status colors, utility aliases (`--rule`, `--muted`, `--faint`), typography, spacing, radii, shadows; import it in the root layout
+  - [x] 2.3 First commit; open draft PR against `main` with `Closes #118`
+  - [x] 2.4 Write the formatter unit tests **first**, then `panel/lib/format.ts` implementing `/DESIGN.md` §7: 24h `HH:MM:SS`, relative times, `Xm XXs` durations, `running · Xm`, short uppercase-mono run IDs, step progress `n/m`, event counts, status legends
+  - [x] 2.5 Add `panel/styles/globals.css` with the `pulse`, `spin`, and `rise` keyframes and the hover/focus rules from `/DESIGN.md` §6, including `:focus-visible` as a 2px accent outline at 2px offset with browser default rings suppressed
+  - [x] 2.6 Build the primitives in dependency order (test-first per component): `KLabel`, `Tag`, `Button`, `Input`, `StatusDot`, `StatusPill`, `Toggle`, `Breadcrumb`, `NavItem`, `StatusBar`, `RunStrip`, `LogLine`
+  - [x] 2.7 Keep components presentational and server-render-safe; mark only the interactive ones (`Toggle`, `NavItem`) as client components
+  - [x] 2.8 Implement `LogLine` as the 4-column grid (`82px 46px 108px minmax(0,1fr)`) with `pre-wrap`, never truncating message content (`/DESIGN.md` §7.5)
+  - [x] 2.9 Wire `@phosphor-icons/react` icons per `/DESIGN.md` §10, rendered on `currentColor`; remove any Unicode glyph stand-in inherited from the prototype
+  - [x] 2.10 Add a **mechanical** token-discipline check — a stylelint rule or grep-based unit test over `components/**` and `styles/**` rejecting `#[0-9a-f]{3,8}`, `font-family:` literals, and bare `px` in spacing properties. G4: AC2's "where practical" is where this becomes review-only, and review does not scale past twelve components into Wave 3's screens — land a rule, not a judgment, and record anything genuinely not mechanizable
+  - [x] 2.11 Document the `color-mix()` browser floor (Chrome 111+, Safari 16.2+, Firefox 113+) in `panel/README.md`
+  - [x] 2.12 Add the dev-only `panel/app/dev/gallery/page.tsx` rendering every component variant side by side; confirm it is excluded from the production build
+  - [x] 2.13 Run Tests — unit: `pnpm run test:unit` — table-driven formatter tests including zero, negative, and sub-second durations, exactly-1-minute boundaries, far-past relative times, and short-ID casing
+  - [x] 2.14 Run Tests — component (Layer 2): `pnpm run test` — each component renders all its variants; `StatusPill` renders accessible text for every status; `Toggle` fires `onChange` and is keyboard-operable; `LogLine` wraps rather than truncates an 8 KB message
+  - [x] 2.15 Run Tests — edge cases: unknown status value renders a neutral fallback instead of crashing; `RunStrip` with fewer than 24 runs renders 33%-height placeholders; `StatusBar` with all-zero segments; an extremely long agent name gets single-line ellipsis, and the card variant gets a 2-line clamp
+    - Covered: unknown status → neutral fallback (`StatusPill`/`StatusDot`), `RunStrip` <24 → 33% placeholders, `StatusBar` all-zero/empty. `NavItem` label has single-line ellipsis. **Deferred (recorded, not dropped):** the agent-name card + its 2-line clamp is a Wave 3 screen component (S-107), not an S-105 primitive; no primitive in this story renders an agent name in a card, so the clamp lands with that component.
+  - [x] 2.16 Manual/UI verification: `pnpm --filter panel dev` → `/dev/gallery`, compared side by side against the prototype at `docs/prototype/` (`_ds` stylesheet plus the six screen files)
+    - Verified: dev server serves `/dev/gallery` (HTTP 200) rendering all twelve primitives + formatters; the Nocturne token layer (dark `--color-bg`, blurple `--color-accent`, monospace data, outlined buttons, faded rules) matches the `docs/prototype/` `_ds` sheet and screen files. Production build confirms the route is 404 (excluded from the product surface).
+  - [x] 2.17 Verify Acceptance Criterion: `styles/tokens.css` defines every `/DESIGN.md` §2 token, including the four SD10 status colors
+  - [x] 2.18 Verify Acceptance Criterion: no component contains a hardcoded hex, font family, or pixel spacing value
+  - [x] 2.19 Verify Acceptance Criterion: all twelve `/DESIGN.md` §11.2 components exist and are unit-tested, with the documented variant sets (`Button` primary/secondary/ghost × sm/md/default + disabled; `Tag` accent/neutral/outline)
+  - [x] 2.20 Verify Acceptance Criterion: `StatusPill`/`StatusDot` cover all six statuses including `failed_to_start` (hollow dot) and the `running`/`queued` pulse animation
+  - [x] 2.21 Verify Acceptance Criterion: status meaning is conveyed by text and never by color alone; `:focus-visible` is a 2px accent outline at 2px offset and default rings are suppressed
+  - [x] 2.22 Verify Acceptance Criterion: `lib/format.ts` implements every `/DESIGN.md` §7 convention
+  - [x] 2.23 Verify Acceptance Criterion: icons come from `@phosphor-icons/react` on `currentColor`, with no Unicode stand-ins remaining
+  - [x] 2.24 Record `/DESIGN.md` impact notes in the PR — any prototype detail that could not be reproduced, and any token or component clarification added
+  - [x] 2.25 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC2 → token file review + stylelint output; AC3–AC5 → component tests; AC6 → `format.test.ts`; AC7 → import audit
+  - [x] 2.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+    - Results: lint PASS, format:check PASS, typecheck PASS, test PASS (panel 232 passed/19 skipped; deterministic across 5 runs), audit PASS (1 moderate `ajv` advisory below the `--audit-level=high` gate — pre-existing, documented). `make validate` exits 0 (both branches: Python 436 passed, panel 232 passed).
+    - **Discovered + fixed (harness only, not S-105 behavior):** the pre-existing S-104-layer `tests/integration/reaper.test.ts` was flaky under Vitest parallelism because all Layer 2.5 tests share one Postgres and `reap_stale_runs()` is global. Fixed by running the `integration` project single-threaded (`pool: forks`, `singleFork: true`) in `vitest.config.ts` — no test logic changed (delegated to `housekeeping`).
+  - [x] 2.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
+    - Opt-out rationale: S-105 adds only front-end presentation (CSS tokens, React primitives, pure formatters, a dev-only gallery route). No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
   - [ ] 2.28 Mark PR ready for review, notify the user, and close #118 only after the PR is approved and merged
+    - [x] PR #133 converted draft → ready for review; user notified (completion comment)
+    - [ ] Close #118 — pending user review + merge to `main` (merge authority: user)
 
 - [ ] 3.0 Implement Story S-111 ([#124](https://github.com/llipe/dev-tasks-agent-fleet/issues/124)): AWS credential provider — Fly OIDC and local chain
 
