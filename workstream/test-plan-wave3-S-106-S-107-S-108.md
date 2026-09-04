@@ -518,20 +518,26 @@ Observed while checking Wave 3 readiness: on a run where the local stack **was**
 
 **Recommendation:** [#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134) remains the CI fix and is not a task in this wave. Two things this wave must do anyway: each story states in its PR whether its integration suite **ran live or skipped** (a skip is not evidence), and someone establishes why a healthy stack still skips two suites — an unexplained skip is a test that no one can rely on.
 
-### G3 — "No hydration warning" is not assertable by default (High)
+### G3 — "No hydration warning" is not assertable by default (High) — instrument accepted
 
-AC-106.2's real risk is a hydration mismatch, and EC-7 asserts the absence of a warning — but a React hydration warning is a `console.error` in development, which by default fails nothing. Testing Library will not surface it; the test passes while the defect ships. Worse, the usual local fix (`suppressHydrationWarning`) makes the symptom disappear permanently for the whole subtree.
+AC-106.2's real risk is a hydration mismatch, and EC-7 asserts the absence of a warning. The trap is one level deeper than it appears: **RTL's `render()` does a client-only render, so no test in this suite ever hydrates**, and a mismatch cannot occur to be logged. A `console.error` spy added on its own would produce a test that cannot fail — the same defect as the gap it closes. React 19's hydration warnings are also `console.error` in development only, which fails nothing by default, and the usual local fix (`suppressHydrationWarning`) removes the symptom permanently for a whole subtree.
 
-**Recommendation:** make it mechanical — spy on `console.error`/`console.warn` in the shell test setup and fail on any hydration-related message. Better still, add a project-wide setup that fails **any** test emitting an unexpected `console.error`, which pays off for every wave after this one. And treat `suppressHydrationWarning` as prohibited in this codebase unless a comment names the exact divergence it covers.
+**Accepted instrument (S-106 tasks 1.16a–c):**
 
-### G4 — Two ACs have escape hatches that make them unfalsifiable as written (Medium)
+1. `tests/helpers/hydrate.tsx` exposing `renderHydrated(element)` — `renderToString` into a container, then `hydrateRoot(container, element, { onRecoverableError })` inside `act`, returning the container plus the collected recoverable errors. Hydration mismatches surface as recoverable errors, which is more precise than scraping console output. Requires `globalThis.IS_REACT_ACT_ENVIRONMENT = true` in `tests/setup.ts`.
+2. The EC-7 assertion becomes: seed `localStorage` to collapsed, hydrate, then assert **both** that no recoverable error was reported **and** that the sidebar reads collapsed after mount. The correct implementation (server default + `useEffect` reconcile) passes both; `useState(() => readStoredCollapse())` fails the first. Nothing in the suite distinguishes those two today.
+3. A standing `console.error` trap on the `component` project with an explicit `allowConsoleError("reason")` opt-in, plus a mechanical grep rejecting `suppressHydrationWarning` unless the line names its divergence. Expect triage fallout across the existing 232 tests when the trap lands.
+
+If the shell instead uses an inline pre-paint script to set a class on `<html>` (eliminating the one-frame flash), hydration stays trivially clean and the assertion shifts to the script's presence and effect. The instrument above is unchanged either way — it is what makes the choice observable.
+
+### G4 — Two ACs have escape hatches that make them unfalsifiable as written (Medium) — one instrument accepted, one decision open
 
 Two criteria contain a documented "or else" that a test cannot adjudicate:
 
-- **AC-107.7:** the ledger's keyboard affordances work "**or** render them absent rather than broken". Both branches pass a suite that asserts nothing.
-- **AC-107.2 / EC-8:** "switching variants must not refetch". Without an instrumented data layer, "no refetch" is an eyeball claim, and the natural implementation (three server components) would refetch invisibly.
+- **AC-107.2 / EC-8:** "switching variants must not refetch". **Instrument accepted (tasks 2.9, 2.16).** Checking the data layer clarified what this actually means: every helper in `lib/supabase/queries.ts` takes a `SupabaseClient` built by `createServerClient()`, which is `server-only` — so a client component *cannot* refetch Supabase, and a network spy would assert something the architecture already guarantees. The two ways a refetch can really happen are the toggle navigating (`router.push`/`replace`/`refresh`, a `<Link>`, or a `searchParams` write, each re-running the server component) or three sibling server components each awaiting their own read. So the assertions are: mock `next/navigation` and prove none of the three navigation methods is called across a dense → cards → ledger → dense cycle, and prove `page.tsx` calls the dashboard query exactly once per render. "No refetch" reduces to "no navigation, one read per render", which is fully falsifiable.
+- **AC-107.7:** the ledger's keyboard affordances work "**or** render them absent rather than broken". Both branches pass a suite that asserts nothing. **Decision still open**, and it has a second part that surfaced while designing the test: `/` focuses the filter input, but **no S-107 acceptance criterion requires a filter input** — it appears only in `/DESIGN.md` §5.1's common-elements list. As scoped today, `/` has nothing to focus.
 
-**Recommendation:** for AC-107.7, pick the branch **before** implementation and record it in the plan; if affordances ship, test all three keys, and if they do not, assert the controls are absent from the DOM. Escape hatches are legitimate in a story and useless in a test plan. For AC-107.2, decide the instrument now — a spy on the query helper, or an assertion that the variant components receive props and issue no reads — so CT-7/EC-8 have a mechanism rather than an intention.
+**Recommendation on the open half:** ship `Up`/`Down`/`Enter` rather than omitting them, because the ledger renders its shortcut hints as UI (§6.5) and hints without behavior is the panel asserting something false to the operator. Decide the filter input separately — in scope makes `/` testable as specified; out of scope means the `/` hint must not render. Then delete the "or" from the AC, and add the hint/behavior coupling guard (task 2.13a): if a key's hint renders, pressing it must produce its effect, so a later drift back to hint-only fails permanently rather than passing.
 
 ### G5 — AC-108.4 is a manual procedure, so it verifies once and then rots (Medium)
 
