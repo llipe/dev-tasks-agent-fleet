@@ -141,6 +141,40 @@ recorded reason (see `TESTING.md`).
   stand-ins from the prototype remain. The `✓ ✕ ⧗` glyphs in `formatStatusLegendCompact`
   are DESIGN §7.3 content, not icon stand-ins.
 
+- **AWS credentials — no static keys (S-111, SD9 / D12).** The panel obtains AWS
+  credentials through a single provider, `lib/aws/credentials.ts` (`awsCredentials`),
+  with two branches selected automatically — callers receive only a provider and
+  never know which branch ran:
+
+  - **On Fly** (`FLY_APP_NAME` set **and** the `/.fly/api` socket exists): an OIDC
+    token from the Machine socket is exchanged via STS `AssumeRoleWithWebIdentity`.
+    Requires `AGENT_RUNTIME_ROLE_ARN`; a missing value fails fast with a named
+    `CredentialsUnavailableError`, not an opaque invoke-time auth error.
+  - **Locally**: `fromNodeProviderChain()` resolves an SSO profile,
+    `~/.aws/credentials`, or environment variables — no code change between
+    environments and **no AWS keys need to be set** for local dev with an SSO profile.
+
+  Credentials are cached in memory with a 60-second refresh margin and a
+  single-flight promise, so concurrent invokes trigger one STS call. The module is
+  free of Next.js imports (unit-testable in isolation) and **never logs** the token,
+  the STS response, or the assumed-role credentials — only `credentialSource()` (the
+  active branch, logged on every invoke) and error codes.
+
+  - **`credentialSource()` diagnostic.** Reports `"fly-oidc"` or `"local-chain"`.
+    `lib/aws/invoke.ts` logs it on every `InvokeAgentRuntime` call so an operator can
+    tell whether a failure came from the Fly OIDC branch or the local chain (R6). The
+    error taxonomy keeps `CREDENTIALS_UNAVAILABLE` (500 — the panel could not obtain
+    credentials) distinct from `INVOCATION_FAILED` (502 — AgentCore rejected the call)
+    because the runbooks differ.
+
+  - **Local SSO verification.** With an SSO profile active
+    (`aws sso login --profile <p>` and `AWS_PROFILE=<p>`), start the dev server and
+    hit any invoke path; `credentialSource()` logs `local-chain` and no AWS env keys
+    are required. The Fly branch cannot be exercised locally — the OIDC socket exists
+    only on a Fly Machine, so the socket response shape stays unverified until the
+    live probe in S-115 (the `curl --unix-socket /.fly/api …` command is embedded in
+    `lib/aws/credentials.ts` for that probe).
+
 ## Deployment precondition (placeholder)
 
 The panel has no user authentication in v1 (D16). Its only mitigation is that the

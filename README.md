@@ -35,10 +35,11 @@ The project is delivered in two phases:
 ├── docs/                    # Product context, technical guidelines, PRDs, specs, ADRs
 │   ├── product-context.md
 │   ├── technical-guidelines.md
-│   ├── reference/           # Schema DDL, seed, agent_reporter.py, credentials.ts
+│   ├── reference/           # Schema/seed pointer stubs, agent_reporter.py, credentials.ts (MOVED stub → panel/lib/aws)
 │   └── requirements/        # PRDs
 ├── panel/                   # Phase 2 Next.js (App Router) front-end — scaffolded in S-101
 │   ├── app/                 # layout.tsx + page.tsx placeholders (DESIGN §1.2 Inter link)
+│   ├── lib/aws/             # AWS credential provider + InvokeAgentRuntime wrapper (S-111)
 │   ├── tests/               # Vitest unit/component/integration projects
 │   └── README.md            # Panel-specific docs (scripts, conventions, SD2)
 ├── agents/

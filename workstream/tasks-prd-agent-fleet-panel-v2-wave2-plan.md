@@ -96,13 +96,16 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ### AWS credentials (S-111)
 
-- `panel/lib/aws/credentials.ts` — adopted from `docs/reference/credentials.ts` with the three SD9 corrections
-- `panel/lib/aws/invoke.ts` — `InvokeAgentRuntime` wrapper against `runtime_arn` + `runtime_qualifier` (consumed by S-112)
-- `panel/lib/aws/errors.ts` — `FlyOidcShapeError`, `CREDENTIALS_UNAVAILABLE` / `INVOCATION_FAILED` taxonomy (§13)
-- `panel/tests/unit/credentials.test.ts` — branch detection, every rejection shape, cache, single-flight
-- `docs/reference/credentials.ts` — replaced by a pointer link (same treatment as the S-102 SQL stubs)
-- `.env.example` — `AWS_REGION`, `AGENT_RUNTIME_ROLE_ARN` (present) plus any new required var
-- `panel/README.md` — local SSO verification procedure, `credentialSource()` diagnostic
+- `panel/lib/aws/credentials.ts` — adopted from `docs/reference/credentials.ts` with the three SD9 corrections; env var `AGENT_RUNTIME_ROLE_ARN` (was `AWS_ROLE_ARN` in the reference)
+- `panel/lib/aws/invoke.ts` — `InvokeAgentRuntime` wrapper against `runtime_arn` + `runtime_qualifier` (consumed by S-112); logs `credentialSource()` per AC6
+- `panel/lib/aws/errors.ts` — `FlyOidcShapeError`, `CredentialsUnavailableError` (`CREDENTIALS_UNAVAILABLE`/500), `InvocationFailedError` (`INVOCATION_FAILED`/502) taxonomy (§13)
+- `panel/tests/unit/credentials.test.ts` — branch detection, every rejection shape, cache, single-flight, failure modes, no-secrets-in-logs
+- `panel/tests/unit/invoke.test.ts` — `credentialSource()` logged on every invoke, INVOCATION_FAILED mapping, no-payload-in-logs
+- `panel/tests/unit/aws-errors.test.ts` — the 500-vs-502 taxonomy split (AC8)
+- `docs/reference/credentials.ts` — replaced by a MOVED pointer stub (same treatment as the S-102 SQL stubs)
+- `.env.example` — `AWS_REGION`, `AGENT_RUNTIME_ROLE_ARN` (present) with expanded fail-fast/branch commentary
+- `panel/README.md` — AWS credentials conventions: two-branch provider, `credentialSource()` diagnostic, local SSO verification, error taxonomy
+- `panel/package.json` / `pnpm-lock.yaml` — four `@aws-sdk/*` pinned to a shared minor (clients `3.1126.0`, `types` `3.974.5`; single `@smithy/core@3.33.3`)
 
 ## Tasks
 
@@ -213,11 +216,16 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 3.23 Verify Acceptance Criterion: all comments are English and the embedded `curl` probe command is retained
   - [x] 3.24 Verify Acceptance Criterion: `CREDENTIALS_UNAVAILABLE` (500) is defined distinctly from `INVOCATION_FAILED` (502) in the error taxonomy — noting that the taxonomy's *route-level* test lands in S-112 (#125)
   - [x] 3.25 Record the deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128; **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe; and per **G5**, AC6 is assertable here only at the `invoke.ts` boundary — its route-level guarantee, like AC8's taxonomy test, lands with S-112 (#125), so neither is reported as fully complete on this story
+    - Recorded: **AC8 (no static AWS keys)** — code path has no static keys anywhere (Fly OIDC or ambient chain), but the *live* proof needs a Fly Machine probe (S-115 / #128); reported as contract-defined, provider-unverified. **OQ1** (socket response shape, `sub` normalization, `DurationSeconds: 900` vs role `MaxSessionDuration`) stays open until the same probe — `FlyOidcShapeError` naming received keys is the designed-for diagnosis. **G5 / AC6** asserted at the `invoke.ts` boundary here (`credentialSource()` logged on every invoke); the route-level guarantee lands with S-112 (#125). A green unit suite does **not** imply the Fly branch works on first deploy.
   - [x] 3.26 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC5 → `credentials.test.ts`; AC6 → log assertion; AC7 → file review; AC8 → definition here, route-level test in S-112
   - [x] 3.27 Verify no secret material appears in any log output
   - [x] 3.28 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+    - Results: lint PASS, format:check PASS, typecheck PASS, test PASS (panel 275 passed / 19 skipped — Docker-gated `queries`/`rls-deny-all` + opt-in bundle test; 199 unit incl. `credentials`/`invoke`/`aws-errors`), audit PASS (1 moderate `ajv` advisory below the `--audit-level=high` gate — pre-existing). `make validate` exits 0 on both branches (Python 436 passed, panel 275 passed).
   - [x] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
+    - Opt-out rationale: S-111 adds only front-end/server credential + invocation code (`panel/lib/aws/*`) and a dependency pin. No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
   - [ ] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
+    - [x] PR #135 converted draft → ready for review; user notified (completion comment #issuecomment-5542295627)
+    - [ ] Close #124 — pending user review + merge to `main` (merge authority: user)
 
 ## Wave 2 Exit Criteria
 
