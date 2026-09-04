@@ -175,6 +175,41 @@ recorded reason (see `TESTING.md`).
     live probe in S-115 (the `curl --unix-socket /.fly/api …` command is embedded in
     `lib/aws/credentials.ts` for that probe).
 
+- **App shell — hydration-safe collapse persistence (S-106).** The outer frame
+  (`components/shell/{AppShell,Sidebar,TopBar,DisabledNavItem}.tsx`, `/DESIGN.md` §4.1) is a
+  212px/52px collapsible sidebar + a 38px top bar with a breadcrumb slot, wrapping a content
+  region that owns its own scroll (`height:100dvh;overflow:hidden` on the shell; `overflow-y:auto`
+  on the content column — the page never scrolls). `AppShell` is the only `"use client"` piece and
+  owns the collapse state; `app/layout.tsx` wraps `children` in it.
+
+  - **Hydration contract — do not read storage during render.** `localStorage` is not readable on
+    the server, so the shell renders the fixed default (`DEFAULT_COLLAPSED`, expanded) on both the
+    server and the first client render, then reconciles the stored preference in a **mount effect**
+    (after hydration). Reading storage during render (e.g. `useState(() => readStored())`) would
+    reintroduce the exact server/client mismatch the S-106 hydration test asserts against. A standing
+    `console.error` trap in `tests/setup.ts` (opt out per-test with `allowConsoleError`) and
+    `tests/unit/no-suppress-hydration.test.ts` keep this honest.
+  - **Collapse state — closed vocabulary.** `lib/ui/sidebar-state.ts` persists the preference under
+    `SIDEBAR_STORAGE_KEY = "panel.sidebar.collapsed"` as one of two literals (`collapsed`/`expanded`),
+    defaulting to expanded. Every failure mode — absent storage (SSR), a throwing accessor (private
+    mode / quota), or an unrecognized value — returns the default and never throws.
+  - **Keyboard shortcut.** `lib/ui/shortcuts.ts` holds pure `KeyboardEvent` predicates:
+    `isSidebarToggleShortcut` matches `Cmd+\` on macOS / `Ctrl+\` elsewhere (primary modifier only),
+    and `isTypingTarget` suppresses the shortcut while an input/textarea/select/`contenteditable`
+    has focus.
+  - **Deferred nav destinations.** Only Agents is an enabled link. All runs, Repositories, Settings,
+    and System health render as non-link `DisabledNavItem` spans (`aria-disabled`, "not available in
+    this phase", not focusable) per PRD §10 — the deferral is meant to be seen, not clicked.
+  - **Two derived surface tokens.** `styles/tokens.css` defines `--color-sidebar-bg` (92% `--color-bg`
+    over `#000`) and `--color-shell-bg` (88%), so the shell CSS references a token rather than a raw
+    `#000` (the token-discipline gate).
+
+- **SD2 lint scope covers `app/**` (S-106).** The `no-restricted-imports` hint that forbids importing
+  `lib/supabase/server` from a client component now covers `app/**` in addition to `components/**`
+  (the S-104 audit D1 hardening). App Router server entrypoints
+  (`page`/`layout`/`route`/`template`/`default`/`error`/`loading`/`not-found`) are excluded — those
+  read Supabase on purpose (SD2). `import "server-only"` remains the hard build-time guard.
+
 ## Deployment precondition (placeholder)
 
 The panel has no user authentication in v1 (D16). Its only mitigation is that the
