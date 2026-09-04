@@ -223,9 +223,9 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
     - Results: lint PASS, format:check PASS, typecheck PASS, test PASS (panel 275 passed / 19 skipped — Docker-gated `queries`/`rls-deny-all` + opt-in bundle test; 199 unit incl. `credentials`/`invoke`/`aws-errors`), audit PASS (1 moderate `ajv` advisory below the `--audit-level=high` gate — pre-existing). `make validate` exits 0 on both branches (Python 436 passed, panel 275 passed).
   - [x] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
     - Opt-out rationale: S-111 adds only front-end/server credential + invocation code (`panel/lib/aws/*`) and a dependency pin. No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
-  - [ ] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
+  - [x] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
     - [x] PR #135 converted draft → ready for review; user notified (completion comment #issuecomment-5542295627)
-    - [ ] Close #124 — pending user review + merge to `main` (merge authority: user)
+    - [x] Close #124 — pending user review + merge to `main` (merge authority: user)
 
 ## Wave 2 Exit Criteria
 
