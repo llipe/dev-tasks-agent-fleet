@@ -190,8 +190,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: implements **FR11** and **FR11a**, verified by **AC10**. The AC that carries the story is AC4: with the `pg_cron` reaper **paused** and a run past its threshold, the row must display `timed_out`. That is the two-layer design from `technical-guidelines.md` §3 observed from the UI — the view tells immediate truth while the reaper is behind. Filters, search, and pagination are deferred (PRD §10); the toolbar renders without them rather than with dead controls.
 
-  - [ ] 3.1 Confirm task 1.0 is merged; confirm #121 is open; create branch `story/S-108-run-history` from latest `main`
-  - [ ] 3.2 Write the row-shaper unit tests **first**, then `lib/domain/run-row.ts` — duration `Xm XXs`, `running · Xm`, step progress `n/m`, relative start time, outcome fallback `—` at 0.45 opacity, plus header metrics (p50 with even/odd counts, success rate with zero runs); reuse the S-105 `lib/format.ts` formatters rather than reimplementing them
+  - [x] 3.1 Confirm task 1.0 is merged; confirm #121 is open; create branch `story/S-108-run-history` from latest `main`
+  - [x] 3.2 Write the row-shaper unit tests **first**, then `lib/domain/run-row.ts` — duration `Xm XXs`, `running · Xm`, step progress `n/m`, relative start time, outcome fallback `—` at 0.45 opacity, plus header metrics (p50 with even/odd counts, success rate with zero runs); reuse the S-105 `lib/format.ts` formatters rather than reimplementing them
   - [ ] 3.3 First commit; open draft PR against `main` with `Closes #121`
   - [ ] 3.4 Build `app/agents/[slug]/page.tsx` as a server component reading runs-by-agent from `v_runs` newest-first, unfiltered and unpaginated, with **inline** `force-dynamic` (a cached run list is precisely the staleness FR11a exists to prevent)
   - [ ] 3.5 Build `AgentHeader` — breadcrumb, name, description, params count, p50 duration, success rate; compute metrics from the returned rows, and if that proves expensive move them into SQL and **record the change**
