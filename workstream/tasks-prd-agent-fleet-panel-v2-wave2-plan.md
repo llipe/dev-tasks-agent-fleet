@@ -109,7 +109,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-104 ([#117](https://github.com/llipe/dev-tasks-agent-fleet/issues/117)): Server-side data layer and `effectiveStatus` parity
+- [x] 1.0 Implement Story S-104 ([#117](https://github.com/llipe/dev-tasks-agent-fleet/issues/117)): Server-side data layer and `effectiveStatus` parity
 
   > Note: resolves **F2** (SD2) and **F4** (SD4). RLS is deny-all with zero policies, so the browser cannot read Supabase at all — this story establishes that boundary in code before any screen exists. It also lands `effectiveStatus`, the TypeScript mirror of the `v_runs` `case` expression, plus the Layer 2.5 test that pins the two implementations to each other (**SR3**). Read-only story: no migration.
 
@@ -143,11 +143,11 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 1.28 Map acceptance criteria to test evidence and record the mapping in the PR: AC1 → lint-rule test + import failure; AC2 → helper unit/integration tests; AC3 → `status.test.ts`; AC4 → `status-parity.test.ts`; AC5 → `rls-deny-all.test.ts`; AC6 → `bundle-secrets.test.ts`; AC7 → route config assertion
   - [x] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
-  - [ ] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
+  - [x] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
     - [x] PR #132 converted draft → ready for review; user notified (completion comment #issuecomment-5528755881)
-    - [ ] Close #117 — pending user review + merge to `main` (merge authority: user)
+    - [x] Close #117 — PR #132 merged to `main` and issue closed
 
-- [ ] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
+- [x] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
 
   > Note: `/DESIGN.md` §2 defines the token set and §11.2 enumerates the twelve-component inventory the four screens compose from. **SD10** is the trap this story exists to avoid: the four app-level status colors (`--st-ok`, `--st-fail`, `--st-timeout`, plus accent for `running` and muted for `failed_to_start`) are **not** in the Nocturne stylesheet — they are prototype-page-local and must be defined explicitly. Every status pill and dot depends on them. Largest story in the phase (L).
 
@@ -183,9 +183,9 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
     - **Discovered + fixed (harness only, not S-105 behavior):** the pre-existing S-104-layer `tests/integration/reaper.test.ts` was flaky under Vitest parallelism because all Layer 2.5 tests share one Postgres and `reap_stale_runs()` is global. Fixed by running the `integration` project single-threaded (`pool: forks`, `singleFork: true`) in `vitest.config.ts` — no test logic changed (delegated to `housekeeping`).
   - [x] 2.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
     - Opt-out rationale: S-105 adds only front-end presentation (CSS tokens, React primitives, pure formatters, a dev-only gallery route). No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
-  - [ ] 2.28 Mark PR ready for review, notify the user, and close #118 only after the PR is approved and merged
+  - [x] 2.28 Mark PR ready for review, notify the user, and close #118 only after the PR is approved and merged
     - [x] PR #133 converted draft → ready for review; user notified (completion comment)
-    - [ ] Close #118 — pending user review + merge to `main` (merge authority: user)
+    - [x] Close #118 — PR #133 merged to `main` and issue closed
 
 - [ ] 3.0 Implement Story S-111 ([#124](https://github.com/llipe/dev-tasks-agent-fleet/issues/124)): AWS credential provider — Fly OIDC and local chain
 
@@ -229,15 +229,17 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ## Wave 2 Exit Criteria
 
-- [ ] Every Supabase read happens server-side; no `NEXT_PUBLIC_SUPABASE_*` variable exists and no client chunk contains the service role key
-- [ ] `effectiveStatus` is pinned to `v_runs.effective_status` by a passing Layer 2.5 parity test, including exact-boundary rows (**SR3** mitigated)
-- [ ] An anon-key client provably reads zero rows from every table and from `v_runs` (the test that would have caught **F2**)
-- [ ] `/DESIGN.md` §2 exists as tokens, including the four SD10 status colors, and all twelve §11.2 primitives are implemented and tested
-- [ ] Formatters implement `/DESIGN.md` §7; the dev gallery renders every variant for visual comparison against `docs/prototype/`
+Status as of 2026-09-03: S-104 (#117) and S-105 (#118) merged and closed via PR #132 and PR #133. S-111 (#124) is at 29/30 with PR [#135](https://github.com/llipe/dev-tasks-agent-fleet/pull/135) open, so the three credential-provider criteria stay unchecked until it merges.
+
+- [x] Every Supabase read happens server-side; no `NEXT_PUBLIC_SUPABASE_*` variable exists and no client chunk contains the service role key
+- [x] `effectiveStatus` is pinned to `v_runs.effective_status` by a passing Layer 2.5 parity test, including exact-boundary rows (**SR3** mitigated — but see the standing G2 caveat: the test is Docker-gated, and making a skip fail CI is [#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134))
+- [x] An anon-key client provably reads zero rows from every table and from `v_runs` (the test that would have caught **F2**)
+- [x] `/DESIGN.md` §2 exists as tokens, including the four SD10 status colors, and all twelve §11.2 primitives are implemented and tested
+- [x] Formatters implement `/DESIGN.md` §7; the dev gallery renders every variant for visual comparison against `docs/prototype/`
 - [ ] The credential provider has no `aud`/raw-body token fallback and fails with `FlyOidcShapeError` naming what it received (**F5** closed)
 - [ ] The four `@aws-sdk/*` packages are pinned to one shared minor with a single `@smithy/core` in the lockfile
 - [ ] `make validate` green on both branches for all three stories; #117, #118, #124 merged and closed
-- [ ] Wave 3 (S-106 → S-107/S-108/S-109) and Wave 4 (S-112) are unblocked
+- [ ] Wave 3 (S-106 → S-107/S-108/S-109) and Wave 4 (S-112) are unblocked — **Wave 3 is unblocked now** (S-104 + S-105 merged); Wave 4's S-112 waits on #124
 
 ## Deferred to later waves — recorded so it is not mistaken for scope
 
