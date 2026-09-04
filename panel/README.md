@@ -204,11 +204,10 @@ recorded reason (see `TESTING.md`).
     over `#000`) and `--color-shell-bg` (88%), so the shell CSS references a token rather than a raw
     `#000` (the token-discipline gate).
 
-- **SD2 lint scope covers `app/**` (S-106).** The `no-restricted-imports` hint that forbids importing
-  `lib/supabase/server` from a client component now covers `app/**` in addition to `components/**`
-  (the S-104 audit D1 hardening). App Router server entrypoints
-  (`page`/`layout`/`route`/`template`/`default`/`error`/`loading`/`not-found`) are excluded — those
-  read Supabase on purpose (SD2). `import "server-only"` remains the hard build-time guard.
+- **SD2 lint scope covers `app/**`(S-106).** The`no-restricted-imports`hint that forbids importing`lib/supabase/server`from a client component now covers`app/**`in addition to`components/**`
+(the S-104 audit D1 hardening). App Router server entrypoints
+(`page`/`layout`/`route`/`template`/`default`/`error`/`loading`/`not-found`) are excluded — those
+read Supabase on purpose (SD2). `import "server-only"` remains the hard build-time guard.
 
 ## Deployment precondition (placeholder)
 
