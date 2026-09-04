@@ -1,0 +1,126 @@
+/* Dashboard variant 1a — dense rows. /DESIGN.md §4.3 grid + §5.1 fields. */
+.table {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* /DESIGN.md §4.3: grid-template-columns: 26px minmax(0,1fr) 128px 300px 132px 92px */
+.headRow,
+.row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 128px 300px 132px 92px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.headRow {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.statusCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agentCell {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name:hover {
+  color: var(--color-accent-300);
+}
+
+.slug {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--color-accent-400);
+  text-decoration: none;
+}
+
+.slug:hover {
+  color: var(--color-accent-300);
+}
+
+.description {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runsCell {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.breakdownCell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.legend {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lastRunCell {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+}
+
+.lastRunTime {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.muted {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.outcomeTag {
+  text-transform: uppercase;
+}
+
+.actionCell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.invokeLink {
+  text-decoration: none;
+}

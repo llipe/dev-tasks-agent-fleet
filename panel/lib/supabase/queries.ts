@@ -1,5 +1,5 @@
 /**
- * The eight typed read helpers for the panel's server-side data layer (AC2).
+ * The typed read helpers for the panel's server-side data layer (AC2).
  *
  * Every helper takes an explicit `SupabaseClient` (created per request via
  * `createServerClient`) so it is trivially testable against a seeded local
@@ -130,7 +130,93 @@ export async function getRunEvents(
   return collected.sort((a, b) => a.seq - b.seq);
 }
 
-/** 8. `run_artifacts` for a run, newest-first. */
+/**
+ * The minimal per-run projection the dashboard shaper (`lib/domain/dashboard.ts`)
+ * consumes. Selecting only these columns keeps the grouped read light even
+ * when an agent has thousands of runs, and every field the shaper needs to
+ * derive `effective_status` is present (SD4 read-time derivation).
+ */
+export interface DashboardRunRow {
+  agent_id: string;
+  status: VRunRow["status"];
+  started_at: string | null;
+  queued_at: string;
+  finished_at: string | null;
+  created_at: string;
+  max_runtime_seconds: number;
+  grace_seconds: number;
+  start_timeout_seconds: number;
+  outcome: VRunRow["outcome"];
+}
+
+export interface DashboardData {
+  agents: AgentRow[];
+  /** Every run for the enabled agents, `agent_id`-keyed by the shaper. */
+  runs: DashboardRunRow[];
+}
+
+const DASHBOARD_PAGE_SIZE = 1000;
+
+/**
+ * 9. The dashboard read (AC-107.1 / task 2.4).
+ *
+ * **Two reads total, never N+1 (CT-7):** one for the enabled agents, then a
+ * single grouped `v_runs` read for the runs of *all* those agents via
+ * `.in("agent_id", ids)`. The request count does not grow with the number of
+ * agents — 8 agents and 16 agents each cost exactly two reads.
+ *
+ * **Bounded below PostgREST `max_rows`, and the count stays true (CT-8):** the
+ * runs read pages internally with `.range()` in `DASHBOARD_PAGE_SIZE` chunks
+ * (like `getRunEvents`), so an agent with more than 1,000 runs is fully
+ * counted rather than silently truncated at the `max_rows=1000` ceiling. The
+ * shaper computes counts from the returned rows, so a complete read is what
+ * makes `runCount` the true count.
+ *
+ * Runs come from `v_runs`, never the raw table, so the shaper could read
+ * `effective_status` directly; it re-derives from the snapshot instead (via
+ * the shared `effectiveStatus`) so the dashboard and the row screens share one
+ * derivation. Only the lightweight projection above is selected.
+ *
+ * Returns `{ agents: [], runs: [] }` for an empty fleet — never null (EC-19).
+ */
+export async function getDashboardData(client: SupabaseClient): Promise<DashboardData> {
+  const agents = await getEnabledAgents(client);
+  if (agents.length === 0) {
+    return { agents: [], runs: [] };
+  }
+
+  const agentIds = agents.map((a) => a.id);
+  const projection =
+    "agent_id,status,started_at,queued_at,finished_at,created_at," +
+    "max_runtime_seconds,grace_seconds,start_timeout_seconds,outcome";
+
+  const runs: DashboardRunRow[] = [];
+  let offset = 0;
+  // Page until a short page signals the stream is exhausted. Ordered
+  // newest-first so, if a future cap is introduced, it keeps the freshest runs.
+  for (;;) {
+    const result = await client
+      .from("v_runs")
+      .select(projection)
+      .in("agent_id", agentIds)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + DASHBOARD_PAGE_SIZE - 1);
+    // A string projection loses PostgREST's row-type inference; the runtime
+    // shape is DashboardRunRow[]. Cast through the unwrap contract.
+    const page =
+      unwrap<DashboardRunRow[]>(
+        "getDashboardData",
+        result as unknown as { data: DashboardRunRow[] | null; error: unknown },
+      ) ?? [];
+    runs.push(...page);
+    if (page.length < DASHBOARD_PAGE_SIZE) break;
+    offset += page.length;
+  }
+
+  return { agents, runs };
+}
+
+/** 10. `run_artifacts` for a run, newest-first. */
 export async function getRunArtifacts(
   client: SupabaseClient,
   runId: string,
