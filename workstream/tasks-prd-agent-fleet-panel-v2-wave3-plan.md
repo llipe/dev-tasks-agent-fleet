@@ -146,7 +146,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 1.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
   - [ ] 1.28 Mark PR ready for review, notify the user, and close #119 only after the PR is approved and merged
 
-- [ ] 2.0 Implement Story S-107 ([#120](https://github.com/llipe/dev-tasks-agent-fleet/issues/120)): Agents Dashboard with three-variant density toggle
+- [x] 2.0 Implement Story S-107 ([#120](https://github.com/llipe/dev-tasks-agent-fleet/issues/120)): Agents Dashboard with three-variant density toggle
 
   > Note: implements **FR10** and **FR17**/**D17**, verified by **AC9**. Three variants ship because the right default is not knowable before real usage — but they are one query and three presentations, so the toggle must not refetch. The status breakdown is where FR11a is easy to lose: the aggregate must count `effective_status`, not `runs.status`, or a stale `running` run is counted in the wrong bucket while the row above it displays `timed_out`.
 
