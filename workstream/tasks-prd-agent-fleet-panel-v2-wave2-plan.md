@@ -96,13 +96,16 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ### AWS credentials (S-111)
 
-- `panel/lib/aws/credentials.ts` — adopted from `docs/reference/credentials.ts` with the three SD9 corrections
-- `panel/lib/aws/invoke.ts` — `InvokeAgentRuntime` wrapper against `runtime_arn` + `runtime_qualifier` (consumed by S-112)
-- `panel/lib/aws/errors.ts` — `FlyOidcShapeError`, `CREDENTIALS_UNAVAILABLE` / `INVOCATION_FAILED` taxonomy (§13)
-- `panel/tests/unit/credentials.test.ts` — branch detection, every rejection shape, cache, single-flight
-- `docs/reference/credentials.ts` — replaced by a pointer link (same treatment as the S-102 SQL stubs)
-- `.env.example` — `AWS_REGION`, `AGENT_RUNTIME_ROLE_ARN` (present) plus any new required var
-- `panel/README.md` — local SSO verification procedure, `credentialSource()` diagnostic
+- `panel/lib/aws/credentials.ts` — adopted from `docs/reference/credentials.ts` with the three SD9 corrections; env var `AGENT_RUNTIME_ROLE_ARN` (was `AWS_ROLE_ARN` in the reference)
+- `panel/lib/aws/invoke.ts` — `InvokeAgentRuntime` wrapper against `runtime_arn` + `runtime_qualifier` (consumed by S-112); logs `credentialSource()` per AC6
+- `panel/lib/aws/errors.ts` — `FlyOidcShapeError`, `CredentialsUnavailableError` (`CREDENTIALS_UNAVAILABLE`/500), `InvocationFailedError` (`INVOCATION_FAILED`/502) taxonomy (§13)
+- `panel/tests/unit/credentials.test.ts` — branch detection, every rejection shape, cache, single-flight, failure modes, no-secrets-in-logs
+- `panel/tests/unit/invoke.test.ts` — `credentialSource()` logged on every invoke, INVOCATION_FAILED mapping, no-payload-in-logs
+- `panel/tests/unit/aws-errors.test.ts` — the 500-vs-502 taxonomy split (AC8)
+- `docs/reference/credentials.ts` — replaced by a MOVED pointer stub (same treatment as the S-102 SQL stubs)
+- `.env.example` — `AWS_REGION`, `AGENT_RUNTIME_ROLE_ARN` (present) with expanded fail-fast/branch commentary
+- `panel/README.md` — AWS credentials conventions: two-branch provider, `credentialSource()` diagnostic, local SSO verification, error taxonomy
+- `panel/package.json` / `pnpm-lock.yaml` — four `@aws-sdk/*` pinned to a shared minor (clients `3.1126.0`, `types` `3.974.5`; single `@smithy/core@3.33.3`)
 
 ## Tasks
 
@@ -190,33 +193,36 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   - [x] 3.1 Create branch `story/S-111-aws-credential-provider` from latest `main`; confirm #124 is open
   - [x] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types` — **all to the same minor** (spec §16 requirement); record the chosen minor and verify the lockfile holds a single `@smithy/core` version
-  - [ ] 3.3 First commit; open draft PR against `main` with `Closes #124`
-  - [ ] 3.4 Move `docs/reference/credentials.ts` to `panel/lib/aws/credentials.ts`; replace the reference file with a pointer link (same treatment the S-102 SQL stubs received, so the two copies cannot drift)
-  - [ ] 3.5 Add `panel/lib/aws/errors.ts` with `FlyOidcShapeError` and the `CREDENTIALS_UNAVAILABLE` (500) / `INVOCATION_FAILED` (502) taxonomy from spec §13, kept distinct because the runbooks differ (**R6**)
-  - [ ] 3.6 Replace the token-extraction chain: accept `value` or `token` only; any other shape throws `FlyOidcShapeError` naming the keys actually received. Remove the `parsed.aud` fallback and the `data.trim()` raw-body fallback
-  - [ ] 3.7 Retain unchanged: `FLY_APP_NAME` + socket-existence branch detection, the in-memory cache with 60-second refresh margin, the single-flight promise, and the `credentialSource()` diagnostic
-  - [ ] 3.8 Confirm the local branch uses `fromNodeProviderChain()` (SSO profile, shared credentials, or environment variables) with no code change between environments, and that callers receive only a provider — never knowledge of which branch ran
-  - [ ] 3.9 Translate all comments to English; **retain** the embedded `curl` verification command (it is the procedure that closes OQ1 in S-115)
-  - [ ] 3.10 Keep the module free of Next.js imports so it is unit-testable in isolation; never log the token, the STS response, or the assumed-role credentials — log `credentialSource()` and error codes only
-  - [ ] 3.11 Add `panel/lib/aws/invoke.ts` wrapping `InvokeAgentRuntime` against `agents.runtime_arn` + `runtime_qualifier` (consumed by S-112 / #125); log `credentialSource()` on every invoke per AC6
-  - [ ] 3.12 Add any newly required environment variable to `.env.example` with a fail-fast startup check (a missing role ARN must produce a clear startup error, not a runtime auth failure)
-  - [ ] 3.13 Run Tests — unit: `pnpm run test:unit` — branch detection (env set + socket present, env set + socket absent, env absent); token extraction accepting `value`, accepting `token`, rejecting `{aud}`, rejecting a non-JSON body, rejecting `{}`, each with `FlyOidcShapeError` naming the received keys; cache hit within margin; cache miss past margin; single-flight (two concurrent calls → one STS call); STS failure surfacing `CREDENTIALS_UNAVAILABLE`
-  - [ ] 3.14 Run Tests — integration: **none by design** — the real OIDC socket exists only on a Fly Machine (S-115 / #128). Recorded as an explicit non-gap, not an omission
-  - [ ] 3.15 Run Tests — edge cases: socket present but connection refused; socket returns 500; expired-token retry; clock skew inside the refresh margin; missing role ARN env var → clear startup error; **secret material absent from all log output, asserted by capturing logs**
-  - [ ] 3.16 Manual verification: run locally with an SSO profile, confirm `credentialSource()` reports the local branch and that no AWS environment keys are required
-  - [ ] 3.17 Verify Acceptance Criterion: `lib/aws/credentials.ts` exists with `FLY_APP_NAME` + socket-existence branch detection; callers receive a provider and cannot tell which branch ran
-  - [ ] 3.18 Verify Acceptance Criterion: the Fly branch requests an OIDC token from `/.fly/api` with `aud=sts.amazonaws.com` and exchanges it via `AssumeRoleWithWebIdentity`
-  - [ ] 3.19 Verify Acceptance Criterion: token extraction accepts `value` or `token` only; other shapes throw `FlyOidcShapeError` naming received keys; the `aud` and `data.trim()` fallbacks are gone
-  - [ ] 3.20 Verify Acceptance Criterion: the local branch uses `fromNodeProviderChain()` with no code change between environments
-  - [ ] 3.21 Verify Acceptance Criterion: credentials are cached in memory with a 60-second refresh margin and a single-flight promise, so concurrent invokes trigger one STS call
-  - [ ] 3.22 Verify Acceptance Criterion: `credentialSource()` reports the active branch and is logged on every invoke
-  - [ ] 3.23 Verify Acceptance Criterion: all comments are English and the embedded `curl` probe command is retained
-  - [ ] 3.24 Verify Acceptance Criterion: `CREDENTIALS_UNAVAILABLE` (500) is defined distinctly from `INVOCATION_FAILED` (502) in the error taxonomy — noting that the taxonomy's *route-level* test lands in S-112 (#125)
-  - [ ] 3.25 Record the deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128; **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe; and per **G5**, AC6 is assertable here only at the `invoke.ts` boundary — its route-level guarantee, like AC8's taxonomy test, lands with S-112 (#125), so neither is reported as fully complete on this story
-  - [ ] 3.26 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC5 → `credentials.test.ts`; AC6 → log assertion; AC7 → file review; AC8 → definition here, route-level test in S-112
-  - [ ] 3.27 Verify no secret material appears in any log output
-  - [ ] 3.28 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
+  - [x] 3.3 First commit; open draft PR against `main` with `Closes #124`
+  - [x] 3.4 Move `docs/reference/credentials.ts` to `panel/lib/aws/credentials.ts`; replace the reference file with a pointer link (same treatment the S-102 SQL stubs received, so the two copies cannot drift)
+  - [x] 3.5 Add `panel/lib/aws/errors.ts` with `FlyOidcShapeError` and the `CREDENTIALS_UNAVAILABLE` (500) / `INVOCATION_FAILED` (502) taxonomy from spec §13, kept distinct because the runbooks differ (**R6**)
+  - [x] 3.6 Replace the token-extraction chain: accept `value` or `token` only; any other shape throws `FlyOidcShapeError` naming the keys actually received. Remove the `parsed.aud` fallback and the `data.trim()` raw-body fallback
+  - [x] 3.7 Retain unchanged: `FLY_APP_NAME` + socket-existence branch detection, the in-memory cache with 60-second refresh margin, the single-flight promise, and the `credentialSource()` diagnostic
+  - [x] 3.8 Confirm the local branch uses `fromNodeProviderChain()` (SSO profile, shared credentials, or environment variables) with no code change between environments, and that callers receive only a provider — never knowledge of which branch ran
+  - [x] 3.9 Translate all comments to English; **retain** the embedded `curl` verification command (it is the procedure that closes OQ1 in S-115)
+  - [x] 3.10 Keep the module free of Next.js imports so it is unit-testable in isolation; never log the token, the STS response, or the assumed-role credentials — log `credentialSource()` and error codes only
+  - [x] 3.11 Add `panel/lib/aws/invoke.ts` wrapping `InvokeAgentRuntime` against `agents.runtime_arn` + `runtime_qualifier` (consumed by S-112 / #125); log `credentialSource()` on every invoke per AC6
+  - [x] 3.12 Add any newly required environment variable to `.env.example` with a fail-fast startup check (a missing role ARN must produce a clear startup error, not a runtime auth failure)
+  - [x] 3.13 Run Tests — unit: `pnpm run test:unit` — branch detection (env set + socket present, env set + socket absent, env absent); token extraction accepting `value`, accepting `token`, rejecting `{aud}`, rejecting a non-JSON body, rejecting `{}`, each with `FlyOidcShapeError` naming the received keys; cache hit within margin; cache miss past margin; single-flight (two concurrent calls → one STS call); STS failure surfacing `CREDENTIALS_UNAVAILABLE`
+  - [x] 3.14 Run Tests — integration: **none by design** — the real OIDC socket exists only on a Fly Machine (S-115 / #128). Recorded as an explicit non-gap, not an omission
+  - [x] 3.15 Run Tests — edge cases: socket present but connection refused; socket returns 500; expired-token retry; clock skew inside the refresh margin; missing role ARN env var → clear startup error; **secret material absent from all log output, asserted by capturing logs**
+  - [x] 3.16 Manual verification: run locally with an SSO profile, confirm `credentialSource()` reports the local branch and that no AWS environment keys are required
+  - [x] 3.17 Verify Acceptance Criterion: `lib/aws/credentials.ts` exists with `FLY_APP_NAME` + socket-existence branch detection; callers receive a provider and cannot tell which branch ran
+  - [x] 3.18 Verify Acceptance Criterion: the Fly branch requests an OIDC token from `/.fly/api` with `aud=sts.amazonaws.com` and exchanges it via `AssumeRoleWithWebIdentity`
+  - [x] 3.19 Verify Acceptance Criterion: token extraction accepts `value` or `token` only; other shapes throw `FlyOidcShapeError` naming received keys; the `aud` and `data.trim()` fallbacks are gone
+  - [x] 3.20 Verify Acceptance Criterion: the local branch uses `fromNodeProviderChain()` with no code change between environments
+  - [x] 3.21 Verify Acceptance Criterion: credentials are cached in memory with a 60-second refresh margin and a single-flight promise, so concurrent invokes trigger one STS call
+  - [x] 3.22 Verify Acceptance Criterion: `credentialSource()` reports the active branch and is logged on every invoke
+  - [x] 3.23 Verify Acceptance Criterion: all comments are English and the embedded `curl` probe command is retained
+  - [x] 3.24 Verify Acceptance Criterion: `CREDENTIALS_UNAVAILABLE` (500) is defined distinctly from `INVOCATION_FAILED` (502) in the error taxonomy — noting that the taxonomy's *route-level* test lands in S-112 (#125)
+  - [x] 3.25 Record the deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128; **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe; and per **G5**, AC6 is assertable here only at the `invoke.ts` boundary — its route-level guarantee, like AC8's taxonomy test, lands with S-112 (#125), so neither is reported as fully complete on this story
+    - Recorded: **AC8 (no static AWS keys)** — code path has no static keys anywhere (Fly OIDC or ambient chain), but the *live* proof needs a Fly Machine probe (S-115 / #128); reported as contract-defined, provider-unverified. **OQ1** (socket response shape, `sub` normalization, `DurationSeconds: 900` vs role `MaxSessionDuration`) stays open until the same probe — `FlyOidcShapeError` naming received keys is the designed-for diagnosis. **G5 / AC6** asserted at the `invoke.ts` boundary here (`credentialSource()` logged on every invoke); the route-level guarantee lands with S-112 (#125). A green unit suite does **not** imply the Fly branch works on first deploy.
+  - [x] 3.26 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC5 → `credentials.test.ts`; AC6 → log assertion; AC7 → file review; AC8 → definition here, route-level test in S-112
+  - [x] 3.27 Verify no secret material appears in any log output
+  - [x] 3.28 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+    - Results: lint PASS, format:check PASS, typecheck PASS, test PASS (panel 275 passed / 19 skipped — Docker-gated `queries`/`rls-deny-all` + opt-in bundle test; 199 unit incl. `credentials`/`invoke`/`aws-errors`), audit PASS (1 moderate `ajv` advisory below the `--audit-level=high` gate — pre-existing). `make validate` exits 0 on both branches (Python 436 passed, panel 275 passed).
+  - [x] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
+    - Opt-out rationale: S-111 adds only front-end/server credential + invocation code (`panel/lib/aws/*`) and a dependency pin. No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
   - [ ] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
 
 ## Wave 2 Exit Criteria
