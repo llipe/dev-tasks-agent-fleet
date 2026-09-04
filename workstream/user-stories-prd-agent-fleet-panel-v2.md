@@ -6,6 +6,7 @@
 | ------- | ---------- | --------------- | ------------------ |
 | 1.0     | 2026-09-02 | Initial version. Fifteen stories (S-101–S-115) derived from [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.1 and PRD v2.4 Phase 2 scope (FR10–FR18, AC6–AC14). Adds **S-103** — English-only SQL surface — which extends spec F3 beyond `params_schema` labels to the Spanish `run_events.message` / `error_message` text emitted by `reap_stale_runs()` and the stale `start_timeout_seconds` invariant comment in the seed. | product-engineer |
 | 1.1     | 2026-09-03 | Wave 2 write-back pass, companion to spec v1.4. One correction, no scope change: **S-103 AC-3 rescoped to the *effective* SQL surface.** The delivered story translated `supabase/seed.sql` and shipped two forward migrations, but left the Spanish string literals inside the already-applied `20260902200101_initial_schema.sql` baseline in place — a user-approved exception the S-103 audit flagged as drift against the AC's literal "no Spanish remains in … the migrations directory" wording. The intent (no Spanish in what the database executes or the panel renders) was fully met; the wording was stricter than the agreed reality. AC-3 now states the exemption explicitly and requires `grep` evidence scoped to the effective surface, so a future literal-grep audit does not re-flag a corrected-forward baseline as a defect. | product-engineer |
+| 1.2     | 2026-09-04 | Wave 3 pre-implementation pass on **S-107**, resolving test-plan gap **G4** with explicit user decisions. Two changes. (1) **AC-107.7's escape hatch is withdrawn** — the ledger keyboard affordances now ship unconditionally (`Up`/`Down` clamped with roving `tabindex`, `Enter` activating the row's Invoke target, `/` focusing the filter). The old "**or** renders them absent rather than broken" wording made the criterion unfalsifiable: both branches passed a suite that asserted nothing. (2) **A dashboard filter input is added as AC-107.8** — a small scope addition, decided because `/DESIGN.md` §5.1 lists a filter input among the dashboard's common header elements and §6.5 binds `/` to focusing it, so `/` had nothing to focus without it. It is client-side over the already-loaded list (no refetch, no navigation), matches name and slug only, and is deliberately **not** persisted — a remembered filter would hide agents on the next load with no visible cause. Companion decisions recorded in Business Rules and Technical Notes: `/` is bound in all three variants (a deliberate superset of §6.5's ledger-only binding), `Escape` clears then blurs, and the no-match empty state must read differently from "no agents configured". Not a PRD change — FR10 already requires the agent list; this is presentation of it. If you want the filter tracked as its own functional requirement, that would be a PRD FR10a and is not assumed here. | product-engineer |
 
 > **Source documents.** PRD [`docs/requirements/prd-agent-fleet-panel-v2.md`](../docs/requirements/prd-agent-fleet-panel-v2.md) v2.4 (§7 FR10–FR18, §8 D1–D17, §10 Non-Goals, §13 AC6–AC14, §19 F1–F7) · Spec [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.1 (SD1–SD12) · [`/DESIGN.md`](../DESIGN.md) v1.0 (visual contract) · [`TESTING.md`](../TESTING.md) (layer taxonomy, reachability) · [`docs/technical-guidelines.md`](../docs/technical-guidelines.md) v1.10.
 
@@ -558,29 +559,35 @@ Implements **FR10** and **FR17**/**D17**, verified by **AC9**. The three variant
 - [ ] The density selection persists client-side and survives a page reload (AC9).
 - [ ] Displayed run statuses derive from `v_runs.effective_status` (FR11a), including in the aggregate breakdown.
 - [ ] Agent name/slug links to that agent's run history; an "Invoke" action links to the invoke route.
-- [ ] Empty state (no agents, or an agent with zero runs) renders a legible message, not a blank region or `NaN`.
-- [ ] The ledger variant supports its documented keyboard affordances (`Up`/`Down` select, `Enter` run, `/` focus filter) or renders them absent rather than broken.
+- [ ] Empty state (no agents, or an agent with zero runs) renders a legible message, not a blank region or `NaN`. A filter that matches nothing renders a **distinct** message naming the query — "no agents configured" and "nothing matches `foo`" are different situations and must not read the same.
+- [ ] The ledger variant supports its documented keyboard affordances: `Up`/`Down` move the selection (clamped at both ends, roving `tabindex`), `Enter` activates the selected agent's Invoke target, and `/` focuses the filter input. The affordances ship — the earlier "or renders them absent" alternative is withdrawn, because both branches satisfied a test suite that asserted nothing.
+- [ ] The page header renders a filter input in **all three** variants (`/DESIGN.md` §5.1 common elements), filtering the already-loaded agent list client-side by name and slug, case-insensitively. Filtering never refetches and never navigates.
 
 #### Business Rules
 
 - D17 — all three variants ship; default is dense rows; selection is persisted client-side.
 - FR10 — the list is driven by the `agents` table. A new agent row appears with no code change (supports AC7, fully verified in S-113).
 - Time-range filter chips (7d/30d/all) from `/DESIGN.md` §5.1 are presentation of the same query; if the aggregate cost is non-trivial, ship "all" only and record the reduction.
+- The filter is **transient, not persisted.** Density is a layout preference worth remembering; a remembered filter would hide agents on the next load with no visible cause. Clearing the input restores the full list, and so does a reload.
+- The filter matches **name and slug only**, not description. Description matching produces hits with no visible cause in the row that matched.
+- `/` is bound on the dashboard in every variant, which is a deliberate superset of `/DESIGN.md` §6.5's ledger-only binding — the input is a common header element, so restricting the shortcut to one variant would be arbitrary. Like `Cmd+\`, it must not fire while a text input has focus. `Escape` clears the filter, and clears focus when the filter is already empty.
 
 #### Technical Notes
 
 - Aggregate run counts per agent with a single grouped query over `v_runs`, not N+1 per agent.
 - Server-render the data; the toggle is a client component that swaps presentation only — no refetch on variant change.
 - `RunStrip` takes the most recent 24 runs newest-last per `/DESIGN.md` §3.9.
+- Ledger selection uses **roving `tabindex`** rather than `aria-activedescendant` — simpler, and it keeps the selected row genuinely focused so `:focus-visible` and screen-reader announcement both work without extra wiring.
+- `Enter` activates **the same target as the row's Invoke action**, whatever that resolves to. The invoke route lands in S-113, so if the Invoke action renders disabled until then, `Enter` is inert too. One rule, one behavior — the alternative is a keyboard path that reaches a route the mouse path deliberately does not.
 
 #### Testing Requirements
 
-- **Unit Tests:** the aggregation shaper (rows → per-agent summary), including agents with zero runs and mixed statuses.
-- **Component Tests:** each variant renders from one fixture; toggle switches variants without refetch; persisted value selects the variant on mount; disabled agents are excluded.
+- **Unit Tests:** the aggregation shaper (rows → per-agent summary), including agents with zero runs and mixed statuses; the filter predicate (name match, slug match, case-insensitivity, whitespace-only query, no match).
+- **Component Tests:** each variant renders from one fixture; the toggle switches variants without navigating (mock `next/navigation`, assert `push`/`replace`/`refresh` are never called); persisted value selects the variant on mount; disabled agents are excluded; the filter narrows the list in all three variants and clearing it restores the full list.
 - **Integration Tests (2.5):** the dashboard query returns the seeded `dependency-update` agent with correct counts against the local stack.
-- **Manual/UI Testing:** `/` in all three variants at 1024px and 1440px, compared against `docs/prototype/`; reload confirms persistence.
-- **Edge-Case Matrix:** zero agents; agent with zero runs; agent whose last run is `running` (pulse) and one whose last run is `failed_to_start` (hollow dot, muted); a stale `running` run displaying as `timed_out`; very long description (ellipsis in rows, 2-line clamp in cards); 100+ runs (strip caps at 24).
-- **Acceptance-Criteria Mapping:** AC1, AC4 → integration + component tests; AC2, AC3 → variant + persistence tests, plus PRD AC9 manual reload; AC5 → link assertions; AC6 → empty-state test; AC7 → keyboard test.
+- **Manual/UI Testing:** `/` in all three variants at 1024px and 1440px, compared against `docs/prototype/`; reload confirms density persistence and confirms the filter did **not** persist.
+- **Edge-Case Matrix:** zero agents; agent with zero runs; agent whose last run is `running` (pulse) and one whose last run is `failed_to_start` (hollow dot, muted); a stale `running` run displaying as `timed_out`; very long description (ellipsis in rows, 2-line clamp in cards); 100+ runs (strip caps at 24); filter matching nothing (distinct message naming the query); filter containing regex metacharacters (`.*`, `[`, `\`) treated as literal text; `/` pressed while the filter already has focus types a slash instead of re-focusing; `Escape` clears then blurs; ledger `Up`/`Down` at the first and last row (clamped, no wrap, no crash); `Enter` on a selected row with no Invoke target available.
+- **Acceptance-Criteria Mapping:** AC1, AC4 → integration + component tests; AC2, AC3 → variant + persistence tests, plus PRD AC9 manual reload; AC5 → link assertions; AC6 → empty-state tests (both kinds); AC7 → keyboard tests per key plus the hint/behavior coupling guard; AC8 → filter component tests + the no-navigation assertion.
 - **Execution Commands:** `pnpm run test`, `pnpm run test:integration`, `pnpm --filter panel dev`.
 
 #### Implementation Steps
@@ -589,14 +596,16 @@ Implements **FR10** and **FR17**/**D17**, verified by **AC9**. The three variant
 2. Build the dense-rows variant (default) with `StatusBar` and legend.
 3. Build the cards variant with `RunStrip`, then the ledger variant.
 4. Add the density toggle with `localStorage` persistence, defaulting to dense rows.
-5. Add empty states and links to run history and invoke.
-6. Compare all three variants against the prototype.
+5. Add the header filter input (transient, client-side, name + slug) with its no-match empty state, and bind `/` to focus it.
+6. Add the ledger keyboard affordances: roving-`tabindex` selection, `Up`/`Down` clamped, `Enter` activating the row's Invoke target.
+7. Add empty states and links to run history and invoke.
+8. Compare all three variants against the prototype.
 
 #### Files to Create/Modify
 
 - `panel/app/page.tsx`
-- `panel/components/dashboard/{DenseRows,AgentCards,Ledger,DensityToggle}.tsx`
-- `panel/lib/domain/dashboard.ts`
+- `panel/components/dashboard/{DenseRows,AgentCards,Ledger,DensityToggle,AgentFilter}.tsx`
+- `panel/lib/domain/dashboard.ts` (aggregation shaper + filter predicate)
 - `panel/lib/supabase/queries.ts` (dashboard aggregate)
 - `panel/tests/unit/dashboard.test.ts`, `panel/tests/component/dashboard.test.tsx`, `panel/tests/integration/dashboard-query.test.ts`
 

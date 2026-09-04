@@ -187,12 +187,12 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
     - [x] PR #133 converted draft → ready for review; user notified (completion comment)
     - [x] Close #118 — PR #133 merged to `main` and issue closed
 
-- [ ] 3.0 Implement Story S-111 ([#124](https://github.com/llipe/dev-tasks-agent-fleet/issues/124)): AWS credential provider — Fly OIDC and local chain
+- [x] 3.0 Implement Story S-111 ([#124](https://github.com/llipe/dev-tasks-agent-fleet/issues/124)): AWS credential provider — Fly OIDC and local chain
 
   > Note: implements **FR15**/**D12** and resolves **F5** via **SD9**. `docs/reference/credentials.ts:59-62` carries the defect that matters: `parsed.value ?? parsed.token ?? parsed.aud` would send the *audience* string (`sts.amazonaws.com`) to STS as a web identity token, producing a misleading auth error instead of a clear parse failure — and `data.trim()` does the same for unparseable bodies. **SR1** (the real socket response shape is unverified) is precisely why the failure mode must name what it actually received.
 
   - [x] 3.1 Create branch `story/S-111-aws-credential-provider` from latest `main`; confirm #124 is open
-  - [x] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types` — **all to the same minor** (spec §16 requirement); record the chosen minor and verify the lockfile holds a single `@smithy/core` version
+  - [x] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types`. **Invariant corrected post-audit (S-111 drift D1, spec v1.5):** the three *clients* share one minor and the lockfile holds exactly one `@smithy/core` — `@aws-sdk/types` tracks an independent, slower cadence, so "all four to the same minor" (spec §16 as originally worded) is not satisfiable. Record the chosen versions and verify the `@smithy/core` deduplication, which is what the requirement was actually protecting
   - [x] 3.3 First commit; open draft PR against `main` with `Closes #124`
   - [x] 3.4 Move `docs/reference/credentials.ts` to `panel/lib/aws/credentials.ts`; replace the reference file with a pointer link (same treatment the S-102 SQL stubs received, so the two copies cannot drift)
   - [x] 3.5 Add `panel/lib/aws/errors.ts` with `FlyOidcShapeError` and the `CREDENTIALS_UNAVAILABLE` (500) / `INVOCATION_FAILED` (502) taxonomy from spec §13, kept distinct because the runbooks differ (**R6**)
@@ -223,23 +223,25 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
     - Results: lint PASS, format:check PASS, typecheck PASS, test PASS (panel 275 passed / 19 skipped — Docker-gated `queries`/`rls-deny-all` + opt-in bundle test; 199 unit incl. `credentials`/`invoke`/`aws-errors`), audit PASS (1 moderate `ajv` advisory below the `--audit-level=high` gate — pre-existing). `make validate` exits 0 on both branches (Python 436 passed, panel 275 passed).
   - [x] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
     - Opt-out rationale: S-111 adds only front-end/server credential + invocation code (`panel/lib/aws/*`) and a dependency pin. No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
-  - [ ] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
+  - [x] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
     - [x] PR #135 converted draft → ready for review; user notified (completion comment #issuecomment-5542295627)
-    - [ ] Close #124 — pending user review + merge to `main` (merge authority: user)
+    - [x] Close #124 — PR #135 merged to `main` (`609a4a4`) and issue closed
 
 ## Wave 2 Exit Criteria
 
-Status as of 2026-09-03: S-104 (#117) and S-105 (#118) merged and closed via PR #132 and PR #133. S-111 (#124) is at 29/30 with PR [#135](https://github.com/llipe/dev-tasks-agent-fleet/pull/135) open, so the three credential-provider criteria stay unchecked until it merges.
+Status as of 2026-09-04: **Wave 2 is complete.** S-104 (#117), S-105 (#118), and S-111 (#124) are all merged and closed via PR #132, PR #133, and PR #135 (`609a4a4`). All exit criteria are met; the standing caveats below (G2/#134, the S-111 live-probe deferrals) are recorded, owned elsewhere, and do not reopen the wave.
 
 - [x] Every Supabase read happens server-side; no `NEXT_PUBLIC_SUPABASE_*` variable exists and no client chunk contains the service role key
 - [x] `effectiveStatus` is pinned to `v_runs.effective_status` by a passing Layer 2.5 parity test, including exact-boundary rows (**SR3** mitigated — but see the standing G2 caveat: the test is Docker-gated, and making a skip fail CI is [#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134))
 - [x] An anon-key client provably reads zero rows from every table and from `v_runs` (the test that would have caught **F2**)
 - [x] `/DESIGN.md` §2 exists as tokens, including the four SD10 status colors, and all twelve §11.2 primitives are implemented and tested
 - [x] Formatters implement `/DESIGN.md` §7; the dev gallery renders every variant for visual comparison against `docs/prototype/`
-- [ ] The credential provider has no `aud`/raw-body token fallback and fails with `FlyOidcShapeError` naming what it received (**F5** closed)
-- [ ] The four `@aws-sdk/*` packages are pinned to one shared minor with a single `@smithy/core` in the lockfile
-- [ ] `make validate` green on both branches for all three stories; #117, #118, #124 merged and closed
-- [ ] Wave 3 (S-106 → S-107/S-108/S-109) and Wave 4 (S-112) are unblocked — **Wave 3 is unblocked now** (S-104 + S-105 merged); Wave 4's S-112 waits on #124
+- [x] The credential provider has no `aud`/raw-body token fallback and fails with `FlyOidcShapeError` naming what it received (**F5** closed)
+- [x] The three `@aws-sdk/*` clients are pinned to one shared minor (`3.1126.0`) with a single `@smithy/core@3.33.3` in the lockfile; `@aws-sdk/types` is pinned `3.974.5` on its own cadence (invariant corrected — spec v1.5, audit drift D1)
+- [x] `make validate` green on both branches for all three stories; #117, #118, #124 merged and closed
+- [x] Wave 3 (S-106 → S-107/S-108/S-109) and Wave 4 (S-112) are unblocked — both are unblocked now
+
+**Carried out of Wave 2, owned elsewhere:** the live Fly-socket probe closing PRD **AC8** and **OQ1** (S-115 / [#128](https://github.com/llipe/dev-tasks-agent-fleet/issues/128)); the route-level AC-111.6 log assertion and the 500-vs-502 taxonomy test (S-112 / [#125](https://github.com/llipe/dev-tasks-agent-fleet/issues/125)); and making a Layer 2.5 skip fail CI ([#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134)). The three `/DESIGN.md` self-contradictions from the S-105 audit (D1 pill tint, D2 `queued` pulse cadence, D3 compact `14m ago`) are **resolved in `/DESIGN.md` v1.1** — all three in favor of what S-105 shipped, so no code changed.
 
 ## Deferred to later waves — recorded so it is not mistaken for scope
 
