@@ -106,7 +106,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-104 ([#117](https://github.com/llipe/dev-tasks-agent-fleet/issues/117)): Server-side data layer and `effectiveStatus` parity
+- [x] 1.0 Implement Story S-104 ([#117](https://github.com/llipe/dev-tasks-agent-fleet/issues/117)): Server-side data layer and `effectiveStatus` parity
 
   > Note: resolves **F2** (SD2) and **F4** (SD4). RLS is deny-all with zero policies, so the browser cannot read Supabase at all — this story establishes that boundary in code before any screen exists. It also lands `effectiveStatus`, the TypeScript mirror of the `v_runs` `case` expression, plus the Layer 2.5 test that pins the two implementations to each other (**SR3**). Read-only story: no migration.
 
@@ -140,11 +140,11 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 1.28 Map acceptance criteria to test evidence and record the mapping in the PR: AC1 → lint-rule test + import failure; AC2 → helper unit/integration tests; AC3 → `status.test.ts`; AC4 → `status-parity.test.ts`; AC5 → `rls-deny-all.test.ts`; AC6 → `bundle-secrets.test.ts`; AC7 → route config assertion
   - [x] 1.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 1.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change (the panel writes nothing in S-104). Opt-out rationale recorded here and in the issue
-  - [ ] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
+  - [x] 1.31 Mark PR ready for review, notify the user, and close #117 only after the PR is approved and merged
     - [x] PR #132 converted draft → ready for review; user notified (completion comment #issuecomment-5528755881)
-    - [ ] Close #117 — pending user review + merge to `main` (merge authority: user)
+    - [x] Close #117 — PR #132 merged to `main` and issue closed
 
-- [ ] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
+- [x] 2.0 Implement Story S-105 ([#118](https://github.com/llipe/dev-tasks-agent-fleet/issues/118)): Design token layer, Nocturne primitives, and data formatters
 
   > Note: `/DESIGN.md` §2 defines the token set and §11.2 enumerates the twelve-component inventory the four screens compose from. **SD10** is the trap this story exists to avoid: the four app-level status colors (`--st-ok`, `--st-fail`, `--st-timeout`, plus accent for `running` and muted for `failed_to_start`) are **not** in the Nocturne stylesheet — they are prototype-page-local and must be defined explicitly. Every status pill and dot depends on them. Largest story in the phase (L).
 
@@ -180,56 +180,58 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
     - **Discovered + fixed (harness only, not S-105 behavior):** the pre-existing S-104-layer `tests/integration/reaper.test.ts` was flaky under Vitest parallelism because all Layer 2.5 tests share one Postgres and `reap_stale_runs()` is global. Fixed by running the `integration` project single-threaded (`pool: forks`, `singleFork: true`) in `vitest.config.ts` — no test logic changed (delegated to `housekeeping`).
   - [x] 2.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
     - Opt-out rationale: S-105 adds only front-end presentation (CSS tokens, React primitives, pure formatters, a dev-only gallery route). No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
-  - [ ] 2.28 Mark PR ready for review, notify the user, and close #118 only after the PR is approved and merged
+  - [x] 2.28 Mark PR ready for review, notify the user, and close #118 only after the PR is approved and merged
     - [x] PR #133 converted draft → ready for review; user notified (completion comment)
-    - [ ] Close #118 — pending user review + merge to `main` (merge authority: user)
+    - [x] Close #118 — PR #133 merged to `main` and issue closed
 
 - [ ] 3.0 Implement Story S-111 ([#124](https://github.com/llipe/dev-tasks-agent-fleet/issues/124)): AWS credential provider — Fly OIDC and local chain
 
   > Note: implements **FR15**/**D12** and resolves **F5** via **SD9**. `docs/reference/credentials.ts:59-62` carries the defect that matters: `parsed.value ?? parsed.token ?? parsed.aud` would send the *audience* string (`sts.amazonaws.com`) to STS as a web identity token, producing a misleading auth error instead of a clear parse failure — and `data.trim()` does the same for unparseable bodies. **SR1** (the real socket response shape is unverified) is precisely why the failure mode must name what it actually received.
 
-  - [ ] 3.1 Create branch `story/S-111-aws-credential-provider` from latest `main`; confirm #124 is open
-  - [ ] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types` — **all to the same minor** (spec §16 requirement); record the chosen minor and verify the lockfile holds a single `@smithy/core` version
-  - [ ] 3.3 First commit; open draft PR against `main` with `Closes #124`
-  - [ ] 3.4 Move `docs/reference/credentials.ts` to `panel/lib/aws/credentials.ts`; replace the reference file with a pointer link (same treatment the S-102 SQL stubs received, so the two copies cannot drift)
-  - [ ] 3.5 Add `panel/lib/aws/errors.ts` with `FlyOidcShapeError` and the `CREDENTIALS_UNAVAILABLE` (500) / `INVOCATION_FAILED` (502) taxonomy from spec §13, kept distinct because the runbooks differ (**R6**)
-  - [ ] 3.6 Replace the token-extraction chain: accept `value` or `token` only; any other shape throws `FlyOidcShapeError` naming the keys actually received. Remove the `parsed.aud` fallback and the `data.trim()` raw-body fallback
-  - [ ] 3.7 Retain unchanged: `FLY_APP_NAME` + socket-existence branch detection, the in-memory cache with 60-second refresh margin, the single-flight promise, and the `credentialSource()` diagnostic
-  - [ ] 3.8 Confirm the local branch uses `fromNodeProviderChain()` (SSO profile, shared credentials, or environment variables) with no code change between environments, and that callers receive only a provider — never knowledge of which branch ran
-  - [ ] 3.9 Translate all comments to English; **retain** the embedded `curl` verification command (it is the procedure that closes OQ1 in S-115)
-  - [ ] 3.10 Keep the module free of Next.js imports so it is unit-testable in isolation; never log the token, the STS response, or the assumed-role credentials — log `credentialSource()` and error codes only
-  - [ ] 3.11 Add `panel/lib/aws/invoke.ts` wrapping `InvokeAgentRuntime` against `agents.runtime_arn` + `runtime_qualifier` (consumed by S-112 / #125); log `credentialSource()` on every invoke per AC6
-  - [ ] 3.12 Add any newly required environment variable to `.env.example` with a fail-fast startup check (a missing role ARN must produce a clear startup error, not a runtime auth failure)
-  - [ ] 3.13 Run Tests — unit: `pnpm run test:unit` — branch detection (env set + socket present, env set + socket absent, env absent); token extraction accepting `value`, accepting `token`, rejecting `{aud}`, rejecting a non-JSON body, rejecting `{}`, each with `FlyOidcShapeError` naming the received keys; cache hit within margin; cache miss past margin; single-flight (two concurrent calls → one STS call); STS failure surfacing `CREDENTIALS_UNAVAILABLE`
-  - [ ] 3.14 Run Tests — integration: **none by design** — the real OIDC socket exists only on a Fly Machine (S-115 / #128). Recorded as an explicit non-gap, not an omission
-  - [ ] 3.15 Run Tests — edge cases: socket present but connection refused; socket returns 500; expired-token retry; clock skew inside the refresh margin; missing role ARN env var → clear startup error; **secret material absent from all log output, asserted by capturing logs**
-  - [ ] 3.16 Manual verification: run locally with an SSO profile, confirm `credentialSource()` reports the local branch and that no AWS environment keys are required
-  - [ ] 3.17 Verify Acceptance Criterion: `lib/aws/credentials.ts` exists with `FLY_APP_NAME` + socket-existence branch detection; callers receive a provider and cannot tell which branch ran
-  - [ ] 3.18 Verify Acceptance Criterion: the Fly branch requests an OIDC token from `/.fly/api` with `aud=sts.amazonaws.com` and exchanges it via `AssumeRoleWithWebIdentity`
-  - [ ] 3.19 Verify Acceptance Criterion: token extraction accepts `value` or `token` only; other shapes throw `FlyOidcShapeError` naming received keys; the `aud` and `data.trim()` fallbacks are gone
-  - [ ] 3.20 Verify Acceptance Criterion: the local branch uses `fromNodeProviderChain()` with no code change between environments
-  - [ ] 3.21 Verify Acceptance Criterion: credentials are cached in memory with a 60-second refresh margin and a single-flight promise, so concurrent invokes trigger one STS call
-  - [ ] 3.22 Verify Acceptance Criterion: `credentialSource()` reports the active branch and is logged on every invoke
-  - [ ] 3.23 Verify Acceptance Criterion: all comments are English and the embedded `curl` probe command is retained
-  - [ ] 3.24 Verify Acceptance Criterion: `CREDENTIALS_UNAVAILABLE` (500) is defined distinctly from `INVOCATION_FAILED` (502) in the error taxonomy — noting that the taxonomy's *route-level* test lands in S-112 (#125)
-  - [ ] 3.25 Record the deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128; **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe; and per **G5**, AC6 is assertable here only at the `invoke.ts` boundary — its route-level guarantee, like AC8's taxonomy test, lands with S-112 (#125), so neither is reported as fully complete on this story
-  - [ ] 3.26 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC5 → `credentials.test.ts`; AC6 → log assertion; AC7 → file review; AC8 → definition here, route-level test in S-112
-  - [ ] 3.27 Verify no secret material appears in any log output
-  - [ ] 3.28 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
+  - [x] 3.1 Create branch `story/S-111-aws-credential-provider` from latest `main`; confirm #124 is open
+  - [x] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types` — **all to the same minor** (spec §16 requirement); record the chosen minor and verify the lockfile holds a single `@smithy/core` version
+  - [x] 3.3 First commit; open draft PR against `main` with `Closes #124`
+  - [x] 3.4 Move `docs/reference/credentials.ts` to `panel/lib/aws/credentials.ts`; replace the reference file with a pointer link (same treatment the S-102 SQL stubs received, so the two copies cannot drift)
+  - [x] 3.5 Add `panel/lib/aws/errors.ts` with `FlyOidcShapeError` and the `CREDENTIALS_UNAVAILABLE` (500) / `INVOCATION_FAILED` (502) taxonomy from spec §13, kept distinct because the runbooks differ (**R6**)
+  - [x] 3.6 Replace the token-extraction chain: accept `value` or `token` only; any other shape throws `FlyOidcShapeError` naming the keys actually received. Remove the `parsed.aud` fallback and the `data.trim()` raw-body fallback
+  - [x] 3.7 Retain unchanged: `FLY_APP_NAME` + socket-existence branch detection, the in-memory cache with 60-second refresh margin, the single-flight promise, and the `credentialSource()` diagnostic
+  - [x] 3.8 Confirm the local branch uses `fromNodeProviderChain()` (SSO profile, shared credentials, or environment variables) with no code change between environments, and that callers receive only a provider — never knowledge of which branch ran
+  - [x] 3.9 Translate all comments to English; **retain** the embedded `curl` verification command (it is the procedure that closes OQ1 in S-115)
+  - [x] 3.10 Keep the module free of Next.js imports so it is unit-testable in isolation; never log the token, the STS response, or the assumed-role credentials — log `credentialSource()` and error codes only
+  - [x] 3.11 Add `panel/lib/aws/invoke.ts` wrapping `InvokeAgentRuntime` against `agents.runtime_arn` + `runtime_qualifier` (consumed by S-112 / #125); log `credentialSource()` on every invoke per AC6
+  - [x] 3.12 Add any newly required environment variable to `.env.example` with a fail-fast startup check (a missing role ARN must produce a clear startup error, not a runtime auth failure)
+  - [x] 3.13 Run Tests — unit: `pnpm run test:unit` — branch detection (env set + socket present, env set + socket absent, env absent); token extraction accepting `value`, accepting `token`, rejecting `{aud}`, rejecting a non-JSON body, rejecting `{}`, each with `FlyOidcShapeError` naming the received keys; cache hit within margin; cache miss past margin; single-flight (two concurrent calls → one STS call); STS failure surfacing `CREDENTIALS_UNAVAILABLE`
+  - [x] 3.14 Run Tests — integration: **none by design** — the real OIDC socket exists only on a Fly Machine (S-115 / #128). Recorded as an explicit non-gap, not an omission
+  - [x] 3.15 Run Tests — edge cases: socket present but connection refused; socket returns 500; expired-token retry; clock skew inside the refresh margin; missing role ARN env var → clear startup error; **secret material absent from all log output, asserted by capturing logs**
+  - [x] 3.16 Manual verification: run locally with an SSO profile, confirm `credentialSource()` reports the local branch and that no AWS environment keys are required
+  - [x] 3.17 Verify Acceptance Criterion: `lib/aws/credentials.ts` exists with `FLY_APP_NAME` + socket-existence branch detection; callers receive a provider and cannot tell which branch ran
+  - [x] 3.18 Verify Acceptance Criterion: the Fly branch requests an OIDC token from `/.fly/api` with `aud=sts.amazonaws.com` and exchanges it via `AssumeRoleWithWebIdentity`
+  - [x] 3.19 Verify Acceptance Criterion: token extraction accepts `value` or `token` only; other shapes throw `FlyOidcShapeError` naming received keys; the `aud` and `data.trim()` fallbacks are gone
+  - [x] 3.20 Verify Acceptance Criterion: the local branch uses `fromNodeProviderChain()` with no code change between environments
+  - [x] 3.21 Verify Acceptance Criterion: credentials are cached in memory with a 60-second refresh margin and a single-flight promise, so concurrent invokes trigger one STS call
+  - [x] 3.22 Verify Acceptance Criterion: `credentialSource()` reports the active branch and is logged on every invoke
+  - [x] 3.23 Verify Acceptance Criterion: all comments are English and the embedded `curl` probe command is retained
+  - [x] 3.24 Verify Acceptance Criterion: `CREDENTIALS_UNAVAILABLE` (500) is defined distinctly from `INVOCATION_FAILED` (502) in the error taxonomy — noting that the taxonomy's *route-level* test lands in S-112 (#125)
+  - [x] 3.25 Record the deferrals explicitly rather than passing them silently: **PRD AC8** ("no static AWS keys", per the publication report) can only be closed by a live Fly Machine probe in S-115 / #128; **OQ1** (socket response shape, `sub` claim normalization, `DurationSeconds: 900` vs the role's `MaxSessionDuration`) stays open until the same probe; and per **G5**, AC6 is assertable here only at the `invoke.ts` boundary — its route-level guarantee, like AC8's taxonomy test, lands with S-112 (#125), so neither is reported as fully complete on this story
+  - [x] 3.26 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC5 → `credentials.test.ts`; AC6 → log assertion; AC7 → file review; AC8 → definition here, route-level test in S-112
+  - [x] 3.27 Verify no secret material appears in any log output
+  - [x] 3.28 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
   - [ ] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
 
 ## Wave 2 Exit Criteria
 
-- [ ] Every Supabase read happens server-side; no `NEXT_PUBLIC_SUPABASE_*` variable exists and no client chunk contains the service role key
-- [ ] `effectiveStatus` is pinned to `v_runs.effective_status` by a passing Layer 2.5 parity test, including exact-boundary rows (**SR3** mitigated)
-- [ ] An anon-key client provably reads zero rows from every table and from `v_runs` (the test that would have caught **F2**)
-- [ ] `/DESIGN.md` §2 exists as tokens, including the four SD10 status colors, and all twelve §11.2 primitives are implemented and tested
-- [ ] Formatters implement `/DESIGN.md` §7; the dev gallery renders every variant for visual comparison against `docs/prototype/`
+Status as of 2026-09-03: S-104 (#117) and S-105 (#118) merged and closed via PR #132 and PR #133. S-111 (#124) is at 29/30 with PR [#135](https://github.com/llipe/dev-tasks-agent-fleet/pull/135) open, so the three credential-provider criteria stay unchecked until it merges.
+
+- [x] Every Supabase read happens server-side; no `NEXT_PUBLIC_SUPABASE_*` variable exists and no client chunk contains the service role key
+- [x] `effectiveStatus` is pinned to `v_runs.effective_status` by a passing Layer 2.5 parity test, including exact-boundary rows (**SR3** mitigated — but see the standing G2 caveat: the test is Docker-gated, and making a skip fail CI is [#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134))
+- [x] An anon-key client provably reads zero rows from every table and from `v_runs` (the test that would have caught **F2**)
+- [x] `/DESIGN.md` §2 exists as tokens, including the four SD10 status colors, and all twelve §11.2 primitives are implemented and tested
+- [x] Formatters implement `/DESIGN.md` §7; the dev gallery renders every variant for visual comparison against `docs/prototype/`
 - [ ] The credential provider has no `aud`/raw-body token fallback and fails with `FlyOidcShapeError` naming what it received (**F5** closed)
 - [ ] The four `@aws-sdk/*` packages are pinned to one shared minor with a single `@smithy/core` in the lockfile
 - [ ] `make validate` green on both branches for all three stories; #117, #118, #124 merged and closed
-- [ ] Wave 3 (S-106 → S-107/S-108/S-109) and Wave 4 (S-112) are unblocked
+- [ ] Wave 3 (S-106 → S-107/S-108/S-109) and Wave 4 (S-112) are unblocked — **Wave 3 is unblocked now** (S-104 + S-105 merged); Wave 4's S-112 waits on #124
 
 ## Deferred to later waves — recorded so it is not mistaken for scope
 
