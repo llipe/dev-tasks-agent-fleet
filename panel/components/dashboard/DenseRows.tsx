@@ -48,7 +48,9 @@ export function DenseRows({ agents, nowMs, invokeHref }: DenseRowsProps) {
               <Link href={`/agents/${agent.slug}`} className={styles.name}>
                 {agent.name}
               </Link>
-              <span className={styles.slug}>{agent.slug}</span>
+              <Link href={`/agents/${agent.slug}`} className={styles.slug}>
+                {agent.slug}
+              </Link>
               {agent.description != null && (
                 <span className={styles.description}>{agent.description}</span>
               )}

@@ -34,7 +34,9 @@ export function AgentCards({ agents, nowMs, invokeHref }: AgentCardsProps) {
                 <Link href={`/agents/${agent.slug}`} className={styles.name}>
                   {agent.name}
                 </Link>
-                <span className={styles.slug}>{agent.slug}</span>
+                <Link href={`/agents/${agent.slug}`} className={styles.slug}>
+                  {agent.slug}
+                </Link>
               </div>
             </header>
 
