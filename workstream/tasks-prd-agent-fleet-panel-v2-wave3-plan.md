@@ -10,23 +10,35 @@ Wave 3 is **the screens wave**: the shell every route renders inside, and the tw
 | 2.0 | S-107 | [#120](https://github.com/llipe/dev-tasks-agent-fleet/issues/120) | M | Agents Dashboard with three-variant density toggle |
 | 3.0 | S-108 | [#121](https://github.com/llipe/dev-tasks-agent-fleet/issues/121) | M | Agent Run History |
 
-Sources: [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) v1.0 (S-106, S-107, S-108), [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.3 (SD2, SD4, §10, §11, §12, §14), [`/DESIGN.md`](../DESIGN.md) v1.0 (§3.5, §4.1, §4.3, §4.4, §5.1, §5.2, §6, §7, §9).
+Sources: [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) v1.1 (S-106, S-107, S-108), [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) v1.5 (SD2, SD4, §10, §11, §12, §14), [`/DESIGN.md`](../DESIGN.md) v1.0 (§3.5, §4.1, §4.3, §4.4, §5.1, §5.2, §6, §7, §9).
 
-Predecessors: [`tasks-prd-agent-fleet-panel-v2-plan.md`](tasks-prd-agent-fleet-panel-v2-plan.md) (Wave 1 — S-101/S-102/S-103, merged), [`tasks-prd-agent-fleet-panel-v2-wave2-plan.md`](tasks-prd-agent-fleet-panel-v2-wave2-plan.md) (Wave 2 — S-104 merged, S-105 in review, S-111 in progress in parallel).
+Predecessors: [`tasks-prd-agent-fleet-panel-v2-plan.md`](tasks-prd-agent-fleet-panel-v2-plan.md) (Wave 1 — S-101/S-102/S-103, merged and closed), [`tasks-prd-agent-fleet-panel-v2-wave2-plan.md`](tasks-prd-agent-fleet-panel-v2-wave2-plan.md) (Wave 2 — S-104/S-105/S-111, **all merged and closed**; PR #132, #133, #135).
 
 **Project type:** existing codebase. Workspace, gates, token layer, primitives, and the server read boundary all exist. **No Task 0.**
 
 ### Dependency state
 
+**All Wave 3 dependencies are satisfied as of 2026-09-04** — Wave 2 closed in full, so nothing in this wave waits on another wave.
+
 | Story | Depends on | State |
 | ----- | ---------- | ----- |
-| S-106 | S-105 | ⏳ PR [#133](https://github.com/llipe/dev-tasks-agent-fleet/pull/133) ready for review — **must merge before task 1.0 starts** |
-| S-107 | S-104, S-105, S-106 | S-104 ✅ merged (#117); S-105 ⏳; S-106 is task 1.0 |
+| S-106 | S-105 | ✅ merged and closed (#118 / PR [#133](https://github.com/llipe/dev-tasks-agent-fleet/pull/133)) |
+| S-107 | S-104, S-105, S-106 | S-104 ✅ merged (#117); S-105 ✅ merged (#118); S-106 is task 1.0 |
 | S-108 | S-104, S-106 | S-104 ✅ merged (#117); S-106 is task 1.0 |
 
 **S-106 is the wave's serialization point.** Both screens compose inside its layout, so 1.0 completes before 2.0 and 3.0 begin. Once 1.0 merges, **2.0 and 3.0 are independent and may run on parallel branches** — they touch disjoint routes (`app/page.tsx` vs `app/agents/[slug]/page.tsx`) and disjoint domain modules (`lib/domain/dashboard.ts` vs `lib/domain/run-row.ts`). Their only shared file is `lib/supabase/queries.ts`, where each appends one helper; sequence the merges rather than the work if that produces a conflict.
 
-**S-111 (#124) is being executed in parallel and is not a Wave 3 dependency.** No Wave 3 task imports `lib/aws/*`.
+**S-111 (#124) is merged and closed** (PR [#135](https://github.com/llipe/dev-tasks-agent-fleet/pull/135)) and was never a Wave 3 dependency — no Wave 3 task imports `lib/aws/*`. It unblocks Wave 4's S-112.
+
+### `/DESIGN.md` decisions — resolved before this wave started
+
+The S-105 audit ([`fidelity-report-S-105.md`](fidelity-report-S-105.md)) found three `/DESIGN.md` self-contradictions. All three are **resolved in `/DESIGN.md` v1.1** (2026-09-04), each in favor of the single consistent reading — which is also what S-105 already shipped, so no Wave 3 code changes:
+
+| Finding | Contradiction | Resolution |
+| --- | --- | --- |
+| D1 | §3.4 specified a uniform 14% status-pill tint; §8.1 said 16% for `running`/`queued` | **Uniform 14%** everywhere (§3.4 was the authority). Inert for Wave 3 — both screens inherit the shipped pill |
+| D2 | §8.1 gave `queued` a 1.4s pulse; every other pulse is 1.6s | **1.6s everywhere.** Inert for Wave 3 |
+| **D3** | §7.1 defined a compact relative form (`14m ago`) that `lib/format.ts` does not implement | **The compact row is removed from §7.1** — one relative-time form, shared by the run history table and the dashboard "last run". Task 2.10 uses the existing `formatRelative`; **no `formatRelativeCompact`**, and a screen must never format a relative time itself (CT-10). This closes test-plan gap **G1** and unblocks CT-11 |
 
 ### Published GitHub artifacts
 
@@ -34,11 +46,13 @@ Every task checklist below is mirrored into its issue body. GitHub is the source
 
 | Story | Issue | Task checklist | Compliance test plan (Design Mode) |
 | --- | --- | --- | --- |
-| S-106 | https://github.com/llipe/dev-tasks-agent-fleet/issues/119 | in issue body — 28 items (1.1–1.28) | **not yet produced** — `verifier` Design Mode is the required next step |
-| S-107 | https://github.com/llipe/dev-tasks-agent-fleet/issues/120 | in issue body — 31 items (2.1–2.31) | **not yet produced** |
-| S-108 | https://github.com/llipe/dev-tasks-agent-fleet/issues/121 | in issue body — 29 items (3.1–3.29) | **not yet produced** |
+| S-106 | https://github.com/llipe/dev-tasks-agent-fleet/issues/119 | in issue body — 28 items (1.1–1.28) | https://github.com/llipe/dev-tasks-agent-fleet/issues/119#issuecomment-5542767342 |
+| S-107 | https://github.com/llipe/dev-tasks-agent-fleet/issues/120 | in issue body — 31 items (2.1–2.31) | https://github.com/llipe/dev-tasks-agent-fleet/issues/120#issuecomment-5542767664 |
+| S-108 | https://github.com/llipe/dev-tasks-agent-fleet/issues/121 | in issue body — 29 items (3.1–3.29) | https://github.com/llipe/dev-tasks-agent-fleet/issues/121#issuecomment-5542767945 |
 
-Wave 1 and Wave 2 each had their test plan posted as an issue comment before implementation started (`test-plan-wave2-S-104-S-105-S-111.md`). Wave 3 has no equivalent yet — implementation should not start until it exists, per the repository's test-first default.
+Local test-plan artifact: [`test-plan-wave3-S-106-S-107-S-108.md`](test-plan-wave3-S-106-S-107-S-108.md) — 13 contract scenarios, 24 edge cases, all 20 ACs mapped.
+
+**Flagged-gap status.** The test plan raised seven gaps. **G1 is resolved** — `/DESIGN.md` v1.1 removes the compact relative-time row from §7.1, so both screens share `formatRelative` and CT-11 is unblocked. Two still need a decision **before** the story they affect starts: **G3** (a React hydration warning fails no test by default, so S-106's central risk is unassertable until `console.error` is made fatal in the shell tests) and **G4** (AC-107.7's "work or render absent" and AC-107.2's "no refetch" are both unfalsifiable without picking a branch and an instrument). **G5** (AC-108.4's reaper-paused check is manual-only, so it verifies once and then rots — add a stale-row Layer 2.5 test alongside the runbook) is actioned inside task 3.15. **G2** (Layer 2.5 skip-to-green, [#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134)) is inherited and deferred by decision, but it now covers CT-1/CT-7/CT-8, each the only check on a distinct dashboard failure. **G6** (DESIGN conformance is review-only at screen scale) and **G7** (1024px is unverifiable in jsdom → manual now, Playwright in S-114) are recorded, low-cost mitigations noted in the plan.
 
 ### Execution rules
 
@@ -51,6 +65,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 - **`effectiveStatus` is the only status source.** Both screens display derived status (FR11a). Neither may read `runs.status` directly, and neither may re-implement the derivation — they import `lib/domain/status.ts`. This closes test-plan gap **G6** (derived status reaching `StatusPill`), which Wave 2 could not prove because no screen existed.
 - **The SD2 lint rule is scoped to `components/**`.** This wave introduces the first client components under `app/**`, so the optional hardening from the S-104 audit (D1) is actioned inline in task 1.13. `import "server-only"` remains the hard guard either way.
 - **No migrations in this wave.** All three stories are read-only. Each records an explicit migration opt-out rationale (plan activity rule 8).
+- **Where the test-plan gaps land, without renumbering.** The checklists mirrored into #119/#120/#121 are unchanged (28/31/29 items), because every actionable recommendation fits inside an existing task: **G3** (make a hydration warning fail a test — spy on `console.error` in the shell setup) inside task **1.16**, whose "no hydration warning in the console" item is otherwise unassertable; **G4** (pick the AC-107.7 branch, and choose the no-refetch instrument) inside tasks **2.13** and **2.16**; **G5** (a stale-row Layer 2.5 test alongside the manual reaper-paused runbook) inside task **3.15**; **G6** (assert the exact `grid-template-columns` strings) inside tasks **2.6** and **3.6**. **G1** is the one gap that is not a task — it is a `/DESIGN.md` decision that must be made before task 2.0 starts.
 
 ## Relevant Files
 
@@ -93,7 +108,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: `/DESIGN.md` §4.1 is the layout contract. The trap is hydration: collapse state lives in `localStorage`, which the server cannot read, so the shell must render a server default and reconcile after mount rather than reading storage during render. PRD §10 defers four nav destinations — they render **disabled**, not as links, so the deferral is visible instead of a dead click.
 
-  - [ ] 1.1 Confirm S-105 (#118 / PR #133) is merged to `main`; confirm #119 is open; create branch `story/S-106-app-shell` from latest `main`
+  - [ ] 1.1 Confirm #119 is open; create branch `story/S-106-app-shell` from latest `main` (S-105 dependency satisfied — #118 / PR #133 merged `2026-09-03`)
   - [ ] 1.2 Write the unit tests **first** (test-first) for `lib/ui/shortcuts.ts` (`Cmd+\` on macOS, `Ctrl+\` elsewhere) and `lib/ui/sidebar-state.ts` (read/write, corrupt value, storage unavailable), then implement both
   - [ ] 1.3 First commit; open draft PR against `main` with `Closes #119`
   - [ ] 1.4 Build the shell grid in `app/layout.tsx` with token-driven dimensions: 212px sidebar (52px collapsed) with `width 0.14s ease`, 38px top bar, content region `flex:1; overflow-y:auto`, page `100dvh` with no outer scroll; sidebar background `color-mix(in srgb, var(--color-bg) 92%, #000)`, body 88%
@@ -135,7 +150,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [ ] 2.7 Build the cards variant (1b): 2-column grid, `gap: 14px`, 24-bar `RunStrip` newest-last, 2-line description clamp
   - [ ] 2.8 Build the ledger variant (1c): maximum density, keyboard-first
   - [ ] 2.9 Add `DensityToggle` as a client component persisting the selection in `localStorage`, defaulting to dense rows; **switching variants must not refetch** — presentation swap only
-  - [ ] 2.10 Render per-agent status dot, name, slug (mono, accent-400), description, run count, status breakdown, last-run time + outcome tag
+  - [ ] 2.10 Render per-agent status dot, name, slug (mono, accent-400), description, run count, status breakdown, last-run time + outcome tag. Relative time comes from the existing `formatRelative` — `/DESIGN.md` v1.1 removed the compact `14m ago` form, so there is **one** relative-time form and no `formatRelativeCompact` (test-plan G1 resolved; CT-10 forbids the screen formatting its own)
   - [ ] 2.11 Link agent name/slug to `/agents/[slug]`; add an "Invoke" action linking to the invoke route (the route itself lands in S-113 — link now, it must not 500 before then; render it disabled if the route does not yet exist)
   - [ ] 2.12 Add empty states: zero agents, and an agent with zero runs — a legible message, never a blank region or `NaN`
   - [ ] 2.13 Implement the ledger keyboard affordances (`Up`/`Down` select, `Enter` run, `/` focus filter) **or** render them absent rather than broken; record which was chosen

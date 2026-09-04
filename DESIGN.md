@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                         | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-08-26 | Initial version. Extracted from high-fidelity prototype at `/docs/prototype/` (Nocturne DS). Documents design system, tokens, component inventory, layout architecture, screen specifications, interaction patterns, and formatting conventions. | product-engineer |
+| 1.1     | 2026-09-04 | Resolved the three self-contradictions the S-105 audit found in this document ([`workstream/fidelity-report-S-105.md`](workstream/fidelity-report-S-105.md) drift D1–D3), each in favor of the single consistent reading. **D1 — status-pill tint is a uniform 14%** for every status; §8.1 previously gave `running`/`queued` 16% while §3.4 specified 14% for all, with no rationale for the exception. **D2 — pulse cadence is 1.6s everywhere**, including `queued`, which §8.1 alone put at 1.4s. **D3 — §7.1 now defines one relative-time form, not two**; the "Dashboard last run — short relative" row (`14m ago`) is removed, so the run history table and the dashboard share `formatRelative`, and a screen never formats a relative time itself. All three now match the implementation shipped in S-105, so no code changes: this is the document catching up to a codebase that had already resolved the ambiguity the only way it could. Decided before Wave 3 started, because D3 was S-107 scope. | product-engineer |
 
 ---
 
@@ -521,8 +522,9 @@ Never use browser default focus ring.
 |---------|--------|---------|
 | Log viewer | `HH:MM:SS` (24h, monospace) | `14:02:13` |
 | Run metadata | `HH:MM:SS` (24h, monospace) | `14:02:07` |
-| Run history table | Relative time | `2 min ago`, `14m ago`, `yesterday` |
-| Dashboard last run | Short relative | `14m ago`, `6h ago`, `23d ago` |
+| Relative time — **one form**, used by both the run history table and the dashboard "last run" | `just now` under a minute, `N min ago` under an hour, `Nh ago` under a day, `yesterday` at one day, `Nd ago` beyond | `just now`, `14 min ago`, `6h ago`, `yesterday`, `23d ago` |
+
+**There is one relative-time form, not two** (v1.1 correction). Earlier revisions listed a separate "Dashboard last run — short relative" row with a compact `14m ago`, which produced two forms for the same value and was never implemented. The single form above is what `panel/lib/format.ts` `formatRelative` emits, and both screens use it. If a compact form is ever wanted, it belongs here first as a second named formatter — a screen must never format a relative time itself.
 
 ### 7.2 Durations
 
@@ -573,12 +575,14 @@ Never use browser default focus ring.
 
 | Status | Color | Dot | Animation | Pill BG |
 |--------|-------|-----|-----------|---------|
-| `running` | `var(--color-accent)` | 7px solid + `box-shadow: 0 0 7px` | `pulse 1.6s` | 16% accent |
+| `running` | `var(--color-accent)` | 7px solid + `box-shadow: 0 0 7px` | `pulse 1.6s` | 14% accent |
 | `succeeded` | `var(--st-ok)` | 7px solid | none | 14% green |
 | `failed` | `var(--st-fail)` | 7px solid | none | 14% red |
 | `timed_out` | `var(--st-timeout)` | 7px solid | none | 14% amber |
 | `failed_to_start` | `var(--faint)` | 7px hollow (border only) | none | `var(--rule)` |
-| `queued` | `var(--color-accent)` | pulsing | `pulse 1.4s` | 16% accent |
+| `queued` | `var(--color-accent)` | pulsing | `pulse 1.6s` | 14% accent |
+
+**Pill tint is a uniform 14% for every status** (v1.1 correction). Earlier revisions of this table gave `running` and `queued` 16% while §3.4 specified 14% for all — a self-contradiction inside this document, with no visual rationale for the exception. §3.4 is the authority; 14% applies everywhere. **Pulse cadence is 1.6s everywhere**, including `queued` (was 1.4s here, matching nothing else in the document). Both corrections align this table with the implementation shipped in S-105.
 
 ### 8.2 Outcome Tags
 
