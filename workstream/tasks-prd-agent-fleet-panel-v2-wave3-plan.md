@@ -184,7 +184,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 2.28 Record `/DESIGN.md` §5.1 conformance notes for all three variants in the PR
   - [x] 2.29 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 2.30 Migration lifecycle: **not applicable** — read-only story, no schema or data-model change. Opt-out rationale recorded here and in the issue
-  - [ ] 2.31 Mark PR ready for review, notify the user, and close #120 only after the PR is approved and merged
+  - [x] 2.31 Mark PR ready for review, notify the user, and close #120 only after the PR is approved and merged
 
 - [ ] 3.0 Implement Story S-108 ([#121](https://github.com/llipe/dev-tasks-agent-fleet/issues/121)): Agent Run History
 
