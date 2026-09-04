@@ -1,0 +1,13 @@
+/*
+ * Deferred nav destination — visibly disabled, not a link. Muted per the
+ * §2.5 --faint alias, non-interactive (no pointer, no hover response), and
+ * left off the tab order by being a <span> rather than an <a>.
+ */
+.disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.disabled:hover {
+  background: transparent;
+}

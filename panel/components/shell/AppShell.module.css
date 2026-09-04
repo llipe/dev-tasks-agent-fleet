@@ -1,0 +1,24 @@
+/*
+ * App-shell frame — /DESIGN.md §4.1.
+ * Full viewport height, no outer scroll; the content region owns its scroll.
+ */
+.shell {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  background: var(--color-shell-bg);
+}
+
+/* The content column: fixed top bar + scrolling content below it. */
+.column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

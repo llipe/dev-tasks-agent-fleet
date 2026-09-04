@@ -1,0 +1,25 @@
+/* Top bar — /DESIGN.md §4.1: 38px, bottom rule, horizontal padding 14px. */
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px;
+  height: 38px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}

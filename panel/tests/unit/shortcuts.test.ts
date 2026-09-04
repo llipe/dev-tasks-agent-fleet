@@ -61,7 +61,7 @@ describe("isTypingTarget — a shortcut must not fire while the user is typing",
     if ("isContentEditable" in attrs) {
       node.isContentEditable = attrs.isContentEditable === "true";
     }
-    return node as EventTarget;
+    return node as unknown as EventTarget;
   }
 
   it("is true for INPUT, TEXTAREA, SELECT", () => {

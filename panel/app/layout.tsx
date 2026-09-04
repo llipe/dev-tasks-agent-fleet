@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { AppShell } from "@/components/shell/AppShell";
+
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 
@@ -27,7 +29,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

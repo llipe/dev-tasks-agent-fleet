@@ -1,8 +1,10 @@
+import styles from "./page.module.css";
+
 export default function HomePage() {
   return (
-    <main>
-      <h1>Agent Fleet Control Panel</h1>
-      <p>Phase 2 panel scaffold. Screens land in later stories.</p>
-    </main>
+    <div className={styles.placeholder}>
+      <h1 className={styles.title}>Agents</h1>
+      <p className={styles.note}>The agents dashboard lands in S-107.</p>
+    </div>
   );
 }
