@@ -48,6 +48,18 @@ importers:
 
   panel:
     dependencies:
+      '@aws-sdk/client-bedrock-agentcore':
+        specifier: 3.1126.0
+        version: 3.1126.0
+      '@aws-sdk/client-sts':
+        specifier: 3.1126.0
+        version: 3.1126.0
+      '@aws-sdk/credential-providers':
+        specifier: 3.1126.0
+        version: 3.1126.0
+      '@aws-sdk/types':
+        specifier: 3.974.5
+        version: 3.974.5
       '@phosphor-icons/react':
         specifier: 2.1.10
         version: 2.1.10(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -153,8 +165,16 @@ packages:
       - jsonschema
       - semver
 
+  '@aws-sdk/client-bedrock-agentcore@3.1126.0':
+    resolution: {integrity: sha512-k5iix2jfIr3xNdthLERZdFv1m5dRv3e5KkDNylx8LE9FJC1wwImC8lPyuqRBA+pBgQhWH3ixJiQwUcyDij+ueQ==}
+    engines: {node: '>=20.0.0'}
+
   '@aws-sdk/client-sts@3.1124.0':
     resolution: {integrity: sha512-BXfCHbdwhSbVWQ3pFtHSheHjpiLnSdmKtmgLSrUJ4W6r9wWnGMpy6jhTnWuTaqEyNbT43jhW/4Jzws52OS7yww==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-sts@3.1126.0':
+    resolution: {integrity: sha512-5h0Ro+RIToYQbjL/yfMDH8pGTwOEuzXuTKM3punYhpvf3WXyApg9j7DsACw3+Q5qDfG0VQjef2qCi+SgmVz0wg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.977.9':
@@ -199,6 +219,10 @@ packages:
 
   '@aws-sdk/credential-providers@3.1124.0':
     resolution: {integrity: sha512-W7KdAgg8zQ3QoBuOZJM1JR5Sxj1CIxwU/hqpdvIx284bP1iEfITGzXpOCWzV3gI1oji9usDew/AMBpYYI+/7nQ==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/credential-providers@3.1126.0':
+    resolution: {integrity: sha512-OWu4fqH48e6yUceFs1r0fgC88gpuD/MaFggKoRXXTrjT2VicQQSO9tqlCWd2qmQNAXbwfV8/HGeRm6l9P4FSRA==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/nested-clients@3.997.44':
@@ -1307,6 +1331,7 @@ packages:
   '@smithy/node-http-handler@4.12.0':
     resolution: {integrity: sha512-0mq1pHadfyXCYCqm2cNpbjNIT+fbaUpNxewZb/YNr2L0IrEVMOb8gM/Fl4K6XvHCW3uSNDFwPl/+iKm0bx9jYg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Depreacted due to a memory leak issue https://github.com/smithy-lang/smithy-typescript/issues/2258
 
   '@smithy/shared-ini-file-loader@4.7.2':
     resolution: {integrity: sha512-XsIDj5gVG4YRxGS4n4TiBDAogPWRHXKZyor6JW/sEuaa/7BvKADe9j45jI2dPYCnYbKkLBmbZ4qN9ns0sH+kMQ==}
@@ -4039,7 +4064,30 @@ snapshots:
 
   '@aws-cdk/cloud-assembly-schema@54.21.0': {}
 
+  '@aws-sdk/client-bedrock-agentcore@3.1126.0':
+    dependencies:
+      '@aws-sdk/core': 3.977.9
+      '@aws-sdk/credential-provider-node': 3.972.82
+      '@aws-sdk/types': 3.974.5
+      '@smithy/core': 3.33.3
+      '@smithy/fetch-http-handler': 5.7.2
+      '@smithy/node-http-handler': 4.12.0
+      '@smithy/types': 4.17.2
+      tslib: 2.8.1
+
   '@aws-sdk/client-sts@3.1124.0':
+    dependencies:
+      '@aws-sdk/core': 3.977.9
+      '@aws-sdk/credential-provider-node': 3.972.82
+      '@aws-sdk/signature-v4-multi-region': 3.996.46
+      '@aws-sdk/types': 3.974.5
+      '@smithy/core': 3.33.3
+      '@smithy/fetch-http-handler': 5.7.2
+      '@smithy/node-http-handler': 4.12.0
+      '@smithy/types': 4.17.2
+      tslib: 2.8.1
+
+  '@aws-sdk/client-sts@3.1126.0':
     dependencies:
       '@aws-sdk/core': 3.977.9
       '@aws-sdk/credential-provider-node': 3.972.82
@@ -4155,6 +4203,25 @@ snapshots:
       tslib: 2.8.1
 
   '@aws-sdk/credential-providers@3.1124.0':
+    dependencies:
+      '@aws-sdk/core': 3.977.9
+      '@aws-sdk/credential-provider-cognito-identity': 3.972.69
+      '@aws-sdk/credential-provider-env': 3.972.70
+      '@aws-sdk/credential-provider-http': 3.972.72
+      '@aws-sdk/credential-provider-ini': 3.973.15
+      '@aws-sdk/credential-provider-login': 3.972.77
+      '@aws-sdk/credential-provider-node': 3.972.82
+      '@aws-sdk/credential-provider-process': 3.972.70
+      '@aws-sdk/credential-provider-sso': 3.973.14
+      '@aws-sdk/credential-provider-web-identity': 3.972.76
+      '@aws-sdk/nested-clients': 3.997.44
+      '@aws-sdk/types': 3.974.5
+      '@smithy/core': 3.33.3
+      '@smithy/credential-provider-imds': 4.5.2
+      '@smithy/types': 4.17.2
+      tslib: 2.8.1
+
+  '@aws-sdk/credential-providers@3.1126.0':
     dependencies:
       '@aws-sdk/core': 3.977.9
       '@aws-sdk/credential-provider-cognito-identity': 3.972.69

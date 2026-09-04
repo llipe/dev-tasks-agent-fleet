@@ -188,8 +188,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: implements **FR15**/**D12** and resolves **F5** via **SD9**. `docs/reference/credentials.ts:59-62` carries the defect that matters: `parsed.value ?? parsed.token ?? parsed.aud` would send the *audience* string (`sts.amazonaws.com`) to STS as a web identity token, producing a misleading auth error instead of a clear parse failure — and `data.trim()` does the same for unparseable bodies. **SR1** (the real socket response shape is unverified) is precisely why the failure mode must name what it actually received.
 
-  - [ ] 3.1 Create branch `story/S-111-aws-credential-provider` from latest `main`; confirm #124 is open
-  - [ ] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types` — **all to the same minor** (spec §16 requirement); record the chosen minor and verify the lockfile holds a single `@smithy/core` version
+  - [x] 3.1 Create branch `story/S-111-aws-credential-provider` from latest `main`; confirm #124 is open
+  - [x] 3.2 Re-confirm and pin the four `@aws-sdk/*` packages — `client-sts`, `client-bedrock-agentcore`, `credential-providers`, `types` — **all to the same minor** (spec §16 requirement); record the chosen minor and verify the lockfile holds a single `@smithy/core` version
   - [ ] 3.3 First commit; open draft PR against `main` with `Closes #124`
   - [ ] 3.4 Move `docs/reference/credentials.ts` to `panel/lib/aws/credentials.ts`; replace the reference file with a pointer link (same treatment the S-102 SQL stubs received, so the two copies cannot drift)
   - [ ] 3.5 Add `panel/lib/aws/errors.ts` with `FlyOidcShapeError` and the `CREDENTIALS_UNAVAILABLE` (500) / `INVOCATION_FAILED` (502) taxonomy from spec §13, kept distinct because the runbooks differ (**R6**)
