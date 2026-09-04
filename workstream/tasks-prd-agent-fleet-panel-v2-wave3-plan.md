@@ -150,9 +150,9 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: implements **FR10** and **FR17**/**D17**, verified by **AC9**. Three variants ship because the right default is not knowable before real usage — but they are one query and three presentations, so the toggle must not refetch. The status breakdown is where FR11a is easy to lose: the aggregate must count `effective_status`, not `runs.status`, or a stale `running` run is counted in the wrong bucket while the row above it displays `timed_out`.
 
-  - [ ] 2.1 Confirm task 1.0 is merged; confirm #120 is open; create branch `story/S-107-agents-dashboard` from latest `main`
-  - [ ] 2.2 Write the aggregation-shaper unit tests **first**, then `lib/domain/dashboard.ts` — rows → per-agent summary (run count, status breakdown, last-run time + outcome), deriving every status through `effectiveStatus`
-  - [ ] 2.3 First commit; open draft PR against `main` with `Closes #120`
+  - [x] 2.1 Confirm task 1.0 is merged; confirm #120 is open; create branch `story/S-107-agents-dashboard` from latest `main`
+  - [x] 2.2 Write the aggregation-shaper unit tests **first**, then `lib/domain/dashboard.ts` — rows → per-agent summary (run count, status breakdown, last-run time + outcome), deriving every status through `effectiveStatus`
+  - [x] 2.3 First commit; open draft PR against `main` with `Closes #120`
   - [ ] 2.4 Add the dashboard aggregate helper to `lib/supabase/queries.ts` — a **single grouped query** over `v_runs`, never N+1 per agent; enabled agents only
   - [ ] 2.5 Build `app/page.tsx` as a server component with **inline** `force-dynamic`/`revalidate = 0`/`fetchCache` (re-exported segment config is silently ignored)
   - [ ] 2.6 Build the dense-rows variant (1a, default) with `StatusBar` + legend on the `/DESIGN.md` §4.3 grid (`26px minmax(0,1fr) 128px 300px 132px 92px`)
