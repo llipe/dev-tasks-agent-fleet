@@ -153,7 +153,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 2.1 Confirm task 1.0 is merged; confirm #120 is open; create branch `story/S-107-agents-dashboard` from latest `main`
   - [x] 2.2 Write the aggregation-shaper unit tests **first**, then `lib/domain/dashboard.ts` — rows → per-agent summary (run count, status breakdown, last-run time + outcome), deriving every status through `effectiveStatus`
   - [x] 2.3 First commit; open draft PR against `main` with `Closes #120`
-  - [ ] 2.4 Add the dashboard aggregate helper to `lib/supabase/queries.ts` — a **single grouped query** over `v_runs`, never N+1 per agent; enabled agents only
+  - [x] 2.4 Add the dashboard aggregate helper to `lib/supabase/queries.ts` — a **single grouped query** over `v_runs`, never N+1 per agent; enabled agents only
   - [ ] 2.5 Build `app/page.tsx` as a server component with **inline** `force-dynamic`/`revalidate = 0`/`fetchCache` (re-exported segment config is silently ignored)
   - [ ] 2.6 Build the dense-rows variant (1a, default) with `StatusBar` + legend on the `/DESIGN.md` §4.3 grid (`26px minmax(0,1fr) 128px 300px 132px 92px`)
   - [ ] 2.7 Build the cards variant (1b): 2-column grid, `gap: 14px`, 24-bar `RunStrip` newest-last, 2-line description clamp
