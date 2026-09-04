@@ -114,36 +114,36 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: `/DESIGN.md` §4.1 is the layout contract. The trap is hydration: collapse state lives in `localStorage`, which the server cannot read, so the shell must render a server default and reconcile after mount rather than reading storage during render. PRD §10 defers four nav destinations — they render **disabled**, not as links, so the deferral is visible instead of a dead click.
 
-  - [ ] 1.1 Confirm #119 is open; create branch `story/S-106-app-shell` from latest `main` (S-105 dependency satisfied — #118 / PR #133 merged `2026-09-03`)
-  - [ ] 1.2 Write the unit tests **first** (test-first) for `lib/ui/shortcuts.ts` (`Cmd+\` on macOS, `Ctrl+\` elsewhere) and `lib/ui/sidebar-state.ts` (read/write, corrupt value, storage unavailable), then implement both
-  - [ ] 1.3 First commit; open draft PR against `main` with `Closes #119`
-  - [ ] 1.4 Build the shell grid in `app/layout.tsx` with token-driven dimensions: 212px sidebar (52px collapsed) with `width 0.14s ease`, 38px top bar, content region `flex:1; overflow-y:auto`, page `100dvh` with no outer scroll; sidebar background `color-mix(in srgb, var(--color-bg) 92%, #000)`, body 88%
-  - [ ] 1.5 Add `components/Sidebar.tsx` as a client component composing the S-105 `NavItem` primitive, with active-route detection from `usePathname()`
-  - [ ] 1.6 Render the four deferred destinations (All runs, Repositories, Settings, System health) as **disabled non-links** with an accessible "not available in this phase" affordance; they must not be focus traps
-  - [ ] 1.7 Wire the collapse store: server renders the default expanded shell, the client reconciles from `localStorage` after mount (no storage read during render — a hydration mismatch here is a real defect, not a warning to silence)
-  - [ ] 1.8 Add the `Cmd+\` / `Ctrl+\` handler and confirm it does not fire inside text inputs
-  - [ ] 1.9 Add `components/TopBar.tsx` with a breadcrumb slot the Wave 3 screens fill
-  - [ ] 1.10 Mark the sidebar as `<nav>` with an accessible label; verify focus visibility per `/DESIGN.md` §6.4 (2px accent outline, 2px offset, default rings suppressed)
-  - [ ] 1.11 Verify the layout holds at 1024px minimum width with no horizontal scroll (`/DESIGN.md` §9)
-  - [ ] 1.12 Confirm nav items match `/DESIGN.md` §3.5 — active state (12% accent tint + 2px accent left border) and hover tint
-  - [ ] 1.13 Extend the SD2 ESLint restricted-import glob to cover `app/**` client components (S-104 audit D1) and confirm `tests/unit/eslint-server-import.test.ts` still proves the rule fires; `import "server-only"` remains the hard guard
-  - [ ] 1.14 Run Tests — unit: `pnpm run test:unit` — shortcut matcher across platforms; persistence helper round-trip
-  - [ ] 1.15 Run Tests — component: `pnpm run test` — collapse toggles the width class; state restored from a seeded `localStorage`; disabled items render non-interactive; active item derives from the current route
-  - [ ] 1.16 Run Tests — edge cases: `localStorage` unavailable or throwing (private mode) → default expanded, no crash; corrupted stored value → default; rapid double toggle
-  - [ ] 1.16a Build the hydration instrument (**test-plan G3** — the gap's fix, not a nice-to-have): add `tests/helpers/hydrate.tsx` exposing `renderHydrated(element)` — `renderToString` into a container, then `hydrateRoot` with an `onRecoverableError` collector, wrapped in `act`. RTL's `render()` never hydrates, so **no existing test can observe a hydration mismatch**; a `console.error` spy alone would be a test that cannot fail. Set `globalThis.IS_REACT_ACT_ENVIRONMENT = true` in `tests/setup.ts` for the bare `act` call
-  - [ ] 1.16b Assert clean hydration with the instrument: seed `localStorage` to collapsed, `renderHydrated(<AppShell/>)`, then assert **both** `recoverable` is empty **and** the sidebar reads collapsed after mount. The correct implementation (server default + `useEffect` reconcile) passes both; the tempting `useState(() => readStoredCollapse())` fails the first — today nothing distinguishes them
-  - [ ] 1.16c Add the standing safety net: fail any `component`-project test that emits an unexpected `console.error`, with an explicit `allowConsoleError("reason")` opt-in rather than a widened filter. Expect fallout across the existing 232 tests (anything deliberately exercising an error path) — triage it before committing. Also add a mechanical grep rejecting `suppressHydrationWarning` under `app/**` and `components/**` unless the line carries a `// hydration-divergence:` comment naming the cause (shape of `tests/unit/token-discipline.test.ts`)
-  - [ ] 1.17 Manual/UI verification: `pnpm --filter panel dev` — toggle, reload, confirm persistence; drive the entire shell by keyboard only; compare against `docs/prototype/` at 1024px and 1440px
-  - [ ] 1.18 Verify Acceptance Criterion: shell dimensions, transition, content scroll ownership, and `100dvh` with no outer scroll
-  - [ ] 1.19 Verify Acceptance Criterion: collapse state persists across reload; `Cmd+\` toggles it
-  - [ ] 1.20 Verify Acceptance Criterion: Agents is the only enabled destination; the other four are disabled with an accessible affordance
-  - [ ] 1.21 Verify Acceptance Criterion: nav items match `/DESIGN.md` §3.5 active and hover states
-  - [ ] 1.22 Verify Acceptance Criterion: keyboard reaches every interactive element, focus is visible, the sidebar is a labeled `<nav>`
-  - [ ] 1.23 Verify Acceptance Criterion: layout holds at 1024px with no horizontal scroll
-  - [ ] 1.24 Map acceptance criteria to test evidence and record the mapping in the PR: AC1/AC4/AC6 → component tests + prototype comparison; AC2 → persistence test + manual reload; AC3 → disabled-item test; AC5 → keyboard walkthrough + focus assertions
-  - [ ] 1.25 Record `/DESIGN.md` §4.1 conformance notes in the PR — any prototype detail not reproduced
-  - [ ] 1.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 1.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
+  - [x] 1.1 Confirm #119 is open; create branch `story/S-106-app-shell` from latest `main` (S-105 dependency satisfied — #118 / PR #133 merged `2026-09-03`)
+  - [x] 1.2 Write the unit tests **first** (test-first) for `lib/ui/shortcuts.ts` (`Cmd+\` on macOS, `Ctrl+\` elsewhere) and `lib/ui/sidebar-state.ts` (read/write, corrupt value, storage unavailable), then implement both
+  - [x] 1.3 First commit; open draft PR against `main` with `Closes #119`
+  - [x] 1.4 Build the shell grid in `app/layout.tsx` with token-driven dimensions: 212px sidebar (52px collapsed) with `width 0.14s ease`, 38px top bar, content region `flex:1; overflow-y:auto`, page `100dvh` with no outer scroll; sidebar background `color-mix(in srgb, var(--color-bg) 92%, #000)`, body 88%
+  - [x] 1.5 Add `components/Sidebar.tsx` as a client component composing the S-105 `NavItem` primitive, with active-route detection from `usePathname()`
+  - [x] 1.6 Render the four deferred destinations (All runs, Repositories, Settings, System health) as **disabled non-links** with an accessible "not available in this phase" affordance; they must not be focus traps
+  - [x] 1.7 Wire the collapse store: server renders the default expanded shell, the client reconciles from `localStorage` after mount (no storage read during render — a hydration mismatch here is a real defect, not a warning to silence)
+  - [x] 1.8 Add the `Cmd+\` / `Ctrl+\` handler and confirm it does not fire inside text inputs
+  - [x] 1.9 Add `components/TopBar.tsx` with a breadcrumb slot the Wave 3 screens fill
+  - [x] 1.10 Mark the sidebar as `<nav>` with an accessible label; verify focus visibility per `/DESIGN.md` §6.4 (2px accent outline, 2px offset, default rings suppressed)
+  - [x] 1.11 Verify the layout holds at 1024px minimum width with no horizontal scroll (`/DESIGN.md` §9)
+  - [x] 1.12 Confirm nav items match `/DESIGN.md` §3.5 — active state (12% accent tint + 2px accent left border) and hover tint
+  - [x] 1.13 Extend the SD2 ESLint restricted-import glob to cover `app/**` client components (S-104 audit D1) and confirm `tests/unit/eslint-server-import.test.ts` still proves the rule fires; `import "server-only"` remains the hard guard
+  - [x] 1.14 Run Tests — unit: `pnpm run test:unit` — shortcut matcher across platforms; persistence helper round-trip
+  - [x] 1.15 Run Tests — component: `pnpm run test` — collapse toggles the width class; state restored from a seeded `localStorage`; disabled items render non-interactive; active item derives from the current route
+  - [x] 1.16 Run Tests — edge cases: `localStorage` unavailable or throwing (private mode) → default expanded, no crash; corrupted stored value → default; rapid double toggle
+  - [x] 1.16a Build the hydration instrument (**test-plan G3** — the gap's fix, not a nice-to-have): add `tests/helpers/hydrate.tsx` exposing `renderHydrated(element)` — `renderToString` into a container, then `hydrateRoot` with an `onRecoverableError` collector, wrapped in `act`. RTL's `render()` never hydrates, so **no existing test can observe a hydration mismatch**; a `console.error` spy alone would be a test that cannot fail. Set `globalThis.IS_REACT_ACT_ENVIRONMENT = true` in `tests/setup.ts` for the bare `act` call
+  - [x] 1.16b Assert clean hydration with the instrument: seed `localStorage` to collapsed, `renderHydrated(<AppShell/>)`, then assert **both** `recoverable` is empty **and** the sidebar reads collapsed after mount. The correct implementation (server default + `useEffect` reconcile) passes both; the tempting `useState(() => readStoredCollapse())` fails the first — today nothing distinguishes them
+  - [x] 1.16c Add the standing safety net: fail any `component`-project test that emits an unexpected `console.error`, with an explicit `allowConsoleError("reason")` opt-in rather than a widened filter. Expect fallout across the existing 232 tests (anything deliberately exercising an error path) — triage it before committing. Also add a mechanical grep rejecting `suppressHydrationWarning` under `app/**` and `components/**` unless the line carries a `// hydration-divergence:` comment naming the cause (shape of `tests/unit/token-discipline.test.ts`)
+  - [x] 1.17 Manual/UI verification: `pnpm --filter panel dev` — toggle, reload, confirm persistence; drive the entire shell by keyboard only; compare against `docs/prototype/` at 1024px and 1440px
+  - [x] 1.18 Verify Acceptance Criterion: shell dimensions, transition, content scroll ownership, and `100dvh` with no outer scroll
+  - [x] 1.19 Verify Acceptance Criterion: collapse state persists across reload; `Cmd+\` toggles it
+  - [x] 1.20 Verify Acceptance Criterion: Agents is the only enabled destination; the other four are disabled with an accessible affordance
+  - [x] 1.21 Verify Acceptance Criterion: nav items match `/DESIGN.md` §3.5 active and hover states
+  - [x] 1.22 Verify Acceptance Criterion: keyboard reaches every interactive element, focus is visible, the sidebar is a labeled `<nav>`
+  - [x] 1.23 Verify Acceptance Criterion: layout holds at 1024px with no horizontal scroll
+  - [x] 1.24 Map acceptance criteria to test evidence and record the mapping in the PR: AC1/AC4/AC6 → component tests + prototype comparison; AC2 → persistence test + manual reload; AC3 → disabled-item test; AC5 → keyboard walkthrough + focus assertions
+  - [x] 1.25 Record `/DESIGN.md` §4.1 conformance notes in the PR — any prototype detail not reproduced
+  - [x] 1.26 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 1.27 Migration lifecycle: **not applicable** — presentational story, no schema or data-model change. Opt-out rationale recorded here and in the issue
   - [ ] 1.28 Mark PR ready for review, notify the user, and close #119 only after the PR is approved and merged
 
 - [ ] 2.0 Implement Story S-107 ([#120](https://github.com/llipe/dev-tasks-agent-fleet/issues/120)): Agents Dashboard with three-variant density toggle

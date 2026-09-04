@@ -35,13 +35,22 @@ const eslintConfig = [
     // with a precise React Server Components error that no `eslint-disable` can
     // suppress. This lint rule is the fast, pre-build hint on top of it.
     //
-    // The restriction is scoped to the general component tree where "use client"
-    // components live (components/**), plus a catch-all — but NOT the legitimate
-    // server contexts (the server lib itself and App Router server entrypoints:
-    // page/layout/route), which import the client on purpose. Server Components
-    // are precisely where reading Supabase is correct (SD2), so blocking them
-    // would be wrong; `server-only` still guards them at build time.
-    files: ["components/**/*.ts", "components/**/*.tsx"],
+    // The restriction is scoped to the client-component trees: components/**
+    // and the app/** subtree — but it MUST NOT fire on App Router server
+    // entrypoints (page/layout/route/template/default/error/loading/not-found),
+    // which read Supabase on purpose (SD2). Those filenames are excluded below.
+    // `server-only` remains the hard build-time guard for every server module.
+    files: ["components/**/*.ts", "components/**/*.tsx", "app/**/*.ts", "app/**/*.tsx"],
+    ignores: [
+      "app/**/page.tsx",
+      "app/**/layout.tsx",
+      "app/**/route.ts",
+      "app/**/template.tsx",
+      "app/**/default.tsx",
+      "app/**/error.tsx",
+      "app/**/loading.tsx",
+      "app/**/not-found.tsx",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",

@@ -60,6 +60,12 @@
   --muted: color-mix(in srgb, var(--color-text) 55%, transparent);
   --faint: color-mix(in srgb, var(--color-text) 38%, transparent);
 
+  /* -- App-shell surfaces (DESIGN §4.1) ---------------------------------- */
+  /* The sidebar sits at 92% bg over black, the body ground at 88%. Defined
+     here (the token home) so shell CSS references a token, never a raw #000. */
+  --color-sidebar-bg: color-mix(in srgb, var(--color-bg) 92%, #000);
+  --color-shell-bg: color-mix(in srgb, var(--color-bg) 88%, #000);
+
   /* -- §2.6 Typography --------------------------------------------------- */
   --font-heading: "Inter", system-ui, sans-serif;
   --font-heading-weight: 500;

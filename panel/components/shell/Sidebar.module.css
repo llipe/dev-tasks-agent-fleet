@@ -1,0 +1,119 @@
+/* App-shell sidebar — /DESIGN.md §4.1. */
+.sidebar {
+  width: 212px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--rule);
+  background: var(--color-sidebar-bg);
+  transition: width 0.14s ease;
+}
+
+.collapsed {
+  width: 52px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
+
+/* Brand row */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mark {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-accent);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.markDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 7px var(--color-accent);
+}
+
+.brandName {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-text);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* Scrollable nav region */
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 9px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Footer (collapse toggle) */
+.footer {
+  flex: none;
+  padding: 9px 8px;
+  border-top: 1px solid var(--rule);
+}
+
+.toggle {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.collapsed .toggle {
+  grid-template-columns: 15px;
+  justify-items: center;
+}
+
+.toggle:hover {
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+.toggleIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+}
+
+.toggleLabel {
+  white-space: nowrap;
+}
+
+.toggleHint {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-align: right;
+}
