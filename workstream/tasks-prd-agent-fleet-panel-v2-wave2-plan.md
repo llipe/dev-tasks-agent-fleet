@@ -224,6 +224,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 3.29 Migration lifecycle: **not applicable** — no schema or data-model change. Opt-out rationale recorded here and in the issue
     - Opt-out rationale: S-111 adds only front-end/server credential + invocation code (`panel/lib/aws/*`) and a dependency pin. No table, enum, view, function, RLS policy, or seed row is created or altered; the panel writes nothing. No migration artifact is required.
   - [ ] 3.30 Mark PR ready for review, notify the user, and close #124 only after the PR is approved and merged
+    - [x] PR #135 converted draft → ready for review; user notified (completion comment #issuecomment-5542295627)
+    - [ ] Close #124 — pending user review + merge to `main` (merge authority: user)
 
 ## Wave 2 Exit Criteria
 
