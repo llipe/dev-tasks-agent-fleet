@@ -358,3 +358,47 @@ describe("dashboard — idempotent render (EC-10)", () => {
     expect(b.innerHTML).toBe(first);
   });
 });
+
+describe("dashboard — cards variant fallback states (QA gaps 3)", () => {
+  function zeroRunAgent() {
+    return buildAgentSummaries(
+      [
+        {
+          id: "z",
+          slug: "fresh",
+          name: "Fresh Agent",
+          description: "A brand new agent.",
+          requiresRepository: false,
+          runs: [],
+        },
+      ],
+      NOW,
+    );
+  }
+
+  it("renders 'no runs yet' and a disabled Invoke in cards when route is unbuilt", () => {
+    render(<DashboardClient agents={zeroRunAgent()} nowMs={NOW} invokeRouteAvailable={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /cards/i }));
+    expect(screen.getByText(/no runs yet/i)).toBeInTheDocument();
+    const invoke = screen.getByRole("button", { name: /invoke/i });
+    expect(invoke).toBeDisabled();
+  });
+
+  it("renders an enabled Invoke link in cards when the route is available", () => {
+    render(<DashboardClient agents={zeroRunAgent()} nowMs={NOW} invokeRouteAvailable={true} />);
+    fireEvent.click(screen.getByRole("button", { name: /cards/i }));
+    expect(screen.getByRole("link", { name: /invoke/i })).toHaveAttribute(
+      "href",
+      "/agents/fresh/invoke",
+    );
+  });
+});
+
+describe("dashboard — dense-rows disabled Invoke (QA gap 3)", () => {
+  it("renders a disabled Invoke button when the route is unbuilt", () => {
+    renderDashboard(false);
+    const invokeButtons = screen.getAllByRole("button", { name: /invoke/i });
+    expect(invokeButtons.length).toBeGreaterThan(0);
+    for (const b of invokeButtons) expect(b).toBeDisabled();
+  });
+});
