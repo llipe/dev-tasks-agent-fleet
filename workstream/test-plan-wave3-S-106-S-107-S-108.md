@@ -8,8 +8,8 @@
 
 | Artifact | Version | Consumed |
 | --- | --- | --- |
-| [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) | v1.1 | § S-106, S-107, S-108 |
-| [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) | v1.5 | SD2, SD4, SD11, §10, §11, §12, §13, §14 |
+| [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) | v1.2 | § S-106, S-107, S-108 |
+| [`specification-prd-agent-fleet-panel-v2.md`](specification-prd-agent-fleet-panel-v2.md) | v1.6 | SD2, SD4, SD11, §10, §11, §12, §13, §14 |
 | [`/DESIGN.md`](../DESIGN.md) | v1.1 | §3.4, §3.5, §4.1, §4.3, §4.4, §5.1, §5.2, §6, §7, §8.1, §9 |
 | [`tasks-prd-agent-fleet-panel-v2-wave3-plan.md`](tasks-prd-agent-fleet-panel-v2-wave3-plan.md) | — | Tasks 1.0, 2.0, 3.0 |
 | [`test-plan-wave2-S-104-S-105-S-111.md`](test-plan-wave2-S-104-S-105-S-111.md) | — | G2 (inherited), G6 (discharged here) |
@@ -42,8 +42,9 @@ Renumbered for traceability; the story file is authoritative for wording.
 | AC-107.3 | The density selection persists client-side and survives a reload (PRD AC9) |
 | AC-107.4 | Displayed run statuses derive from `v_runs.effective_status` (FR11a), **including in the aggregate breakdown** |
 | AC-107.5 | Agent name/slug links to that agent's run history; an "Invoke" action links to the invoke route |
-| AC-107.6 | Empty state (no agents, or an agent with zero runs) renders a legible message, not a blank region or `NaN` |
-| AC-107.7 | The ledger supports its documented keyboard affordances (`Up`/`Down`, `Enter`, `/`) **or** renders them absent rather than broken |
+| AC-107.6 | Empty state (no agents, or an agent with zero runs) renders a legible message, not a blank region or `NaN`; a filter matching nothing reads **differently** from "no agents configured" |
+| AC-107.7 | The ledger supports `Up`/`Down` (clamped, roving `tabindex`), `Enter` (the row's Invoke target), and `/` (focus filter) — the affordances **ship**; the "or renders them absent" alternative is withdrawn (stories v1.2) |
+| AC-107.8 | The header renders a filter input in all three variants, filtering the loaded list by name and slug case-insensitively, never refetching or navigating, and **not** persisted across a reload (stories v1.2) |
 
 **S-108 — agent run history (#121)**
 
@@ -494,6 +495,26 @@ All nine categories evaluated. Two are `N/A` with reasons recorded.
 | **Expected Result** | Ignored in favor of the default; optionally cleaned up. No crash |
 | **Risk if Missed** | Self-inflicted breakage on upgrade, affecting only returning users — the ones whose experience matters most. Cheap to prevent by validating at the boundary (CT-4/CT-5) |
 
+### EC-25: Filter query domain — no match, whitespace, and regex metacharacters
+
+| Field | Value |
+| --- | --- |
+| **AC(s)** | AC-107.6, AC-107.8 |
+| **Category** | Input Domain |
+| **Input / Setup** | Queries of `zzz` (no match), `   ` (whitespace only), `.*`, `[`, `\`, `DEPENDENCY` against slug `dependency-update` (case), and a 500-character string |
+| **Expected Result** | No match renders a **distinct** message naming the query, never the "no agents configured" copy. Whitespace-only behaves as documented (treat as empty → full list). Metacharacters match literally — no regex construction from user input, so no crash and no accidental match-everything. Case-insensitive match succeeds. The long string simply matches nothing |
+| **Risk if Missed** | The two empty states reading identically is the failure that matters: an operator filters, sees "no agents configured", and concludes the fleet is gone. Building a `RegExp` from the query would also throw on `[` — a crash from typing a bracket |
+
+### EC-26: `/` and `Escape` do not fight the text input they control
+
+| Field | Value |
+| --- | --- |
+| **AC(s)** | AC-107.7, AC-107.8, AC-106.5 |
+| **Category** | Auth & Permissions (input focus contract) |
+| **Input / Setup** | Press `/` with focus on the page body; press `/` again with focus already inside the filter; press `Escape` with a non-empty filter, then with an empty one; press `Up`/`Down` while typing in the filter |
+| **Expected Result** | The first `/` focuses the filter. The second inserts a literal slash — a shortcut must never steal a character from the input it owns. `Escape` clears a non-empty filter, and blurs when already empty. `Up`/`Down` inside the filter do not move the ledger selection (same guard `Cmd+\` uses, task 1.8) |
+| **Risk if Missed** | The classic single-key-shortcut bug: the operator cannot type `/` into the field the shortcut exists to reach. Unfixable-feeling and trivially preventable |
+
 **Categories marked N/A:** *Idempotency of writes* — this wave writes nothing to the database; EC-10 covers render idempotency instead. *Cross-tenant data access* — single-tenant system with no user auth (D16/D18); EC-14 covers the only privilege boundary that exists (browser ↔ server).
 
 ---
@@ -530,7 +551,7 @@ AC-106.2's real risk is a hydration mismatch, and EC-7 asserts the absence of a 
 
 If the shell instead uses an inline pre-paint script to set a class on `<html>` (eliminating the one-frame flash), hydration stays trivially clean and the assertion shifts to the script's presence and effect. The instrument above is unchanged either way — it is what makes the choice observable.
 
-### G4 — Two ACs have escape hatches that make them unfalsifiable as written (Medium) — one instrument accepted, one decision open
+### G4 — RESOLVED: both ACs are now falsifiable (was Medium)
 
 Two criteria contain a documented "or else" that a test cannot adjudicate:
 
@@ -538,6 +559,8 @@ Two criteria contain a documented "or else" that a test cannot adjudicate:
 - **AC-107.7:** the ledger's keyboard affordances work "**or** render them absent rather than broken". Both branches pass a suite that asserts nothing. **Decision still open**, and it has a second part that surfaced while designing the test: `/` focuses the filter input, but **no S-107 acceptance criterion requires a filter input** — it appears only in `/DESIGN.md` §5.1's common-elements list. As scoped today, `/` has nothing to focus.
 
 **Recommendation on the open half:** ship `Up`/`Down`/`Enter` rather than omitting them, because the ledger renders its shortcut hints as UI (§6.5) and hints without behavior is the panel asserting something false to the operator. Decide the filter input separately — in scope makes `/` testable as specified; out of scope means the `/` hint must not render. Then delete the "or" from the AC, and add the hint/behavior coupling guard (task 2.13a): if a key's hint renders, pressing it must produce its effect, so a later drift back to hint-only fails permanently rather than passing.
+
+**RESOLVED 2026-09-04 — both halves decided, gap closed.** The ledger affordances **ship**, and the filter input they depend on is **in scope** as the new **AC-107.8** (stories v1.2, spec v1.6). The "or renders them absent" wording is withdrawn, so each key now gets an unconditional test (EC-25, EC-26) instead of a conditional one, and task 2.13a's coupling guard stays as the regression guard against a later drift back to hint-only. Two decisions inside the resolution are worth recording, because they are the kind that get quietly reversed: the filter is **transient** — density persists, the filter does not, since a remembered filter hides agents on the next load with no visible cause — and `Enter` activates **the same target as the row's Invoke action**, so while S-113 is outstanding the keyboard path cannot reach a route the mouse path deliberately does not.
 
 ### G5 — AC-108.4 is a manual procedure, so it verifies once and then rots (Medium)
 
@@ -574,8 +597,9 @@ S-105 made token discipline mechanical for twelve components. Wave 3 adds three 
 | AC-107.3 | 1, 2 | CT-4, CT-5, EC-5, EC-12, EC-24 | `test:unit` + `test` |
 | AC-107.4 | 1, 2, 2.5 | CT-1, CT-2, CT-3, EC-4, EC-14, EC-23 | `test:unit` + `test:integration` |
 | AC-107.5 | 2 | EC-3, EC-13 | `test` |
-| AC-107.6 | 2 | EC-19 | `test` |
-| AC-107.7 | 2 | keyboard assertions **or** absence assertions (**decide first — G4**) | `test` |
+| AC-107.6 | 2 | EC-19, EC-25 | `test` |
+| AC-107.7 | 2 | EC-26 + per-key assertions (`Up`/`Down` clamped, `Enter` on the Invoke target, `/` focus) + the 2.13a coupling guard | `test` |
+| AC-107.8 | 1, 2 | EC-25, EC-26, EC-8 (no navigation on a filter keystroke) | `test:unit` + `test` |
 | AC-108.1 | 2.5 | CT-8, EC-11, EC-21, EC-22 | `test:integration` |
 | AC-108.2 | 1, 2 | CT-9, CT-10, CT-13, EC-18, EC-20 | `test:unit` + `test` |
 | AC-108.3 | 1, 2, 2.5 | CT-2, CT-3, EC-4, EC-23 | `test:unit` + `test:integration` |
@@ -584,7 +608,7 @@ S-105 made token discipline mechanical for twelve components. Wave 3 adds three 
 | AC-108.6 | 2 | EC-13, EC-19 | `test` |
 | AC-108.7 | 2 | CT-6, EC-3 | `test` |
 
-**Totals:** 13 contract scenarios, 24 edge cases, 20 acceptance criteria. Every AC has at least one mapped scenario. Two are conditional: AC-107.7 is unfalsifiable until G4 is decided, and AC-106.6 is manual-only by harness limitation (G7). G1 was the third and is resolved — `/DESIGN.md` v1.1 (see Part 3).
+**Totals:** 13 contract scenarios, 26 edge cases, 21 acceptance criteria. Every AC has at least one mapped scenario, and every scenario is now unconditional except one: AC-106.6 is manual-only by harness limitation (G7). G1 and G4 were the other two conditionals and both are resolved — see Part 3.
 
 **Highest-value scenarios if effort must be cut:** CT-2 (the derived status actually reaching the pill — the composition Wave 2 could not prove, and the entire point of FR11a), CT-1 (the aggregate counting `effective_status`, the same bug one level up and much easier to miss), CT-8/EC-22 (silent `max_rows` truncation, which has already caught this project once), and CT-4 (untrusted `localStorage`, the cheapest crash to prevent and the one whose provider we cannot control).
 
