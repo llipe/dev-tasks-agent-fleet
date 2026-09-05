@@ -209,6 +209,37 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — run-history read", () => {
     const progress = await getStepProgressForRuns(client(), []);
     expect(progress.size).toBe(0);
   });
+
+  it("folds step progress as done=non-pending / total, in one grouped read (gap #1)", async () => {
+    const slug = `runhist-steps-${randomUUID()}`;
+    let runId = "";
+    await withDb(async (c) => {
+      const id = await insertAgent(c, slug);
+      runId = await insertSucceeded(c, id, 5);
+      // 4 steps: 3 non-pending (done) + 1 pending → expect done=3, total=4.
+      await c.query(
+        `insert into run_steps (run_id, seq, key, status) values
+           ($1, 1, 'checkout', 'succeeded'),
+           ($1, 2, 'npm_audit', 'succeeded'),
+           ($1, 3, 'test', 'failed'),
+           ($1, 4, 'open_pr', 'pending')`,
+        [runId],
+      );
+    });
+
+    const progress = await getStepProgressForRuns(client(), [runId]);
+    const p = progress.get(runId);
+    expect(p).toBeDefined();
+    expect(p).toEqual({ done: 3, total: 4 });
+
+    // And it reaches the rendered `n/m` via the shaper.
+    const runs = await getAllRunsByAgentSlug(client(), slug);
+    const rows = buildRunRows(
+      runs.map((r) => toRunInput(r, progress.get(r.id)?.done ?? 0, progress.get(r.id)?.total ?? 0)),
+      Date.now(),
+    );
+    expect(rows.find((r) => r.id === runId)?.steps).toBe("3/4");
+  });
 });
 
 if (!runSuite) {
