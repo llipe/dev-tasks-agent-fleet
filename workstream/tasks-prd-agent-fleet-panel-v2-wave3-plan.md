@@ -192,16 +192,16 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   - [x] 3.1 Confirm task 1.0 is merged; confirm #121 is open; create branch `story/S-108-run-history` from latest `main`
   - [x] 3.2 Write the row-shaper unit tests **first**, then `lib/domain/run-row.ts` — duration `Xm XXs`, `running · Xm`, step progress `n/m`, relative start time, outcome fallback `—` at 0.45 opacity, plus header metrics (p50 with even/odd counts, success rate with zero runs); reuse the S-105 `lib/format.ts` formatters rather than reimplementing them
-  - [ ] 3.3 First commit; open draft PR against `main` with `Closes #121`
-  - [ ] 3.4 Build `app/agents/[slug]/page.tsx` as a server component reading runs-by-agent from `v_runs` newest-first, unfiltered and unpaginated, with **inline** `force-dynamic` (a cached run list is precisely the staleness FR11a exists to prevent)
-  - [ ] 3.5 Build `AgentHeader` — breadcrumb, name, description, params count, p50 duration, success rate; compute metrics from the returned rows, and if that proves expensive move them into SQL and **record the change**
-  - [ ] 3.6 Build `RunHistoryTable` with **semantic `<table>` markup** (not divs — screen-reader navigation, spec §10) on the `/DESIGN.md` §4.4 grid (`118px 122px minmax(0,1fr) 96px 78px 104px 30px`)
-  - [ ] 3.7 Build `RunHistoryRow` — status pill, outcome tag, repository with branch when available, duration, `n/m`, relative start; every status routed through `effectiveStatus`, never `runs.status`
-  - [ ] 3.8 Add the empty state with an invoke CTA, and rows linking to `/runs/[id]` (the run detail route lands in S-109 — the link target may 404 until then; record that expectation)
-  - [ ] 3.9 Return a 404 for an unknown slug and for a disabled agent — not an empty list
-  - [ ] 3.10 Render the toolbar without filters, repo chips, search, or pagination (deferred to v3) rather than shipping dead controls
-  - [ ] 3.11 Write the AC10 verification procedure as `docs/runbooks/issue-121-ac10-reaper-paused.md`: `cron.unschedule('reap-stale-runs')` → insert a synthetic `running` run past `started_at + max_runtime_seconds + grace_seconds` → load the page → confirm `timed_out` → `cron.schedule` to restore → clean up the synthetic row. **Against the local Supabase stack, not the hosted project** — pausing the production reaper would leave real runs unreaped for the duration, and the hosted project holds real Phase 1 run data
-  - [ ] 3.12 Execute the AC10 procedure and record the evidence (SQL + observed UI state) in the PR and in the runbook; confirm the reaper schedule is restored afterward
+  - [x] 3.3 First commit; open draft PR against `main` with `Closes #121`
+  - [x] 3.4 Build `app/agents/[slug]/page.tsx` as a server component reading runs-by-agent from `v_runs` newest-first, unfiltered and unpaginated, with **inline** `force-dynamic` (a cached run list is precisely the staleness FR11a exists to prevent)
+  - [x] 3.5 Build `AgentHeader` — breadcrumb, name, description, params count, p50 duration, success rate; compute metrics from the returned rows, and if that proves expensive move them into SQL and **record the change**
+  - [x] 3.6 Build `RunHistoryTable` with **semantic `<table>` markup** (not divs — screen-reader navigation, spec §10) on the `/DESIGN.md` §4.4 grid (`118px 122px minmax(0,1fr) 96px 78px 104px 30px`)
+  - [x] 3.7 Build `RunHistoryRow` — status pill, outcome tag, repository with branch when available, duration, `n/m`, relative start; every status routed through `effectiveStatus`, never `runs.status`
+  - [x] 3.8 Add the empty state with an invoke CTA, and rows linking to `/runs/[id]` (the run detail route lands in S-109 — the link target may 404 until then; record that expectation)
+  - [x] 3.9 Return a 404 for an unknown slug and for a disabled agent — not an empty list
+  - [x] 3.10 Render the toolbar without filters, repo chips, search, or pagination (deferred to v3) rather than shipping dead controls
+  - [x] 3.11 Write the AC10 verification procedure as `docs/runbooks/issue-121-ac10-reaper-paused.md`: `cron.unschedule('reap-stale-runs')` → insert a synthetic `running` run past `started_at + max_runtime_seconds + grace_seconds` → load the page → confirm `timed_out` → `cron.schedule` to restore → clean up the synthetic row. **Against the local Supabase stack, not the hosted project** — pausing the production reaper would leave real runs unreaped for the duration, and the hosted project holds real Phase 1 run data
+  - [x] 3.12 Execute the AC10 procedure and record the evidence (SQL + observed UI state) in the PR and in the runbook; confirm the reaper schedule is restored afterward
   - [ ] 3.13 Run Tests — unit: `pnpm run test:unit` — row shaper (duration, `n/m`, relative time, outcome fallback) and header metrics (p50 even/odd, success rate with zero runs)
   - [ ] 3.14 Run Tests — component: `pnpm run test` — rows render every status; `running` shows `running · Xm`; a missing repository renders cleanly (no `null/null`); empty state renders the CTA
   - [ ] 3.15 Run Tests — integration (2.5): `pnpm run test:integration` — seeded runs return newest-first; a synthetic stale `running` row reads `timed_out` through `v_runs`; **state in the PR whether this ran live or skipped** (#134)

@@ -1,0 +1,5 @@
+/* Agent run-history page. /DESIGN.md §5.2. */
+.page {
+  display: flex;
+  flex-direction: column;
+}

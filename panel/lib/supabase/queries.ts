@@ -216,6 +216,97 @@ export async function getDashboardData(client: SupabaseClient): Promise<Dashboar
   return { agents, runs };
 }
 
+/**
+ * Per-run step progress `done/total` (Story S-108).
+ *
+ * `n` (done) counts steps that have left `pending` (i.e. `status <> 'pending'`),
+ * mirroring the prototype's `2/4`; `m` (total) counts every step of the run.
+ */
+export interface RunStepProgress {
+  done: number;
+  total: number;
+}
+
+/**
+ * 11. Step progress for a set of runs, in ONE grouped read (never N+1).
+ *
+ * Reads only the two columns the aggregate needs (`run_id`, `status`) for every
+ * step of the given run ids, then folds them into a `run_id → {done,total}`
+ * map. A run absent from the map has no steps (`0/0`), which the row shaper
+ * treats as such. Paged with `.range()` below the PostgREST `max_rows` ceiling
+ * so a large history is not silently truncated (same pattern as getRunEvents).
+ *
+ * Returns an empty map for an empty id list — never issues a read for nothing.
+ */
+export async function getStepProgressForRuns(
+  client: SupabaseClient,
+  runIds: string[],
+): Promise<Map<string, RunStepProgress>> {
+  const progress = new Map<string, RunStepProgress>();
+  if (runIds.length === 0) return progress;
+
+  let offset = 0;
+  for (;;) {
+    const result = await client
+      .from("run_steps")
+      .select("run_id,status")
+      .in("run_id", runIds)
+      .order("run_id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    const page =
+      unwrap<Array<{ run_id: string; status: string }>>(
+        "getStepProgressForRuns",
+        result as unknown as {
+          data: Array<{ run_id: string; status: string }> | null;
+          error: unknown;
+        },
+      ) ?? [];
+    for (const step of page) {
+      const current = progress.get(step.run_id) ?? { done: 0, total: 0 };
+      current.total += 1;
+      if (step.status !== "pending") current.done += 1;
+      progress.set(step.run_id, current);
+    }
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return progress;
+}
+
+/**
+ * 12. Every run for an agent slug, newest-first, unfiltered and unpaginated
+ * (Story S-108 / AC-108.1). Runs come from `v_runs`, so `effective_status`,
+ * `agent_slug`, and `repository_full_name` are present.
+ *
+ * Unlike `getRunsByAgentSlug` (default limit 50), the run-history screen shows
+ * the full history, so this pages through the whole result set with `.range()`
+ * below the PostgREST `max_rows` ceiling (same pattern as getDashboardData) —
+ * the count and the metrics stay true beyond 1,000 runs. Filters, search, and
+ * pagination are deferred (PRD section 10); this returns the unbounded list.
+ *
+ * Returns `[]` for an agent with no runs — never null.
+ */
+export async function getAllRunsByAgentSlug(
+  client: SupabaseClient,
+  slug: string,
+): Promise<VRunRow[]> {
+  const runs: VRunRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const result = await client
+      .from("v_runs")
+      .select("*")
+      .eq("agent_slug", slug)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+    const page = unwrap<VRunRow[]>("getAllRunsByAgentSlug", result) ?? [];
+    runs.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return runs;
+}
+
 /** 10. `run_artifacts` for a run, newest-first. */
 export async function getRunArtifacts(
   client: SupabaseClient,
