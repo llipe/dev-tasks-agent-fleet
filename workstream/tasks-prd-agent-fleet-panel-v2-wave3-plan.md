@@ -190,34 +190,34 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 
   > Note: implements **FR11** and **FR11a**, verified by **AC10**. The AC that carries the story is AC4: with the `pg_cron` reaper **paused** and a run past its threshold, the row must display `timed_out`. That is the two-layer design from `technical-guidelines.md` §3 observed from the UI — the view tells immediate truth while the reaper is behind. Filters, search, and pagination are deferred (PRD §10); the toolbar renders without them rather than with dead controls.
 
-  - [ ] 3.1 Confirm task 1.0 is merged; confirm #121 is open; create branch `story/S-108-run-history` from latest `main`
-  - [ ] 3.2 Write the row-shaper unit tests **first**, then `lib/domain/run-row.ts` — duration `Xm XXs`, `running · Xm`, step progress `n/m`, relative start time, outcome fallback `—` at 0.45 opacity, plus header metrics (p50 with even/odd counts, success rate with zero runs); reuse the S-105 `lib/format.ts` formatters rather than reimplementing them
-  - [ ] 3.3 First commit; open draft PR against `main` with `Closes #121`
-  - [ ] 3.4 Build `app/agents/[slug]/page.tsx` as a server component reading runs-by-agent from `v_runs` newest-first, unfiltered and unpaginated, with **inline** `force-dynamic` (a cached run list is precisely the staleness FR11a exists to prevent)
-  - [ ] 3.5 Build `AgentHeader` — breadcrumb, name, description, params count, p50 duration, success rate; compute metrics from the returned rows, and if that proves expensive move them into SQL and **record the change**
-  - [ ] 3.6 Build `RunHistoryTable` with **semantic `<table>` markup** (not divs — screen-reader navigation, spec §10) on the `/DESIGN.md` §4.4 grid (`118px 122px minmax(0,1fr) 96px 78px 104px 30px`)
-  - [ ] 3.7 Build `RunHistoryRow` — status pill, outcome tag, repository with branch when available, duration, `n/m`, relative start; every status routed through `effectiveStatus`, never `runs.status`
-  - [ ] 3.8 Add the empty state with an invoke CTA, and rows linking to `/runs/[id]` (the run detail route lands in S-109 — the link target may 404 until then; record that expectation)
-  - [ ] 3.9 Return a 404 for an unknown slug and for a disabled agent — not an empty list
-  - [ ] 3.10 Render the toolbar without filters, repo chips, search, or pagination (deferred to v3) rather than shipping dead controls
-  - [ ] 3.11 Write the AC10 verification procedure as `docs/runbooks/issue-121-ac10-reaper-paused.md`: `cron.unschedule('reap-stale-runs')` → insert a synthetic `running` run past `started_at + max_runtime_seconds + grace_seconds` → load the page → confirm `timed_out` → `cron.schedule` to restore → clean up the synthetic row. **Against the local Supabase stack, not the hosted project** — pausing the production reaper would leave real runs unreaped for the duration, and the hosted project holds real Phase 1 run data
-  - [ ] 3.12 Execute the AC10 procedure and record the evidence (SQL + observed UI state) in the PR and in the runbook; confirm the reaper schedule is restored afterward
-  - [ ] 3.13 Run Tests — unit: `pnpm run test:unit` — row shaper (duration, `n/m`, relative time, outcome fallback) and header metrics (p50 even/odd, success rate with zero runs)
-  - [ ] 3.14 Run Tests — component: `pnpm run test` — rows render every status; `running` shows `running · Xm`; a missing repository renders cleanly (no `null/null`); empty state renders the CTA
-  - [ ] 3.15 Run Tests — integration (2.5): `pnpm run test:integration` — seeded runs return newest-first; a synthetic stale `running` row reads `timed_out` through `v_runs`; **state in the PR whether this ran live or skipped** (#134)
-  - [ ] 3.16 Run Tests — edge cases: zero runs; single run; `finished_at` null with a terminal status; zero steps (`0/0`); sub-second duration; unknown slug → 404; disabled agent → 404; a `canceled` status (never written in v1) rendering as a neutral fallback
-  - [ ] 3.17 Manual/UI verification: `pnpm --filter panel dev` → `/agents/dependency-update` at 1024px and 1440px against `docs/prototype/`
-  - [ ] 3.18 Verify Acceptance Criterion: runs list newest-first, unfiltered, unpaginated, from `v_runs`
-  - [ ] 3.19 Verify Acceptance Criterion: each row shows all six documented fields per `/DESIGN.md` §5.2
-  - [ ] 3.20 Verify Acceptance Criterion: displayed status is `effective_status`, not `runs.status`
-  - [ ] 3.21 Verify Acceptance Criterion: with the reaper paused, a past-threshold run displays `timed_out` — the AC10 evidence
-  - [ ] 3.22 Verify Acceptance Criterion: the agent header shows breadcrumb, name, description, and the three metadata values
-  - [ ] 3.23 Verify Acceptance Criterion: rows link to `/runs/[id]`; the empty state offers an invoke CTA
-  - [ ] 3.24 Verify Acceptance Criterion: unknown slug and disabled agent both render 404
-  - [ ] 3.25 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC2/AC5–AC6 → component + integration tests; AC3 → shared `effectiveStatus` usage assertion; AC4 → the reaper-paused procedure (PRD AC10); AC7 → route test
-  - [ ] 3.26 Record `/DESIGN.md` §5.2 conformance notes in the PR
-  - [ ] 3.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 3.28 Migration lifecycle: **not applicable** — read-only story. The AC10 procedure temporarily unschedules a cron job **on the local stack only** and restores it; that is a reversible test manipulation, not a schema or data-model change. Opt-out rationale recorded here and in the issue
+  - [x] 3.1 Confirm task 1.0 is merged; confirm #121 is open; create branch `story/S-108-run-history` from latest `main`
+  - [x] 3.2 Write the row-shaper unit tests **first**, then `lib/domain/run-row.ts` — duration `Xm XXs`, `running · Xm`, step progress `n/m`, relative start time, outcome fallback `—` at 0.45 opacity, plus header metrics (p50 with even/odd counts, success rate with zero runs); reuse the S-105 `lib/format.ts` formatters rather than reimplementing them
+  - [x] 3.3 First commit; open draft PR against `main` with `Closes #121`
+  - [x] 3.4 Build `app/agents/[slug]/page.tsx` as a server component reading runs-by-agent from `v_runs` newest-first, unfiltered and unpaginated, with **inline** `force-dynamic` (a cached run list is precisely the staleness FR11a exists to prevent)
+  - [x] 3.5 Build `AgentHeader` — breadcrumb, name, description, params count, p50 duration, success rate; compute metrics from the returned rows, and if that proves expensive move them into SQL and **record the change**
+  - [x] 3.6 Build `RunHistoryTable` with **semantic `<table>` markup** (not divs — screen-reader navigation, spec §10) on the `/DESIGN.md` §4.4 grid (`118px 122px minmax(0,1fr) 96px 78px 104px 30px`)
+  - [x] 3.7 Build `RunHistoryRow` — status pill, outcome tag, repository with branch when available, duration, `n/m`, relative start; every status routed through `effectiveStatus`, never `runs.status`
+  - [x] 3.8 Add the empty state with an invoke CTA, and rows linking to `/runs/[id]` (the run detail route lands in S-109 — the link target may 404 until then; record that expectation)
+  - [x] 3.9 Return a 404 for an unknown slug and for a disabled agent — not an empty list
+  - [x] 3.10 Render the toolbar without filters, repo chips, search, or pagination (deferred to v3) rather than shipping dead controls
+  - [x] 3.11 Write the AC10 verification procedure as `docs/runbooks/issue-121-ac10-reaper-paused.md`: `cron.unschedule('reap-stale-runs')` → insert a synthetic `running` run past `started_at + max_runtime_seconds + grace_seconds` → load the page → confirm `timed_out` → `cron.schedule` to restore → clean up the synthetic row. **Against the local Supabase stack, not the hosted project** — pausing the production reaper would leave real runs unreaped for the duration, and the hosted project holds real Phase 1 run data
+  - [x] 3.12 Execute the AC10 procedure and record the evidence (SQL + observed UI state) in the PR and in the runbook; confirm the reaper schedule is restored afterward
+  - [x] 3.13 Run Tests — unit: `pnpm run test:unit` — row shaper (duration, `n/m`, relative time, outcome fallback) and header metrics (p50 even/odd, success rate with zero runs)
+  - [x] 3.14 Run Tests — component: `pnpm run test` — rows render every status; `running` shows `running · Xm`; a missing repository renders cleanly (no `null/null`); empty state renders the CTA
+  - [x] 3.15 Run Tests — integration (2.5): `pnpm run test:integration` — seeded runs return newest-first; a synthetic stale `running` row reads `timed_out` through `v_runs`; **state in the PR whether this ran live or skipped** (#134)
+  - [x] 3.16 Run Tests — edge cases: zero runs; single run; `finished_at` null with a terminal status; zero steps (`0/0`); sub-second duration; unknown slug → 404; disabled agent → 404; a `canceled` status (never written in v1) rendering as a neutral fallback
+  - [x] 3.17 Manual/UI verification: `pnpm --filter panel dev` → `/agents/dependency-update` at 1024px and 1440px against `docs/prototype/`
+  - [x] 3.18 Verify Acceptance Criterion: runs list newest-first, unfiltered, unpaginated, from `v_runs`
+  - [x] 3.19 Verify Acceptance Criterion: each row shows all six documented fields per `/DESIGN.md` §5.2
+  - [x] 3.20 Verify Acceptance Criterion: displayed status is `effective_status`, not `runs.status`
+  - [x] 3.21 Verify Acceptance Criterion: with the reaper paused, a past-threshold run displays `timed_out` — the AC10 evidence
+  - [x] 3.22 Verify Acceptance Criterion: the agent header shows breadcrumb, name, description, and the three metadata values
+  - [x] 3.23 Verify Acceptance Criterion: rows link to `/runs/[id]`; the empty state offers an invoke CTA
+  - [x] 3.24 Verify Acceptance Criterion: unknown slug and disabled agent both render 404
+  - [x] 3.25 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC2/AC5–AC6 → component + integration tests; AC3 → shared `effectiveStatus` usage assertion; AC4 → the reaper-paused procedure (PRD AC10); AC7 → route test
+  - [x] 3.26 Record `/DESIGN.md` §5.2 conformance notes in the PR
+  - [x] 3.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 3.28 Migration lifecycle: **not applicable** — read-only story. The AC10 procedure temporarily unschedules a cron job **on the local stack only** and restores it; that is a reversible test manipulation, not a schema or data-model change. Opt-out rationale recorded here and in the issue
   - [ ] 3.29 Mark PR ready for review, notify the user, and close #121 only after the PR is approved and merged
 
 ## Wave 3 Exit Criteria
