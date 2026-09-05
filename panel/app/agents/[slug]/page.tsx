@@ -10,6 +10,7 @@ import type { AgentRow, Json, VRunRow } from "@/lib/supabase/types";
 import {
   buildAgentHeader,
   buildRunRows,
+  shouldRunHistory404,
   type AgentHeaderInput,
   type RunRowInput,
 } from "@/lib/domain/run-row";
@@ -90,9 +91,12 @@ export default async function AgentRunHistoryPage({
 
   // Unknown slug OR a disabled agent both 404 — not an empty list (task 3.9).
   const agent: AgentRow | null = await getAgentBySlug(client, slug);
-  if (agent === null || !agent.is_enabled) {
+  if (shouldRunHistory404(agent)) {
     notFound();
   }
+  // `shouldRunHistory404` returns false only for a non-null, enabled agent;
+  // `notFound()` throws, so `agent` is a resolved AgentRow past this point.
+  const resolved = agent as AgentRow;
 
   const runs = await getAllRunsByAgentSlug(client, slug);
   const progress = await getStepProgressForRuns(
@@ -110,11 +114,11 @@ export default async function AgentRunHistoryPage({
   });
 
   const headerInput: AgentHeaderInput = {
-    name: agent.name,
-    slug: agent.slug,
-    description: agent.description,
-    paramsCount: paramsCount(agent.params_schema),
-    isEnabled: agent.is_enabled,
+    name: resolved.name,
+    slug: resolved.slug,
+    description: resolved.description,
+    paramsCount: paramsCount(resolved.params_schema),
+    isEnabled: resolved.is_enabled,
     runs: runInputs,
   };
 
@@ -123,7 +127,7 @@ export default async function AgentRunHistoryPage({
   const invokeHref = INVOKE_ROUTE_AVAILABLE ? `/agents/${slug}/invoke` : null;
 
   return (
-    <section className={styles.page} aria-label={`${agent.name} run history`}>
+    <section className={styles.page} aria-label={`${resolved.name} run history`}>
       <AgentHeader header={header} invokeHref={invokeHref} />
       <RunHistoryTable rows={rows} invokeHref={invokeHref} />
     </section>

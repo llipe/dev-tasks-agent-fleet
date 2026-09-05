@@ -4,6 +4,7 @@ import {
   buildRunRow,
   buildRunRows,
   buildAgentHeader,
+  shouldRunHistory404,
   type RunRowInput,
   type AgentHeaderInput,
 } from "@/lib/domain/run-row";
@@ -302,5 +303,19 @@ describe("buildAgentHeader — metrics", () => {
     expect(h.successRate).toBeNull();
     expect(h.p50Duration).toBeNull();
     expect(h.runCount).toBe(0);
+  });
+});
+
+describe("shouldRunHistory404 — route guard (task 3.9)", () => {
+  it("404s for an unknown slug (null agent)", () => {
+    expect(shouldRunHistory404(null)).toBe(true);
+  });
+
+  it("404s for a disabled agent — not an empty list", () => {
+    expect(shouldRunHistory404({ is_enabled: false })).toBe(true);
+  });
+
+  it("does NOT 404 for an enabled agent", () => {
+    expect(shouldRunHistory404({ is_enabled: true })).toBe(false);
   });
 });

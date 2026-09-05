@@ -173,6 +173,26 @@ export function buildRunRows(runs: RunRowInput[], nowMs: number): RunRow[] {
 }
 
 // ---------------------------------------------------------------------------
+// Route resolution
+// ---------------------------------------------------------------------------
+
+/** The minimal agent projection the page's 404 guard needs. */
+export interface AgentResolvable {
+  is_enabled: boolean;
+}
+
+/**
+ * Whether the run-history route should 404 (task 3.9). An **unknown** slug
+ * (`agent === null`) AND a **disabled** agent both 404 — a disabled agent is
+ * not shown an empty run list, it is not-found from the panel's perspective.
+ * Pure so the page's guard is unit-testable without rendering the server
+ * component or mocking `notFound()`.
+ */
+export function shouldRunHistory404(agent: AgentResolvable | null): boolean {
+  return agent === null || !agent.is_enabled;
+}
+
+// ---------------------------------------------------------------------------
 // Agent header metrics
 // ---------------------------------------------------------------------------
 
