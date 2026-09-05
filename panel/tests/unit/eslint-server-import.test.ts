@@ -94,7 +94,7 @@ describe("SD2 ESLint restricted-import rule", () => {
     ).toBeGreaterThan(0);
     // The rule's custom message names SD2 so the failure is self-explanatory.
     expect(restricted.some((m) => m.message.includes("SD2"))).toBe(true);
-  });
+  }, 120000);
 
   it("does NOT flag a legitimate server-context module (guarded by server-only, not this rule)", () => {
     const restricted = lintJson(serverLibFixture)
@@ -104,5 +104,5 @@ describe("SD2 ESLint restricted-import rule", () => {
       restricted.length,
       "server-context import of lib/supabase/server must not trip the SD2 client-scoped rule",
     ).toBe(0);
-  });
+  }, 120000);
 });

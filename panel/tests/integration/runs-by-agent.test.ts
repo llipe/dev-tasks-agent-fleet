@@ -98,8 +98,14 @@ async function insertStaleRunning(c: Client, agentId: string): Promise<string> {
 
 async function cleanup(c: Client): Promise<void> {
   for (const id of createdAgentIds) {
-    await c.query(`delete from run_events where run_id in (select id from runs where agent_id = $1)`, [id]);
-    await c.query(`delete from run_steps where run_id in (select id from runs where agent_id = $1)`, [id]);
+    await c.query(
+      `delete from run_events where run_id in (select id from runs where agent_id = $1)`,
+      [id],
+    );
+    await c.query(
+      `delete from run_steps where run_id in (select id from runs where agent_id = $1)`,
+      [id],
+    );
     await c.query(`delete from runs where agent_id = $1`, [id]);
     await c.query(`delete from agents where id = $1`, [id]);
   }

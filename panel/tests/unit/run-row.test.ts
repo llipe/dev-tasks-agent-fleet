@@ -172,7 +172,10 @@ describe("buildRunRow — outcome, steps, repository, time", () => {
   });
 
   it("carries the repository name and branch, and reports absence cleanly (no null/null)", () => {
-    const withRepo = buildRunRow(run({ repositoryFullName: "llipe/x", repositoryBranch: "main" }), T0);
+    const withRepo = buildRunRow(
+      run({ repositoryFullName: "llipe/x", repositoryBranch: "main" }),
+      T0,
+    );
     expect(withRepo.repositoryFullName).toBe("llipe/x");
     expect(withRepo.repositoryBranch).toBe("main");
     expect(withRepo.hasRepository).toBe(true);
@@ -263,7 +266,15 @@ describe("buildAgentHeader — metrics", () => {
 
   it("reports no duration data when no run has a duration", () => {
     const h = header({
-      runs: [run({ status: "failed_to_start", durationMs: null, startedAtMs: null, finishedAtMs: null, outcome: null })],
+      runs: [
+        run({
+          status: "failed_to_start",
+          durationMs: null,
+          startedAtMs: null,
+          finishedAtMs: null,
+          outcome: null,
+        }),
+      ],
     });
     expect(buildAgentHeader(h, T0).p50Duration).toBeNull();
   });

@@ -72,13 +72,18 @@ describe("run-history edge cases — duration / steps", () => {
 
   it("renders 0/0 for a run with zero steps", () => {
     render(
-      <RunHistoryTable rows={buildRunRows([run({ stepsDone: 0, stepsTotal: 0 })], NOW)} invokeHref={null} />,
+      <RunHistoryTable
+        rows={buildRunRows([run({ stepsDone: 0, stepsTotal: 0 })], NOW)}
+        invokeHref={null}
+      />,
     );
     expect(screen.getByText("0/0")).toBeInTheDocument();
   });
 
   it("renders a sub-second finished run as 0m 00s, not empty or NaN", () => {
-    render(<RunHistoryTable rows={buildRunRows([run({ durationMs: 400 })], NOW)} invokeHref={null} />);
+    render(
+      <RunHistoryTable rows={buildRunRows([run({ durationMs: 400 })], NOW)} invokeHref={null} />,
+    );
     expect(screen.getByText("0m 00s")).toBeInTheDocument();
   });
 });

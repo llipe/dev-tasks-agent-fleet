@@ -148,7 +148,16 @@ describe("RunHistoryTable — repository + outcome fallbacks (EC)", () => {
   });
 
   it("renders a null outcome as the — pending marker, not a tag", () => {
-    renderTable([run({ id: "noout", status: "running", startedAtMs: NOW - 60_000, finishedAtMs: null, durationMs: null, outcome: null })]);
+    renderTable([
+      run({
+        id: "noout",
+        status: "running",
+        startedAtMs: NOW - 60_000,
+        finishedAtMs: null,
+        durationMs: null,
+        outcome: null,
+      }),
+    ]);
     expect(screen.getByLabelText(/no outcome yet/i)).toBeInTheDocument();
   });
 
@@ -191,7 +200,11 @@ describe("AgentHeader — metadata + breadcrumb (AC5)", () => {
       description: "Runs npm audit and opens a PR.",
       paramsCount: 4,
       isEnabled: true,
-      runs: [run(), run({ durationMs: 120_000 }), run({ status: "failed", outcome: "needs_review" })],
+      runs: [
+        run(),
+        run({ durationMs: 120_000 }),
+        run({ status: "failed", outcome: "needs_review" }),
+      ],
       ...overrides,
     };
   }
@@ -225,12 +238,7 @@ describe("AgentHeader — metadata + breadcrumb (AC5)", () => {
   });
 
   it("renders legible copy (no NaN) for a zero-run agent", () => {
-    render(
-      <AgentHeader
-        header={buildAgentHeader(header({ runs: [] }), NOW)}
-        invokeHref={null}
-      />,
-    );
+    render(<AgentHeader header={buildAgentHeader(header({ runs: [] }), NOW)} invokeHref={null} />);
     expect(screen.getByText(/no duration data/i)).toBeInTheDocument();
     expect(screen.getByText(/no runs yet/i)).toBeInTheDocument();
     // The header block must not contain NaN anywhere.

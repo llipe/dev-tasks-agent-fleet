@@ -206,18 +206,18 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 3.14 Run Tests — component: `pnpm run test` — rows render every status; `running` shows `running · Xm`; a missing repository renders cleanly (no `null/null`); empty state renders the CTA
   - [x] 3.15 Run Tests — integration (2.5): `pnpm run test:integration` — seeded runs return newest-first; a synthetic stale `running` row reads `timed_out` through `v_runs`; **state in the PR whether this ran live or skipped** (#134)
   - [x] 3.16 Run Tests — edge cases: zero runs; single run; `finished_at` null with a terminal status; zero steps (`0/0`); sub-second duration; unknown slug → 404; disabled agent → 404; a `canceled` status (never written in v1) rendering as a neutral fallback
-  - [ ] 3.17 Manual/UI verification: `pnpm --filter panel dev` → `/agents/dependency-update` at 1024px and 1440px against `docs/prototype/`
-  - [ ] 3.18 Verify Acceptance Criterion: runs list newest-first, unfiltered, unpaginated, from `v_runs`
-  - [ ] 3.19 Verify Acceptance Criterion: each row shows all six documented fields per `/DESIGN.md` §5.2
-  - [ ] 3.20 Verify Acceptance Criterion: displayed status is `effective_status`, not `runs.status`
-  - [ ] 3.21 Verify Acceptance Criterion: with the reaper paused, a past-threshold run displays `timed_out` — the AC10 evidence
-  - [ ] 3.22 Verify Acceptance Criterion: the agent header shows breadcrumb, name, description, and the three metadata values
-  - [ ] 3.23 Verify Acceptance Criterion: rows link to `/runs/[id]`; the empty state offers an invoke CTA
-  - [ ] 3.24 Verify Acceptance Criterion: unknown slug and disabled agent both render 404
-  - [ ] 3.25 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC2/AC5–AC6 → component + integration tests; AC3 → shared `effectiveStatus` usage assertion; AC4 → the reaper-paused procedure (PRD AC10); AC7 → route test
-  - [ ] 3.26 Record `/DESIGN.md` §5.2 conformance notes in the PR
-  - [ ] 3.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
-  - [ ] 3.28 Migration lifecycle: **not applicable** — read-only story. The AC10 procedure temporarily unschedules a cron job **on the local stack only** and restores it; that is a reversible test manipulation, not a schema or data-model change. Opt-out rationale recorded here and in the issue
+  - [x] 3.17 Manual/UI verification: `pnpm --filter panel dev` → `/agents/dependency-update` at 1024px and 1440px against `docs/prototype/`
+  - [x] 3.18 Verify Acceptance Criterion: runs list newest-first, unfiltered, unpaginated, from `v_runs`
+  - [x] 3.19 Verify Acceptance Criterion: each row shows all six documented fields per `/DESIGN.md` §5.2
+  - [x] 3.20 Verify Acceptance Criterion: displayed status is `effective_status`, not `runs.status`
+  - [x] 3.21 Verify Acceptance Criterion: with the reaper paused, a past-threshold run displays `timed_out` — the AC10 evidence
+  - [x] 3.22 Verify Acceptance Criterion: the agent header shows breadcrumb, name, description, and the three metadata values
+  - [x] 3.23 Verify Acceptance Criterion: rows link to `/runs/[id]`; the empty state offers an invoke CTA
+  - [x] 3.24 Verify Acceptance Criterion: unknown slug and disabled agent both render 404
+  - [x] 3.25 Map acceptance criteria to test evidence and record the mapping in the PR: AC1–AC2/AC5–AC6 → component + integration tests; AC3 → shared `effectiveStatus` usage assertion; AC4 → the reaper-paused procedure (PRD AC10); AC7 → route test
+  - [x] 3.26 Record `/DESIGN.md` §5.2 conformance notes in the PR
+  - [x] 3.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
+  - [x] 3.28 Migration lifecycle: **not applicable** — read-only story. The AC10 procedure temporarily unschedules a cron job **on the local stack only** and restores it; that is a reversible test manipulation, not a schema or data-model change. Opt-out rationale recorded here and in the issue
   - [ ] 3.29 Mark PR ready for review, notify the user, and close #121 only after the PR is approved and merged
 
 ## Wave 3 Exit Criteria
