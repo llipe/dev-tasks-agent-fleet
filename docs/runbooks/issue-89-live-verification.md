@@ -109,14 +109,36 @@ from runs where id = '<run_id>';
 ## Check B — malformed payload → `INVALID_PARAMS` (task 1.17 / #89 AC2)
 
 The panel cannot emit a malformed payload, so invoke the **deployed runtime directly** with a
-payload that **omits `run_id`**:
+payload that **omits `run_id`**.
+
+> ⚠️ **Two CLI-v2 gotchas, both handled below:**
+> 1. `--payload` is a **`blob`** — it must be base64, not raw JSON (raw JSON fails with
+>    `Invalid base64: "{...}"`). `fileb://` makes the CLI base64-encode the file bytes for you.
+> 2. **Do not split the long ARN across lines with `\` continuations** — a pasted newline can land
+>    *inside* the ARN, producing `expected one argument`. Put the ARN in a variable first (below),
+>    or run the invoke on a single line.
 
 ```bash
-aws bedrock-agentcore invoke-agent-runtime \
-  --agent-runtime-arn 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0' \
-  --payload '{"repository_org":"llipe","repository_name":"<any-repo>"}' \
-  /tmp/invoke-out.json
-cat /tmp/invoke-out.json
+# 0. Put the ARN in a variable so a paste-wrap can never split it mid-string.
+ARN='arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0'
+echo "$ARN" | wc -l   # sanity check: must print 1
+
+# 1. Write the malformed payload (omits run_id) to a file.
+printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' > /tmp/bad-payload.json
+
+# 2. Invoke on a SINGLE line (no backslash continuations), fileb:// for the base64 blob.
+aws bedrock-agentcore invoke-agent-runtime --agent-runtime-arn "$ARN" --payload fileb:///tmp/bad-payload.json /tmp/invoke-out.json
+
+# 3. The response body may itself be base64/SSE — decode if it looks encoded.
+base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json
+```
+
+Equivalent inline form (base64 the JSON yourself, still a single invoke line):
+
+```bash
+ARN='arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0'
+aws bedrock-agentcore invoke-agent-runtime --agent-runtime-arn "$ARN" --payload "$(printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' | base64)" /tmp/invoke-out.json
+base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json
 ```
 
 **Expected:** the agent's terminal chunk carries `"error_code": "INVALID_PARAMS"`. In CloudWatch:
@@ -126,6 +148,8 @@ cat /tmp/invoke-out.json
 
 > This is the agent's own `validate_payload` path — the same code the shared fixture test
 > (`test_payload_contract_fixture.py`) already pins. Check B confirms it fires on the *live* runtime.
+> Note: this direct-CLI invoke has **no panel `queued` row** (the panel never ran), so there is no
+> `runs` row to inspect — the evidence is the CLI response `error_code` + the CloudWatch line.
 
 ---
 
@@ -147,11 +171,19 @@ that unwrapping succeeded. Check C only **records which shape is real** so `tech
 
 ## Results — fill in and report back
 
-| Check | Result | Evidence (run_id / error_code / wrapper shape) |
-|-------|--------|-----------------------------------------------|
-| A — `queued → running` | ☐ PASS ☐ FAIL | run_id: ______  saw `running` at: ______ |
-| B — `INVALID_PARAMS` | ☐ PASS ☐ FAIL | error_code: ______ |
-| C — wrapper shape (OQ2) | ☐ observed | shape: ☐ bare ☐ single ☐ double |
+**Executed 2026-09-06. All three resolved.**
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| A — `queued → running` | **PASS** | run_id `a7203345-f828-4e84-97dd-eb83514edffe`; `running` at 2026-09-06 20:12:31 UTC. Agent-side confirmation: session `16a24ca1-72b4-463e-ad82-99457dfea01e` logged `GitHub credentials resolved for org=llipe` at 20:12:32 — i.e. it passed `validate_payload` and entered the pipeline one second after the flip. |
+| B — `INVALID_PARAMS` | **PASS** | Direct-CLI invoke, session `209f483b-6d93-4898-9e37-265ccf01d640`. Terminal chunk: `{"status":"failed","outcome":"not_applicable","error_code":"INVALID_PARAMS",...}`. CloudWatch: `Invalid payload — missing required fields`. |
+| C — wrapper shape (OQ2) | **OBSERVED — effectively bare** | The panel sends bare JSON (`lib/aws/invoke.ts`, no `prompt` key) and that payload reached `running` (Check A), so the transport delivers something `unwrap_payload` resolves to the real fields with no panel-side wrapping. The `classify_invalid_payload` `wrapper_only` path — which logs "appears double-wrapped" — has **never fired**: a 12-hour `filter-log-events --filter-pattern 'double-wrapped'` sweep returned zero events, and Check B's own rejection was classified `missing_fields`, not `wrapper_only`. |
+
+### OQ2 — the finding, stated precisely
+
+**The panel must not add a `prompt` wrapper, and does not need to.** Sending the bare inner JSON works end to end.
+
+Honest limit on this evidence: the agent deliberately never logs the raw payload, so the *literal pre-unwrap bytes* were not observed. Nor can they be inferred from outside — `unwrap_payload` is total by design (it resolves bare, single-wrapped, and double-wrapped inputs to the same result), so every externally observable outcome is identical across the three shapes. What **is** established is the property that actually matters: a bare-sent payload is accepted and runs, and the double-wrap diagnostic never triggers on this path. The `unwrap_payload` tolerance remains necessary for the `agentcore` CLI path (the subject of #97), not for the panel's SDK path.
 
 ### After a successful run — what the developer agent will do
 
