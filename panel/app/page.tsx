@@ -17,9 +17,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-// The invoke route (S-113) does not exist yet; render Invoke disabled until it
-// lands (task 2.11) rather than linking to a 404.
-const INVOKE_ROUTE_AVAILABLE = false;
+// The invoke route (S-113, /agents/[slug]/invoke) shipped in Wave 4 (PR #143),
+// so the Invoke action links through to it.
+const INVOKE_ROUTE_AVAILABLE = true;
 
 function toRun(row: DashboardRunRow): AgentSummaryInput["runs"][number] {
   return {

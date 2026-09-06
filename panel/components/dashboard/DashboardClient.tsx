@@ -32,10 +32,11 @@ export interface DashboardClientProps {
   agents: AgentSummary[];
   nowMs: number;
   /**
-   * Whether the invoke route (S-113) exists yet. While false, the Invoke
-   * action renders disabled rather than linking to a 404 (task 2.11). Passed as
-   * a serializable boolean, not a function, so it can cross the server→client
-   * boundary.
+   * Whether the invoke route (`/agents/[slug]/invoke`) exists. It shipped in
+   * Wave 4 (S-113), so the page passes `true` and the Invoke action links
+   * through. The flag is retained so the disabled path stays exercisable (and
+   * as a guard for any future route-gating). Passed as a serializable boolean,
+   * not a function, so it can cross the server→client boundary.
    */
   invokeRouteAvailable: boolean;
 }

@@ -140,6 +140,24 @@ describe("dashboard — variants render from one fixture (AC-107.2)", () => {
     expect(screen.getByRole("listbox", { name: /agents ledger/i })).toBeInTheDocument();
     expect(screen.getByText("Secret Scanner")).toBeInTheDocument();
   });
+
+  it("renders Invoke as a link to /agents/[slug]/invoke when the route is available", () => {
+    renderDashboard(true);
+    const link = screen
+      .getAllByRole("link")
+      .find((a) => a.getAttribute("href") === "/agents/dependency-update/invoke");
+    expect(link).toBeDefined();
+    // The link wraps an enabled Invoke button (not an aria-disabled span).
+    expect(within(link as HTMLElement).getByRole("button", { name: /invoke/i })).toBeEnabled();
+  });
+
+  it("renders Invoke disabled (no link) when the route is unavailable", () => {
+    renderDashboard(false);
+    const anyInvokeLink = screen
+      .queryAllByRole("link")
+      .some((a) => a.getAttribute("href")?.endsWith("/invoke"));
+    expect(anyInvokeLink).toBe(false);
+  });
 });
 
 describe("dashboard — status derivation reaches the view (CT-2)", () => {
