@@ -1,0 +1,20 @@
+/* S-113 (issue 126) — schema preview */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pre {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre;
+}
