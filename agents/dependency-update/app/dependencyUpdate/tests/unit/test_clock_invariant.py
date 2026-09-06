@@ -26,6 +26,7 @@ import pytest
 from config import (
     HEARTBEAT_INTERVAL,
     IDLE_SESSION_TIMEOUT,
+    LOCKFILE_SNAPSHOT_TIMEOUT,
     MAX_LIFETIME,
     REAPER_THRESHOLD_SECONDS,
     TEST_TIMEOUT,
@@ -57,6 +58,12 @@ class TestShippedConfigIsConsistent:
         assert HEARTBEAT_INTERVAL > 0
         assert HEARTBEAT_INTERVAL <= IDLE_SESSION_TIMEOUT / 2
 
+    def test_lockfile_snapshot_timeout_within_test_timeout(self):
+        # The dedicated lockfile-listing budget must be positive and never
+        # exceed TEST_TIMEOUT, so it stays inside the outer clocks.
+        assert LOCKFILE_SNAPSHOT_TIMEOUT > 0
+        assert LOCKFILE_SNAPSHOT_TIMEOUT <= TEST_TIMEOUT
+
 
 class TestInvariantRejectsInconsistency:
     """assert_clock_invariant must fail loudly on any violated relation (SC-4)."""
@@ -84,6 +91,14 @@ class TestInvariantRejectsInconsistency:
         with pytest.raises(ClockConsistencyError):
             assert_clock_invariant(heartbeat_interval=200, idle_session_timeout=300)
 
+    def test_lockfile_snapshot_exceeding_test_timeout_is_rejected(self):
+        with pytest.raises(ClockConsistencyError):
+            assert_clock_invariant(lockfile_snapshot_timeout=700, test_timeout=600)
+
+    def test_nonpositive_lockfile_snapshot_is_rejected(self):
+        with pytest.raises(ClockConsistencyError):
+            assert_clock_invariant(lockfile_snapshot_timeout=0)
+
     def test_valid_custom_values_pass(self):
         # A fully consistent custom set must not raise.
         assert_clock_invariant(
@@ -93,6 +108,7 @@ class TestInvariantRejectsInconsistency:
             max_lifetime=600,
             reaper_threshold_seconds=720,
             heartbeat_interval=90,
+            lockfile_snapshot_timeout=100,
         )
 
 
@@ -120,6 +136,10 @@ class TestClockInvariantProperty:
                     max_lifetime=life,
                     reaper_threshold_seconds=reaper,
                     heartbeat_interval=hb,
+                    # Hold the lockfile clock at the floor (1 <= any test>=1) so
+                    # this property isolates the five ordering relations + the
+                    # heartbeat bound; the lockfile relation has its own tests.
+                    lockfile_snapshot_timeout=1,
                 )
                 got_ok = True
             except ClockConsistencyError:

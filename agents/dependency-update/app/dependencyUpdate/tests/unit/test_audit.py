@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -547,10 +548,51 @@ class TestSnapshotLockfilePackages:
         assert packages == {}
 
     @patch("audit.subprocess.run")
-    def test_command_failure(self, mock_run):
+    def test_command_failure_degrades_to_empty_snapshot(self, mock_run):
+        # A metric-gathering command that cannot run must NOT crash the pipeline
+        # (it used to raise RuntimeError). It degrades to an empty snapshot.
         mock_run.side_effect = OSError("command not found")
-        with pytest.raises(RuntimeError, match="Failed to run npm list"):
-            snapshot_lockfile_packages("/fake", "npm")
+        assert snapshot_lockfile_packages("/fake", "npm") == {}
+
+    @patch("audit.subprocess.run")
+    def test_timeout_degrades_to_empty_snapshot(self, mock_run):
+        # The reported bug: `pnpm list -r --depth Infinity` timed out on a large
+        # monorepo and the raised RuntimeError crashed the whole run. It must now
+        # degrade to an empty snapshot so the audit/update/PR pipeline completes.
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd=["pnpm", "list", "-r", "--depth", "Infinity", "--json"], timeout=300
+        )
+        assert snapshot_lockfile_packages("/fake", "pnpm") == {}
+
+    @patch("audit.subprocess.run")
+    def test_snapshot_uses_dedicated_lockfile_timeout(self, mock_run):
+        # The listing gets its own (larger) budget, not TOOL_COMMAND_TIMEOUT.
+        from config import LOCKFILE_SNAPSHOT_TIMEOUT, TOOL_COMMAND_TIMEOUT
+
+        fixture = _load_fixture("list_pnpm.json")
+        mock_run.return_value = _mock_completed(json.dumps(fixture), returncode=0)
+        snapshot_lockfile_packages("/fake", "pnpm")
+        assert mock_run.call_args.kwargs["timeout"] == LOCKFILE_SNAPSHOT_TIMEOUT
+        assert LOCKFILE_SNAPSHOT_TIMEOUT > TOOL_COMMAND_TIMEOUT
+
+    @patch("audit.subprocess.run")
+    def test_nonzero_exit_with_output_still_parses(self, mock_run):
+        # `npm list --all` / `pnpm list` exit non-zero on peer/extraneous
+        # warnings while still printing usable JSON on stdout — parse it.
+        fixture = _load_fixture("list_npm.json")
+        mock_run.return_value = _mock_completed(json.dumps(fixture), returncode=1)
+        packages = snapshot_lockfile_packages("/fake", "npm")
+        assert packages["lodash"] == "4.17.0"
+
+    @patch("audit.subprocess.run")
+    def test_nonzero_exit_no_output_degrades_to_empty(self, mock_run):
+        mock_run.return_value = _mock_completed("", returncode=1)
+        assert snapshot_lockfile_packages("/fake", "pnpm") == {}
+
+    @patch("audit.subprocess.run")
+    def test_unparseable_json_degrades_to_empty(self, mock_run):
+        mock_run.return_value = _mock_completed("not json {{{", returncode=0)
+        assert snapshot_lockfile_packages("/fake", "pnpm") == {}
 
 
 # ---------------------------------------------------------------------------

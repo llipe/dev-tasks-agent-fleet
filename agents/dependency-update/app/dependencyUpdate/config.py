@@ -38,6 +38,15 @@ MODEL_ID: str = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 TOOL_COMMAND_TIMEOUT: int = int(os.environ.get("TOOL_COMMAND_TIMEOUT", "180"))
 TEST_TIMEOUT: int = int(os.environ.get("TEST_TIMEOUT", "600"))
 
+# Dedicated budget for the workspace-aware, recursive lockfile listing
+# (`pnpm list -r --depth Infinity` / `npm list --all`, issue #90). On a large
+# monorepo that full transitive walk legitimately takes longer than a quick
+# tool call, so it gets its own timeout instead of borrowing the 180 s
+# TOOL_COMMAND_TIMEOUT (issue: the walk timed out at 180 s and crashed the whole
+# run). Kept <= TEST_TIMEOUT so the clock invariant below still holds, and a
+# genuine hang still degrades gracefully rather than running unbounded.
+LOCKFILE_SNAPSHOT_TIMEOUT: int = int(os.environ.get("LOCKFILE_SNAPSHOT_TIMEOUT", "300"))
+
 # Container lifecycle bounds — kept in sync with agentcore/agentcore.json.
 # idle raised from 300 -> 900 so a bounded TEST_TIMEOUT (600) run streaming a
 # heartbeat every 120 s can never trip the idle reclamation (#98 AC4).
@@ -65,6 +74,7 @@ def assert_clock_invariant(
     max_lifetime: int | None = None,
     reaper_threshold_seconds: int | None = None,
     heartbeat_interval: int | None = None,
+    lockfile_snapshot_timeout: int | None = None,
 ) -> None:
     """Validate the timeout-clock ordering invariant (issue #98, AC4).
 
@@ -78,6 +88,7 @@ def assert_clock_invariant(
         TOOL_COMMAND_TIMEOUT <= TEST_TIMEOUT <= IDLE_SESSION_TIMEOUT
                              <= MAX_LIFETIME <= REAPER_THRESHOLD_SECONDS
         0 < HEARTBEAT_INTERVAL <= IDLE_SESSION_TIMEOUT / 2
+        0 < LOCKFILE_SNAPSHOT_TIMEOUT <= TEST_TIMEOUT
     """
     tool = TOOL_COMMAND_TIMEOUT if tool_command_timeout is None else tool_command_timeout
     test = TEST_TIMEOUT if test_timeout is None else test_timeout
@@ -87,6 +98,11 @@ def assert_clock_invariant(
         REAPER_THRESHOLD_SECONDS if reaper_threshold_seconds is None else reaper_threshold_seconds
     )
     hb = HEARTBEAT_INTERVAL if heartbeat_interval is None else heartbeat_interval
+    lockfile = (
+        LOCKFILE_SNAPSHOT_TIMEOUT
+        if lockfile_snapshot_timeout is None
+        else lockfile_snapshot_timeout
+    )
 
     if tool > test:
         raise ClockConsistencyError(
@@ -109,6 +125,12 @@ def assert_clock_invariant(
     if hb > idle / 2:
         raise ClockConsistencyError(
             f"HEARTBEAT_INTERVAL ({hb}) must be <= IDLE_SESSION_TIMEOUT/2 ({idle / 2})"
+        )
+    if lockfile <= 0:
+        raise ClockConsistencyError(f"LOCKFILE_SNAPSHOT_TIMEOUT ({lockfile}) must be > 0")
+    if lockfile > test:
+        raise ClockConsistencyError(
+            f"LOCKFILE_SNAPSHOT_TIMEOUT ({lockfile}) must be <= TEST_TIMEOUT ({test})"
         )
 
 
