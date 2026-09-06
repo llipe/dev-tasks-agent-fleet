@@ -1,0 +1,70 @@
+/* Run-history agent header. /DESIGN.md §5.2. */
+.header {
+  display: flex;
+  flex-direction: column;
+}
+
+.breadcrumb {
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22.4px;
+  padding: 18px 16px 16px;
+}
+
+.identity {
+  min-width: 0;
+  max-width: 620px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.name {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 21px;
+  line-height: 1.2;
+  color: var(--color-text);
+  letter-spacing: -0.015em;
+}
+
+.description {
+  margin: 6px 0 0;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+  align-items: center;
+}
+
+.invokeLink {
+  text-decoration: none;
+}

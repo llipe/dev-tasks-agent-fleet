@@ -218,7 +218,7 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
   - [x] 3.26 Record `/DESIGN.md` §5.2 conformance notes in the PR
   - [x] 3.27 Run quality gates: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run audit`, then `make validate`
   - [x] 3.28 Migration lifecycle: **not applicable** — read-only story. The AC10 procedure temporarily unschedules a cron job **on the local stack only** and restores it; that is a reversible test manipulation, not a schema or data-model change. Opt-out rationale recorded here and in the issue
-  - [ ] 3.29 Mark PR ready for review, notify the user, and close #121 only after the PR is approved and merged
+  - [x] 3.29 Mark PR ready for review, notify the user, and close #121 only after the PR is approved and merged
 
 ## Wave 3 Exit Criteria
 

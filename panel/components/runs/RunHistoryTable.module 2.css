@@ -1,0 +1,148 @@
+/* Run-history table. /DESIGN.md §4.4 grid + §5.2 fields. Semantic <table>. */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+}
+
+.table thead,
+.table tbody {
+  display: block;
+}
+
+/* /DESIGN.md §4.4: grid-template-columns: 118px 122px minmax(0,1fr) 96px 78px 104px 30px */
+.row {
+  display: grid;
+  grid-template-columns: 118px 122px minmax(0, 1fr) 96px 78px 104px 30px;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.headRow {
+  padding-bottom: 6px;
+}
+
+.headCell {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  text-align: left;
+}
+
+.row:not(.headRow):hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.cell {
+  min-width: 0;
+  text-align: left;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Outcome/repository pending marker at reduced opacity (§8.2). */
+.pending {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+  opacity: 0.45;
+}
+
+.repoCell {
+  min-width: 0;
+}
+
+.repo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.repoName {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repoBranch {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.startedCell {
+  text-align: right;
+  justify-content: end;
+}
+
+.chevronCell {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--faint);
+}
+
+.rowLink {
+  display: inline-flex;
+  align-items: center;
+  color: var(--faint);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.rowLink:hover {
+  color: var(--color-accent-300);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Empty state — configured, never invoked (§5.2 prototype 2b). */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 44px 16px 48px;
+}
+
+.emptyBody {
+  margin: 0;
+  max-width: 44ch;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.emptyActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.invokeLink {
+  text-decoration: none;
+}
