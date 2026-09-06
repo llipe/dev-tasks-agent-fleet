@@ -13,7 +13,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { unwrap } from "@/lib/supabase/errors";
+import { DatabaseError, unwrap } from "@/lib/supabase/errors";
+import type { RunInsert } from "@/lib/domain/run-insert";
 import type {
   AgentRow,
   RepositoryRow,
@@ -55,6 +56,21 @@ export async function getEnabledRepositories(client: SupabaseClient): Promise<Re
     .is("archived_at", null)
     .order("full_name", { ascending: true });
   return unwrap<RepositoryRow[]>("getEnabledRepositories", result) ?? [];
+}
+
+/**
+ * 3b. One repository by id, or null when absent (S-112 / #125).
+ *
+ * The invoke route resolves the repository the operator selected, then checks
+ * `is_enabled` / `archived_at` at the route level so it can return a precise
+ * error. This helper does the raw read only.
+ */
+export async function getRepositoryById(
+  client: SupabaseClient,
+  id: string,
+): Promise<RepositoryRow | null> {
+  const result = await client.from("repositories").select("*").eq("id", id).maybeSingle();
+  return unwrap<RepositoryRow | null>("getRepositoryById", result);
 }
 
 /** 4. Runs for an agent slug, newest-first, from `v_runs`. */
@@ -318,4 +334,69 @@ export async function getRunArtifacts(
     .eq("run_id", runId)
     .order("created_at", { ascending: false });
   return unwrap<RunArtifactRow[]>("getRunArtifacts", result) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Write helpers (S-112 / #125) — the panel's first database writes.
+//
+// The invoke route inserts the `queued` run BEFORE contacting AgentCore (D1),
+// then either records the invocation refs on success or marks the run
+// `failed_to_start` if `InvokeAgentRuntime` throws (AC12). Each helper takes an
+// explicit client and surfaces a PostgREST failure as a `DatabaseError` (500,
+// pg code logged never returned) — the same contract as the read helpers.
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert the `queued` run row (D1). Uses `Prefer: return=representation` so the
+ * inserted id is confirmed. A PostgREST failure (constraint, RLS, connectivity)
+ * throws `DatabaseError` and the route returns before any invocation — no
+ * orphan invoke without a row.
+ */
+export async function insertQueuedRun(client: SupabaseClient, row: RunInsert): Promise<void> {
+  const result = await client.from("runs").insert(row).select("id").single();
+  if (result.error) {
+    throw new DatabaseError("insertQueuedRun", result.error);
+  }
+}
+
+/**
+ * Record the AgentCore invocation references on a run after a successful
+ * invoke. Best-effort in the sense that the run already exists and is visible;
+ * a failure here still throws `DatabaseError` so the route can log it, but the
+ * run is not lost.
+ */
+export async function updateRunInvocationRefs(
+  client: SupabaseClient,
+  runId: string,
+  refs: { session_id?: string | null; runtime_invocation_id?: string | null },
+): Promise<void> {
+  const result = await client.from("runs").update(refs).eq("id", runId);
+  if (result.error) {
+    throw new DatabaseError("updateRunInvocationRefs", result.error);
+  }
+}
+
+/**
+ * Mark a run `failed_to_start` after `InvokeAgentRuntime` threw (AC12). The
+ * panel does this itself rather than waiting for the reaper, so the failure is
+ * immediately visible. `error_code`/`error_message` explain why.
+ */
+export async function markRunFailedToStart(
+  client: SupabaseClient,
+  runId: string,
+  errorCode: string,
+  errorMessage: string,
+): Promise<void> {
+  const result = await client
+    .from("runs")
+    .update({
+      status: "failed_to_start",
+      error_code: errorCode,
+      error_message: errorMessage,
+      finished_at: new Date().toISOString(),
+    })
+    .eq("id", runId);
+  if (result.error) {
+    throw new DatabaseError("markRunFailedToStart", result.error);
+  }
 }
