@@ -52,7 +52,7 @@ describe("buildAgentPayload — happy path (AC3, #89 contract)", () => {
       repositoryFullName: "acme/web",
       baseBranch: "main",
       params: {},
-    }) as Record<string, unknown>;
+    }) as unknown as Record<string, unknown>;
 
     expect("repository_id" in payload).toBe(false);
     expect(Object.keys(payload).sort()).toEqual(
