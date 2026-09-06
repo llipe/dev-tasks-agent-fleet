@@ -27,7 +27,7 @@
     "@aws-sdk/types": "3.974.5",
     "@phosphor-icons/react": "2.1.10",
     "@supabase/supabase-js": "2.114.0",
-    "ajv": "8.17.1",
+    "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "next": "15.5.25",
     "react": "19.1.1",

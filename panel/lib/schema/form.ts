@@ -86,11 +86,7 @@ function typeSet(type: string | string[] | undefined): Set<string> {
 const UNSUPPORTED_NOTE =
   "Unsupported schema type — this parameter cannot be edited in the form. Edit it via the API.";
 
-function mapProperty(
-  name: string,
-  prop: JsonSchemaProperty,
-  required: boolean,
-): FieldDescriptor {
+function mapProperty(name: string, prop: JsonSchemaProperty, required: boolean): FieldDescriptor {
   const label = prop.title && prop.title.trim() !== "" ? prop.title : name;
   const base: FieldDescriptor = {
     name,
