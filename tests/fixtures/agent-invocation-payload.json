@@ -1,0 +1,12 @@
+{
+  "run_id": "018f3a2b-0000-7000-8000-000000000000",
+  "repository_org": "acme",
+  "repository_name": "web",
+  "base_branch": "main",
+  "params": {
+    "fix_mode": "audit_only",
+    "fail_on_findings": true,
+    "max_fix_attempts": 3,
+    "base_branch": "main"
+  }
+}
