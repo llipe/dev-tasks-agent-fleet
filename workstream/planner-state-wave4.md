@@ -10,16 +10,16 @@
 
 ## Story Status
 
-| Sequence | Story ID | Issue # | Status         | PR   | Branch                   |
-| -------- | -------- | ------- | -------------- | ---- | ------------------------ |
-| 1        | S-112    | #125    | ✅ Merged      | #141 | story/S-112-invoke-route |
-| 2        | S-113    | #126    | 🔄 In Progress | —    | story/S-113-invoke-form  |
+| Sequence | Story ID | Issue # | Status    | PR   | Branch                   |
+| -------- | -------- | ------- | --------- | ---- | ------------------------ |
+| 1        | S-112    | #125    | ✅ Merged | #141 | story/S-112-invoke-route |
+| 2        | S-113    | #126    | ✅ Merged | #142 | story/S-113-invoke-form  |
 
 ## Current Position
 
-- Next story: S-113
-- Last merged PR: #141 (squashed into integration/wave4-invoke @ ce6555e)
-- Integration branch HEAD: ce6555e
+- Next story: none — both stories merged; proceeding to consolidated PR
+- Last merged PR: #142 (squashed into integration/wave4-invoke @ f6adcff)
+- Integration branch HEAD: f6adcff
 
 ## Decisions Log
 
@@ -33,3 +33,9 @@
 - S-112 blocked items (recorded, not passed): AC10/OQ2 prompt-wrapping + live #89 AC1/AC2 — need deployed AgentCore runtime (→ S-115).
 - S-112 merged squash into integration @ ce6555e; integration branch `make validate` green both branches post-merge.
 - #89 remains OPEN until PR merges to main (closing keywords in PR #141 fire on main-merge, not integration-merge). Will confirm at consolidation.
+
+- S-113 verifier audit: run, High fidelity. Minor drift D1 (jsonb does not preserve params_schema key order -> form field order follows Postgres jsonb order, not authoring order; no AC mandates order; routes to product-engineer for DESIGN note). D2 (1024/1440 geometry) deferred to S-114 Playwright.
+- S-113 Layer 2.5 (`synthetic-agent-form.test.ts`) RAN LIVE — synthetic agent row -> correct field mapping (AC7 end-to-end through DB).
+- S-113 ajv bump 8.17.1 -> 8.20.0: residual moderate advisory RESOLVED (pnpm audit exit 1 -> 0).
+- S-113 merged squash into integration @ f6adcff; integration `make validate` green both branches post-merge.
+- Both wave-4 stories merged. Proceeding to consolidated PR to main + wave exit criteria eval.
