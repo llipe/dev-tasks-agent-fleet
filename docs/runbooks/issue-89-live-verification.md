@@ -109,14 +109,33 @@ from runs where id = '<run_id>';
 ## Check B — malformed payload → `INVALID_PARAMS` (task 1.17 / #89 AC2)
 
 The panel cannot emit a malformed payload, so invoke the **deployed runtime directly** with a
-payload that **omits `run_id`**:
+payload that **omits `run_id`**.
+
+> ⚠️ **AWS CLI v2 treats `--payload` as a `blob` — it must be base64, not raw JSON.** Passing raw
+> JSON fails with `Invalid base64: "{...}"`. Use `fileb://` (the CLI base64-encodes the file bytes
+> for you) — the most robust form, no manual encoding or shell-quoting pitfalls:
+
+```bash
+# 1. Write the malformed payload (omits run_id) to a file.
+printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' > /tmp/bad-payload.json
+
+# 2. Invoke, passing the raw bytes via fileb:// (CLI handles the base64 blob encoding).
+aws bedrock-agentcore invoke-agent-runtime \
+  --agent-runtime-arn 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0' \
+  --payload fileb:///tmp/bad-payload.json \
+  /tmp/invoke-out.json
+
+# 3. The response body may itself be base64/SSE — decode if it looks encoded.
+base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json
+```
+
+Equivalent inline form (base64 the JSON yourself):
 
 ```bash
 aws bedrock-agentcore invoke-agent-runtime \
   --agent-runtime-arn 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0' \
-  --payload '{"repository_org":"llipe","repository_name":"<any-repo>"}' \
-  /tmp/invoke-out.json
-cat /tmp/invoke-out.json
+  --payload "$(printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' | base64)" \
+  /tmp/invoke-out.json && (base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json)
 ```
 
 **Expected:** the agent's terminal chunk carries `"error_code": "INVALID_PARAMS"`. In CloudWatch:
@@ -126,6 +145,8 @@ cat /tmp/invoke-out.json
 
 > This is the agent's own `validate_payload` path — the same code the shared fixture test
 > (`test_payload_contract_fixture.py`) already pins. Check B confirms it fires on the *live* runtime.
+> Note: this direct-CLI invoke has **no panel `queued` row** (the panel never ran), so there is no
+> `runs` row to inspect — the evidence is the CLI response `error_code` + the CloudWatch line.
 
 ---
 
@@ -149,7 +170,7 @@ that unwrapping succeeded. Check C only **records which shape is real** so `tech
 
 | Check | Result | Evidence (run_id / error_code / wrapper shape) |
 |-------|--------|-----------------------------------------------|
-| A — `queued → running` | ☐ PASS ☐ FAIL | run_id: ______  saw `running` at: ______ |
+| A — `queued → running` | **PASS** | run_id: `a7203345-f828-4e84-97dd-eb83514edffe`; saw `running` at 2026-09-06 20:12:31 UTC |
 | B — `INVALID_PARAMS` | ☐ PASS ☐ FAIL | error_code: ______ |
 | C — wrapper shape (OQ2) | ☐ observed | shape: ☐ bare ☐ single ☐ double |
 
