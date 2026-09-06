@@ -71,6 +71,8 @@ One sub-task at a time, marked `[x]` locally **and** in the GitHub Issue checkli
 - `tests/fixtures/agent-invocation-payload.json` — **shared** cross-language contract fixture (repo root)
 - `panel/tests/unit/payload.test.ts`, `panel/tests/component/invoke-route.test.ts`, `panel/tests/integration/invoke-insert.test.ts`
 - `agents/dependency-update/app/dependencyUpdate/tests/unit/test_payload_contract_fixture.py` — Python side of the shared fixture (asserts `validate_payload` accepts it; **must not modify agent production code**)
+- `docs/runbooks/issue-89-live-verification.md` — operator runbook for the live #89 checks (tasks 1.17/1.27/OQ2), unblocked once the runtime is deployed
+- `panel/scripts/verify-invoke.mjs` — operator helper automating Check A (`queued → running`)
 
 ### Schema-driven invoke form (S-113)
 
