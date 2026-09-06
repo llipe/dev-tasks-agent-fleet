@@ -111,31 +111,34 @@ from runs where id = '<run_id>';
 The panel cannot emit a malformed payload, so invoke the **deployed runtime directly** with a
 payload that **omits `run_id`**.
 
-> ⚠️ **AWS CLI v2 treats `--payload` as a `blob` — it must be base64, not raw JSON.** Passing raw
-> JSON fails with `Invalid base64: "{...}"`. Use `fileb://` (the CLI base64-encodes the file bytes
-> for you) — the most robust form, no manual encoding or shell-quoting pitfalls:
+> ⚠️ **Two CLI-v2 gotchas, both handled below:**
+> 1. `--payload` is a **`blob`** — it must be base64, not raw JSON (raw JSON fails with
+>    `Invalid base64: "{...}"`). `fileb://` makes the CLI base64-encode the file bytes for you.
+> 2. **Do not split the long ARN across lines with `\` continuations** — a pasted newline can land
+>    *inside* the ARN, producing `expected one argument`. Put the ARN in a variable first (below),
+>    or run the invoke on a single line.
 
 ```bash
+# 0. Put the ARN in a variable so a paste-wrap can never split it mid-string.
+ARN='arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0'
+echo "$ARN" | wc -l   # sanity check: must print 1
+
 # 1. Write the malformed payload (omits run_id) to a file.
 printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' > /tmp/bad-payload.json
 
-# 2. Invoke, passing the raw bytes via fileb:// (CLI handles the base64 blob encoding).
-aws bedrock-agentcore invoke-agent-runtime \
-  --agent-runtime-arn 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0' \
-  --payload fileb:///tmp/bad-payload.json \
-  /tmp/invoke-out.json
+# 2. Invoke on a SINGLE line (no backslash continuations), fileb:// for the base64 blob.
+aws bedrock-agentcore invoke-agent-runtime --agent-runtime-arn "$ARN" --payload fileb:///tmp/bad-payload.json /tmp/invoke-out.json
 
 # 3. The response body may itself be base64/SSE — decode if it looks encoded.
 base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json
 ```
 
-Equivalent inline form (base64 the JSON yourself):
+Equivalent inline form (base64 the JSON yourself, still a single invoke line):
 
 ```bash
-aws bedrock-agentcore invoke-agent-runtime \
-  --agent-runtime-arn 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0' \
-  --payload "$(printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' | base64)" \
-  /tmp/invoke-out.json && (base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json)
+ARN='arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0'
+aws bedrock-agentcore invoke-agent-runtime --agent-runtime-arn "$ARN" --payload "$(printf '%s' '{"repository_org":"llipe","repository_name":"any-repo"}' | base64)" /tmp/invoke-out.json
+base64 -d /tmp/invoke-out.json 2>/dev/null || cat /tmp/invoke-out.json
 ```
 
 **Expected:** the agent's terminal chunk carries `"error_code": "INVALID_PARAMS"`. In CloudWatch:
