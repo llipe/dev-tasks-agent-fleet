@@ -14,10 +14,13 @@ Provides:
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from dataclasses import dataclass, field
 
-from config import TOOL_COMMAND_TIMEOUT
+from config import LOCKFILE_SNAPSHOT_TIMEOUT, TOOL_COMMAND_TIMEOUT
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -264,6 +267,18 @@ def snapshot_lockfile_packages(workspace: str, pm: str) -> dict[str, str]:
 
     The previous ``--depth 0`` listing saw none of the workspace or transitive
     changes on a turbo monorepo, so ``diff_packages`` reported zero changes.
+
+    Failure mode — degrade, never crash. This snapshot feeds the
+    ``packages_changed`` metric only; it is NOT on the critical audit/update/PR
+    path. On a very large monorepo the full transitive walk can exceed its
+    budget, and a non-zero exit or timeout must not abort the whole run (it did
+    before: a 180 s timeout raised and crashed the pipeline). So a timeout,
+    OS error, non-zero exit, empty output, or unparseable JSON all resolve to an
+    empty snapshot with a logged warning — ``diff_packages`` then reports 0
+    changed packages for that run (an under-reported metric) while the pipeline
+    completes. The listing gets its own ``LOCKFILE_SNAPSHOT_TIMEOUT`` (larger
+    than ``TOOL_COMMAND_TIMEOUT``) so the common case succeeds and only a
+    genuinely pathological repo hits the degrade path.
     """
     if pm == "pnpm":
         cmd = ["pnpm", "list", "-r", "--depth", "Infinity", "--json"]
@@ -276,17 +291,50 @@ def snapshot_lockfile_packages(workspace: str, pm: str) -> dict[str, str]:
             cwd=workspace,
             capture_output=True,
             text=True,
-            timeout=TOOL_COMMAND_TIMEOUT,
+            timeout=LOCKFILE_SNAPSHOT_TIMEOUT,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError(f"Failed to run {pm} list: {exc}") from exc
+    except subprocess.TimeoutExpired:
+        # A metric that is expensive to gather must never abort the run. Degrade
+        # to an empty snapshot; packages_changed will under-report for this run.
+        log.warning(
+            "%s list timed out after %ds while snapshotting lockfile packages; "
+            "continuing with an empty snapshot (packages_changed may under-report). "
+            "Set LOCKFILE_SNAPSHOT_TIMEOUT higher for very large monorepos.",
+            pm,
+            LOCKFILE_SNAPSHOT_TIMEOUT,
+        )
+        return {}
+    except OSError as exc:
+        log.warning(
+            "Failed to run %s list (%s) while snapshotting lockfile packages; "
+            "continuing with an empty snapshot.",
+            pm,
+            exc,
+        )
+        return {}
 
+    # `npm list --all` and `pnpm list` exit non-zero when the tree has problems
+    # (peer-dep warnings, extraneous packages) yet still print usable JSON on
+    # stdout. Only treat it as empty when there is nothing to parse — but if a
+    # non-zero exit produced no stdout, degrade rather than misreport.
     if not result.stdout.strip():
+        if result.returncode != 0:
+            log.warning(
+                "%s list exited %d with no output while snapshotting lockfile "
+                "packages; continuing with an empty snapshot.",
+                pm,
+                result.returncode,
+            )
         return {}
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
+        log.warning(
+            "%s list produced unparseable JSON while snapshotting lockfile "
+            "packages; continuing with an empty snapshot.",
+            pm,
+        )
         return {}
 
     return _parse_list_json(data, pm)
