@@ -1,0 +1,17 @@
+/*
+ * Run detail page. /DESIGN.md §4.2 — full-height, no OUTER scroll; the log
+ * viewer owns the scroll. The section fills the content area as a column; the
+ * head/banner/summary are flex:none and the LogViewer (flex:1) scrolls.
+ */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.head {
+  flex: none;
+  padding: 14px 16px 0;
+}

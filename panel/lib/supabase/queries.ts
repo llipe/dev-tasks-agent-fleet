@@ -323,6 +323,43 @@ export async function getAllRunsByAgentSlug(
   return runs;
 }
 
+/**
+ * 7b. `run_events` for a run within an inclusive `seq` range (Story S-109 —
+ * the "load earlier" fetch). Returns the events with `fromSeq <= seq <= toSeq`,
+ * ascending by `seq` for display. The range is computed by
+ * `lib/domain/log-window.priorWindowRange`, which bounds it to the window size,
+ * so this stays below the PostgREST `max_rows` ceiling in one read; it pages
+ * defensively with `.range()` in case a caller requests a wider span.
+ *
+ * Unlike `getRunEvents` (which bounds the RECENT end), this reads a fixed
+ * historical slice, so it orders ascending directly.
+ */
+export async function getRunEventsInRange(
+  client: SupabaseClient,
+  runId: string,
+  fromSeq: number,
+  toSeq: number,
+): Promise<RunEventRow[]> {
+  if (toSeq < fromSeq) return [];
+  const collected: RunEventRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const result = await client
+      .from("run_events")
+      .select("*")
+      .eq("run_id", runId)
+      .gte("seq", fromSeq)
+      .lte("seq", toSeq)
+      .order("seq", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    const page = unwrap<RunEventRow[]>("getRunEventsInRange", result) ?? [];
+    collected.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return collected;
+}
+
 /** 10. `run_artifacts` for a run, newest-first. */
 export async function getRunArtifacts(
   client: SupabaseClient,

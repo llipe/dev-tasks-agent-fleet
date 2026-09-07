@@ -1,0 +1,78 @@
+/* Run summary panel. /DESIGN.md §4.2 (2-column) + §5.3. */
+.summary {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.headline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.runId {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.repo {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--color-accent-300);
+}
+
+.pending {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+  opacity: 0.45;
+}
+
+/* Metadata grid — queued/started/finished/duration/branch. */
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px 28px;
+  margin: 0;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.metaLabel {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0;
+}
+
+.metaValue {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

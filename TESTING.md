@@ -257,6 +257,38 @@ testing consequences):
 
 
 
+## Panel frontend test surface (Phase 2)
+
+The `panel` package accrues its test surface per story. Each row records the story,
+the layer, the test files, and what they assert. This table is additive — a new
+story appends rows, it does not rewrite prior ones. Coverage figures are the
+per-module `@vitest/coverage-v8` numbers measured on the story's delivery.
+
+| Story | Layer | Test file(s) | Asserts |
+|-------|-------|--------------|---------|
+| **S-109 (#122)** — run detail `/runs/[id]` | 1 (unit) | `tests/unit/artifact-url.test.ts` (12 tests, incl. RT-1 fuzz) | **Mandatory security-negative #5** — `isSafeArtifactUrl` accepts only well-formed `https:`; rejects `http:`/`javascript:`/`data:`/`vbscript:`/`file:`/`ftp:`/relative/empty/`null`; case-insensitive scheme; TOTAL function that never throws over a 5,000-string fuzz corpus + a curated malformed set. `artifact-url.ts` **100%**. |
+| **S-109 (#122)** | 1 (unit) | `tests/unit/log-window.test.ts` (14 tests, incl. RT-3 partition property) | SD11 most-recent-2,000 window selector and `priorWindowRange` load-earlier math; the RT-3 property that the window plus the prior range partition the event stream without gap or overlap. `log-window.ts` **100%**. |
+| **S-109 (#122)** | 1 (unit) | `tests/unit/run-detail.test.ts` (19 tests) | `selectBanner` terminal-state selection, `buildLogLines`, `buildSummary` (status derived through the shared `effectiveStatus`; duration fallback). `run-detail.ts` **~97%** (uncovered = the `startedAtMs`/`finishedAtMs` fallback branch — a defensive path). |
+| **S-109 (#122)** | 2 (component) | `tests/component/run-detail.test.tsx` (21 tests) | **Mandatory security-negative #6** — a `<script>` and an `<img onerror>` message render as literal inert text with NO real `script`/`img` node created inside the `role="log"` region; the render consequence of #5 (a `javascript:`/`http:` artifact URL renders as inert text, never an `<a>`); AC14 (artifact link renders alongside a red `failed` pill); `rel="noopener noreferrer"` hardening; full 8 KB message not truncated; `aria-live` on the log region; terminal-state banner. |
+| **S-109 (#122)** | 2 (component) | `tests/component/run-detail-page-wiring.test.tsx` (3 tests) | Server-component page wiring — the `/runs/[id]` page composes summary + artifacts + log viewer + load-earlier server action from the query layer. |
+| **S-109 (#122)** | 2.5 (integration) | `tests/integration/run-detail-queries.test.ts` (5 tests, **ran live** against local Supabase) | `getRunEventsInRange` and the run-detail reads against a **real local Postgres** (Supabase CLI stack); the SD11 bounded read — a seeded 2,500-event run returns exactly the most-recent 2,000 in `seq` order. Docker-gated; ran live for this delivery with the stack up. |
+
+> **`coverage_gate` (S-109, MEASURED): PASS.** Measured with `@vitest/coverage-v8` 3.2.4 on the
+> full panel suite (`pnpm --filter panel run test:coverage`) with the Layer 2.5 `integration` project
+> run **live** against the local Supabase stack. New-module coverage: `artifact-url.ts` **100%**,
+> `log-window.ts` **100%**, `RunSummary.tsx`/`StateBanner.tsx`/`ArtifactLinks.tsx` **100%**,
+> `run-detail.ts` **97.22%**, `LogViewer.tsx` **95.52%**. The two `LogViewer` uncovered lines (55–57)
+> are the `priorWindowRange(cursor) === null` defensive early-return, unreachable through the UI while
+> the `cursor == null` guard above it holds; the two `run-detail.ts` uncovered lines (172–173) are the
+> `startedAtMs`/`finishedAtMs` duration fallback. Both are defensive paths, not business logic —
+> reported as an accepted non-blocking gap, not a `FAIL`. Both mandatory security-negative categories
+> are present and passing: **#5** (artifact-url `https:`-only scheme, `tests/unit/artifact-url.test.ts`)
+> and **#6** (inert `<script>`/`<img>` render, `tests/component/run-detail.test.tsx`). Full suite
+> independently reproduced: **711 passed / 4 skipped**; `make validate` exits 0 (Python 452 + panel
+> 711). Coverage is not confidence: the Layer 1/2 suites mock the data layer, so the query defects that
+> matter are guarded by the Layer 2.5 `run-detail-queries` suite running against a real Postgres — which
+> ran live here, not skipped.
+
 ### When coverage cannot be measured
 
 If no coverage provider is configured, the gate reports
