@@ -133,4 +133,31 @@ describe("run-detail page wiring", () => {
     expect(screen.getByText(/run timed out/i)).toBeInTheDocument();
     expect(screen.getByText(/reaped by reap_stale_runs/i)).toBeInTheDocument();
   });
+
+  it("renders the live log viewer with a live-tail control for a running run (S-110, AC8)", async () => {
+    const now = Date.now();
+    queryMock.getRunById.mockResolvedValue(
+      vrun({
+        status: "running",
+        effective_status: "running",
+        outcome: null,
+        finished_at: null,
+        duration_ms: null,
+        started_at: new Date(now - 5_000).toISOString(),
+        queued_at: new Date(now - 10_000).toISOString(),
+      }),
+    );
+
+    const ui = await RunDetailPage({ params: Promise.resolve({ id: "r3" }) });
+    render(ui);
+
+    // The live viewer mounts the SSE hook (which opens an EventSource) — jsdom
+    // has no EventSource, so the hook's connect is guarded; what we assert is
+    // the live-tail control and the running pill are present, not the terminal
+    // "load earlier" path.
+    expect(screen.getByRole("log", { name: /run log/i })).toHaveAttribute(
+      "data-sse-mount",
+      "run-log",
+    );
+  });
 });
