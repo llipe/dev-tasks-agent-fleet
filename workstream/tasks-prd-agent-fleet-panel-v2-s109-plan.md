@@ -81,7 +81,7 @@
   - [x] 1.32 Update `TESTING.md` with the S-109 test surface (Layer 1 artifact-url/log-window, Layer 2 run-detail, Layer 2.5 run-detail-queries).
   - [x] 1.33 `technical-writer` doc-drift check; update `docs/technical-guidelines.md` §9 `panel/` row + changelog. Note DESIGN §5.3 / §8.3 conformance reviewed.
   - [x] 1.34 Run `verifier` in **audit** mode against the delivered implementation; post the human-readable summary to issue/PR (mandatory, non-blocking on drift).
-  - [ ] 1.35 Convert PR from draft to ready for review; notify the user for review/merge. Do not close #122 until the PR is approved AND merged.
+  - [x] 1.35 Convert PR from draft to ready for review; notify the user for review/merge. Do not close #122 until the PR is approved AND merged.
 ```
 
 ## Notes
