@@ -81,8 +81,14 @@ async function insertEvent(c: Client, runId: string, seq: number): Promise<void>
   );
 }
 
-/** The real Supabase Realtime channel wrapped in the relay's RealtimeLike. */
-function wrapSupabaseChannel(client: SupabaseClient, runId: string): RealtimeLike {
+/** The real Supabase Realtime channel wrapped in the relay's RealtimeLike.
+ * `onSubscribed` fires once the channel reaches `SUBSCRIBED`, so the test can
+ * wait for the subscription before inserting (removing the fixed-sleep flake). */
+function wrapSupabaseChannel(
+  client: SupabaseClient,
+  runId: string,
+  onSubscribed?: () => void,
+): RealtimeLike {
   const channel = client.channel(`test-run-stream:${runId}`);
   let eventCb: ((row: RelayEventRow) => void) | null = null;
   let runCb: ((row: Record<string, unknown>) => void) | null = null;
@@ -110,7 +116,9 @@ function wrapSupabaseChannel(client: SupabaseClient, runId: string): RealtimeLik
           { event: "UPDATE", schema: "public", table: "runs", filter: `id=eq.${runId}` },
           (payload: { new: Record<string, unknown> }) => runCb?.(payload.new),
         )
-        .subscribe();
+        .subscribe((status: string) => {
+          if (status === "SUBSCRIBED") onSubscribed?.();
+        });
       return wrapper;
     },
     unsubscribe() {
@@ -149,6 +157,10 @@ describe.skipIf(!runSuite)("SSE relay end-to-end (Layer 2.5)", () => {
     const runId = await withDb((c) => insertRunningRun(c, agentId));
 
     const received: number[] = [];
+    let markSubscribed!: () => void;
+    const subscribed = new Promise<void>((r) => {
+      markSubscribed = r;
+    });
     const deps: StreamDeps = {
       backfill: async (id, after) => {
         const rows = await getRunEventsAfterSeq(supabase, id, after);
@@ -159,7 +171,7 @@ describe.skipIf(!runSuite)("SSE relay end-to-end (Layer 2.5)", () => {
         if (run === null) return "not_found";
         return null; // running run
       },
-      openChannel: (id) => wrapSupabaseChannel(supabase, id),
+      openChannel: (id) => wrapSupabaseChannel(supabase, id, markSubscribed),
       heartbeatMs: 15_000,
       log: () => {},
     };
@@ -187,8 +199,16 @@ describe.skipIf(!runSuite)("SSE relay end-to-end (Layer 2.5)", () => {
       }
     })();
 
-    // Give the subscription time to reach SUBSCRIBED, then insert events.
-    await new Promise((r) => setTimeout(r, 1500));
+    // Wait until the Realtime subscription is actually SUBSCRIBED before
+    // inserting — a fixed sleep raced the subscription under shared-stack load
+    // (qa flake). Fall back to a bounded wait so a Realtime outage still fails
+    // with a clear timeout rather than hanging.
+    await Promise.race([
+      subscribed,
+      new Promise((_r, reject) =>
+        setTimeout(() => reject(new Error("Realtime did not reach SUBSCRIBED within 8s")), 8000),
+      ),
+    ]);
     for (let seq = 1; seq <= 10; seq++) {
       await withDb((c) => insertEvent(c, runId, seq));
     }

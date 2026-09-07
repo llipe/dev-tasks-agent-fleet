@@ -272,6 +272,54 @@ per-module `@vitest/coverage-v8` numbers measured on the story's delivery.
 | **S-109 (#122)** | 2 (component) | `tests/component/run-detail.test.tsx` (21 tests) | **Mandatory security-negative #6** — a `<script>` and an `<img onerror>` message render as literal inert text with NO real `script`/`img` node created inside the `role="log"` region; the render consequence of #5 (a `javascript:`/`http:` artifact URL renders as inert text, never an `<a>`); AC14 (artifact link renders alongside a red `failed` pill); `rel="noopener noreferrer"` hardening; full 8 KB message not truncated; `aria-live` on the log region; terminal-state banner. |
 | **S-109 (#122)** | 2 (component) | `tests/component/run-detail-page-wiring.test.tsx` (3 tests) | Server-component page wiring — the `/runs/[id]` page composes summary + artifacts + log viewer + load-earlier server action from the query layer. |
 | **S-109 (#122)** | 2.5 (integration) | `tests/integration/run-detail-queries.test.ts` (5 tests, **ran live** against local Supabase) | `getRunEventsInRange` and the run-detail reads against a **real local Postgres** (Supabase CLI stack); the SD11 bounded read — a seeded 2,500-event run returns exactly the most-recent 2,000 in `seq` order. Docker-gated; ran live for this delivery with the stack up. |
+| **S-110 (#123)** — SSE live-tail relay `GET /api/runs/[id]/events/stream` | 1 (unit) | `tests/unit/sse-cursor.test.ts` (incl. RT-1 monotonic-cursor property) | `SeqCursor.admit` / `dedupeAndOrder` — the SD6 dedupe/order reducer: strictly-increasing emitted `seq`, every input `seq > after_seq` exactly once, late/duplicate/regressing `seq` dropped, NaN/negative cursor normalized to 0. `cursor.ts` **100% stmts** (one uncovered branch, line 67 — the `!Number.isFinite(seq)` guard). |
+| **S-110 (#123)** | 1 (unit) | `tests/unit/sse-serialize.test.ts` (incl. RT-2 round-trip property) | `serializeFrame` / `parseFrames` — the four event types (`event`/`run`/`heartbeat`/`closed`), newline-safe framing (a JSON payload can never forge the blank-line frame terminator — EC-11/EC-14), and the serialize→parse round-trip oracle. `serialize.ts` **92.85% stmts** (uncovered lines 61–62 — the defensive multi-`data:`-line split for a JSON value containing a raw `\n`, unreachable via `JSON.stringify`). |
+| **S-110 (#123)** | 1 (unit) | `tests/unit/autoscroll.test.ts` | `shouldAutoScroll` / `distanceFromBottom` — the DESIGN §6.6 24px follow boundary (inclusive at 24px, pauses at 25px — EC-15). `autoscroll.ts` **100%**. |
+| **S-110 (#123)** | 1 (unit) | `tests/unit/after-seq.test.ts` (incl. RT-3 fuzz, recorded seed) | `parseAfterSeq` (exported from the route module) — integer/default-0 contract; coerces malformed/negative/non-parseable `after_seq` to 0, never `NaN`, never negative, never a 500 (CT-2/CT-3). This is the only part of `route.ts` reachable without the Next.js runtime; the module's `GET`/`wrapSupabaseChannel` are not exercised here (see coverage note). |
+| **S-110 (#123)** | 2 (component) | `tests/component/stream-route.test.ts` (9 tests, fake clock + fake Realtime channel) | The relay engine `createStreamResponse` (`lib/sse/relay.ts`): backfill-before-subscribe + dedupe (AC2/SD6), the four event types + `closed{reason}` (AC3/CT-5), 15s heartbeat cadence (EC-10), unsubscribe-once on abort + balanced `sse_open`/`sse_close` log pair (AC7/EC-8/SR5), terminal-at-connect never subscribes (EC-3), 200-event burst in seq order (EC-12). `relay.ts` **89.47% stmts** (uncovered lines 135–137, 164–169 — the `cancel()` reader-cancel teardown and a redundant closed-guard branch; the `abort` teardown path IS covered). |
+| **S-110 (#123)** | 2 (component) | `tests/component/use-run-stream.test.tsx` (7 tests, injected fake `EventSource`) | `useRunStream` — appends `event` frames with client-side `seq` dedupe (defensive mirror of SD6), tracks highest rendered `seq`, reconnects with it as `after_seq` on an unexpected drop, stops reconnecting on `closed`, forwards raw `run` status. `useRunStream.ts` **100% stmts** (uncovered branches lines 103–105/129 — the `onerror`-with-already-closed short-circuit and the no-`EventSource`/no-factory SSR early return). |
+| **S-110 (#123)** | 2 (component) | `tests/component/live-log-viewer.test.tsx` | `LiveLogViewer` + `LiveTailButton` — **AC5** live status derived through the shared `effectiveStatus` (a late `running` push on an expired run still reads `timed_out`, SD4); **AC6** auto-scroll/pause/resume follow state; message rendered by `LogLine` as an inert text node (security guard #6). `LiveLogViewer.tsx` **100% stmts** (uncovered branch line 96 — a defensive null-ref guard); `LiveTailButton.tsx` **100%**. |
+| **S-110 (#123)** | 2.5 (integration) | `tests/integration/stream-e2e.test.ts` (1 test, **ran live** against local Supabase Realtime) | SC-11/EC-2 — open the relay, insert `run_events` **after** the stream is open, assert every inserted event arrives exactly once in `seq` order against **real Supabase Realtime** (the backfill→subscribe seam holds against the real stack, not a mock); also drives `getRunEventsAfterSeq` live. Docker-/service-role-/Realtime-gated with recorded skip reasons. **Flake note:** timing-sensitive (1500ms subscribe + 2500ms delivery windows) — observed 1 failure (`expected [] to include 1`, Realtime not yet `SUBSCRIBED`) then 2 passes across full-suite runs; see coverage note. |
+
+> **`coverage_gate` (S-110, MEASURED): PASS.** Measured with `@vitest/coverage-v8` 3.2.4 on the full
+> panel suite (`pnpm exec vitest run --coverage`) with the Layer 2.5 `integration` project run **live**
+> against the local Supabase stack (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` exported from
+> `supabase status -o env`). New/changed-module coverage: `autoscroll.ts` **100%**, `cursor.ts`
+> **100% stmts** (93.33% branch), `useRunStream.ts` **100% stmts** (88% branch), `LiveLogViewer.tsx`
+> **100% stmts**, `LiveTailButton.tsx` **100%**, `serialize.ts` **92.85%**, `relay.ts` **89.47%**,
+> `getRunEventsAfterSeq` (in `queries.ts`) exercised live by the Layer 2.5 backfill. Full suite
+> reproduced: unit+component **719 passed / 4 skipped**; all-projects with integration live **769 passed
+> / 4 skipped**; `make validate` reaches the panel via `validate-js` (F7 intact).
+>
+> **Route handler is a thin adapter — verified by inference, not covered.**
+> `app/api/runs/[id]/events/stream/route.ts` measures **12% stmts** (lines 45–152 uncovered): only the
+> exported `parseAfterSeq` is unit-tested. The streaming `GET` and the Supabase-specific
+> `wrapSupabaseChannel` are **not** exercised by any test — the component suite drives the pure
+> `createStreamResponse` core (relay.ts) with a fake channel, and the Layer 2.5 suite uses its own local
+> `wrapSupabaseChannel` copy against real Realtime rather than importing the route. This is the same
+> thin-adapter/pure-core split used across prior stories (all engine logic sits in the injected
+> `lib/sse/relay.ts` at 89%+); the route's ~35 wiring lines are the accepted non-blocking gap, ranked #1
+> below. The residual uncovered lines in `relay.ts` (135–137, 164–169 — `cancel()` reader teardown) and
+> `serialize.ts` (61–62 — a `JSON.stringify`-unreachable newline split) are defensive paths, not business
+> logic. None of these are a `FAIL`.
+>
+> **Security-negative / SD2 boundary: covered and intact.** The SSE path adds no browser Supabase client
+> and no `NEXT_PUBLIC_SUPABASE*` (grep-confirmed across `app/`, `lib/`, `components/`): the browser holds
+> only an `EventSource` to the server route; all Supabase Realtime lives server-side (SD2). The route
+> reads Supabase through `createServerClient`, guarded at build time by the `import "server-only"` pragma
+> and at lint time by the SD2 `no-restricted-imports` rule (scoped to `app/**` + `components/**`, correctly
+> excluding `app/**/route.ts` where server reads are legitimate). The repo-wide security-negative tests
+> cover this delivery: `tests/unit/bundle-secrets.test.ts` (RUN_BUNDLE_SECRET_TEST=1 — builds the whole app
+> incl. this route and greps `.next/static/**` for the service-role sentinel) and
+> `tests/unit/eslint-server-import.test.ts` (proves the SD2 rule fires). Security guard #6 (inert log-line
+> render, no `dangerouslySetInnerHTML`) is asserted for the live viewer in `live-log-viewer.test.tsx`.
+>
+> **Layer 2.5 flake (harness reliability, non-blocking).** `stream-e2e.test.ts` failed once
+> (`expected [] to include 1` — the Realtime subscription had not reached `SUBSCRIBED` within the 1500ms
+> window before inserts) and passed on two subsequent runs (isolated and full-suite). It is timing-
+> sensitive against the shared local stack under load. It is real evidence when green (it did run and pass),
+> but it is not deterministically reliable; recorded as a harness-reliability finding for a follow-up
+> (widen/await-`SUBSCRIBED` before insert) — not a business-logic defect and not a gate failure.
 
 > **`coverage_gate` (S-109, MEASURED): PASS.** Measured with `@vitest/coverage-v8` 3.2.4 on the
 > full panel suite (`pnpm --filter panel run test:coverage`) with the Layer 2.5 `integration` project
