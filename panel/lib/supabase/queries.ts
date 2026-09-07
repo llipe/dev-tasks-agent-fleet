@@ -360,6 +360,39 @@ export async function getRunEventsInRange(
   return collected;
 }
 
+/**
+ * 7c. `run_events` for a run with `seq > afterSeq`, ascending (Story S-110 —
+ * the SSE relay backfill, SD6 step 1). Unbounded on the upper end (the relay
+ * emits the whole tail above the cursor, then subscribes for the rest), paged
+ * with `.range()` below the PostgREST `max_rows` ceiling.
+ *
+ * There is no upper `seq` bound: `run_events.seq` is a Postgres `integer`, so a
+ * sentinel ceiling like `Number.MAX_SAFE_INTEGER` overflows the column type
+ * (pg 22003). The correct query is simply `seq > afterSeq`.
+ */
+export async function getRunEventsAfterSeq(
+  client: SupabaseClient,
+  runId: string,
+  afterSeq: number,
+): Promise<RunEventRow[]> {
+  const collected: RunEventRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const result = await client
+      .from("run_events")
+      .select("*")
+      .eq("run_id", runId)
+      .gt("seq", afterSeq)
+      .order("seq", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    const page = unwrap<RunEventRow[]>("getRunEventsAfterSeq", result) ?? [];
+    collected.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return collected;
+}
+
 /** 10. `run_artifacts` for a run, newest-first. */
 export async function getRunArtifacts(
   client: SupabaseClient,

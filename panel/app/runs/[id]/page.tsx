@@ -19,9 +19,11 @@ import {
   type SummaryInput,
 } from "@/lib/domain/run-detail";
 import { selectRecentWindow } from "@/lib/domain/log-window";
+import { effectiveStatus } from "@/lib/domain/status";
 import { RunSummary } from "@/components/run-detail/RunSummary";
 import { StateBanner } from "@/components/run-detail/StateBanner";
 import { LogViewer } from "@/components/run-detail/LogViewer";
+import { LiveLogViewer } from "@/components/run-detail/LiveLogViewer";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { ArtifactView } from "@/components/run-detail/ArtifactLinks";
 
@@ -128,6 +130,25 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
 
   const runId = resolved.id;
 
+  // Whether the run is still live decides which viewer renders. A run whose
+  // EFFECTIVE status (SD4) is not terminal gets the SSE live-tail viewer
+  // (S-110); a terminal run gets the server-rendered viewer with "load earlier"
+  // (S-109) — a terminal run has nothing to tail. `effectiveStatus` is the
+  // shared derivation, so this agrees with the summary pill.
+  const TERMINAL = new Set(["succeeded", "failed", "canceled", "timed_out", "failed_to_start"]);
+  const derivedStatus = effectiveStatus(
+    {
+      status: resolved.status,
+      startedAtMs: resolved.started_at ? Date.parse(resolved.started_at) : null,
+      queuedAtMs: Date.parse(resolved.queued_at),
+      maxRuntimeSeconds: resolved.max_runtime_seconds,
+      graceSeconds: resolved.grace_seconds,
+      startTimeoutSeconds: resolved.start_timeout_seconds,
+    },
+    nowMs,
+  );
+  const isLive = !TERMINAL.has(derivedStatus);
+
   /**
    * Server action for "load earlier" (AC5). Fetches the prior `seq` window and
    * returns it as log lines. Bound to this run id; a fresh server client is
@@ -160,12 +181,25 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
 
       <RunSummary summary={summary} artifacts={artifacts.map(toArtifactView)} />
 
-      <LogViewer
-        initialLines={initialLines}
-        hasEarlier={hasEarlier}
-        oldestSeq={oldestLoadedSeq}
-        loadEarlier={loadEarlier}
-      />
+      {isLive ? (
+        <LiveLogViewer
+          runId={runId}
+          initialLines={initialLines}
+          initialStatus={resolved.status}
+          maxRuntimeSeconds={resolved.max_runtime_seconds}
+          graceSeconds={resolved.grace_seconds}
+          startTimeoutSeconds={resolved.start_timeout_seconds}
+          startedAtMs={resolved.started_at ? Date.parse(resolved.started_at) : null}
+          queuedAtMs={Date.parse(resolved.queued_at)}
+        />
+      ) : (
+        <LogViewer
+          initialLines={initialLines}
+          hasEarlier={hasEarlier}
+          oldestSeq={oldestLoadedSeq}
+          loadEarlier={loadEarlier}
+        />
+      )}
     </section>
   );
 }

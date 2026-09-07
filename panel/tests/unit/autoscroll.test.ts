@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { AUTOSCROLL_THRESHOLD_PX, shouldAutoScroll, distanceFromBottom } from "@/lib/sse/autoscroll";
+import {
+  AUTOSCROLL_THRESHOLD_PX,
+  shouldAutoScroll,
+  distanceFromBottom,
+} from "@/lib/sse/autoscroll";
 
 /**
  * Auto-scroll threshold predicate (Story S-110, AC6 / DESIGN §6.6). Pure so the
