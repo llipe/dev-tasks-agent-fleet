@@ -1,5 +1,7 @@
 # Implementation Plan - S-109 Run Detail (Issue #122)
 
+> **Status (2026-09-07): DELIVERED + MERGED.** Merged to `main` via PR [#150](https://github.com/llipe/dev-tasks-agent-fleet/pull/150) (merge commit `dea355e`); issue #122 CLOSED. `make validate` green on both branches (Python 452 + panel 711 / 4 skipped, Layer 2.5 ran live); `coverage_gate` PASS; verifier audit High fidelity, 9/9 Pass, highest drift Minor. The only non-`[x]` item is task 1.27 (SD11 events-per-run sizing note), marked `[~]` DEFERRED — it needs a real 60-minute `llm_fix` run that does not yet exist, no AC depends on it (BR-3), routed to `product-engineer` `activity-drift-reconciliation` as verifier drift D3.
+>
 > **Source:** [`user-stories-prd-agent-fleet-panel-v2.md`](user-stories-prd-agent-fleet-panel-v2.md) Story S-109 · Issue [#122](https://github.com/llipe/dev-tasks-agent-fleet/issues/122)
 > **Scope:** single story, S-109 only. Read-only screen — no schema/data/API change (documented migration opt-out).
 > **Dependencies (all merged):** S-104 (data layer + `effectiveStatus`), S-105 (Nocturne primitives incl. `LogLine`/`StatusPill`/`Tag`/`Breadcrumb`), S-106 (app shell).
@@ -34,7 +36,7 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-109 - [#122](https://github.com/llipe/dev-tasks-agent-fleet/issues/122): Run Detail — summary, artifacts, bounded log viewer
+- [x] 1.0 Implement Story S-109 - [#122](https://github.com/llipe/dev-tasks-agent-fleet/issues/122): Run Detail — summary, artifacts, bounded log viewer
 
   ### Branch & PR setup
   - [x] 1.1 Verify current branch is not `main`; create feature branch `story/S-109-run-detail` off the wave base (delegate naming/creation to `github-ops`).
@@ -71,7 +73,7 @@
   - [x] 1.24 Verify AC7 (security-negative #6): messages render inert; HTML/script content displays literally, never executed.
   - [x] 1.25 Verify AC8: log region is `aria-live="polite"`.
   - [x] 1.26 Verify AC9: unknown run id renders 404.
-  - [ ] 1.27 Manual/UI: open a real Phase 1 run from the live database (read-only), compare against `docs/prototype/`; confirm log region scrolls while page does not; record observed events-per-run for the SD11 sizing note.
+  - [~] 1.27 Manual/UI: open a real Phase 1 run from the live database (read-only), compare against `docs/prototype/`; confirm log region scrolls while page does not; record observed events-per-run for the SD11 sizing note. **DEFERRED** — the SD11 sizing note needs a real 60-minute `llm_fix` run that does not yet exist; BR-3 states the 2,000 bound is a bound, not a capacity estimate, so no AC depends on it. Routed to `product-engineer` `activity-drift-reconciliation` as verifier drift **D3** (see `fidelity-report-S-109.md`). Not a blocker for the merged story.
   - [x] 1.28 Produce the acceptance-criteria → test-evidence mapping (AC1–AC9 incl. AC14) in the PR.
 
   ### Quality gates & closeout
