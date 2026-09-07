@@ -1,0 +1,46 @@
+/* Terminal-state banner. /DESIGN.md §8.3. */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--st-color) 35%, transparent);
+  background: color-mix(in srgb, var(--st-color) 10%, transparent);
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--st-color);
+}
+
+.hollow {
+  background: transparent;
+  border: 1px solid var(--st-color);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--st-color);
+}
+
+.explanation {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
