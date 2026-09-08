@@ -139,11 +139,13 @@ async function assertSeededCatalog(host: string, port: number): Promise<void> {
  * Reproduce, on the LOCAL CLI stack only, the privileges the hosted Supabase
  * platform grants `service_role` automatically (technical-guidelines §7). The
  * panel reads AND writes server-side with the service role key (the invoke
- * route inserts the `queued` run); without these grants a fresh `supabase db
- * reset` denies those statements with 42501. Scoped to `service_role` ONLY —
- * never `anon` — so RLS deny-all is untouched.
+ * route inserts the `queued` run), so E2E needs `all privileges` here — broader
+ * than the read-only S-104 `queries` integration test, which needs only SELECT.
+ * Without these grants a fresh `supabase db reset` denies those statements with
+ * 42501. Scoped to `service_role` ONLY — never `anon` — so RLS deny-all is
+ * untouched.
  */
-async function grantServiceRoleSelectLocalOnly(host: string, port: number): Promise<void> {
+async function grantServiceRolePrivilegesLocalOnly(host: string, port: number): Promise<void> {
   const client = new Client({
     host,
     port,
@@ -255,7 +257,7 @@ export default async function globalSetup(): Promise<void> {
   //     42501 and every page 500s. Scoped to `service_role` ONLY — never
   //     `anon` — so RLS deny-all (D11) is preserved. The Layer 2.5 `queries`
   //     integration test applies the identical grant for the same reason.
-  await grantServiceRoleSelectLocalOnly(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT));
+  await grantServiceRolePrivilegesLocalOnly(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT));
 
   // 3c. Warm up Realtime so the first live-tail scenario does not race a cold
   //     subscription (E2E runs with retries:0). Explicit readiness wait.

@@ -121,6 +121,12 @@ jobs:
       - name: Typecheck (tsc)
         run: pnpm --filter panel run typecheck
 
+      # Warm up Supabase Realtime before the Layer 2.5 + E2E branch: right after
+      # `db reset` a cold Realtime can flake the first subscription (stream-e2e,
+      # live-tail) under retries:0. Explicit readiness wait, not a sleep.
+      - name: Warm up Supabase Realtime
+        run: pnpm --filter panel exec node scripts/warm-realtime.mjs
+
       # `test:coverage` runs the unit + component + integration projects. With
       # REQUIRE_LOCAL_DB=1 and the stack up, the Layer 2.5 suites run for real;
       # a probe failure or Docker-gated skip fails the job (#134).
