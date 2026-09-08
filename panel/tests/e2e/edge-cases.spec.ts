@@ -46,7 +46,7 @@ test.describe("edge cases", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
 
     await page.goto(`/runs/${runId}`);
-    await expect(page.getByRole("region", { name: /^Run / })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^Run [0-9A-F]/ }).first()).toBeVisible();
     await expect(page.getByText(/no log events for this run/i)).toBeVisible();
     expect(errors, `no uncaught page errors: ${errors.join("; ")}`).toEqual([]);
   });

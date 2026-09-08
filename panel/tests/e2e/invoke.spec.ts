@@ -53,8 +53,9 @@ test.describe("invoke", () => {
     expect(row!.grace_seconds).not.toBeNull();
     expect(row!.start_timeout_seconds).not.toBeNull();
 
-    // The run-detail page rendered for this id (breadcrumb shows the agent).
-    await expect(page.getByRole("region", { name: /^Run / })).toBeVisible();
+    // The run-detail page rendered for this id (the outer run region names the
+    // short run id; scope to the first match — RunSummary adds a nested region).
+    await expect(page.getByRole("region", { name: /^Run [0-9A-F]/ }).first()).toBeVisible();
   });
 
   /**

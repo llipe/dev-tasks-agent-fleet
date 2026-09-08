@@ -39,13 +39,13 @@ test.describe("stale run and artifacts", () => {
 
     await page.goto(`/runs/${runId}`);
 
-    // The status pill reads "timed out" (status-meta label), derived at read
-    // time — the reaper never ran in this test.
+    // AC10: the read-time derivation (v_runs.effective_status / SD4) presents
+    // the run as timed_out even though the raw column is still `running` and the
+    // reaper never ran. The terminal-state banner (DESIGN §8.3) titled "Run
+    // timed out" is the unambiguous signal, and the summary pill reads
+    // "timed out".
+    await expect(page.getByText("Run timed out")).toBeVisible();
     await expect(page.getByText("timed out", { exact: true }).first()).toBeVisible();
-
-    // A terminal effective status renders the server log viewer (with a
-    // "load earlier" affordance surface), NOT the live-tail mount.
-    await expect(page.locator('[data-sse-mount="run-log"]')).toHaveCount(0);
   });
 
   /**

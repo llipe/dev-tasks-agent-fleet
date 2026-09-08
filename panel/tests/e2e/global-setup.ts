@@ -134,6 +134,33 @@ async function assertSeededCatalog(host: string, port: number): Promise<void> {
   }
 }
 
+/**
+ * Reproduce, on the LOCAL CLI stack only, the privileges the hosted Supabase
+ * platform grants `service_role` automatically (technical-guidelines §7). The
+ * panel reads AND writes server-side with the service role key (the invoke
+ * route inserts the `queued` run); without these grants a fresh `supabase db
+ * reset` denies those statements with 42501. Scoped to `service_role` ONLY —
+ * never `anon` — so RLS deny-all is untouched.
+ */
+async function grantServiceRoleSelectLocalOnly(host: string, port: number): Promise<void> {
+  const client = new Client({
+    host,
+    port,
+    user: "postgres",
+    password: "postgres",
+    database: "postgres",
+    connectionTimeoutMillis: 1500,
+  });
+  try {
+    await client.connect();
+    await client.query(`grant usage on schema public to service_role`);
+    await client.query(`grant all privileges on all tables in schema public to service_role`);
+    await client.query(`grant all privileges on all sequences in schema public to service_role`);
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
   const env = resolveLocalSupabaseEnv();
 
@@ -177,6 +204,16 @@ export default async function globalSetup(): Promise<void> {
   //    `dependency-update` agent + at least one enabled repository. Fail fast
   //    with the exact remediation instead of letting every scenario fail.
   await assertSeededCatalog(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT));
+
+  // 3b. Apply the LOCAL-ONLY `service_role` SELECT grant. The hosted Supabase
+  //     platform applies these grants automatically as default table
+  //     privileges, but `supabase db reset` on the CLI does NOT reproduce them
+  //     (technical-guidelines §7 — the S-104 grant-asymmetry note). Without it
+  //     the panel's server-side reads (service_role) are denied locally with
+  //     42501 and every page 500s. Scoped to `service_role` ONLY — never
+  //     `anon` — so RLS deny-all (D11) is preserved. The Layer 2.5 `queries`
+  //     integration test applies the identical grant for the same reason.
+  await grantServiceRoleSelectLocalOnly(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT));
 
   // 4. Start the AgentCore stub on its fixed port; the config points the SDK at it.
   const stub = await startAgentCoreStub(AGENTCORE_STUB_PORT);
