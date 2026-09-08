@@ -7,7 +7,7 @@ package is the `panel` member of the repo-root pnpm workspace.
 
 - Next.js 15 (App Router), React 19, TypeScript strict
 - Vitest + React Testing Library (+ `@vitest/coverage-v8`)
-- Playwright (E2E — scenario suite lands in S-114)
+- Playwright (E2E — scenario suite shipped in S-114)
 - ESLint (`next/core-web-vitals` + `next/typescript`) + Prettier
 - Ajv 8 for `params_schema` validation (used in later stories)
 

@@ -67,13 +67,12 @@ export default defineConfig({
    * without needing SSO/a real profile (the stub ignores the signature).
    *
    * The dev server is used deliberately rather than `next build && next start`:
-   * a production `next build` runs Next's route-export type validation, which
-   * currently rejects a non-standard export in the S-110 SSE route
-   * (`parseAfterSeq`) — a pre-existing latent defect unrelated to S-114 (the
-   * panel is a pre-deploy scaffold that has never been production-built; CI runs
-   * typecheck + tests, not `next build`). Fixing that route export is product
-   * code outside this test story; it is flagged to product-engineer as drift.
-   * `next dev` exercises the same runtime behavior the scenarios assert.
+   * these scenarios assert runtime behavior, and `next dev` exercises the same
+   * runtime the scenarios drive. (Historical note: a production `next build`
+   * once failed Next's route-export type validation on a non-standard export in
+   * the S-110 SSE route (`parseAfterSeq`); S-115 moved that export into
+   * `lib/sse/cursor.ts`, so `next build` is now green — but this suite still runs
+   * against `next dev` because that is what the scenarios need.)
    */
   webServer: {
     command: "pnpm exec next dev --port 3100",
