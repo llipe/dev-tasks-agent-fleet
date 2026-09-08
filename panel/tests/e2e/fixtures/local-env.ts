@@ -11,7 +11,8 @@
  * out to the Supabase CLI once and cache the result.
  */
 
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export interface LocalSupabaseEnv {
   SUPABASE_URL: string;
@@ -25,9 +26,13 @@ let cached: LocalSupabaseEnv | null = null;
 
 function fromCli(): Record<string, string> {
   // `supabase status -o env` prints KEY="value" / KEY=value lines. Parse them.
-  const out = execFileSync("supabase", ["status", "-o", "env"], {
+  const bin = process.env.SUPABASE_BIN ?? "supabase";
+  const extra = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+  const mergedPath = [process.env.PATH ?? "", ...extra].filter(Boolean).join(":");
+  const out = execSync(`${bin} status -o env`, {
     encoding: "utf8",
     cwd: repoRoot(),
+    env: { ...process.env, PATH: mergedPath },
   });
   const env: Record<string, string> = {};
   for (const line of out.split("\n")) {
@@ -45,9 +50,11 @@ function fromCli(): Record<string, string> {
   return env;
 }
 
-/** The repo root is two levels above `panel/` (panel/tests/e2e/fixtures). */
+/** The repo root is four levels above `panel/` (panel/tests/e2e/fixtures). */
 function repoRoot(): string {
-  return new URL("../../../../", import.meta.url).pathname;
+  // fileURLToPath decodes percent-encoding (the repo path may contain spaces).
+  // This file is panel/tests/e2e/fixtures/local-env.ts → five segments up.
+  return fileURLToPath(new URL("../../../../../", import.meta.url));
 }
 
 export function resolveLocalSupabaseEnv(): LocalSupabaseEnv {

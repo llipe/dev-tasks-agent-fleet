@@ -57,9 +57,18 @@ export default defineConfig({
    * and inherited here; we only add the AgentCore stub endpoint and fixed test
    * AWS credentials so the REAL local credential branch + SDK signing runs
    * without needing SSO/a real profile (the stub ignores the signature).
+   *
+   * The dev server is used deliberately rather than `next build && next start`:
+   * a production `next build` runs Next's route-export type validation, which
+   * currently rejects a non-standard export in the S-110 SSE route
+   * (`parseAfterSeq`) — a pre-existing latent defect unrelated to S-114 (the
+   * panel is a pre-deploy scaffold that has never been production-built; CI runs
+   * typecheck + tests, not `next build`). Fixing that route export is product
+   * code outside this test story; it is flagged to product-engineer as drift.
+   * `next dev` exercises the same runtime behavior the scenarios assert.
    */
   webServer: {
-    command: "pnpm run build && pnpm run start -- --port 3100",
+    command: "pnpm exec next dev --port 3100",
     port: 3100,
     reuseExistingServer: !isCI,
     timeout: 180_000,
@@ -73,8 +82,6 @@ export default defineConfig({
       AWS_ACCESS_KEY_ID: "test",
       AWS_SECRET_ACCESS_KEY: "test",
       AWS_REGION: "us-east-1",
-      // The panel reads all runs against the local stack; a fresh, uncached read.
-      NODE_ENV: "production",
     },
   },
 });

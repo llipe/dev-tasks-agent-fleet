@@ -209,12 +209,21 @@ export async function readRun(runId: string): Promise<{
   });
 }
 
+/**
+ * Toggle the seeded `dependency-update` agent's `is_enabled` flag. Used only by
+ * the empty-fleet edge case (Scenario 1.16), which must present the dashboard's
+ * "no agents configured" state; restore to `true` immediately after.
+ */
+export async function setSeededAgentEnabled(enabled: boolean): Promise<void> {
+  await withDb(async (c) => {
+    await c.query(`update agents set is_enabled = $1 where slug = 'dependency-update'`, [enabled]);
+  });
+}
+
 /** The most recent run's id (Scenario 1: find the row the invoke created). */
 export async function latestRunId(): Promise<string | null> {
   return withDb(async (c) => {
-    const r = await c.query<{ id: string }>(
-      `select id from runs order by created_at desc limit 1`,
-    );
+    const r = await c.query<{ id: string }>(`select id from runs order by created_at desc limit 1`);
     return r.rowCount === 0 ? null : r.rows[0].id;
   });
 }

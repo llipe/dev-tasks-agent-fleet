@@ -20,7 +20,8 @@
  * `webServer.env` (evaluated later, when the server launches) sees them.
  */
 
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 import { resolveLocalSupabaseEnv } from "./fixtures/local-env";
@@ -30,13 +31,30 @@ import { AGENTCORE_STUB_PORT } from "./fixtures/stub-port";
 const READINESS_TIMEOUT_MS = Number(process.env.E2E_READINESS_TIMEOUT_MS ?? "60000");
 const POLL_INTERVAL_MS = 500;
 
+/** Resolve the supabase CLI binary — honor an explicit override, else PATH. */
+const SUPABASE_BIN = process.env.SUPABASE_BIN ?? "supabase";
+
 declare global {
   // eslint-disable-next-line no-var
   var __AGENTCORE_STUB__: AgentCoreStubHandle | undefined;
 }
 
 function repoRoot(): string {
-  return new URL("../../../", import.meta.url).pathname;
+  // This file is panel/tests/e2e/global-setup.ts. `fileURLToPath` decodes
+  // percent-encoding (the repo path may contain spaces). Repo root is four
+  // segments up from the file: e2e → tests → panel → <root>.
+  return fileURLToPath(new URL("../../../../", import.meta.url));
+}
+
+/**
+ * Return a copy of the environment with common CLI install dirs appended to
+ * PATH, so `supabase` resolves even when the parent process PATH is minimal.
+ */
+function withCliPath(): NodeJS.ProcessEnv {
+  const extra = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+  const current = process.env.PATH ?? "";
+  const merged = [current, ...extra].filter(Boolean).join(":");
+  return { ...process.env, PATH: merged };
 }
 
 async function waitForDb(host: string, port: number, deadline: number): Promise<void> {
@@ -88,6 +106,34 @@ async function waitForRest(apiUrl: string, anonKey: string, deadline: number): P
   );
 }
 
+async function assertSeededCatalog(host: string, port: number): Promise<void> {
+  const client = new Client({
+    host,
+    port,
+    user: "postgres",
+    password: "postgres",
+    database: "postgres",
+    connectionTimeoutMillis: 1500,
+  });
+  try {
+    await client.connect();
+    const agent = await client.query(
+      `select 1 from agents where slug = 'dependency-update' and is_enabled = true`,
+    );
+    const repo = await client.query(
+      `select 1 from repositories where is_enabled = true and archived_at is null limit 1`,
+    );
+    if (agent.rowCount === 0 || repo.rowCount === 0) {
+      throw new Error(
+        "E2E setup: the seeded catalog is missing the enabled 'dependency-update' agent and/or an enabled repository. " +
+          "Apply the seed with `supabase db reset` (or run globalSetup with E2E_DB_RESET=1).",
+      );
+    }
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
   const env = resolveLocalSupabaseEnv();
 
@@ -101,13 +147,19 @@ export default async function globalSetup(): Promise<void> {
 
   const deadline = Date.now() + READINESS_TIMEOUT_MS;
 
-  // 1. Reset to the seeded baseline. Skippable in CI where the workflow already
-  //    reset the stack before launching Playwright (E2E_SKIP_DB_RESET=1).
-  if (process.env.E2E_SKIP_DB_RESET !== "1") {
+  // 1. Optionally reset to the seeded baseline. This is OPT-IN
+  //    (`E2E_DB_RESET=1`): in CI the workflow starts a fresh stack and applies
+  //    migrations + seed itself, and locally the stack is already seeded while
+  //    each spec resets its own run rows in `beforeEach`. Shelling out to the
+  //    Supabase CLI from Playwright's globalSetup is fragile (PATH / config
+  //    detection), so we do it only when explicitly asked, and otherwise rely on
+  //    readiness verification + a seeded-catalog assertion below.
+  if (process.env.E2E_DB_RESET === "1") {
     try {
-      execFileSync("supabase", ["db", "reset", "--local"], {
+      execSync(`${SUPABASE_BIN} db reset --local`, {
         cwd: repoRoot(),
         stdio: "inherit",
+        env: withCliPath(),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -121,9 +173,13 @@ export default async function globalSetup(): Promise<void> {
   await waitForDb(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT), deadline);
   await waitForRest(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, deadline);
 
-  // 3. Start the AgentCore stub on its fixed port; the config points the SDK at it.
+  // 3. Assert the seeded catalog is present — the scenarios depend on the
+  //    `dependency-update` agent + at least one enabled repository. Fail fast
+  //    with the exact remediation instead of letting every scenario fail.
+  await assertSeededCatalog(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT));
+
+  // 4. Start the AgentCore stub on its fixed port; the config points the SDK at it.
   const stub = await startAgentCoreStub(AGENTCORE_STUB_PORT);
   globalThis.__AGENTCORE_STUB__ = stub;
-  // eslint-disable-next-line no-console
   console.log(`[e2e] AgentCore stub listening on ${stub.endpoint}`);
 }
