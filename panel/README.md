@@ -97,16 +97,38 @@ recorded reason (see `TESTING.md`).
   holds these as the single documented source of truth. Applied per-route as
   data-reading screens land.
 
-- **SD2 — server-only Supabase read boundary.** All Supabase access is server-side.
-  There is no `NEXT_PUBLIC_SUPABASE_*` variable anywhere; the service role key
-  (`SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS) is server-only. Reads go through
-  `lib/supabase/server.ts` (`createServerClient` — a per-request factory with
-  fail-fast env validation) and the typed helpers in `lib/supabase/queries.ts`, only
-  from Server Components or route handlers. An ESLint restricted-import rule forbids
-  importing `lib/supabase/server.ts` from client components, and
-  `tests/unit/eslint-server-import.test.ts` proves the rule fires. PostgREST failures
-  surface as `DATABASE_ERROR` (500) with the Postgres code logged, never returned to
-  the client (`lib/supabase/errors.ts`).
+- **SD2 — server-only Supabase _data_ boundary.** All **data** access is server-side.
+  The service role key (`SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS) is server-only
+  and has **no** `NEXT_PUBLIC_` twin. Data reads go through `lib/supabase/server.ts`
+  (`createServerClient` — a per-request factory with fail-fast env validation) and the
+  typed helpers in `lib/supabase/queries.ts`, only from Server Components or route
+  handlers. An ESLint restricted-import rule forbids importing `lib/supabase/server.ts`
+  from client components, and `tests/unit/eslint-server-import.test.ts` proves the rule
+  fires. PostgREST failures surface as `DATABASE_ERROR` (500) with the Postgres code
+  logged, never returned to the client (`lib/supabase/errors.ts`).
+
+  Authentication (S-116+) uses a **separate** anon-key client family — cookie-backed,
+  `NEXT_PUBLIC_`-configured, RLS-bound — that never touches the service-role client
+  (rule SA1). RLS stays deny-all (D11): authenticating a user grants no row access.
+
+- **Auth clients + environment (S-116).** The auth path reads the anon (publishable)
+  key pair, which — unlike the service-role key — is safe in the browser:
+
+  | Variable                        | Scope                | Used by                                 |
+  | ------------------------------- | -------------------- | --------------------------------------- |
+  | `NEXT_PUBLIC_SUPABASE_URL`      | public               | `lib/supabase/{auth-server,browser}.ts` |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public (publishable) | `lib/supabase/{auth-server,browser}.ts` |
+  | `SUPABASE_URL`                  | server               | `lib/supabase/server.ts` (unchanged)    |
+  | `SUPABASE_SERVICE_ROLE_KEY`     | server secret        | `lib/supabase/server.ts` (unchanged)    |
+
+  `lib/supabase/auth-env.ts` validates the public pair with a named `AuthConfigError`
+  at first use (same fail-fast pattern as `readSupabaseEnv`). The service-role key MUST
+  NOT gain a `NEXT_PUBLIC_` twin. For local dev, add both `NEXT_PUBLIC_SUPABASE_*` values
+  to `panel/.env.local` (the anon URL is the same project URL as `SUPABASE_URL`; the anon
+  key is the project's publishable key from the Supabase dashboard → Project Settings → API).
+  The pure policy modules `lib/auth/{route-policy,redirect,errors}.ts` are the
+  security-relevant decision logic (route classification, open-redirect guard, and the
+  anti-enumeration error mapping) and carry exhaustive unit suites.
 
 - **Design system — Nocturne tokens (S-105).** Every color, font, spacing-scale,
   radius, and shadow value comes from a CSS custom property defined in
