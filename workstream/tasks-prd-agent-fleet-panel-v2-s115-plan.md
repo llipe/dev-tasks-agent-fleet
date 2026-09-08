@@ -34,16 +34,16 @@
 - [ ] 1.0 Implement Story S-115 - [#128](https://github.com/llipe/dev-tasks-agent-fleet/issues/128): Fly deployment, privacy release gate, and OIDC probe
 
   ### Branch & PR setup
-  - [ ] 1.1 Verify HEAD is not `main`; create feature branch `story/S-115-fly-deploy-oidc` off the latest `main` **after S-114 (#127) is merged** (delegate naming/creation to `github-ops`).
-  - [ ] 1.2 After the first commit, open a **draft PR** targeting `main` (delegate to `github-ops`); PR body via `--body-file`, includes `Closes #128`; title Conventional Commits (`feat: deploy panel to private Fly app with verified OIDC`).
-  - [ ] 1.3 Sync issue #128 checklist with this task list (delegate to `github-ops`).
+  - [x] 1.1 Verify HEAD is not `main`; create feature branch `story/S-115-fly-deploy-oidc` off the latest `main` **after S-114 (#127) is merged** (delegate naming/creation to `github-ops`).
+  - [x] 1.2 After the first commit, open a **draft PR** targeting `main` (delegate to `github-ops`); PR body via `--body-file`, includes `Closes #128`; title Conventional Commits (`feat: deploy panel to private Fly app with verified OIDC`). — PR #154.
+  - [x] 1.3 Sync issue #128 checklist with this task list (delegate to `github-ops`).
 
   ### Committable artifacts + privacy gate (Impl Step 1 — all local, no live action)
-  - [ ] 1.4 Write `panel/Dockerfile` (+ `.dockerignore`): Next.js standalone production build on the Node runtime; no secrets baked into the image; minimal layers.
-  - [ ] 1.5 Write `panel/fly.toml` with **no `[http_service]`** and no public ports, plus an explicit comment referencing SR2/D16 explaining why the app is private-only.
-  - [ ] 1.6 Write `scripts/verify-fly-private.sh` — parses `fly status` / allocated-IP output and exits non-zero if any public IP or public service is present.
-  - [ ] 1.7 Write the privacy-check unit test (`tests/unit/fly-privacy-check.test.ts`): a fixture with a public IP → the parser reports failure; a private-only fixture → pass. This is the "gate observed failing" evidence at unit level.
-  - [ ] 1.8 Wire the privacy-check parser test into `make validate` / CI (`.github/workflows/ci.yml`) so a regression in the gate parser is caught even though `fly deploy` is not run in CI.
+  - [x] 1.4 Write `panel/Dockerfile` (+ `.dockerignore`): Next.js standalone production build on the Node runtime; no secrets baked into the image; minimal layers. — verified: image builds from repo-root context and the container boots (`Ready`).
+  - [x] 1.5 Write `panel/fly.toml` with **no `[http_service]`** and no public ports, plus an explicit comment referencing SR2/D16 explaining why the app is private-only.
+  - [x] 1.6 Write `scripts/verify-fly-private.sh` — parses `fly status` / allocated-IP output and exits non-zero if any public IP or public service is present. (Pure decision logic in `panel/scripts/fly-privacy-check.mjs`; CLI exit 0/1 verified.)
+  - [x] 1.7 Write the privacy-check unit test (`tests/unit/fly-privacy-check.test.ts`): a fixture with a public IP → the parser reports failure; a private-only fixture → pass. This is the "gate observed failing" evidence at unit level. — 21 tests pass.
+  - [x] 1.8 Wire the privacy-check parser test into `make validate` / CI (`.github/workflows/ci.yml`) so a regression in the gate parser is caught even though `fly deploy` is not run in CI. (Runs in the `unit` project + a dedicated named CI step + shellcheck of the wrapper.)
 
   ### Live infrastructure — GATED on explicit user confirmation (Impl Steps 2–4)
   > Each task below performs a live, hard-to-reverse action. Present the exact command + expected effect and **wait for explicit user confirmation** before executing.
