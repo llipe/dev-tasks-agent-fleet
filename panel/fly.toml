@@ -1,0 +1,54 @@
+# Fly.io configuration for the Agent Fleet Control Plane panel (Story S-115).
+#
+# ---------------------------------------------------------------------------
+# PRIVACY IS A SECURITY BOUNDARY, NOT A PREFERENCE (SR2 / D16).
+#
+# In v1 the panel has NO user authentication (D16). Its ONLY security boundary
+# is that the Fly app is not reachable from the public internet: it can invoke
+# agents without a login, so a public service would expose that invoke surface
+# to anyone.
+#
+# Therefore this config INTENTIONALLY declares:
+#   - NO [http_service] section
+#   - NO [[services]] with public ports / handlers
+#   - NO public [[services.ports]]
+#
+# The app is reached only over the private Fly 6PN/WireGuard network (e.g.
+# `fly proxy`, `flyctl ssh`, or a private allocation). Allocating a public IP
+# (`fly ips allocate-v4 / -v6`) or adding a public service REMOVES the only
+# security boundary and MUST fail the release gate — see
+# `scripts/verify-fly-private.sh`, which is run after every deploy and asserts
+# no public IP and no public service exist.
+#
+# If/when auth lands (Supabase Auth or a shared-secret header, R1), this file
+# may add a public service — but only together with that auth, and the release
+# gate must be updated deliberately at the same time.
+# ---------------------------------------------------------------------------
+
+app = "dt-agent-fleet-panel"
+primary_region = "iad"
+
+[build]
+  # Fly resolves [build] paths relative to THIS fly.toml's directory (panel/),
+  # NOT the build-context root. The Dockerfile + .dockerignore live at the repo
+  # root (one level up) because the build context is the monorepo root. Deploy
+  # from the repo root:
+  #   fly deploy -a dt-agent-fleet-panel --config panel/fly.toml
+  dockerfile = "../Dockerfile.panel"
+  ignorefile = "../.dockerignore"
+
+[env]
+  # Non-secret runtime config only. Secrets (SUPABASE_SERVICE_ROLE_KEY,
+  # AGENT_RUNTIME_ROLE_ARN) are set with `fly secrets set` and never appear
+  # here (SD2/D12/D15). PORT/HOSTNAME match the Dockerfile.
+  NODE_ENV = "production"
+  PORT = "8080"
+  HOSTNAME = "0.0.0.0"
+  AWS_REGION = "us-east-1"
+
+# NO [http_service] / NO [[services]] with public ports — see the banner above.
+# The VM listens on the internal port for private-network access only.
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

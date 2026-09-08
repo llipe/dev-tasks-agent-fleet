@@ -389,6 +389,45 @@ per-module `@vitest/coverage-v8` numbers measured on the story's delivery.
 > matter are guarded by the Layer 2.5 `run-detail-queries` suite running against a real Postgres — which
 > ran live here, not skipped.
 
+| Story | Layer | Test file(s) | Asserts |
+|-------|-------|--------------|---------|
+| **S-115 (#128)** — Fly deploy + privacy release gate | 1 (unit) | `tests/unit/fly-privacy-check.test.ts` (21 tests) | **AC6 "gate observed failing" evidence.** The pure release-gate parser `panel/scripts/fly-privacy-check.mjs` (`isPublicIp`/`findPublicIps`/`findPublicServices`/`evaluatePrivacy`). A fixture with a public v4, a public v6, or a `shared_v4` IP — and a fixture with a bound public service (ports+handlers) — each make `evaluatePrivacy().private === false` (the shell wrapper turns that into exit 1, blocking the release); a private-only 6PN (`fdaa::`) allocation with no service passes (`private === true`). Also covers fail-closed classification (unknown type carrying a routable address → public), the `fdaa::`-without-type-label case, malformed/empty entries, non-array/`null`/`undefined` inputs, and the both-reasons-coexist case. The four exported pure functions are **100%** covered; `fly-privacy-check.mjs` **82.6% stmts** overall (uncovered lines 127–153 are the `mainCli`/`readJsonOrNull`/`import.meta.url` CLI entrypoint — process-`exit`/`argv` wiring exercised at runtime by `scripts/verify-fly-private.sh`, not unit-testable without spawning a process; an accepted non-blocking gap, ranked #1 below). |
+| **S-115 (#128)** | CI (static) | `scripts/verify-fly-private.sh` (no unit test — shellcheck) | The shell wrapper that captures live `fly ips list --json` + `fly status --json` and hands the decision to the unit-tested parser (exit 0 private / exit 1 public, fail-closed). Not unit-tested (it shells out to `flyctl`); statically checked by the **`Shellcheck the privacy-gate script (S-115)`** CI step (`.github/workflows/ci.yml`, `shellcheck scripts/verify-fly-private.sh`). CI additionally runs the parser suite by name via the **`Privacy-gate parser test (S-115)`** step (`pnpm --filter panel exec vitest run --project unit fly-privacy-check`) so a gate-parser regression reddens CI independently of the broader suite. |
+| **S-115 (#128)** — `next build` unblock (`parseAfterSeq` move) | 1 (unit) | `tests/unit/after-seq.test.ts` (incl. RT-3 fuzz, recorded seed) | `parseAfterSeq` relocated from the S-110 SSE `route.ts` into `lib/sse/cursor.ts` (behavior unchanged — the App Router route-type validator rejects the non-standard named export, failing `next build`). The existing test is re-pointed to `@/lib/sse/cursor` and still passes: integer/default-0 contract, malformed/negative/non-parseable → 0, never `NaN`/negative/500 (CT-2/CT-3). `cursor.ts` **100% stmts** (94.44% branch; one uncovered branch, line 85 — the `!Number.isFinite(seq)` guard in `SeqCursor.admit`, a defensive path). |
+
+> **`coverage_gate` (S-115, MEASURED): PASS.** Measured with `@vitest/coverage-v8` 3.2.4 on the panel
+> unit + component projects (`pnpm --filter panel run test:coverage`); the Layer 2.5 `integration` project
+> was **SKIPPED (Docker/local Supabase stack not up in this environment)** — not part of the S-115
+> committable surface, which is pure-parser + a route-export move. New/changed-module coverage for the
+> S-115 committable code: `panel/scripts/fly-privacy-check.mjs` **82.6% stmts** with its four exported
+> pure functions at **100%** (uncovered lines 127–153 = the CLI entrypoint, ranked #1 below), and
+> `panel/lib/sse/cursor.ts` **100% stmts / 94.44% branch** (the `parseAfterSeq` move is transparent to
+> its callers — the S-110 route still imports it, and `after-seq.test.ts` re-points to the new path and
+> passes). AC6 is satisfied at unit level: the public-IP and public-service fixtures make the gate report
+> a non-private verdict (all 21 `fly-privacy-check` tests green). Full suite reproduced:
+> **762 passed / 44 skipped** (the 44 skips are the Docker-gated Layer 2.5 `integration` suites plus the
+> `RUN_BUNDLE_SECRET_TEST=1`-gated bundle tests — none in the S-115 surface).
+>
+> **Ranked structural gaps (S-115, accepted / non-blocking).**
+> 1. **`fly-privacy-check.mjs` CLI entrypoint (lines 127–153) — untested.** `mainCli`, `readJsonOrNull`,
+>    and the `import.meta.url === process.argv[1]` self-invoke guard. Risk: **low** — pure `process.argv`
+>    parsing, `readFileSync`+`JSON.parse` (already caught to `null`), and `console`/`process.exit` wiring;
+>    the decision logic it delegates to (`evaluatePrivacy`) is 100% covered. Exercising it requires
+>    spawning a child process. It is invoked end-to-end at release time by `scripts/verify-fly-private.sh`
+>    (shellcheck-gated in CI). Suggested future closure: a child-process smoke test asserting exit 0 on a
+>    private fixture and exit 1 on a public fixture.
+> 2. **`scripts/verify-fly-private.sh` — no behavioral test.** Static-only (shellcheck). Its live
+>    behavior depends on authenticated `flyctl`, so it is out of scope for automated coverage (the LIVE
+>    deploy/OIDC half of S-115 is operator-executed per `docs/runbooks/panel-deployment.md`). Suggested
+>    future closure: a wrapper test injecting a fake `fly` on `PATH` returning fixture JSON.
+> 3. **Build/deploy config (`next.config.ts`/`Dockerfile`/`.dockerignore`/`fly.toml`) — no unit-testable
+>    logic**, correctly excluded from the coverage surface. Verified by `next build` (operator) + the
+>    privacy gate, not by unit tests.
+>
+> **Scope note.** The LIVE deploy/OIDC/invocation half of S-115 is blocked on operator execution
+> (documented in `docs/runbooks/panel-deployment.md`) and is out of scope for automated coverage — not
+> counted as a gap here.
+
 ### When coverage cannot be measured
 
 If no coverage provider is configured, the gate reports

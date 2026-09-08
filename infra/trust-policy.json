@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Federated": "arn:aws:iam::755641879575:oidc-provider/oidc.fly.io/personal" },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": { "oidc.fly.io/personal:aud": "sts.amazonaws.com" },
+      "StringLike":   { "oidc.fly.io/personal:sub": "personal:dt-agent-fleet-panel:*" }
+    }
+  }]
+}

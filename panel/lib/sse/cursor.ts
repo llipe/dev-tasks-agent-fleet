@@ -23,6 +23,24 @@ export interface SeqItem {
 }
 
 /**
+ * Parse the `after_seq` query parameter — a non-negative integer, else 0
+ * (CT-2/CT-3). Non-finite, negative, or absent values coerce to 0 (a full
+ * backfill); non-integer floats are floored.
+ *
+ * This lives here (a pure `lib/` module), not in the SSE route handler: the
+ * Next.js App Router route-type validator rejects any non-standard named export
+ * from a `route.ts` file, so a `parseAfterSeq` export there fails `next build`.
+ * Keeping it in the cursor module preserves its unit-testability and unblocks
+ * the production build the S-115 deploy requires.
+ */
+export function parseAfterSeq(raw: string | null): number {
+  if (raw === null) return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+/**
  * Tracks the highest `seq` emitted so far and decides whether a candidate is
  * genuinely new. Stateful by design — one instance per open stream.
  */

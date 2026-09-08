@@ -121,6 +121,20 @@ jobs:
       - name: Typecheck (tsc)
         run: pnpm --filter panel run typecheck
 
+      # Privacy release-gate parser (S-115, SR2/AC6). `fly deploy` is NOT run in
+      # CI, but the gate's decision logic (panel/scripts/fly-privacy-check.mjs)
+      # is pure and unit-tested — run it by name here so a regression in the
+      # gate parser reddens CI independently of the broader suite. A public-IP
+      # fixture must make the parser report a non-private verdict.
+      - name: Privacy-gate parser test (S-115)
+        run: pnpm --filter panel exec vitest run --project unit fly-privacy-check
+
+      # Static-check the release-gate shell script itself (shellcheck ships on
+      # the GitHub Ubuntu runner). The parser is unit-tested above; this catches
+      # shell-level regressions in the wrapper that invokes it.
+      - name: Shellcheck the privacy-gate script (S-115)
+        run: shellcheck scripts/verify-fly-private.sh
+
       # Warm up Supabase Realtime before the Layer 2.5 + E2E branch: right after
       # `db reset` a cold Realtime can flake the first subscription (stream-e2e,
       # live-tail) under retries:0. Explicit readiness wait, not a sleep.

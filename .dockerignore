@@ -1,0 +1,42 @@
+# Docker build-context ignore for the panel image (Story S-115).
+#
+# This lives at the REPO ROOT because the build context IS the repo root
+# (Dockerfile.panel + `fly deploy --config panel/fly.toml`). Docker/Fly only
+# auto-apply a `.dockerignore` found at the context root, so it MUST be here —
+# a copy under panel/ is not read. Keeps the context lean and secret-free.
+
+# Dependencies (reinstalled inside the image from the lockfile)
+**/node_modules
+
+# Build output / caches
+**/.next
+**/dist
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+
+# Secrets and local env — MUST never enter the image (SD2/D12/D15)
+**/.env
+**/.env.*
+!**/.env.example
+
+# VCS / editor / OS cruft
+.git
+.gitignore
+**/.DS_Store
+**/*.log
+
+# Tests and CI artifacts not needed at runtime
+**/tests/e2e/.artifacts
+**/playwright-report
+**/test-results
+
+# Python agent tree — not part of the panel image
+agents/**/.venv
+agents/**/__pycache__
+agents/**/.mypy_cache
+agents/**/.pytest_cache
+agents/**/.ruff_cache
+
+# The Fly/Docker artifacts themselves don't need to be in the image
+Dockerfile.panel
