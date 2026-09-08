@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAfterSeq } from "@/app/api/runs/[id]/events/stream/route";
+import { parseAfterSeq } from "@/lib/sse/cursor";
 
 /**
  * `after_seq` query-parameter parsing (Story S-110, AC1 / CT-2 / CT-3 / RT-3).

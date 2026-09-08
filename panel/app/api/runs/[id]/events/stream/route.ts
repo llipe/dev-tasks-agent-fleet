@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getRunEventsAfterSeq, getRunById } from "@/lib/supabase/queries";
 import { effectiveStatus } from "@/lib/domain/status";
+import { parseAfterSeq } from "@/lib/sse/cursor";
 import {
   createStreamResponse,
   isTerminalStatus,
@@ -32,14 +33,6 @@ export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
 const HEARTBEAT_MS = 15_000;
-
-/** Parse `after_seq` from the query — non-negative integer, else 0 (CT-2/CT-3). */
-export function parseAfterSeq(raw: string | null): number {
-  if (raw === null) return 0;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.floor(n);
-}
 
 /** The subset of a run row the relay's terminal probe needs. */
 function isRunTerminal(run: VRunRow, nowMs: number): string | null {
