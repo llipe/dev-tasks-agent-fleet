@@ -70,7 +70,7 @@
   - [x] 1.18 Verify AC2–AC8 map: Scenario 1→AC12, 2→AC6, 3→SD6, 4→AC10, 5→AC13, 6→AC9, 7→AC14 — each scenario green and asserting through UI + DB only. → all 10 E2E tests pass live.
   - [x] 1.19 Verify the story's `test:e2e` reachability AC: `test:e2e` is **explicitly gated** (needs a browser + running stack) — reached from CI's dedicated E2E step, not `make validate` (which stays browser-free). Recorded reason in `TESTING.md`; scenario-to-AC traceability table in `TESTING.md`.
   - [x] 1.20 Manual/UI: one real-browser run of all seven scenarios (via `PW_CHANNEL=chrome` against installed Chrome) confirmed the assertions match what a human sees. → 10 passed.
-  - [ ] 1.21 Produce the acceptance-criteria → test-evidence mapping (Scenarios 1–7 → PRD ACs) in the PR.
+  - [x] 1.21 Produce the acceptance-criteria → test-evidence mapping (Scenarios 1–7 → PRD ACs) in the PR. → scenario-to-AC table in `TESTING.md` + PR #153 body + verifier per-AC table.
 
 - [ ] 2.0 Fold in Issue [#134](https://github.com/llipe/dev-tasks-agent-fleet/issues/134): make Layer 2.5 integration suites gating in CI
 
@@ -86,11 +86,15 @@
   - [x] 2.8 Update `TESTING.md`: record the CI-vs-local skip policy **and** the S-114 scenario-to-AC traceability table.
 
   ### Quality gates & closeout (covers both #127 and #134)
-  - [ ] 2.9 Run tests: `pnpm run test` (unit + component), `pnpm run test:integration` (Layer 2.5, live with the stack up), and `pnpm run test:e2e`; then `make validate` at the repo root (both branches must pass).
-  - [ ] 2.10 `qa-engineer` pass — this is the story that closes the standing G2 obligation, so `qa-engineer` confirms the Layer 2.5 projects are genuinely gating (both negative demos observed) and records `coverage_gate` PASS/FAIL/SKIPPED(reason). `TESTING.md` updates land here.
-  - [ ] 2.11 `technical-writer` doc-drift check; update `docs/technical-guidelines.md` §11 (test surface — E2E row now configured; the "standing G2 obligation" note in §11 flipped to resolved) + changelog. No new ADR expected (E2E + CI reachability trace to spec §14 and the pre-existing G2 decision).
-  - [ ] 2.12 Run `verifier` in **audit** mode against the delivered suite + CI change; post the human-readable summary to issues/PR (mandatory, non-blocking on drift). Confirm the scenario-to-AC traceability is complete and each scenario is non-vacuous.
+  - [x] 2.9 Run tests: `pnpm run test` (unit + component), `pnpm run test:integration` (Layer 2.5, live with the stack up), and `pnpm run test:e2e`; then `make validate` at the repo root (both branches must pass). → `make validate` exits 0 (Python 452, panel 773/4 skipped); E2E 10 passed live.
+  - [x] 2.10 `qa-engineer` pass — closes the standing G2 obligation; confirmed both negative demos observed and recorded `coverage_gate` **PASS**. `TESTING.md` updates landed.
+  - [x] 2.11 `technical-writer` doc-drift check; updated `docs/technical-guidelines.md` §11 (E2E row configured; G2 obligation flipped to resolved) + changelog row 1.23. No new ADR (traces to spec §14 + pre-existing G2 decision). Also reconciled stale S-106/S-108 forward-refs to the 1024px check.
+  - [x] 2.12 Ran `verifier` in **audit** mode; posted the human-readable summary to PR #153 + issues #127/#134. Verdict HIGH, 9/9 ACs Pass, highest drift Minor (all Intended), non-blocking. Scenario-to-AC traceability confirmed complete + non-vacuous.
   - [ ] 2.13 Convert PR from draft to ready for review; notify the user for review/merge. Do not close #127 or #134 until the PR is approved AND merged.
+
+- [x] 2.0 (parent) Fold in Issue #134 — all sub-tasks complete.
+
+- [x] 1.0 (parent) Implement Story S-114 — Playwright E2E against the local stack — all sub-tasks complete except closeout (2.13, awaiting user review/merge).
 
 ## Notes
 
