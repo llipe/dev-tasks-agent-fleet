@@ -5,6 +5,11 @@ next-env.d.ts
 coverage
 *.tsbuildinfo
 
+# Playwright E2E artifacts (S-114). Transient per-run — reports, traces, and
+# failure screenshots. Regenerated on every `test:e2e`, never repo artifacts.
+panel/test-results/
+panel/playwright-report/
+
 # Secrets and environment
 .env
 .env.*

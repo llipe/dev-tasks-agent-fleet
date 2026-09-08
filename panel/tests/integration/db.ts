@@ -29,8 +29,30 @@ export interface DbAvailability {
   reason: string;
 }
 
+/**
+ * `REQUIRE_LOCAL_DB=1` turns a Docker-gated skip into a hard failure (#134).
+ *
+ * Locally (unset) the Layer 2.5 suites skip with a recorded reason when the
+ * stack is down — a missing daemon must not redden a developer's `make
+ * validate`. In CI the workflow starts the stack and sets `REQUIRE_LOCAL_DB=1`,
+ * so a suite that would otherwise skip vacuously instead FAILS (enforced in
+ * `probeLocalDb` below): a green CI must mean the DB-boundary assertions
+ * actually ran, not that they were skipped.
+ */
+export function requireLocalDb(): boolean {
+  return process.env.REQUIRE_LOCAL_DB === "1";
+}
+
 // Probe the local stack once. Returns availability plus a human-readable reason
 // suitable for a `SKIPPED(<reason>)` record when the stack is down.
+//
+// #134 CI gate: when `REQUIRE_LOCAL_DB=1` and the stack is NOT reachable, this
+// THROWS instead of returning an unavailable result. Every Layer 2.5 suite
+// calls `probeLocalDb()` at module top-level, so a throw here fails that test
+// file in CI — turning a would-be vacuous skip into a hard failure, uniformly,
+// for every current and future suite (no per-suite assertion change needed).
+// Locally (`REQUIRE_LOCAL_DB` unset) the behavior is unchanged: it returns
+// `{ available: false, reason }` and the suite skips with that recorded reason.
 export async function probeLocalDb(): Promise<DbAvailability> {
   const cfg = localDbConfig();
   const client = new Client(cfg);
@@ -40,10 +62,16 @@ export async function probeLocalDb(): Promise<DbAvailability> {
     return { available: true, reason: "local Supabase Postgres reachable" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return {
-      available: false,
-      reason: `local Supabase Postgres not reachable at ${cfg.host}:${cfg.port} (run \`supabase start\` + \`supabase db reset\`; Docker required) — ${msg}`,
-    };
+    const reason = `local Supabase Postgres not reachable at ${cfg.host}:${cfg.port} (run \`supabase start\` + \`supabase db reset\`; Docker required) — ${msg}`;
+    if (requireLocalDb()) {
+      // CI: a skip is not evidence. Fail loudly rather than pass vacuously.
+      throw new Error(
+        `REQUIRE_LOCAL_DB=1 but the local Supabase stack is unavailable: ${reason}. ` +
+          `In CI a Docker-gated skip of a Layer 2.5 suite is a FAILURE (#134) — the DB-boundary ` +
+          `assertions must actually run. Start the stack before the JS/TS test branch.`,
+      );
+    }
+    return { available: false, reason };
   } finally {
     await client.end().catch(() => {});
   }
