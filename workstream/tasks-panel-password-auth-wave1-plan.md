@@ -34,37 +34,37 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-116 - https://github.com/llipe/dev-tasks-agent-fleet/issues/155: Auth client foundation and pure policy modules
+- [x] 1.0 Implement Story S-116 - https://github.com/llipe/dev-tasks-agent-fleet/issues/155: Auth client foundation and pure policy modules
 
   > Note: No user-visible change. Security-relevant pure functions are built and exhaustively tested before anything depends on them. Rule SA1: auth logic never uses the service-role client; data queries never use the auth clients.
 
-  - [ ] 1.1 Verify `@supabase/ssr` latest stable version is audit-clean, then pin it in `panel/package.json` and run `pnpm install` (do NOT add the deprecated `@supabase/auth-helpers-nextjs`)
-  - [ ] 1.2 Create `panel/lib/supabase/auth-env.ts` with `AuthConfigError` and validation of `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`, following the existing `readSupabaseEnv` fail-fast pattern
-  - [ ] 1.3 Create `panel/lib/supabase/auth-server.ts` — cookie-backed anon-key server client with `import "server-only"`
-  - [ ] 1.4 Create `panel/lib/supabase/browser.ts` — anon-key browser client, no service-role reference
-  - [ ] 1.5 Create `panel/lib/auth/route-policy.ts` — pure `classifyRoute(pathname)` returning `public | ui | api`, unknown paths default to `ui` (fail-closed)
-  - [ ] 1.6 Create `panel/lib/auth/redirect.ts` — pure, total `safeRedirectTarget(raw)` per spec §8.1 rules, never throws, always returns a local path
-  - [ ] 1.7 Create `panel/lib/auth/errors.ts` — the spec §8.2 error table with identical messaging for unknown-email and wrong-password
-  - [ ] 1.8 Document `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `panel/README.md` and local `.env.local` guidance
-  - [ ] 1.9 Write `tests/unit/auth-env.test.ts` — missing, blank, and malformed URL each throw `AuthConfigError`
-  - [ ] 1.10 Write `tests/unit/auth-route-policy.test.ts` — `/login`→public; `/`, `/agents/x`, `/runs/y`→ui; `/api/**`→api; `/api/auth/logout`→api; unknown→ui
-  - [ ] 1.11 Write `tests/unit/auth-redirect.test.ts` — reject `//evil.com`, `https://evil.com`, `http://x`, `javascript:alert(1)`, `/\evil`, newline/control chars, `/login` loop, empty/null/undefined; preserve valid path+query+hash
-  - [ ] 1.12 Write `tests/unit/auth-errors.test.ts` — unknown-email and wrong-password produce an identical user-facing message; no raw Supabase text leaks
-  - [ ] 1.13 Edge-case validation: empty string, whitespace-only, `undefined`, unicode/percent-encoded redirect payloads, very long path, encoded `%2F%2F`
-  - [ ] 1.14 Verify Acceptance Criterion: `@supabase/ssr` pinned and `pnpm run audit` green at `--audit-level=high`
-  - [ ] 1.15 Verify Acceptance Criterion: `auth-server.ts` exports a cookie-backed anon server client carrying `import "server-only"`
-  - [ ] 1.16 Verify Acceptance Criterion: `browser.ts` exports an anon-only browser client with no service-role reference
-  - [ ] 1.17 Verify Acceptance Criterion: `auth-env.ts` throws named `AuthConfigError` on missing/blank/malformed values
-  - [ ] 1.18 Verify Acceptance Criterion: `classifyRoute` is pure and fail-closed on unknown paths
-  - [ ] 1.19 Verify Acceptance Criterion: `safeRedirectTarget` is total, never throws, only returns same-origin relative paths
-  - [ ] 1.20 Verify Acceptance Criterion: unknown-email and wrong-password are indistinguishable
-  - [ ] 1.21 Verify Acceptance Criterion: `lib/supabase/server.ts` byte-unchanged — run `git diff --exit-code panel/lib/supabase/server.ts`
-  - [ ] 1.22 Map each AC to its test evidence and record the mapping in the issue
-  - [ ] 1.23 Run Tests: `pnpm run test:unit`, then `pnpm run validate` (lint, format:check, typecheck, test, audit)
-  - [ ] 1.24 Manual verification: `pnpm run build` succeeds
-  - [ ] 1.25 Update issue #155 checklist and mark the story complete
+  - [x] 1.1 Verify `@supabase/ssr` latest stable version is audit-clean, then pin it in `panel/package.json` and run `pnpm install` (do NOT add the deprecated `@supabase/auth-helpers-nextjs`)
+  - [x] 1.2 Create `panel/lib/supabase/auth-env.ts` with `AuthConfigError` and validation of `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`, following the existing `readSupabaseEnv` fail-fast pattern
+  - [x] 1.3 Create `panel/lib/supabase/auth-server.ts` — cookie-backed anon-key server client with `import "server-only"`
+  - [x] 1.4 Create `panel/lib/supabase/browser.ts` — anon-key browser client, no service-role reference
+  - [x] 1.5 Create `panel/lib/auth/route-policy.ts` — pure `classifyRoute(pathname)` returning `public | ui | api`, unknown paths default to `ui` (fail-closed)
+  - [x] 1.6 Create `panel/lib/auth/redirect.ts` — pure, total `safeRedirectTarget(raw)` per spec §8.1 rules, never throws, always returns a local path
+  - [x] 1.7 Create `panel/lib/auth/errors.ts` — the spec §8.2 error table with identical messaging for unknown-email and wrong-password
+  - [x] 1.8 Document `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `panel/README.md` and local `.env.local` guidance
+  - [x] 1.9 Write `tests/unit/auth-env.test.ts` — missing, blank, and malformed URL each throw `AuthConfigError`
+  - [x] 1.10 Write `tests/unit/auth-route-policy.test.ts` — `/login`→public; `/`, `/agents/x`, `/runs/y`→ui; `/api/**`→api; `/api/auth/logout`→api; unknown→ui
+  - [x] 1.11 Write `tests/unit/auth-redirect.test.ts` — reject `//evil.com`, `https://evil.com`, `http://x`, `javascript:alert(1)`, `/\evil`, newline/control chars, `/login` loop, empty/null/undefined; preserve valid path+query+hash
+  - [x] 1.12 Write `tests/unit/auth-errors.test.ts` — unknown-email and wrong-password produce an identical user-facing message; no raw Supabase text leaks
+  - [x] 1.13 Edge-case validation: empty string, whitespace-only, `undefined`, unicode/percent-encoded redirect payloads, very long path, encoded `%2F%2F`
+  - [x] 1.14 Verify Acceptance Criterion: `@supabase/ssr` pinned and `pnpm run audit` green at `--audit-level=high`
+  - [x] 1.15 Verify Acceptance Criterion: `auth-server.ts` exports a cookie-backed anon server client carrying `import "server-only"`
+  - [x] 1.16 Verify Acceptance Criterion: `browser.ts` exports an anon-only browser client with no service-role reference
+  - [x] 1.17 Verify Acceptance Criterion: `auth-env.ts` throws named `AuthConfigError` on missing/blank/malformed values
+  - [x] 1.18 Verify Acceptance Criterion: `classifyRoute` is pure and fail-closed on unknown paths
+  - [x] 1.19 Verify Acceptance Criterion: `safeRedirectTarget` is total, never throws, only returns same-origin relative paths
+  - [x] 1.20 Verify Acceptance Criterion: unknown-email and wrong-password are indistinguishable
+  - [x] 1.21 Verify Acceptance Criterion: `lib/supabase/server.ts` byte-unchanged — run `git diff --exit-code panel/lib/supabase/server.ts`
+  - [x] 1.22 Map each AC to its test evidence and record the mapping in the issue
+  - [x] 1.23 Run Tests: `pnpm run test:unit`, then `pnpm run validate` (lint, format:check, typecheck, test, audit)
+  - [x] 1.24 Manual verification: `pnpm run build` succeeds
+  - [x] 1.25 Update issue #155 checklist and mark the story complete
 
-- [ ] 2.0 Implement Story S-117 - https://github.com/llipe/dev-tasks-agent-fleet/issues/156: Middleware auth gate (the chokepoint)
+- [x] 2.0 Implement Story S-117 - https://github.com/llipe/dev-tasks-agent-fleet/issues/156: Middleware auth gate (the chokepoint)
 
   > Note: Two failure modes to avoid — (a) using `getSession()` for authorization (its user object is not re-validated, therefore spoofable), and (b) discarding the refreshed-cookie response, which causes intermittent logouts. Depends on Task 1.0.
 
