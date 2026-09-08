@@ -48,3 +48,19 @@ Result: the RLS deny-all gate catches a policy misconfiguration. Reverted
 - gate unset (local) + stack unreachable → all 13 files **skip** with a recorded
   reason; `make validate` stays green without Docker. Verified by pointing
   `SUPABASE_DB_PORT` at a dead port in both modes.
+
+## Cold-start Realtime flake — root-caused and fixed
+
+`stream-e2e.test.ts` (S-110, Layer 2.5) intermittently failed with `received: []`
+on the FIRST run right after `supabase db reset` (a cold Postgres→Realtime
+pipeline). Root cause: `channel.subscribe(...) === 'SUBSCRIBED'` fires *before*
+the logical-replication slot is actually streaming on a cold stack, so events
+inserted in that window are silently dropped — never delivered, never recovered.
+A fixed post-insert sleep could not fix it (the events were dropped, not
+delayed). Fix (harness only, no assertion change): the test now proves the
+pipeline is live before inserting the asserted events — `waitForLiveDelivery`
+opens a separate throwaway channel and inserts negative-seq probe rows (which
+the relay's `SeqCursor` drops at `seq <= 0`, so they can never pollute the
+asserted seq 1..10 stream) until one is delivered. Verified deterministic across
+3 back-to-back cold `db reset` runs, and a cold `make validate` exits 0. A
+belt-and-susp: a CI `warm-realtime` step runs before the Layer 2.5 branch.

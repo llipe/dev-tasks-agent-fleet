@@ -81,6 +81,51 @@ async function insertEvent(c: Client, runId: string, seq: number): Promise<void>
   );
 }
 
+/**
+ * Prove the Postgres→Realtime pipeline is actually DELIVERING before the test
+ * inserts its asserted events. `channel.subscribe(...) === 'SUBSCRIBED'` fires
+ * before the logical-replication slot is streaming on a cold stack, so events
+ * inserted in that window are silently dropped and never recovered — the CI
+ * cold-start flake. This opens a SEPARATE throwaway channel bound to the SAME
+ * run id filter and inserts probe rows (negative seqs, so they can never
+ * collide with or pollute the asserted seq 1..10) until one is delivered, or
+ * until a bounded deadline. It removes the probe rows afterward. Best-effort:
+ * if delivery is never confirmed it resolves anyway and lets the main poll +
+ * assertions produce the real diagnosis.
+ */
+async function waitForLiveDelivery(
+  client: SupabaseClient,
+  runId: string,
+  subscribed: Promise<void>,
+): Promise<void> {
+  await subscribed.catch(() => {});
+  let delivered = false;
+  const probe = client.channel(`probe-${runId}`);
+  probe
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "run_events", filter: `run_id=eq.${runId}` },
+      () => {
+        delivered = true;
+      },
+    )
+    .subscribe();
+
+  const deadline = Date.now() + 8000;
+  let probeSeq = -1;
+  try {
+    while (!delivered && Date.now() < deadline) {
+      await withDb((c) => insertEvent(c, runId, probeSeq));
+      probeSeq -= 1;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  } finally {
+    // Remove the probe rows so they never reach the asserted stream's window.
+    await withDb((c) => c.query(`delete from run_events where run_id = $1 and seq < 0`, [runId]));
+    await client.removeChannel(probe).catch(() => {});
+  }
+}
+
 /** The real Supabase Realtime channel wrapped in the relay's RealtimeLike.
  * `onSubscribed` fires once the channel reaches `SUBSCRIBED`, so the test can
  * wait for the subscription before inserting (removing the fixed-sleep flake). */
@@ -209,11 +254,26 @@ describe.skipIf(!runSuite)("SSE relay end-to-end (Layer 2.5)", () => {
         setTimeout(() => reject(new Error("Realtime did not reach SUBSCRIBED within 8s")), 8000),
       ),
     ]);
+
+    // Confirm the Postgres→Realtime pipeline is ACTUALLY delivering before
+    // inserting the asserted events. `SUBSCRIBED` fires before the logical
+    // replication slot is streaming on a cold stack, so early pushes are
+    // silently dropped (never delivered, never recovered) — the CI cold-start
+    // flake where `received` came back empty. Probe on a SEPARATE throwaway
+    // channel + run id (so it cannot pollute the asserted stream): insert probe
+    // rows and wait until one is delivered, proving the pipeline is live.
+    await waitForLiveDelivery(supabase, runId, subscribed);
+
     for (let seq = 1; seq <= 10; seq++) {
       await withDb((c) => insertEvent(c, runId, seq));
     }
-    // Allow Realtime to deliver.
-    await new Promise((r) => setTimeout(r, 2500));
+    // Wait for delivery with an explicit poll, not a fixed sleep. With the
+    // pipeline proven live above, all 10 arrive quickly; the bounded deadline
+    // (under the 20s test timeout) still fails clearly on a genuine outage.
+    const deliveryDeadline = Date.now() + 12_000;
+    while (new Set(received).size < 10 && Date.now() < deliveryDeadline) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
     controller.abort();
     await consume;
 
