@@ -3,11 +3,18 @@
 # ---------------------------------------------------------------------------
 # Production image for the Next.js panel (Story S-115).
 #
-# Build CONTEXT is the monorepo ROOT (not panel/), because the panel is a pnpm
-# workspace member and Next.js standalone tracing is rooted at the monorepo
-# root (next.config.ts `outputFileTracingRoot`). Build from the repo root:
+# This Dockerfile lives at the REPO ROOT (not panel/) on purpose: the build
+# CONTEXT is the monorepo root (the panel is a pnpm workspace member and Next.js
+# standalone tracing is rooted at the monorepo root via next.config.ts
+# `outputFileTracingRoot`). Fly resolves `[build].dockerfile` in panel/fly.toml
+# relative to the context root, and Docker only auto-applies a `.dockerignore`
+# found at the context root — both are satisfied by keeping this file and
+# `.dockerignore` here.
 #
-#   docker build -f panel/Dockerfile -t panel:local .
+# Build directly with:
+#   docker build -f Dockerfile.panel -t panel:local .
+# or via Fly (from the repo root):
+#   fly deploy -a dt-agent-fleet-panel --config panel/fly.toml
 #
 # The image bakes NO secrets. All runtime configuration (Supabase service-role
 # key, AGENT_RUNTIME_ROLE_ARN, AWS_REGION, FLY_APP_NAME) arrives at runtime as

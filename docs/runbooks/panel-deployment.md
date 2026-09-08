@@ -32,20 +32,26 @@
 
 ## 0. Preconditions
 
-- [ ] S-114 (#127) is merged to `main`.
-- [ ] The **agent runtime is deployed** (spec §15 ordering). The live invocation (§6) needs it to
+- [x] S-114 (#127) is merged to `main`.
+- [x] The **agent runtime is deployed** (spec §15 ordering). The live invocation (§6) needs it to
       exist. If it is not deployed, deploy it first (agent-side runbook `issue-77-deployment-e2e.md`).
-- [ ] Local tooling: `flyctl` (authenticated: `fly auth whoami`), `aws` CLI (authenticated:
+- [x] Local tooling: `flyctl` (authenticated: `fly auth whoami`), `aws` CLI (authenticated:
       `aws sts get-caller-identity`), `docker` (for a local image sanity build, optional), `node`.
-- [ ] The committable S-115 artifacts are present on the branch: `panel/Dockerfile`,
-      `panel/.dockerignore`, `panel/fly.toml`, `scripts/verify-fly-private.sh`,
+- [x] The committable S-115 artifacts are present on the branch: `Dockerfile.panel` (repo root),
+      `.dockerignore` (repo root), `panel/fly.toml`, `scripts/verify-fly-private.sh`,
       `panel/scripts/fly-privacy-check.mjs`.
+
+> **Dockerfile / .dockerignore live at the REPO ROOT, not under `panel/`.** Fly resolves
+> `[build].dockerfile`/`ignorefile` relative to the `fly.toml` directory (`panel/`), and Docker only
+> auto-applies a `.dockerignore` at the build-context root (the repo root). So `panel/fly.toml`
+> points at `../Dockerfile.panel` and `../.dockerignore`. Building from `panel/Dockerfile` (the old
+> path) fails with `panel/panel/Dockerfile' not found` and ships a 2.6 GB context.
 
 **The panel image builds and boots locally** (developer-verified, reversible sanity check — safe to
 re-run):
 
 ```bash
-docker build -f panel/Dockerfile -t dt-panel:local .     # from the repo root
+docker build -f Dockerfile.panel -t dt-panel:local .     # from the repo root
 docker run --rm -p 18080:8080 \
   -e SUPABASE_URL=http://example.invalid -e SUPABASE_SERVICE_ROLE_KEY=x \
   dt-panel:local          # expect: "✓ Ready" on 0.0.0.0:8080, then Ctrl-C
@@ -171,10 +177,12 @@ docker rmi dt-panel:local
 
 1. **Confirm the agent runtime is deployed** (task 1.11 — see Preconditions).
 
-2. **Deploy the panel from the repo root** (the build context is the monorepo root):
+2. **Deploy the panel from the repo root** (the build context is the monorepo root). Remote builds
+   have been unreliable here, so prefer a **local build** (`--local-only` uses your local Docker
+   daemon and only pushes the finished image to Fly):
 
    ```bash
-   fly deploy -a dt-agent-fleet-panel --config panel/fly.toml
+   fly deploy -a dt-agent-fleet-panel --config panel/fly.toml --local-only
    ```
 
 3. **Run the privacy release gate against the live app (task 1.12 / AC6). The release is only valid

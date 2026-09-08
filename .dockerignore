@@ -1,8 +1,9 @@
-# Keep the build context lean and secret-free.
+# Docker build-context ignore for the panel image (Story S-115).
 #
-# NOTE: the Docker build context is the MONOREPO ROOT (see panel/Dockerfile),
-# so this file is referenced via `docker build -f panel/Dockerfile .` from the
-# repo root. Paths here are relative to the repo root.
+# This lives at the REPO ROOT because the build context IS the repo root
+# (Dockerfile.panel + `fly deploy --config panel/fly.toml`). Docker/Fly only
+# auto-apply a `.dockerignore` found at the context root, so it MUST be here —
+# a copy under panel/ is not read. Keeps the context lean and secret-free.
 
 # Dependencies (reinstalled inside the image from the lockfile)
 **/node_modules
@@ -36,3 +37,6 @@ agents/**/__pycache__
 agents/**/.mypy_cache
 agents/**/.pytest_cache
 agents/**/.ruff_cache
+
+# The Fly/Docker artifacts themselves don't need to be in the image
+Dockerfile.panel

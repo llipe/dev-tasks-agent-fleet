@@ -29,8 +29,13 @@ app = "dt-agent-fleet-panel"
 primary_region = "iad"
 
 [build]
-  dockerfile = "panel/Dockerfile"
-  # Build context is the monorepo root; run `fly deploy` from the repo root.
+  # Fly resolves [build] paths relative to THIS fly.toml's directory (panel/),
+  # NOT the build-context root. The Dockerfile + .dockerignore live at the repo
+  # root (one level up) because the build context is the monorepo root. Deploy
+  # from the repo root:
+  #   fly deploy -a dt-agent-fleet-panel --config panel/fly.toml
+  dockerfile = "../Dockerfile.panel"
+  ignorefile = "../.dockerignore"
 
 [env]
   # Non-secret runtime config only. Secrets (SUPABASE_SERVICE_ROLE_KEY,
