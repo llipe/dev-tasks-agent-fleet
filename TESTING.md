@@ -29,7 +29,7 @@ The layer taxonomy below is fixed. What belongs in each layer is project-specifi
 | 1        | Deterministic foundations | Unit tests, schema validation. No I/O, no network, no real database.                  | active — `tests/unit/` (pytest `unit` marker); covers `scrubber.py`, `credentials.py`, `toolchain.py`, `validator.py`, `eligibility.py`, `classifier.py`, `fix_agent.py` (`_safe_path`, mandate check, fix tools), and `pull_request.py` (PR-body builder + branch naming). |
 | 2        | Constrained model/tool    | Backend component tests, mocked APIs, fixtures and gold datasets.                     | active — `tests/component/` holds ~56 tests across `test_pipeline.py`, `test_pr_creation.py`, and `test_fix_agent.py` (mocked `git`/`gh`/`subprocess`, Secrets Manager, PostgREST, and the Strands `Agent`). `tests/fixtures/` still holds no recorded payloads (`.gitkeep` only). |
 | 2.5      | Integration               | Real database, real migrations, RLS policies, schema contracts. No mocked data layer. | **configured (S-102 / #115)** — harness is Vitest's `integration` project in `panel` (`panel/tests/integration/`, runner Vitest 3.2.4), talking to a **real local Postgres** brought up by the Supabase CLI (`supabase start` / `supabase db reset` against `supabase/migrations/` + `supabase/seed.sql`). `panel/tests/integration/schema.test.ts` asserts `v_runs` exists, carries `effective_status`, and that `reap_stale_runs()` is callable. Docker-gated via `panel/tests/integration/db.ts` (`probeLocalDb`): when the local stack is unreachable the suite skips with a recorded reason instead of failing `make validate`. Reachable from the repo-root `make validate` JS/TS branch: `make validate` → panel `validate` → `test` (`vitest run`), which executes **all** Vitest projects including `integration` (the `test:integration` script is the same project, run standalone). The production `pg_cron` schedule and `v_runs` read-time contract (issue #94) remain additionally verified by live operator SQL (`docs/runbooks/issue-94-reaper-verification.md`). |
-| E2E      | End-to-end                | Playwright CLI — committed browser automation, full-stack, scenario-driven.           | config stub only — `panel/playwright.config.ts` exists (S-101) with the `test:e2e` script wired; the scenario suite lands in S-114 (#127). No committed scenarios yet. |
+| E2E      | End-to-end                | Playwright CLI — committed browser automation, full-stack, scenario-driven.           | **configured (S-114 / #127)** — `panel/playwright.config.ts` + `panel/tests/e2e/` hold seven scenarios (plus an edge-case file) driving invoke → run detail → live tail through the browser against the **real** local Supabase stack, with AgentCore stubbed at the HTTP boundary (`tests/e2e/fixtures/agentcore-stub.ts`) so the real credential branch runs but no AWS call is made. `test:e2e` is **gated separately** (it needs a browser + a running stack): CI runs it in a dedicated step after `playwright install --with-deps chromium`; it is intentionally NOT part of `make validate`, which stays browser-free. See the scenario-to-AC table below. |
 | Contract | Contract validation       | API spec drift, breaking-change detection, consumer impact. `dt verify` family.       | not configured — no OpenAPI/AsyncAPI spec in repo; `dt` not wired. |
 | 3        | Product evaluation        | Semantic, tone, groundedness, hallucination evals. Only for LLM features.             | not configured — the agent uses an LLM (`strands-agents`) in `fix_agent.py`. `fix_agent.py` now has Layer 1 + Layer 2 tests (with the model mocked), but no semantic/groundedness eval harness exists. Finding: the LLM output quality is unevaluated. |
 | 4        | Human evaluation          | Review gates, safeguards, risk alerts.                                                | out of band — human PR review is the enforcement backstop (see git-guard). No automated gate in repo. |
@@ -51,7 +51,59 @@ enforceable rather than aspirational.
   a layer rather than growing a test double that reimplements the dependency.
   When a Layer 2 test needs a real database, it moves to Layer 2.5.
 
-## Packages
+## CI-vs-local Layer 2.5 gating (#134)
+
+The Layer 2.5 (`integration`) suites talk to a real local Postgres and are
+**Docker-gated** by `panel/tests/integration/db.ts` (`probeLocalDb`). The gating
+policy differs by environment, controlled by a single env signal
+`REQUIRE_LOCAL_DB`:
+
+- **Local (unset).** When the stack is unreachable the suites **skip with a
+  recorded reason** — a missing Docker daemon must never redden a developer's
+  `make validate`. This is unchanged, long-standing behavior.
+- **CI (`REQUIRE_LOCAL_DB=1`).** A probe failure is a hard **failure**, not a
+  skip. `probeLocalDb` throws when the stack is unreachable, and because every
+  Layer 2.5 suite calls it at module top-level, that throw fails the test file.
+  A green CI therefore means the DB-boundary assertions **actually ran** — a
+  skip is not evidence. This applies uniformly to every current suite
+  (`schema`, `seed-schema`, `reaper`, `queries`, `status-parity`,
+  `rls-deny-all`, `dashboard-query`, `runs-by-agent`, `run-detail-queries`,
+  `stream-e2e`, `invoke-insert`, `synthetic-agent-form`, `e2e-fixture.smoke`)
+  **and to every future one by convention** — a new Layer 2.5 suite inherits the
+  gate for free simply by calling `probeLocalDb()`.
+
+The CI workflow (`.github/workflows/ci.yml`, panel job) starts the stack
+(`supabase start`), applies `supabase/migrations/` + `supabase/seed.sql`
+(`supabase db reset`), exports the local Supabase env, and sets
+`REQUIRE_LOCAL_DB=1` before the JS/TS test branch. Runtime impact: the added
+stack + browser provisioning is roughly 2–4 minutes on a GitHub Ubuntu runner
+(noted, not silently accepted).
+
+**The gates are proven by negative demonstration**, not just by passing: a
+broken `effectiveStatus` (inverted comparison) turns `status-parity.test.ts`
+red, and a permissive `anon` SELECT policy turns `rls-deny-all.test.ts` red.
+Both were demonstrated once and reverted (evidence:
+`workstream/s114-negative-demos.md`). A gate never observed failing is not a
+proven gate.
+
+## E2E scenario-to-AC traceability (S-114 / #127)
+
+Every scenario asserts through the UI **and** the database only — never through
+internal function calls. AgentCore is stubbed at the HTTP boundary, so the real
+credential branch selection runs but no AWS call is made.
+
+| Scenario (file) | Asserts | PRD AC / decision |
+| --- | --- | --- |
+| Scenario 1 (`invoke.spec.ts`) | valid invoke → navigates to `/runs/[id]`; `runs` row is `queued` with all three timeout snapshots non-null | AC12 (D1 / OQ3) |
+| Scenario 2 (`live-tail.spec.ts`) | events inserted after the page is open appear with no reload | AC6 (FR12) |
+| Scenario 3 (`live-tail.spec.ts`) | drop the SSE connection mid-stream, insert during the gap, reconnect → every event exactly once, in `seq` order, no gap | SD6 |
+| Scenario 4 (`stale-and-artifact.spec.ts`) | a `running` run past its threshold reads `timed_out` (banner + pill) with the reaper **off** (read-time `v_runs.effective_status`) | AC10 (SD4) |
+| Scenario 5 (`invoke.spec.ts`) | an invalid param submission is blocked; **no** `runs` row is created (server-authoritative) | AC13 |
+| Scenario 6 (`density.spec.ts`) | density variant selection survives a reload (S-107 localStorage vocabulary) | AC9 |
+| Scenario 7 (`stale-and-artifact.spec.ts`) | a `failed` run still shows its `pull_request` artifact link (https-only, `rel=noopener`) | AC14 |
+| Edge cases (`edge-cases.spec.ts`) | empty fleet → dashboard empty state; zero-event run → detail opens with no stream error; two contexts tail the same run | EC-19, robustness |
+
+
 
 One row per package. In a single-package repository this table has one row.
 A package's language determines its runner and commands — a non-JS package is
@@ -61,7 +113,7 @@ described in its own terms, not forced into JavaScript script names.
 | ---------------------------------------------------- | ----------------- | -------- | ---------------------------------------------- | ----------------------------------------- | ----------------------------------- |
 | `dependency-update` (`agents/dependency-update/app/dependencyUpdate/`) | Python `>=3.13` | pytest 8.3.5 | `python -m pytest` (from the package dir; `testpaths=["tests"]`) | Local CPython process, no DB/network; all external I/O mocked | pytest-cov 7.1.0 (branch coverage) — see Coverage §, gate is MEASURED (~90%+ on implemented modules; no `fail_under` floor yet) |
 | `agentcore-cdk-app` (`agents/dependency-update/agentcore/cdk/`) | TypeScript | jest 29 (ts-jest) | `pnpm test` / `npm test` (→ `jest`) | Node (jest default); CDK `Template` synth assertions | none configured (no `@vitest/coverage`/`nyc`, no `--coverage` wired) |
-| `panel` (`panel/`) | TypeScript (Next.js 15, React 19) | Vitest 3.2.4 | `pnpm --filter panel run test` (→ `vitest run`); reachable from repo-root `make validate` via the JS/TS branch | Node (unit + integration projects) + jsdom (component project); Layer 2.5 `integration` project talks to a **real local Postgres** via the Supabase CLI stack (S-102), Docker-gated (skips with a recorded reason when the stack is down) | `@vitest/coverage-v8` 3.2.4 (`pnpm --filter panel run test:coverage`) |
+| `panel` (`panel/`) | TypeScript (Next.js 15, React 19) | Vitest 3.2.4 + Playwright 1.56.0 | `pnpm --filter panel run test` (→ `vitest run`); `test:e2e` (→ `playwright test`) gated separately; reachable from repo-root `make validate` via the JS/TS branch (E2E excluded — needs a browser) | Node (unit + integration projects) + jsdom (component project); Layer 2.5 `integration` project talks to a **real local Postgres** via the Supabase CLI stack (S-102), Docker-gated (skips with a recorded reason locally; a skip is a **failure** in CI via `REQUIRE_LOCAL_DB=1`, #134). E2E (S-114) drives the browser against the same real stack with AgentCore stubbed at the HTTP boundary | `@vitest/coverage-v8` 3.2.4 (`pnpm --filter panel run test:coverage`) |
 
 > **Scope note.** The `dependency-update` Python package is the active codebase and the subject of this standard. `agentcore-cdk-app` is infrastructure-as-code with a single CDK synth smoke test (`test/cdk.test.ts`); it is listed for completeness and reachability accounting, not as a primary test target. The Next.js frontend (`panel`, Phase 2) **now exists in the repo** as of S-101 (#114) — its JS/TS test package uses Vitest projects (unit/component/integration) + a Playwright E2E config stub, reachable from the repo-root `make validate` JS/TS branch; the scenario suites fill in across later Phase 2 stories.
 
