@@ -55,6 +55,13 @@ jobs:
   panel-quality:
     name: Panel quality gate (JS/TS)
     runs-on: ubuntu-latest
+    # The panel job now runs the Layer 2.5 integration suites and the S-114 E2E
+    # suite against a REAL local Supabase stack (#134). REQUIRE_LOCAL_DB=1 makes
+    # a Docker-gated skip of any Layer 2.5 suite a hard FAILURE here — a green CI
+    # must mean the DB-boundary assertions actually ran, never that they were
+    # skipped vacuously.
+    env:
+      REQUIRE_LOCAL_DB: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -72,6 +79,39 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      # --- Local Supabase stack (Layer 2.5 + E2E) -----------------------------
+      # Start the CLI stack and apply supabase/migrations/ + supabase/seed.sql
+      # (via `supabase db reset`) BEFORE the test branch, so the integration
+      # suites and the E2E run have a real, seeded database. The GitHub Ubuntu
+      # runner ships Docker; the `supabase` CLI is provided by the setup action.
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase stack
+        run: supabase start
+
+      - name: Apply migrations + seed (db reset)
+        run: supabase db reset --local
+
+      - name: Export local Supabase env
+        # `supabase status -o env` prints API_URL / ANON_KEY / SERVICE_ROLE_KEY /
+        # DB_URL for the running stack. Map them to the names the panel + tests
+        # read (SD2 server-only names — never NEXT_PUBLIC_*).
+        run: |
+          set -euo pipefail
+          supabase status -o env > /tmp/sb.env
+          # shellcheck disable=SC1090
+          source /tmp/sb.env
+          {
+            echo "SUPABASE_URL=${API_URL}"
+            echo "SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "SUPABASE_DB_HOST=127.0.0.1"
+            echo "SUPABASE_DB_PORT=54322"
+          } >> "$GITHUB_ENV"
+
       - name: Lint (eslint)
         run: pnpm --filter panel run lint
 
@@ -81,8 +121,20 @@ jobs:
       - name: Typecheck (tsc)
         run: pnpm --filter panel run typecheck
 
-      - name: Test with coverage (vitest)
+      # `test:coverage` runs the unit + component + integration projects. With
+      # REQUIRE_LOCAL_DB=1 and the stack up, the Layer 2.5 suites run for real;
+      # a probe failure or Docker-gated skip fails the job (#134).
+      - name: Test with coverage (vitest — incl. gated Layer 2.5)
         run: pnpm --filter panel run test:coverage
+
+      # E2E: install the browser (+ OS deps) and run the seven scenarios against
+      # the started stack. The stack is already reset+seeded above, so E2E skips
+      # its own reset (E2E_DB_RESET unset → verify-and-assert-catalog only).
+      - name: Install Playwright browser (chromium)
+        run: pnpm --filter panel exec playwright install --with-deps chromium
+
+      - name: E2E (Playwright)
+        run: pnpm --filter panel run test:e2e
 
       - name: Dependency audit (pnpm audit)
         # Runs a resilient wrapper (panel/scripts/audit.mjs): a real high/
