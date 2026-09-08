@@ -22,6 +22,7 @@
 
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createClient } from "@supabase/supabase-js";
 import { Client } from "pg";
 
 import { resolveLocalSupabaseEnv } from "./fixtures/local-env";
@@ -161,6 +162,47 @@ async function grantServiceRoleSelectLocalOnly(host: string, port: number): Prom
   }
 }
 
+/**
+ * Warm up Supabase Realtime so the first live-tail scenario does not race a
+ * cold subscription. Right after `supabase start`/`db reset`, Realtime can take
+ * a few seconds before a channel reaches `SUBSCRIBED`; with E2E `retries: 0` a
+ * first-run miss would flake AC6. This is an EXPLICIT readiness wait (not a
+ * sleep): it opens a throwaway channel and resolves only once Realtime
+ * confirms the subscription, then tears it down. Best-effort — a warm-up that
+ * cannot confirm within the window logs and continues rather than blocking the
+ * whole suite (the scenarios still have their own generous per-assertion waits).
+ */
+async function warmUpRealtime(url: string, serviceKey: string): Promise<void> {
+  const client = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { params: { eventsPerSecond: 50 } },
+  });
+  const channel = client.channel("e2e-realtime-warmup");
+  try {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        console.log("[e2e] Realtime warm-up did not confirm within 15s; continuing");
+        resolve();
+      }, 15_000);
+      channel
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "run_events" },
+          () => {},
+        )
+        .subscribe((status: string) => {
+          if (status === "SUBSCRIBED") {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+    });
+  } finally {
+    await client.removeChannel(channel).catch(() => {});
+    await client.removeAllChannels().catch(() => {});
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
   const env = resolveLocalSupabaseEnv();
 
@@ -214,6 +256,10 @@ export default async function globalSetup(): Promise<void> {
   //     `anon` — so RLS deny-all (D11) is preserved. The Layer 2.5 `queries`
   //     integration test applies the identical grant for the same reason.
   await grantServiceRoleSelectLocalOnly(env.SUPABASE_DB_HOST, Number(env.SUPABASE_DB_PORT));
+
+  // 3c. Warm up Realtime so the first live-tail scenario does not race a cold
+  //     subscription (E2E runs with retries:0). Explicit readiness wait.
+  await warmUpRealtime(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
   // 4. Start the AgentCore stub on its fixed port; the config points the SDK at it.
   const stub = await startAgentCoreStub(AGENTCORE_STUB_PORT);

@@ -23,6 +23,24 @@ E2E is the only composition layer — every other layer mocks at least one bound
 - `pnpm run test` (unit + component), `pnpm run test:integration` (Layer 2.5, live), `pnpm run test:e2e` (7 scenarios), `make validate` at the repo root (both branches).
 - Scenario → PRD-AC traceability table in `TESTING.md`.
 
+## Findings surfaced during E2E (routed, not fixed here)
+
+- **`next build` fails on the S-110 SSE route's non-route export.** Running a
+  production `next build` (the E2E webServer's first attempt) fails type
+  validation: `Route "app/api/runs/[id]/events/stream/route.ts" — "parseAfterSeq"
+  is not a valid Route export field.` The panel is a pre-deploy scaffold that has
+  never been production-built (CI runs typecheck + tests, not `next build`), so
+  this latent defect was invisible until now. The E2E webServer uses `next dev`
+  (which does not run that validation) and exercises the same runtime behavior,
+  so S-114 is unblocked. **Fixing the route export is product code outside this
+  test story** — routed to product-engineer/developer as a follow-up (move
+  `parseAfterSeq` out of the route module, or make it non-exported). Flagged as
+  intended drift for the verifier.
+- **Local `service_role` grant asymmetry (already documented, §7).** `supabase db
+  reset` locally does not reproduce the platform-default `service_role` grants, so
+  E2E global-setup applies them local-only (scoped to `service_role`, never
+  `anon` — RLS deny-all preserved), exactly as the Layer 2.5 `queries` test does.
+
 ## Checklist
 
 - [ ] E2E suite green against the local stack (AgentCore stubbed at the network boundary — no real AWS call)
