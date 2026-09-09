@@ -145,7 +145,10 @@ recorded reason (see `TESTING.md`).
   3. On denial: a `ui` route → `302` to `/login?redirect=<encoded original path+query>`; an
      `api` route (including the SSE path) → `401 {"error":"UNAUTHORIZED"}` with
      `content-type: application/json`, so `fetch`/`EventSource` see a clean failure rather than
-     an HTML redirect.
+     an HTML redirect. For the SSE stream this `401` is returned **before** the
+     `text/event-stream` response opens, so the client live-tail hook (`lib/hooks/useRunStream.ts`,
+     S-121) treats a never-opened, `CLOSED` connection as a **terminal** auth stop — no reconnect
+     loop — and `LiveLogViewer` shows a session-expired notice (this is what settles spec OQ3).
   4. It is **fail-closed**: any error from the auth call is treated as unauthenticated, and an
      unknown route class defaults to `ui`.
 
