@@ -35,7 +35,7 @@
 - `panel/tests/integration/auth-login.test.ts` - Layer 2.5 (Docker-gated) login round-trip
 - `panel/tests/component/LogOutItem.test.tsx` - Logout affordance component suite
 - `panel/tests/unit/use-run-stream-auth.test.ts` - Terminal-auth-stop unit suite
-- `panel/tests/component/LiveLogViewer.test.tsx` - Session-expired notice assertion
+- `panel/tests/component/live-log-viewer.test.tsx` - Session-expired notice assertion (added to the existing S-110 suite)
 - `panel/tests/unit/panel-auth-check.test.ts` - Gate parser tests (pass + per-violation fail fixtures)
 - `panel/tests/e2e/auth.spec.ts` - E2E auth scenarios (redirect, valid login, tampered redirect, invalid creds, SHOW toggle, logout)
 - `panel/tests/e2e/auth.setup.ts` - Playwright auth setup project (signs in the operator once, saves storageState so existing protected-route specs run authenticated under the active gate)
@@ -93,21 +93,21 @@
   - [x] 6.15 Run Tests: `pnpm run test`, `pnpm run test:e2e`, then `pnpm run validate`
   - [x] 6.16 Update issue #159 checklist and mark the story complete
 
-- [ ] 7.0 Implement Story S-121 - https://github.com/llipe/dev-tasks-agent-fleet/issues/160: Live-tail 401 handling (stop infinite reconnect)
+- [x] 7.0 Implement Story S-121 - https://github.com/llipe/dev-tasks-agent-fleet/issues/160: Live-tail 401 handling (stop infinite reconnect)
 
   > Note: Gating the SSE route turns `useRunStream`'s reconnect-on-drop into an infinite loop against a 401. `EventSource` cannot send headers, so a denied connection surfaces as `onerror` with the stream never having opened — that "never opened" signal distinguishes auth failure from a recoverable drop (resolves spec OQ3: gate returns plain `401` before the stream opens, not a `closed` frame). Do not alter `lib/sse/relay.ts` sequencing. Depends on S-117.
 
-  - [ ] 7.1 Add open-tracking state to `useRunStream` (did `onopen` fire for the current attempt)
-  - [ ] 7.2 Branch `onerror`: never-opened + `readyState === CLOSED` → terminal stop (no reconnect); previously-opened → existing reconnect path with the highest rendered `seq`
-  - [ ] 7.3 Expose a terminal-auth-stop state from the hook
-  - [ ] 7.4 Render a session-expired notice in `LiveLogViewer.tsx` using existing Nocturne tokens (no new component library)
-  - [ ] 7.5 Add `tests/unit/use-run-stream-auth.test.ts`: errored-before-open → no reconnect scheduled; opened-then-dropped → reconnect with correct `after_seq`; repeated failures do not accumulate timers
-  - [ ] 7.6 Add the notice assertion in `tests/component/LiveLogViewer.test.tsx`
-  - [ ] 7.7 Edge-case validation: 401 on the very first connection; 401 on a reconnect after a successful period; rapid open/close flapping; run reaching terminal state simultaneously with a 401
-  - [ ] 7.8 Verify Acceptance Criterion: an `onerror` with `readyState === CLOSED` and no successful open is terminal — no reconnect
-  - [ ] 7.9 Verify Acceptance Criterion: a genuine mid-stream drop still reconnects with the highest rendered `seq` (S-110 behavior preserved)
-  - [ ] 7.10 Verify Acceptance Criterion: the UI surfaces a session-expired notice rather than silently freezing; no line lost or duplicated on legitimate reconnect (`seq` dedupe intact)
-  - [ ] 7.11 Map each AC to its test evidence and record the mapping in the issue
+  - [x] 7.1 Add open-tracking state to `useRunStream` (did `onopen` fire for the current attempt)
+  - [x] 7.2 Branch `onerror`: never-opened + `readyState === CLOSED` → terminal stop (no reconnect); previously-opened → existing reconnect path with the highest rendered `seq`
+  - [x] 7.3 Expose a terminal-auth-stop state from the hook
+  - [x] 7.4 Render a session-expired notice in `LiveLogViewer.tsx` using existing Nocturne tokens (no new component library)
+  - [x] 7.5 Add `tests/unit/use-run-stream-auth.test.ts`: errored-before-open → no reconnect scheduled; opened-then-dropped → reconnect with correct `after_seq`; repeated failures do not accumulate timers
+  - [x] 7.6 Add the notice assertion in `tests/component/live-log-viewer.test.tsx`
+  - [x] 7.7 Edge-case validation: 401 on the very first connection; 401 on a reconnect after a successful period; rapid open/close flapping; run reaching terminal state simultaneously with a 401
+  - [x] 7.8 Verify Acceptance Criterion: an `onerror` with `readyState === CLOSED` and no successful open is terminal — no reconnect
+  - [x] 7.9 Verify Acceptance Criterion: a genuine mid-stream drop still reconnects with the highest rendered `seq` (S-110 behavior preserved)
+  - [x] 7.10 Verify Acceptance Criterion: the UI surfaces a session-expired notice rather than silently freezing; no line lost or duplicated on legitimate reconnect (`seq` dedupe intact)
+  - [x] 7.11 Map each AC to its test evidence and record the mapping in the issue
   - [ ] 7.12 Manual verification: open a run detail page with a live run, clear the session cookie in devtools, observe the tail stop once with a notice and no reconnect storm in the network panel
   - [ ] 7.13 Run Tests: `pnpm run test:unit`, `pnpm run test`, `pnpm run test:integration` (existing `stream-e2e` still passes), then `pnpm run validate`
   - [ ] 7.14 Update issue #160 checklist and mark the story complete
