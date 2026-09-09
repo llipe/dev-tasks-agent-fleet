@@ -157,6 +157,25 @@ recorded reason (see `TESTING.md`).
   stories (S-119/S-120); this story is the gate mechanism only. Auth reads for local dev still
   require the `NEXT_PUBLIC_SUPABASE_*` pair documented above.
 
+- **Login screen (S-119).** `/login` is the panel's only **public** route — it lives at
+  `app/login/` **outside** the `(panel)` route group, so it renders shell-free (no sidebar/top
+  bar). `page.tsx` is a server component (inline `force-dynamic`/`revalidate=0`/`fetchCache` — an
+  auth response can carry a refreshed `Set-Cookie`, so it must never be cached) that redirects an
+  already-authenticated visitor (`getClaims()`, never `getSession()`) to `/` and pre-sanitizes
+  `?redirect`. `actions.ts` is the `"use server"` `signIn` action over a pure, injectable
+  `resolveSignIn` core: **validate → `safeRedirectTarget` before use → `signInWithPassword` →
+  generic error mapping**, redirecting to the sanitized target on success. `components/auth/`
+  holds `LoginForm` (`useActionState` + `useFormStatus` pending/disabled double-submit guard,
+  `role="alert"` generic error, clears the password on a failed attempt) and `PasswordField` (the
+  keyboard-operable `SHOW`/`HIDE` toggle — `aria-pressed`, `type="button"`, defaults masked),
+  reusing the S-105 `Input`/`Button`/`KLabel` primitives with token-only CSS. It **reuses, does
+  not reimplement,** the S-116 `lib/auth/{redirect,errors}` policy and `lib/supabase/auth-server`,
+  and is protected by the S-117 gate. Load-bearing security properties: **anti-enumeration**
+  (unknown-email ≡ wrong-password, one generic "Invalid email or password." message via
+  `classifySignInError`), **redirect safety** (`safeRedirectTarget` server-side before use), and
+  the password is never stored/logged/echoed. No signup/reset/confirmation/magic-link; accounts are
+  invitation-only (provisioned in the Supabase dashboard, never seeded). Sign-out UI lands in S-120.
+
 - **Design system — Nocturne tokens (S-105).** Every color, font, spacing-scale,
   radius, and shadow value comes from a CSS custom property defined in
   `styles/tokens.css` (transcribed from `/DESIGN.md` §2, including the four SD10
