@@ -4,11 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
-import {
-  classifySignInError,
-  userMessageFor,
-  type AuthErrorCode,
-} from "@/lib/auth/errors";
+import { classifySignInError, userMessageFor, type AuthErrorCode } from "@/lib/auth/errors";
 import { safeRedirectTarget } from "@/lib/auth/redirect";
 
 /**

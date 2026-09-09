@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -39,7 +40,7 @@ export interface LoginFormProps {
 }
 
 /** The interactive body — must be a descendant of <form> to read useFormStatus. */
-function Fields({ error }: { error: string | null }) {
+function Fields({ error, passwordKey }: { error: string | null; passwordKey: number }) {
   const { pending } = useFormStatus();
 
   return (
@@ -65,7 +66,7 @@ function Fields({ error }: { error: string | null }) {
         />
       </div>
 
-      <PasswordField name="password" label="PASSWORD" disabled={pending} />
+      <PasswordField key={passwordKey} name="password" label="PASSWORD" disabled={pending} />
 
       <Button
         type="submit"
@@ -84,13 +85,25 @@ export function LoginForm({ redirectTarget, region }: LoginFormProps) {
   const [state, formAction] = useActionState<SignInResult | null, FormData>(signIn, null);
   const error = state && !state.ok ? state.message : null;
 
+  // Clear the (uncontrolled) password field after a failed attempt by remounting
+  // it under a fresh key. The password is never echoed by the server — this is a
+  // client-side UX reset so a rejected attempt leaves an empty field to retype.
+  const [attempt, setAttempt] = useState(0);
+  const seen = useRef<SignInResult | null>(null);
+  useEffect(() => {
+    if (state && state !== seen.current && !state.ok) {
+      seen.current = state;
+      setAttempt((n) => n + 1);
+    }
+  }, [state]);
+
   return (
     <form className={styles.form} action={formAction} noValidate>
       {/* The redirect target is sanitized server-side; carried through so the
           action can honor a legitimate one. */}
       <input type="hidden" name="redirect" value={redirectTarget} />
 
-      <Fields error={error} />
+      <Fields error={error} passwordKey={attempt} />
 
       <div className={styles.footer}>
         {/* Dead link: a styled non-link span, aria-disabled, not activatable (AC16). */}

@@ -60,10 +60,7 @@ describe("resolveSignIn — field validation (AUTH_MISSING_FIELDS)", () => {
   });
 
   it("treats non-string fields as missing", async () => {
-    const r = await resolveSignIn(
-      { email: undefined, password: null, redirect: undefined },
-      ok,
-    );
+    const r = await resolveSignIn({ email: undefined, password: null, redirect: undefined }, ok);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("AUTH_MISSING_FIELDS");
   });
@@ -141,10 +138,7 @@ describe("resolveSignIn — anti-enumeration (AC5)", () => {
 
 describe("resolveSignIn — redirect sanitization applied before use (AC4)", () => {
   it("sanitizes an off-origin redirect to `/` on SUCCESS", async () => {
-    const r = await resolveSignIn(
-      { email: "a@b.co", password: "pw", redirect: "//evil.com" },
-      ok,
-    );
+    const r = await resolveSignIn({ email: "a@b.co", password: "pw", redirect: "//evil.com" }, ok);
     expect(r.ok).toBe(true);
     expect(r.redirect).toBe("/");
   });
@@ -158,10 +152,7 @@ describe("resolveSignIn — redirect sanitization applied before use (AC4)", () 
   });
 
   it("rejects a `/login` loop target, falling back to `/`", async () => {
-    const r = await resolveSignIn(
-      { email: "a@b.co", password: "pw", redirect: "/login" },
-      ok,
-    );
+    const r = await resolveSignIn({ email: "a@b.co", password: "pw", redirect: "/login" }, ok);
     expect(r.ok).toBe(true);
     expect(r.redirect).toBe("/");
   });

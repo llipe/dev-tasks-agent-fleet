@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 import { AGENTCORE_STUB_ENDPOINT } from "./tests/e2e/fixtures/stub-port";
+import { OPERATOR_STORAGE_STATE } from "./tests/e2e/fixtures/storage";
 
 /**
  * E2E config (S-114, #127). Playwright drives the panel end to end against the
@@ -45,9 +46,26 @@ export default defineConfig({
 
   projects: [
     {
-      name: "chromium",
+      // Auth setup (S-119): signs the test operator in through the real /login
+      // flow ONCE and saves the session so the protected-route specs run
+      // authenticated. Matches only the setup file.
+      name: "setup",
+      testMatch: /auth\.setup\.ts$/,
       use: {
         ...devices["Desktop Chrome"],
+        ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
+      },
+    },
+    {
+      name: "chromium",
+      // The setup project runs first; the saved operator session authenticates
+      // every scenario. Individual unauthenticated scenarios (auth.spec.ts)
+      // override with an empty storageState via `test.use`.
+      dependencies: ["setup"],
+      testMatch: /.*\.spec\.ts$/,
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: OPERATOR_STORAGE_STATE,
         // Default: Playwright's bundled chromium (CI installs it via
         // `playwright install --with-deps chromium`). Locally, when the bundled
         // browser cannot be provisioned, set `PW_CHANNEL=chrome` to run against
