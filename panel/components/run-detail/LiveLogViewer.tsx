@@ -30,6 +30,11 @@ import styles from "./LogViewer.module.css";
  * The message is rendered by the `LogLine` primitive as an inert text node —
  * never `dangerouslySetInnerHTML` (security guard #6, SC-12).
  *
+ * **Story S-121 — session-expired notice.** When the hook reports a terminal
+ * auth stop (`authStopped`), the viewer renders a visible notice instead of
+ * letting the tail silently freeze, and drops the live-tail control. This is
+ * the UI half of the "stop the infinite 401 reconnect" fix.
+ *
  * This is used for runs that may still be live. A terminal run needs no live
  * behavior and the server-rendered `LogViewer` suffices.
  */
@@ -62,7 +67,7 @@ export function LiveLogViewer({
   eventSourceFactory,
   timeZone = "UTC",
 }: LiveLogViewerProps) {
-  const { lines, status, connected, closedReason } = useRunStream({
+  const { lines, status, connected, closedReason, authStopped } = useRunStream({
     runId,
     initialLines,
     initialStatus,
@@ -109,11 +114,18 @@ export function LiveLogViewer({
     if (el !== null && following) el.scrollTop = el.scrollHeight;
   }, [lines, following]);
 
-  // If the stream closes, following is meaningless — drop the control.
-  const isLive = connected && closedReason === null;
+  // If the stream closes, following is meaningless — drop the control. An
+  // auth stop (Story S-121) is also a closed state — no live control.
+  const isLive = connected && closedReason === null && !authStopped;
 
   return (
     <div className={styles.viewer}>
+      {authStopped && (
+        <div className={styles.sessionExpired} role="alert">
+          Your session expired, so the live log stopped updating. Reload the page to sign in and
+          resume the tail.
+        </div>
+      )}
       <div className={styles.liveBar}>
         <StatusPill status={derived} />
         {isLive && <LiveTailButton following={following} onResume={resume} />}
