@@ -6,6 +6,7 @@
 | ------- | ---------- | ----------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-08-26 | Initial version. Extracted from high-fidelity prototype at `/docs/prototype/` (Nocturne DS). Documents design system, tokens, component inventory, layout architecture, screen specifications, interaction patterns, and formatting conventions. | product-engineer |
 | 1.1     | 2026-09-04 | Resolved the three self-contradictions the S-105 audit found in this document ([`workstream/fidelity-report-S-105.md`](workstream/fidelity-report-S-105.md) drift D1–D3), each in favor of the single consistent reading. **D1 — status-pill tint is a uniform 14%** for every status; §8.1 previously gave `running`/`queued` 16% while §3.4 specified 14% for all, with no rationale for the exception. **D2 — pulse cadence is 1.6s everywhere**, including `queued`, which §8.1 alone put at 1.4s. **D3 — §7.1 now defines one relative-time form, not two**; the "Dashboard last run — short relative" row (`14m ago`) is removed, so the run history table and the dashboard share `formatRelative`, and a screen never formats a relative time itself. All three now match the implementation shipped in S-105, so no code changes: this is the document catching up to a codebase that had already resolved the ambiguity the only way it could. Decided before Wave 3 started, because D3 was S-107 scope. | product-engineer |
+| 1.2     | 2026-09-09 | Added **§5.5 Login (`/login`)** to the screen specifications (Story S-119 / issue #158). Documents the panel's only public, shell-free screen: the centered Nocturne card, the brand row reusing the §4.1 sidebar mark + wordmark, the "Sign in" heading + invitation-only subtitle, the faded rule, the `EMAIL`/`PASSWORD` fields with the keyboard-operable `SHOW`/`HIDE` toggle (`aria-pressed`, defaults masked), the full-width primary Sign in button with its pending/disabled state, the `role="alert"` region carrying the single generic anti-enumeration credential message, the footer row with the **dead** `aria-disabled` "Forgot password?" non-link and the monospace region tag, and the 12-hour session fine print. Token-only CSS Modules, label-associated fields, `:focus-visible` rings. Documentation catching up to the screen shipped in S-119 — no new visual token or component introduced (reuses `Input`/`Button`/`KLabel` and the §4.1 brand pattern). | developer |
 
 ---
 
@@ -451,6 +452,23 @@ Three density variants to choose from (or offer as a view toggle):
 - Schema preview toggle
 - Footer: API hint + Cancel + Run button
 - Success state: animated confirmation with run ID and link to detail
+
+### 5.5 Login (`/login`)
+
+The only public screen — rendered **outside** the app shell (no sidebar, no top bar), on the page background, as a single centered card (`--color-surface`, `--radius-lg`, `--shadow-lg`, max-width ~360px). Reached when the auth gate (S-117) redirects an unauthenticated request; an already-authenticated visit redirects to `/`.
+
+- **Brand row:** reuses the sidebar brand markup pattern — the accent-bordered mark with its glowing dot + the "Agent Fleet" wordmark (§4.1).
+- **"Sign in" heading:** h-scale heading, weight 500 (§2.6).
+- **Invitation subtitle:** `--muted`, ~12.5px body — invitation-only, contact an administrator.
+- **Faded rule:** the Nocturne fade-to-transparent divider (§1.1).
+- **`EMAIL` field:** `KLabel` + `Input` (`type="email"`, `autoComplete="email"`, placeholder `you@company.com`).
+- **`PASSWORD` field:** `KLabel` + `Input` (`autoComplete="current-password"`) with a **`SHOW`/`HIDE` toggle** right-aligned on the label row — a text button (accent, klabel-scale), keyboard-operable, `aria-pressed` reflecting the revealed state; the field **defaults to masked**.
+- **Sign in button:** `Button` `variant="primary"`, **full width**; disabled and showing a pending label while submitting (prevents double submit).
+- **Error region:** a `role="alert"` panel above the fields, tinted with `--st-fail`, carrying the **single generic** "Invalid email or password." message — unknown-email and wrong-password are indistinguishable (anti-enumeration).
+- **Footer row:** a **dead "Forgot password?"** control — a styled non-link `<span>` with `aria-disabled`, `--faint`, `not-allowed` cursor (never an `<a href="#">`, never activatable) — and a monospace `· <region>` tag (`--faint`, non-secret display value).
+- **Fine print:** "Sessions expire after 12 hours of inactivity." (`--faint`).
+
+Styling is token-only CSS Modules (Nocturne token discipline). Fields are label-associated, the form is semantic, and focus rings use the global `:focus-visible` accent ring.
 
 ---
 
