@@ -21,6 +21,7 @@ import {
   Heartbeat,
   CaretLeft,
   CaretRight,
+  Power,
   X,
 } from "@phosphor-icons/react/ssr";
 import type { IconProps } from "@phosphor-icons/react";
@@ -36,4 +37,5 @@ export const SystemHealthIcon = Heartbeat; // ◈ System health
 export const CollapseIcon = CaretLeft; // « Collapse
 export const ExpandIcon = CaretRight; // » Expand
 export const RowChevronIcon = CaretRight; // › Row chevron
+export const LogOutIcon = Power; // ⏻ Log out (S-120)
 export const CloseIcon = X; // ✕ Close

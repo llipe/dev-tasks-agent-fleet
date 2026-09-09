@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { TEST_OPERATOR_EMAIL, TEST_OPERATOR_PASSWORD } from "./fixtures/auth";
+import { OPERATOR_STORAGE_STATE } from "./fixtures/storage";
 
 /**
  * E2E — authentication (S-119, PRD AC1/AC3/AC4/AC5/AC13).
@@ -97,5 +98,68 @@ test.describe("auth", () => {
     await page.getByRole("button", { name: /^sign in$/i }).click();
     await page.waitForURL("**/");
     expect(new URL(page.url()).pathname).toBe("/");
+  });
+});
+
+/**
+ * E2E — logout (S-120, PRD AC6/AC15).
+ *
+ * These scenarios run AUTHENTICATED — they load the operator session saved by
+ * the `auth.setup.ts` project so the sidebar renders with the footer "Log out"
+ * affordance. The flow drives the real POST-logout route + middleware re-gate
+ * through the browser against the real local stack.
+ *
+ * Coverage:
+ *   - the Log out control appears in the sidebar footer once signed in (AC15)
+ *   - clicking it POSTs to /api/auth/logout, clears the session, lands on /login
+ *     (AC6)
+ *   - after logout, revisiting a protected route re-gates to /login (AC6)
+ *   - the control is still operable while the sidebar is collapsed (edge)
+ */
+test.describe("logout", () => {
+  // Authenticated: use the operator storage state written by auth.setup.ts.
+  test.use({ storageState: OPERATOR_STORAGE_STATE });
+
+  test("Log out in the footer signs out and re-gates protected routes (AC6/AC15)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    // Authenticated: the primary nav is present and the footer Log out shows.
+    await expect(page.getByRole("navigation", { name: /primary/i })).toBeVisible();
+    const logout = page.getByRole("button", { name: /log out/i });
+    await expect(logout).toBeVisible();
+
+    await logout.click();
+
+    // The POST logout redirects to /login.
+    await page.waitForURL(/\/login(\?|$)/);
+    expect(new URL(page.url()).pathname).toBe("/login");
+
+    // The session is cleared: revisiting a protected route re-gates to /login.
+    await page.goto("/");
+    await page.waitForURL(/\/login(\?|$)/);
+    expect(new URL(page.url()).pathname).toBe("/login");
+  });
+
+  test("Log out is operable while the sidebar is collapsed, via keyboard (edge)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    // Collapse the sidebar via the toggle control.
+    await page.getByRole("button", { name: /collapse sidebar/i }).click();
+    // Collapsed: the Log out control keeps its accessible name (icon-only).
+    const logout = page.getByRole("button", { name: /log out/i });
+    await expect(logout).toBeVisible();
+
+    // Activate via the keyboard (focus + Enter) — covers keyboard operability
+    // and avoids the `next dev` overlay portal intercepting a synthetic click
+    // over the collapsed footer. A native submit button submits its form on
+    // Enter, so this exercises the same POST-logout path.
+    await logout.focus();
+    await expect(logout).toBeFocused();
+    await logout.press("Enter");
+
+    await page.waitForURL(/\/login(\?|$)/);
+    expect(new URL(page.url()).pathname).toBe("/login");
   });
 });

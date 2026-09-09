@@ -19,7 +19,8 @@ export type RoutePolicy = "public" | "ui" | "api";
  * | Pathname            | Policy   |
  * | ------------------- | -------- |
  * | `/login`            | `public` |
- * | `/api/**`           | `api`    | (incl. `/api/auth/logout` — session required)
+ * | `/api/auth/logout`  | `public` | (S-120 — session-ending, must be reachable)
+ * | `/api/**`           | `api`    |
  * | everything else     | `ui`     | (incl. `/dev/**`, unknown paths — fail-closed)
  *
  * @param pathname the URL pathname (no query/hash), e.g. `request.nextUrl.pathname`.
@@ -30,14 +31,19 @@ export function classifyRoute(pathname: string): RoutePolicy {
     return "ui";
   }
 
-  // Exact public routes. `/login` is the only public page.
-  if (pathname === "/login") {
+  // Exact public routes. `/login` is the only public page; `/api/auth/logout`
+  // is the only public API path (S-120). Logout ENDS a session, so it must be
+  // reachable even when the session is expiring/invalid — a gate that 401s the
+  // POST before the handler runs would make logout self-defeating. It is
+  // POST-only (a GET is not a route, see the handler), so treating the exact
+  // path as public does not widen any read surface. Matched EXACTLY so
+  // `/api/auth/logout/extra` and `/api/auth/whoami` stay gated `api` below.
+  if (pathname === "/login" || pathname === "/api/auth/logout") {
     return "public";
   }
 
   // API surface (route handlers + the SSE stream). These must receive a JSON
-  // 401 on denial, never an HTML redirect. `/api/auth/logout` is API too — it
-  // requires a session and is idempotent.
+  // 401 on denial, never an HTML redirect.
   if (pathname === "/api" || pathname.startsWith("/api/")) {
     return "api";
   }

@@ -67,11 +67,14 @@
   gap: 1px;
 }
 
-/* Footer (collapse toggle) */
+/* Footer (log out + collapse toggle) */
 .footer {
   flex: none;
   padding: 9px 8px;
   border-top: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .toggle {

@@ -10,6 +10,15 @@ describe("classifyRoute (spec §7.3)", () => {
     expect(classifyRoute("/login")).toBe("public");
   });
 
+  // S-120: logout is a session-ENDING action and MUST reach its handler even
+  // when the session is expiring/invalid — otherwise the gate would 401 the
+  // POST before it could clear cookies, and logout would be self-defeating. It
+  // is POST-only (a GET is not a route), so classifying it `public` does not
+  // widen any read surface.
+  it("classifies /api/auth/logout as public (S-120 — session-ending, must be reachable)", () => {
+    expect(classifyRoute("/api/auth/logout")).toBe("public");
+  });
+
   it.each(["/", "/agents/x", "/agents/foo-bar", "/runs/01J8XQ2F", "/dev/gallery"])(
     "classifies UI page %s as ui",
     (p) => {
@@ -17,14 +26,17 @@ describe("classifyRoute (spec §7.3)", () => {
     },
   );
 
-  it.each([
-    "/api",
-    "/api/",
-    "/api/agents/x/invoke",
-    "/api/runs/abc/events/stream",
-    "/api/auth/logout",
-  ])("classifies API path %s as api", (p) => {
-    expect(classifyRoute(p)).toBe("api");
+  it.each(["/api", "/api/", "/api/agents/x/invoke", "/api/runs/abc/events/stream"])(
+    "classifies API path %s as api",
+    (p) => {
+      expect(classifyRoute(p)).toBe("api");
+    },
+  );
+
+  it("still gates other /api/auth/* paths as api (only the exact logout path is public)", () => {
+    expect(classifyRoute("/api/auth")).toBe("api");
+    expect(classifyRoute("/api/auth/logout/extra")).toBe("api");
+    expect(classifyRoute("/api/auth/whoami")).toBe("api");
   });
 
   it("fails closed: an unknown path defaults to ui", () => {

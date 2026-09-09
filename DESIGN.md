@@ -7,6 +7,7 @@
 | 1.0     | 2026-08-26 | Initial version. Extracted from high-fidelity prototype at `/docs/prototype/` (Nocturne DS). Documents design system, tokens, component inventory, layout architecture, screen specifications, interaction patterns, and formatting conventions. | product-engineer |
 | 1.1     | 2026-09-04 | Resolved the three self-contradictions the S-105 audit found in this document ([`workstream/fidelity-report-S-105.md`](workstream/fidelity-report-S-105.md) drift D1–D3), each in favor of the single consistent reading. **D1 — status-pill tint is a uniform 14%** for every status; §8.1 previously gave `running`/`queued` 16% while §3.4 specified 14% for all, with no rationale for the exception. **D2 — pulse cadence is 1.6s everywhere**, including `queued`, which §8.1 alone put at 1.4s. **D3 — §7.1 now defines one relative-time form, not two**; the "Dashboard last run — short relative" row (`14m ago`) is removed, so the run history table and the dashboard share `formatRelative`, and a screen never formats a relative time itself. All three now match the implementation shipped in S-105, so no code changes: this is the document catching up to a codebase that had already resolved the ambiguity the only way it could. Decided before Wave 3 started, because D3 was S-107 scope. | product-engineer |
 | 1.2     | 2026-09-09 | Added **§5.5 Login (`/login`)** to the screen specifications (Story S-119 / issue #158). Documents the panel's only public, shell-free screen: the centered Nocturne card, the brand row reusing the §4.1 sidebar mark + wordmark, the "Sign in" heading + invitation-only subtitle, the faded rule, the `EMAIL`/`PASSWORD` fields with the keyboard-operable `SHOW`/`HIDE` toggle (`aria-pressed`, defaults masked), the full-width primary Sign in button with its pending/disabled state, the `role="alert"` region carrying the single generic anti-enumeration credential message, the footer row with the **dead** `aria-disabled` "Forgot password?" non-link and the monospace region tag, and the 12-hour session fine print. Token-only CSS Modules, label-associated fields, `:focus-visible` rings. Documentation catching up to the screen shipped in S-119 — no new visual token or component introduced (reuses `Input`/`Button`/`KLabel` and the §4.1 brand pattern). | developer |
+| 1.3     | 2026-09-09 | Added the **sidebar footer Log out affordance** to **§4.1 App Shell** (Story S-120 / issue #159). Documents the footer's two stacked controls and their order — **Log out below "System health" and above "Collapse"** — sharing the footer-control grid (icon + label, icon-only when collapsed). Log out uses the Phosphor `Power` icon (§10) and is a **POST-only** `<form action="/api/auth/logout">` submit button (a GET logout is CSRF-triggerable); the accessible name "Log out" is preserved in the collapsed icon-only state; token-only CSS, global `:focus-visible` ring. **Visibility gate:** the item renders only when the request is authenticated and is absent when unauthenticated, with auth state passed into the shell as a server-provided prop (the authenticated route-group layout computes it) — the shell performs no auth I/O (SD2 preserved). Documentation catching up to the affordance shipped in S-120 — no new visual token or component introduced (reuses the §4.1 footer `.toggle` grid pattern and the `Power` icon already in §10). | developer |
 
 ---
 
@@ -374,6 +375,15 @@ border-radius: 50%;
 - Body bg: `color-mix(in srgb, var(--color-bg) 88%, #000)`
 - Border between sidebar and content: `1px solid var(--rule)`
 
+#### Sidebar footer — Log out (authenticated only)
+
+The sidebar footer holds two controls, stacked in this order, sharing the footer-control grid pattern (icon + label, icon-only when collapsed):
+
+1. **Log out** — the session-ending affordance, shown **below "System health" and above "Collapse"**. It uses the Phosphor `Power` icon (§10) and is a plain `<form method="post" action="/api/auth/logout">` submit button (POST-only: a GET logout is CSRF-triggerable and can be fired by a prefetcher). The accessible name stays "Log out" in both expanded and collapsed states, so the icon-only collapsed control remains labeled. It reuses the footer `.toggle` grid + hover tint, token-only, and the global `:focus-visible` accent ring.
+2. **Collapse / Expand** — the existing sidebar toggle (`«`/`»`, `Cmd/Ctrl+\`).
+
+Visibility: **Log out renders only when the request is authenticated, and is absent entirely when unauthenticated.** Authentication state is passed into the shell as a server-provided prop (the authenticated route-group layout computes it via the auth-server client) — the shell performs no auth I/O itself (SD2 preserved).
+
 ### 4.2 Run Detail (full-height, no outer scroll)
 
 ```
@@ -641,6 +651,7 @@ Use **Phosphor Icons** (https://phosphoricons.com) throughout, rendered as inlin
 | ⑃ | Repositories | `GitBranch` |
 | ⚙ | Settings | `GearSix` |
 | ◈ | System health | `Heartbeat` |
+| ⏻ | Log out (sidebar footer, §4.1) | `Power` |
 | « / » | Collapse/expand | `CaretLeft` / `CaretRight` |
 | › | Row chevron | `CaretRight` |
 | ✕ | Close | `X` |

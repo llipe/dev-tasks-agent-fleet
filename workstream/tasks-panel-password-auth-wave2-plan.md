@@ -72,26 +72,26 @@
   - [x] 5.21 Run Tests: `pnpm run test`, `pnpm run test:integration`, `pnpm run test:e2e`, then `pnpm run validate`
   - [x] 5.22 Update issue #158 checklist and mark the story complete
 
-- [ ] 6.0 Implement Story S-120 - https://github.com/llipe/dev-tasks-agent-fleet/issues/159: Logout route and sidebar Log out affordance
+- [x] 6.0 Implement Story S-120 - https://github.com/llipe/dev-tasks-agent-fleet/issues/159: Logout route and sidebar Log out affordance
 
   > Note: Logout MUST be POST-only (a GET logout is CSRF-triggerable and prefetch-firable). The shell stays presentational — it performs no auth I/O; `authenticated` is passed in as a prop (SD2 preserved). Depends on S-117, S-118 (S-119 recommended first for end-to-end manual verification).
 
-  - [ ] 6.1 Add `app/api/auth/logout/route.ts` exporting only `POST`, with inline route config; `signOut`, clear session cookies, redirect to `/login`
-  - [ ] 6.2 Add `LogOutIcon` to `components/icons.tsx` mapped to Phosphor `Power`, imported from `@phosphor-icons/react/ssr`
-  - [ ] 6.3 Add `components/shell/LogOutItem.tsx` + `.module.css` as a plain `<form method="post" action="/api/auth/logout">` using the existing footer-control `.toggle` grid pattern (icon + label; icon-only when collapsed)
-  - [ ] 6.4 Render it in `Sidebar.tsx` between System health and Collapse, gated on an `authenticated` prop threaded from the authenticated layout via `AppShell.tsx`
-  - [ ] 6.5 Add `tests/component/LogOutItem.test.tsx`: POST form with correct action; ordering after System health / before Collapse; icon-only when collapsed; absent when unauthenticated
-  - [ ] 6.6 Add the E2E logout scenario in `tests/e2e/auth.spec.ts`
-  - [ ] 6.7 Edge-case validation: logout with an already-expired session; double-submit; logout while collapsed; keyboard activation; `GET` to the logout path must not log out
-  - [ ] 6.8 Verify Acceptance Criterion (AC6): `POST /api/auth/logout` clears cookies and redirects to `/login`; after logout a protected route redirects to `/login`; idempotent with no session
-  - [ ] 6.9 Verify Acceptance Criterion: `GET /api/auth/logout` does not exist as a route
-  - [ ] 6.10 Verify Acceptance Criterion (AC15): Log out item below "System health", above "Collapse", power-style icon; icon-only when collapsed; absent when unauthenticated
-  - [ ] 6.11 Verify Acceptance Criterion: `AppShell`/`Sidebar` do not call Supabase (SD2 preserved)
-  - [ ] 6.12 Map each AC to its test evidence and record the mapping in the issue
-  - [ ] 6.13 Manual verification: sign in, confirm Log out in the footer, click it, land on `/login`, confirm `/` re-gates; collapse the sidebar and confirm icon-only rendering
-  - [ ] 6.14 Update `DESIGN.md` with the sidebar Log out item (changelog row required)
-  - [ ] 6.15 Run Tests: `pnpm run test`, `pnpm run test:e2e`, then `pnpm run validate`
-  - [ ] 6.16 Update issue #159 checklist and mark the story complete
+  - [x] 6.1 Add `app/api/auth/logout/route.ts` exporting only `POST`, with inline route config; `signOut`, clear session cookies, redirect to `/login`
+  - [x] 6.2 Add `LogOutIcon` to `components/icons.tsx` mapped to Phosphor `Power`, imported from `@phosphor-icons/react/ssr`
+  - [x] 6.3 Add `components/shell/LogOutItem.tsx` + `.module.css` as a plain `<form method="post" action="/api/auth/logout">` using the existing footer-control `.toggle` grid pattern (icon + label; icon-only when collapsed)
+  - [x] 6.4 Render it in `Sidebar.tsx` between System health and Collapse, gated on an `authenticated` prop threaded from the authenticated layout via `AppShell.tsx`
+  - [x] 6.5 Add `tests/component/LogOutItem.test.tsx`: POST form with correct action; ordering after System health / before Collapse; icon-only when collapsed; absent when unauthenticated
+  - [x] 6.6 Add the E2E logout scenario in `tests/e2e/auth.spec.ts`
+  - [x] 6.7 Edge-case validation: logout with an already-expired session; double-submit; logout while collapsed; keyboard activation; `GET` to the logout path must not log out
+  - [x] 6.8 Verify Acceptance Criterion (AC6): `POST /api/auth/logout` clears cookies and redirects to `/login`; after logout a protected route redirects to `/login`; idempotent with no session
+  - [x] 6.9 Verify Acceptance Criterion: `GET /api/auth/logout` does not exist as a route
+  - [x] 6.10 Verify Acceptance Criterion (AC15): Log out item below "System health", above "Collapse", power-style icon; icon-only when collapsed; absent when unauthenticated
+  - [x] 6.11 Verify Acceptance Criterion: `AppShell`/`Sidebar` do not call Supabase (SD2 preserved)
+  - [x] 6.12 Map each AC to its test evidence and record the mapping in the issue
+  - [x] 6.13 Manual verification: sign in, confirm Log out in the footer, click it, land on `/login`, confirm `/` re-gates; collapse the sidebar and confirm icon-only rendering
+  - [x] 6.14 Update `DESIGN.md` with the sidebar Log out item (changelog row required)
+  - [x] 6.15 Run Tests: `pnpm run test`, `pnpm run test:e2e`, then `pnpm run validate`
+  - [x] 6.16 Update issue #159 checklist and mark the story complete
 
 - [ ] 7.0 Implement Story S-121 - https://github.com/llipe/dev-tasks-agent-fleet/issues/160: Live-tail 401 handling (stop infinite reconnect)
 
