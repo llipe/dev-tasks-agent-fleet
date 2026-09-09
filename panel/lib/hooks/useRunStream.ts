@@ -53,11 +53,29 @@ export interface UseRunStreamResult {
   connected: boolean;
   /** The reason from the terminal `closed` frame, once received. */
   closedReason: string | null;
+  /**
+   * True once the hook has stopped for an authorization failure (Story S-121).
+   *
+   * A denied SSE connection surfaces as `onerror` with the stream having NEVER
+   * opened for the current attempt (`EventSource` cannot send headers, so the
+   * gate returns a plain `401` BEFORE a `text/event-stream` response opens —
+   * spec OQ3). That "never opened" signal is terminal: the hook stops and does
+   * NOT reconnect, so an expired session cannot produce an infinite 401
+   * reconnect loop. The viewer surfaces a session-expired notice on this flag.
+   */
+  authStopped: boolean;
 }
 
 function streamUrl(runId: string, afterSeq: number): string {
   return `/api/runs/${encodeURIComponent(runId)}/events/stream?after_seq=${afterSeq}`;
 }
+
+/**
+ * `EventSource.CLOSED` numeric value (Story S-121). Defined as a local constant
+ * rather than referencing `EventSource.CLOSED` so the check is safe when the
+ * global `EventSource` is undefined (SSR/node) and stable across fakes.
+ */
+const EVENT_SOURCE_CLOSED = 2;
 
 function toLogLine(row: StreamEventRow, timeZone: string): LogLineView {
   // Kept lightweight: the appended clock uses the same formatter the server
@@ -88,6 +106,7 @@ export function useRunStream({
   const [status, setStatus] = useState<RunStatus | (string & {})>(initialStatus);
   const [connected, setConnected] = useState(false);
   const [closedReason, setClosedReason] = useState<string | null>(null);
+  const [authStopped, setAuthStopped] = useState(false);
 
   // Refs so the effect's callbacks always see current values without
   // re-subscribing on every render.
@@ -96,6 +115,11 @@ export function useRunStream({
   );
   const sourceRef = useRef<EventSource | null>(null);
   const closedRef = useRef(false);
+  // Story S-121: whether the CURRENT attempt ever opened. Reset on every
+  // connect(). A real EventSource fires `onopen` on the 200 response before any
+  // frame; receiving any frame therefore also implies "opened". A 401 arrives
+  // as `onerror` with this still false and readyState === CLOSED.
+  const openedRef = useRef(false);
   const factoryRef = useRef(eventSourceFactory);
   factoryRef.current = eventSourceFactory;
 
@@ -107,11 +131,21 @@ export function useRunStream({
     // No EventSource available (SSR, or a test env without one) and no injected
     // factory — nothing to connect. The server-rendered lines still show.
     if (make === null) return;
+    // New attempt: it has not opened yet.
+    openedRef.current = false;
     const es = make(streamUrl(runId, cursorRef.current.highest));
     sourceRef.current = es;
     setConnected(true);
 
+    es.onopen = () => {
+      // The 200 text/event-stream response opened — this attempt is authorized.
+      openedRef.current = true;
+    };
+
     es.addEventListener("event", (ev: MessageEvent) => {
+      // A frame can only arrive after the stream opened; record it defensively
+      // in case a fake/real source delivers a frame without firing `onopen`.
+      openedRef.current = true;
       const row = JSON.parse(ev.data) as StreamEventRow;
       // Client-side dedupe/order guard (defensive; the server already dedupes).
       if (!cursorRef.current.admit(row.seq)) return;
@@ -119,6 +153,7 @@ export function useRunStream({
     });
 
     es.addEventListener("run", (ev: MessageEvent) => {
+      openedRef.current = true;
       const row = JSON.parse(ev.data) as { status?: string };
       if (typeof row.status === "string") setStatus(row.status);
     });
@@ -132,10 +167,25 @@ export function useRunStream({
     });
 
     es.onerror = () => {
-      // A terminal `closed` already tore us down — do not reconnect (AC4).
+      // A terminal `closed` already tore us down — do not reconnect (S-110 AC4).
       if (closedRef.current) return;
-      // Unexpected drop: close this source and reopen with the highest rendered
-      // seq as after_seq, so no line is lost (AC4/SC-6).
+
+      // Story S-121: an error on an attempt that NEVER opened, with the source
+      // now CLOSED, is an authorization failure (the gate's plain 401 before the
+      // stream opens — spec OQ3). This is TERMINAL: stop, do NOT reconnect, and
+      // do NOT schedule any timer, so an expired session cannot loop forever.
+      if (!openedRef.current && es.readyState === EVENT_SOURCE_CLOSED) {
+        closedRef.current = true;
+        es.close();
+        sourceRef.current = null;
+        setConnected(false);
+        setAuthStopped(true);
+        return;
+      }
+
+      // Genuine mid-stream drop (the stream HAD opened): close this source and
+      // reopen with the highest rendered seq as after_seq, so no line is lost
+      // (S-110 AC4/SC-6). Existing seq dedupe (SeqCursor) prevents duplicates.
       es.close();
       setConnected(false);
       connect();
@@ -152,5 +202,5 @@ export function useRunStream({
     };
   }, [connect]);
 
-  return { lines, status, connected, closedReason };
+  return { lines, status, connected, closedReason, authStopped };
 }

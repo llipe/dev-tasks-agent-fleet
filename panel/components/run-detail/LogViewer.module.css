@@ -59,3 +59,19 @@
   padding: 8px 16px;
   border-bottom: 1px solid var(--rule);
 }
+
+/*
+ * Session-expired notice (Story S-121). Shown when the live tail stops on an
+ * authorization failure, so the log does not silently freeze. Token-only:
+ * tinted with the status-fail color the same way as terminal-state banners.
+ */
+.sessionExpired {
+  flex: none;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--st-fail) 35%, transparent);
+  background: color-mix(in srgb, var(--st-fail) 10%, transparent);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.45;
+}

@@ -18,8 +18,10 @@ let instances: FakeEventSource[] = [];
 
 class FakeEventSource {
   url: string;
+  readyState = 0; // CONNECTING
   listeners = new Map<string, ((ev: MessageEvent) => void)[]>();
   onerror: ((ev: Event) => void) | null = null;
+  onopen: ((ev: Event) => void) | null = null;
   closed = false;
   constructor(url: string) {
     this.url = url;
@@ -32,11 +34,17 @@ class FakeEventSource {
   }
   removeEventListener() {}
   close() {
+    this.readyState = 2; // CLOSED
     this.closed = true;
   }
   emit(type: string, data: unknown) {
     const ev = { data: JSON.stringify(data) } as MessageEvent;
     for (const cb of this.listeners.get(type) ?? []) cb(ev);
+  }
+  /** Simulate a 401-before-open (Story S-121): closed, onerror, never opened. */
+  errorClosed() {
+    this.readyState = 2; // CLOSED
+    this.onerror?.(new Event("error"));
   }
 }
 
@@ -231,5 +239,63 @@ describe("LiveLogViewer", () => {
     expect(latest().closed).toBe(true);
     // Live-tail control disappears once the stream is closed (nothing to tail).
     expect(screen.queryByRole("button", { name: /live tail/i })).toBeNull();
+  });
+
+  it("shows a session-expired notice and drops the live control on a terminal auth stop (S-121)", () => {
+    render(
+      <LiveLogViewer
+        runId="r1"
+        initialLines={[line(1)]}
+        initialStatus="running"
+        maxRuntimeSeconds={900}
+        graceSeconds={60}
+        startTimeoutSeconds={300}
+        startedAtMs={Date.now()}
+        queuedAtMs={Date.now()}
+        eventSourceFactory={factory}
+      />,
+    );
+    // No notice while the stream is healthy.
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // A 401 before the stream ever opened → terminal auth stop.
+    act(() => {
+      latest().errorClosed();
+    });
+
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent(/session expired/i);
+    // The live-tail control is gone (the tail has stopped, not paused).
+    expect(screen.queryByRole("button", { name: /live tail/i })).toBeNull();
+    // The server-rendered lines are still visible — the log did not vanish.
+    expect(screen.getByText("m1")).toBeInTheDocument();
+  });
+
+  it("does NOT show the session-expired notice while the stream is live (S-121)", () => {
+    render(
+      <LiveLogViewer
+        runId="r1"
+        initialLines={[line(1)]}
+        initialStatus="running"
+        maxRuntimeSeconds={900}
+        graceSeconds={60}
+        startTimeoutSeconds={300}
+        startedAtMs={Date.now()}
+        queuedAtMs={Date.now()}
+        eventSourceFactory={factory}
+      />,
+    );
+    act(() => {
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "2026-01-01T00:00:02Z",
+        level: "info",
+        message: "still-live",
+        step_id: null,
+      });
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("still-live")).toBeInTheDocument();
   });
 });
