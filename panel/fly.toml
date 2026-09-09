@@ -1,28 +1,33 @@
-# Fly.io configuration for the Agent Fleet Control Plane panel (Story S-115).
+# Fly.io configuration for the Agent Fleet Control Plane panel.
 #
 # ---------------------------------------------------------------------------
-# PRIVACY IS A SECURITY BOUNDARY, NOT A PREFERENCE (SR2 / D16).
+# THE SECURITY BOUNDARY IS NOW LOGIN, NOT NETWORK PRIVACY (auth wave, S-116..S-122).
 #
-# In v1 the panel has NO user authentication (D16). Its ONLY security boundary
-# is that the Fly app is not reachable from the public internet: it can invoke
-# agents without a login, so a public service would expose that invoke surface
-# to anyone.
+# History: in v1 the panel had NO user authentication (D16), so its ONLY
+# security boundary was that the Fly app was unreachable from the public
+# internet. That decision has been REVERSED — the panel now requires a Supabase
+# password login (middleware gate + /login), so the boundary that protects the
+# invoke surface is authentication, mechanically asserted by the auth release
+# gate `scripts/verify-panel-auth.sh` (+ panel/scripts/panel-auth-check.mjs),
+# which proves on the DEPLOYED app that unauthenticated requests are denied
+# (protected UI -> 302 /login, SSE -> 401) and that public signups are rejected.
 #
-# Therefore this config INTENTIONALLY declares:
+# BUT THIS STORY (S-122) DOES NOT MAKE THE APP PUBLIC. Going public is a
+# separate, final, operator-executed step (Phase B / S-123) taken only after the
+# auth gate is proven on the still-private app. So this file INTENTIONALLY still
+# declares:
 #   - NO [http_service] section
 #   - NO [[services]] with public ports / handlers
 #   - NO public [[services.ports]]
 #
 # The app is reached only over the private Fly 6PN/WireGuard network (e.g.
-# `fly proxy`, `flyctl ssh`, or a private allocation). Allocating a public IP
-# (`fly ips allocate-v4 / -v6`) or adding a public service REMOVES the only
-# security boundary and MUST fail the release gate — see
-# `scripts/verify-fly-private.sh`, which is run after every deploy and asserts
-# no public IP and no public service exist.
+# `fly proxy`, `flyctl ssh`, or a private allocation). In Phase A the auth gate
+# is run over that private network (`fly proxy 8080:8080` -> http://localhost:8080).
 #
-# If/when auth lands (Supabase Auth or a shared-secret header, R1), this file
-# may add a public service — but only together with that auth, and the release
-# gate must be updated deliberately at the same time.
+# Phase B (S-123, SEPARATE PR) will add the public HTTPS service + allocate a
+# public IP and rewrite this banner — but only after Phase A is deployed and the
+# auth gate passes privately, and only behind an explicit operator-confirmation
+# gate. See docs/runbooks/panel-deployment.md.
 # ---------------------------------------------------------------------------
 
 app = "dt-agent-fleet-panel"

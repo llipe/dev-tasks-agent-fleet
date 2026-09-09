@@ -282,40 +282,46 @@ recorded reason (see `TESTING.md`).
 (`page`/`layout`/`route`/`template`/`default`/`error`/`loading`/`not-found`) are excluded — those
 read Supabase on purpose (SD2). `import "server-only"` remains the hard build-time guard.
 
-## Deployment precondition — the app MUST be private (SR2 / D16)
+## Deployment boundary — authentication (auth wave, S-116…S-122; ADR-007)
 
 > **This is a precondition for deploying the panel, not an implementation detail.**
 
-The panel has **no user authentication** in v1 (D16). It can invoke agents
-without a login, so its **only** security boundary is that the Fly app is **not
-reachable from the public internet**. Deploying the panel with a public service
-or a public IP removes that boundary entirely and exposes the invoke surface to
-anyone.
+The panel now requires a **Supabase password login** (auth wave, S-116…S-122).
+The v1 "no auth, keep it private" decision (D16) has been **reversed**: the
+security boundary that protects the invoke surface is now **authentication** — a
+fail-closed `middleware.ts` gate, the `/login` screen, POST logout, and a `401`
+on the SSE route. That boundary is mechanized as a **release gate** that proves
+it by observation on the deployed app.
 
-Therefore, before and after every deploy:
+> **This story (S-122) keeps the app PRIVATE.** Going public is the separate,
+> operator-executed, separately-merged **Phase B (S-123)**. Until then
+> `panel/fly.toml` still declares no `[http_service]` and no public IP.
 
-1. **`panel/fly.toml` MUST NOT declare `[http_service]`, any `[[services]]` with
-   public ports, or any public `[[services.ports]]`.** The committed config is
-   private-only by construction and carries a banner comment explaining why.
-2. **No public IP may be allocated.** Do not run `fly ips allocate-v4` /
-   `fly ips allocate-v6`. The app is reached only over the private Fly
-   6PN/WireGuard network (`fly proxy`, `fly ssh console`).
-3. **The release gate MUST pass.** After every deploy, run:
+Before and after every deploy:
+
+1. **Configure Supabase (operator, out-of-band):** enable the Email provider,
+   **disable public signups** (release blocker), set the 12h inactivity timeout,
+   create the operator user. See the runbook checklist.
+2. **The auth release gate MUST pass.** After deploy (Phase A: over the private
+   network via `fly proxy`; Phase B: publicly), run:
 
    ```bash
-   scripts/verify-fly-private.sh -a dt-agent-fleet-panel
+   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… \
+     scripts/verify-panel-auth.sh <base-url> -a dt-agent-fleet-panel
    ```
 
-   It reads `fly ips list --json` + `fly status --json` and **exits non-zero
-   (fails the release) if any public IP or public service exists**. Its
-   decision logic is the pure, unit-tested `panel/scripts/fly-privacy-check.mjs`
-   (see `tests/unit/fly-privacy-check.test.ts`), and it is fail-closed — if the
-   `fly` output cannot be read or parsed, the gate fails.
+   It probes the deployed app and **exits non-zero (fails the release)** unless
+   the auth env-var **names** are present (names only), an unauthenticated
+   protected UI path returns `302 → /login` (not 200), an unauthenticated SSE
+   request returns `401` (not 200), and an attempted `signUp` is **rejected** (a
+   successful signup fails the release — PRD AC17 / R9). Its decision logic is
+   the pure, unit-tested `panel/scripts/panel-auth-check.mjs` (see
+   `tests/unit/panel-auth-check.test.ts`), and it is **fail-closed** — anything
+   unreadable/unparseable/unconfirmable fails.
 
-If authentication is ever added (Supabase Auth, or a shared-secret header on the
-invoke route — R1), a public service **may** then be introduced, but only
-together with that auth and only by deliberately updating `fly.toml` and the
-release gate at the same time.
+This replaces the S-115 privacy gate (`scripts/verify-fly-private.sh` +
+`panel/scripts/fly-privacy-check.mjs`), which is removed: a release must never
+run with no mechanical boundary check.
 
 The full deploy procedure, the recorded OIDC socket probe, IAM/OIDC setup, Fly
 secrets, and rollback are in
