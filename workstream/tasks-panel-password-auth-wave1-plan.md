@@ -64,7 +64,7 @@
   - [x] 1.24 Manual verification: `pnpm run build` succeeds
   - [x] 1.25 Update issue #155 checklist and mark the story complete
 
-- [ ] 2.0 Implement Story S-117 - https://github.com/llipe/dev-tasks-agent-fleet/issues/156: Middleware auth gate (the chokepoint)
+- [x] 2.0 Implement Story S-117 - https://github.com/llipe/dev-tasks-agent-fleet/issues/156: Middleware auth gate (the chokepoint)
 
   > Note: Two failure modes to avoid — (a) using `getSession()` for authorization (its user object is not re-validated, therefore spoofable), and (b) discarding the refreshed-cookie response, which causes intermittent logouts. Depends on Task 1.0.
 
@@ -87,7 +87,7 @@
   - [x] 2.17 Map each AC to its test evidence and record the mapping in the issue
   - [x] 2.18 Manual verification: with no session, visit `/` → lands on `/login?redirect=%2F`; run `curl -i localhost:3000/api/runs/<uuid>/events/stream` → `401` JSON
   - [x] 2.19 Run Tests: `pnpm run test:unit`, `pnpm run test`, then `pnpm run validate`
-  - [ ] 2.20 Update issue #156 checklist and mark the story complete
+  - [x] 2.20 Update issue #156 checklist and mark the story complete
 
 - [x] 3.0 Implement Story S-118 - https://github.com/llipe/dev-tasks-agent-fleet/issues/157: Route-group restructure for login layout
 
