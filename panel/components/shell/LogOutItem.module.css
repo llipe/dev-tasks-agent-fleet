@@ -1,0 +1,50 @@
+/*
+ * Sidebar footer "Log out" control — Story S-120.
+ *
+ * Reuses the footer-control `.toggle` grid pattern from Sidebar.module.css
+ * (icon + label; icon-only when collapsed). Token-only (Nocturne discipline):
+ * every color, radius, spacing, and font value references a token — no literals
+ * (enforced by tests/unit/token-discipline.test.ts). The visible focus ring is
+ * provided by the global :focus-visible rule (globals.css, /DESIGN.md §6.4).
+ */
+.form {
+  margin: 0;
+}
+
+.logout {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.collapsed {
+  grid-template-columns: 15px;
+  justify-items: center;
+}
+
+.logout:hover {
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+}
+
+.label {
+  white-space: nowrap;
+}
