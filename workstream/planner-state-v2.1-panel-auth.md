@@ -24,10 +24,19 @@
 
 ## Current Position
 
-- Phase A implementation COMPLETE — all 7 stories (S-116..S-122) merged into integration/v2.1-panel-auth.
-- Now in Phase 5: integration validation → qa-engineer coverage rollup → verifier PRD-level audit → technical-writer drift pass → consolidated PR to main (user-approved).
-- Last merged PR: #169 (S-122)
-- Integration branch HEAD: f90079e
+- Phase A COMPLETE and delivered. Consolidated PR #170 (integration/v2.1-panel-auth → main) is OPEN, READY for review, MERGEABLE. Awaiting USER review + approval + merge (planner MUST NOT merge to main).
+- Phase 5 gates all green: qa-engineer coverage_gate PASS; verifier PRD-level audit High fidelity (17/17 ACs, 4 Minor/Intended drifts routed, non-blocking, posted to #161); technical-writer drift-fixed (commit 1731501).
+- Integration branch is 17 commits ahead of origin/main, zero divergence — merges cleanly.
+- Last merged story PR: #169 (S-122). Consolidated PR: #170.
+- Integration branch HEAD: 1731501
+- Final local branch state: integration/v2.1-panel-auth (planner invariant).
+
+## Phase 5 / Handoff Notes
+
+- S-123 (Phase B / go-public) remains OUT — a separate, operator-executed, separately-merged PR after #170 merges, deployed, and verified private. Full procedure in docs/runbooks/panel-deployment.md.
+- Routed to product-engineer (drift-reconciliation): spec §7.3 `/api/auth/logout`→public (D1); D16-reversal + OQ3 write-backs to spec §17/PRD.
+- Routed to qa-engineer: automated test for already-authenticated /login → / redirect (D4).
+- Pre-existing non-auth item: stream-e2e cold-Realtime flake (S-110) — passes on re-run after Realtime warm-up (CI E2E global-setup does this).
 
 ## Decisions Log
 
