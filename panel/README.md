@@ -130,6 +130,33 @@ recorded reason (see `TESTING.md`).
   security-relevant decision logic (route classification, open-redirect guard, and the
   anti-enumeration error mapping) and carry exhaustive unit suites.
 
+- **Authorization chokepoint — the middleware gate (S-117).** `panel/middleware.ts` is the
+  single place authorization is decided, so a new page or route handler cannot forget to add
+  a check (the same "one enforceable control" posture as the SD2 `server-only` guard). It runs
+  on every non-static request — the matcher excludes `_next/static`, `_next/image`, the favicon,
+  and image assets, so the gate never fires on static files, but pages, `/api/**`, and the SSE
+  stream are all gated. The flow:
+
+  1. `classifyRoute(pathname)` (the pure S-116 policy) short-circuits `public` routes **before**
+     any auth work — `/login` stays reachable with no session.
+  2. Otherwise it verifies identity with `getClaims()` — **never** `getSession()`, whose user
+     object is not re-validated against the Auth server and must not drive an authorization
+     decision.
+  3. On denial: a `ui` route → `302` to `/login?redirect=<encoded original path+query>`; an
+     `api` route (including the SSE path) → `401 {"error":"UNAUTHORIZED"}` with
+     `content-type: application/json`, so `fetch`/`EventSource` see a clean failure rather than
+     an HTML redirect.
+  4. It is **fail-closed**: any error from the auth call is treated as unauthenticated, and an
+     unknown route class defaults to `ui`.
+
+  On success the gate returns the cookie-handler `NextResponse` (never a fresh
+  `NextResponse.next()`), so a refreshed token reaches the browser and does not cause
+  intermittent logouts. The cookie-threading client lives in `lib/supabase/auth-middleware.ts`
+  (`createMiddlewareClient`, injectable factory for testing) and uses the anon key only — never
+  the service-role data client (SA1). The login/logout UI the redirect points at ships in later
+  stories (S-119/S-120); this story is the gate mechanism only. Auth reads for local dev still
+  require the `NEXT_PUBLIC_SUPABASE_*` pair documented above.
+
 - **Design system — Nocturne tokens (S-105).** Every color, font, spacing-scale,
   radius, and shadow value comes from a CSS custom property defined in
   `styles/tokens.css` (transcribed from `/DESIGN.md` §2, including the four SD10
