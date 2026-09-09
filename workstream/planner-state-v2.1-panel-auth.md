@@ -19,14 +19,15 @@
 | 4        | S-119    | #158    | ✅ Merged   | #166 | story/S-119-login-screen      |
 | 5        | S-120    | #159    | ✅ Merged   | #167 | story/S-120-logout            |
 | 6        | S-121    | #160    | ✅ Merged   | #168 | story/S-121-live-tail-401     |
-| 7        | S-122    | #161    | ⏳ Pending  | —    | —                             |
+| 7        | S-122    | #161    | ✅ Merged   | #169 | story/S-122-auth-release-gate |
 | —        | S-123    | #162    | 🚫 Excluded | —    | operator-gated, separate PR   |
 
 ## Current Position
 
-- Next story: S-122 (sequence 7 — final Phase A story)
-- Last merged PR: #168 (S-121)
-- Integration branch HEAD: 7d4b2b2
+- Phase A implementation COMPLETE — all 7 stories (S-116..S-122) merged into integration/v2.1-panel-auth.
+- Now in Phase 5: integration validation → qa-engineer coverage rollup → verifier PRD-level audit → technical-writer drift pass → consolidated PR to main (user-approved).
+- Last merged PR: #169 (S-122)
+- Integration branch HEAD: f90079e
 
 ## Decisions Log
 
