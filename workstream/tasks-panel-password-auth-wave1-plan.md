@@ -68,25 +68,25 @@
 
   > Note: Two failure modes to avoid — (a) using `getSession()` for authorization (its user object is not re-validated, therefore spoofable), and (b) discarding the refreshed-cookie response, which causes intermittent logouts. Depends on Task 1.0.
 
-  - [ ] 2.1 Create `panel/lib/supabase/auth-middleware.ts` — client factory threading a single response object so refreshed cookies land on both request and response
-  - [ ] 2.2 Create `panel/middleware.ts` with the spec §7.2 matcher excluding `_next/static`, `_next/image`, favicon, and image assets
-  - [ ] 2.3 Wire `classifyRoute` and short-circuit `public` routes before any auth work
-  - [ ] 2.4 Verify identity with `getClaims()` (never `getSession()`); branch to `302` for `ui` and `401` JSON for `api`
-  - [ ] 2.5 Return the cookie-handler response on success so refreshed tokens reach the browser
-  - [ ] 2.6 Treat any auth-call error as unauthenticated (fail-closed)
-  - [ ] 2.7 Make the client factory injectable so the gate is testable without live Supabase (same DI posture as `lib/sse/relay.ts`)
-  - [ ] 2.8 Write `tests/component/middleware-gate.test.ts` — no session + UI → 302 with correct `redirect` param; no session + `/api/...` → 401 JSON; valid session → pass-through preserving cookies; auth error → unauthenticated; expired session → denied
-  - [ ] 2.9 Write `tests/unit/auth-no-getsession.test.ts` — grep guard proving no authorization path calls `getSession()`
-  - [ ] 2.10 Edge-case validation: deeply nested path; path with query + hash; `/api` exactly; static asset not gated; concurrent requests sharing a near-expiry token (refresh must not thrash); malformed/garbage cookie
-  - [ ] 2.11 Verify Acceptance Criterion (AC1): unauthenticated UI route → `302` to `/login?redirect=<encoded path>`
-  - [ ] 2.12 Verify Acceptance Criterion (AC2): unauthenticated `/api/**` incl. SSE path → `401` with `content-type: application/json`, never an HTML redirect
-  - [ ] 2.13 Verify Acceptance Criterion (AC8): authorization uses `getClaims()`; no `getSession()` in any authz path
-  - [ ] 2.14 Verify Acceptance Criterion (AC7): authenticated request passes through with refreshed auth cookies preserved
-  - [ ] 2.15 Verify Acceptance Criterion (AC14): a session past the 12h inactivity window is denied (302 UI / 401 API), asserted via an expired/invalid cookie rather than waiting
-  - [ ] 2.16 Verify Acceptance Criterion: fail-closed on unexpected auth errors
-  - [ ] 2.17 Map each AC to its test evidence and record the mapping in the issue
-  - [ ] 2.18 Manual verification: with no session, visit `/` → lands on `/login?redirect=%2F`; run `curl -i localhost:3000/api/runs/<uuid>/events/stream` → `401` JSON
-  - [ ] 2.19 Run Tests: `pnpm run test:unit`, `pnpm run test`, then `pnpm run validate`
+  - [x] 2.1 Create `panel/lib/supabase/auth-middleware.ts` — client factory threading a single response object so refreshed cookies land on both request and response
+  - [x] 2.2 Create `panel/middleware.ts` with the spec §7.2 matcher excluding `_next/static`, `_next/image`, favicon, and image assets
+  - [x] 2.3 Wire `classifyRoute` and short-circuit `public` routes before any auth work
+  - [x] 2.4 Verify identity with `getClaims()` (never `getSession()`); branch to `302` for `ui` and `401` JSON for `api`
+  - [x] 2.5 Return the cookie-handler response on success so refreshed tokens reach the browser
+  - [x] 2.6 Treat any auth-call error as unauthenticated (fail-closed)
+  - [x] 2.7 Make the client factory injectable so the gate is testable without live Supabase (same DI posture as `lib/sse/relay.ts`)
+  - [x] 2.8 Write `tests/component/middleware-gate.test.ts` — no session + UI → 302 with correct `redirect` param; no session + `/api/...` → 401 JSON; valid session → pass-through preserving cookies; auth error → unauthenticated; expired session → denied
+  - [x] 2.9 Write `tests/unit/auth-no-getsession.test.ts` — grep guard proving no authorization path calls `getSession()`
+  - [x] 2.10 Edge-case validation: deeply nested path; path with query + hash; `/api` exactly; static asset not gated; concurrent requests sharing a near-expiry token (refresh must not thrash); malformed/garbage cookie
+  - [x] 2.11 Verify Acceptance Criterion (AC1): unauthenticated UI route → `302` to `/login?redirect=<encoded path>`
+  - [x] 2.12 Verify Acceptance Criterion (AC2): unauthenticated `/api/**` incl. SSE path → `401` with `content-type: application/json`, never an HTML redirect
+  - [x] 2.13 Verify Acceptance Criterion (AC8): authorization uses `getClaims()`; no `getSession()` in any authz path
+  - [x] 2.14 Verify Acceptance Criterion (AC7): authenticated request passes through with refreshed auth cookies preserved
+  - [x] 2.15 Verify Acceptance Criterion (AC14): a session past the 12h inactivity window is denied (302 UI / 401 API), asserted via an expired/invalid cookie rather than waiting
+  - [x] 2.16 Verify Acceptance Criterion: fail-closed on unexpected auth errors
+  - [x] 2.17 Map each AC to its test evidence and record the mapping in the issue
+  - [x] 2.18 Manual verification: with no session, visit `/` → lands on `/login?redirect=%2F`; run `curl -i localhost:3000/api/runs/<uuid>/events/stream` → `401` JSON
+  - [x] 2.19 Run Tests: `pnpm run test:unit`, `pnpm run test`, then `pnpm run validate`
   - [ ] 2.20 Update issue #156 checklist and mark the story complete
 
 - [x] 3.0 Implement Story S-118 - https://github.com/llipe/dev-tasks-agent-fleet/issues/157: Route-group restructure for login layout
