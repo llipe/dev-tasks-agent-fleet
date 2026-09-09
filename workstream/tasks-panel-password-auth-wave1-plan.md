@@ -64,7 +64,7 @@
   - [x] 1.24 Manual verification: `pnpm run build` succeeds
   - [x] 1.25 Update issue #155 checklist and mark the story complete
 
-- [x] 2.0 Implement Story S-117 - https://github.com/llipe/dev-tasks-agent-fleet/issues/156: Middleware auth gate (the chokepoint)
+- [ ] 2.0 Implement Story S-117 - https://github.com/llipe/dev-tasks-agent-fleet/issues/156: Middleware auth gate (the chokepoint)
 
   > Note: Two failure modes to avoid — (a) using `getSession()` for authorization (its user object is not re-validated, therefore spoofable), and (b) discarding the refreshed-cookie response, which causes intermittent logouts. Depends on Task 1.0.
 
@@ -93,12 +93,12 @@
 
   > Note: A pure mechanical restructure — any behavioral difference is a defect. Route-group parentheses do not appear in URLs, so the unmodified E2E suite is the regression proof. Rejected alternative: conditionally rendering `AppShell` by pathname (a server layout cannot read the pathname reliably and it would reintroduce the S-106 hydration concern).
 
-  - [ ] 3.1 Create `panel/app/(panel)/` and move `page.tsx`, `agents/`, `runs/`, `dev/` into it, leaving `app/api/` in place
-  - [ ] 3.2 Create `panel/app/(panel)/layout.tsx` rendering `AppShell`
-  - [ ] 3.3 Strip `AppShell` from `panel/app/layout.tsx`, keeping `<html>`/`<body>`, fonts, metadata, and global CSS imports
-  - [ ] 3.4 Preserve inline route-segment config (`dynamic`/`revalidate`/`fetchCache`) verbatim in every moved page — never re-export it
-  - [ ] 3.5 Fix `@/` alias imports and relative CSS-module imports broken by the move
-  - [ ] 3.6 Update test import paths only (no test logic changes)
+  - [x] 3.1 Create `panel/app/(panel)/` and move `page.tsx`, `agents/`, `runs/`, `dev/` into it, leaving `app/api/` in place
+  - [x] 3.2 Create `panel/app/(panel)/layout.tsx` rendering `AppShell`
+  - [x] 3.3 Strip `AppShell` from `panel/app/layout.tsx`, keeping `<html>`/`<body>`, fonts, metadata, and global CSS imports
+  - [x] 3.4 Preserve inline route-segment config (`dynamic`/`revalidate`/`fetchCache`) verbatim in every moved page — never re-export it
+  - [x] 3.5 Fix `@/` alias imports and relative CSS-module imports broken by the move
+  - [x] 3.6 Update test import paths only (no test logic changes)
   - [ ] 3.7 Edge-case validation: dev gallery still 404s in production; SSE route still streams; unknown-run-id `not-found` behavior unchanged
   - [ ] 3.8 Verify Acceptance Criterion: all four route trees relocated with content otherwise unchanged
   - [ ] 3.9 Verify Acceptance Criterion: `(panel)/layout.tsx` renders `AppShell`; root layout no longer does

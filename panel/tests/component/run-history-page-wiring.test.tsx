@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 /**
- * Page-wiring test for the run-history route (`app/agents/[slug]/page.tsx`).
+ * Page-wiring test for the run-history route (`app/(panel)/agents/[slug]/page.tsx`).
  *
  * The `AgentHeader` / `RunHistoryTable` component tests already cover both
  * invoke-route states. What THIS asserts is the wiring they cannot: that the
@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/queries", () => ({
   getStepProgressForRuns: vi.fn().mockResolvedValue(new Map()),
 }));
 
-import AgentRunHistoryPage from "@/app/agents/[slug]/page";
+import AgentRunHistoryPage from "@/app/(panel)/agents/[slug]/page";
 
 afterEach(cleanup);
 
