@@ -37,6 +37,11 @@
 - `panel/tests/unit/use-run-stream-auth.test.ts` - Terminal-auth-stop unit suite
 - `panel/tests/component/live-log-viewer.test.tsx` - Session-expired notice assertion (added to the existing S-110 suite)
 - `panel/tests/unit/panel-auth-check.test.ts` - Gate parser tests (pass + per-violation fail fixtures)
+- `panel/tests/unit/panel-auth-check-cli.test.ts` - Gate parser CLI exit-code contract (replaces the removed `fly-privacy-check-cli.test.ts`)
+- `panel/tests/unit/fly-privacy-check.test.ts`, `panel/tests/unit/fly-privacy-check-cli.test.ts` - REMOVED (re-pointed to `panel-auth-check*`)
+- `docs/adr/ADR-007-auth-release-gate-replaces-privacy-gate.md` - ADR recording the boundary flip (privacy gate → auth gate)
+- `workstream/s122-negative-demos.md` - RED-then-reverted both-directions evidence
+- `panel/README.md` - Deployment-boundary section rewritten to the auth gate
 - `panel/tests/e2e/auth.spec.ts` - E2E auth scenarios (redirect, valid login, tampered redirect, invalid creds, SHOW toggle, logout)
 - `panel/tests/e2e/auth.setup.ts` - Playwright auth setup project (signs in the operator once, saves storageState so existing protected-route specs run authenticated under the active gate)
 - `panel/tests/e2e/fixtures/auth.ts` - Test operator credentials + admin-API provisioning
@@ -115,28 +120,28 @@
   - [x] 7.13 Run Tests: `pnpm run test:unit`, `pnpm run test`, `pnpm run test:integration` (existing `stream-e2e` still passes), then `pnpm run validate`
   - [x] 7.14 Update issue #160 checklist and mark the story complete
 
-- [ ] 8.0 Implement Story S-122 - https://github.com/llipe/dev-tasks-agent-fleet/issues/161: Auth release gate replacing the privacy gate
+- [x] 8.0 Implement Story S-122 - https://github.com/llipe/dev-tasks-agent-fleet/issues/161: Auth release gate replacing the privacy gate
 
   > Note: `verify-fly-private.sh` fails the release if the app is PUBLIC — the mechanized form of the decision this feature reverses. It must be REPLACED, not deleted, so no mechanical check is ever absent. The signup check is the most important: an open signup on an internet-reachable panel lets anyone self-register into agent invocation. This story ships the gate and the still-private `fly.toml`; it does NOT make the app public. Depends on S-119, S-120, S-121.
 
-  - [ ] 8.1 Write `panel/scripts/panel-auth-check.mjs` — pure verdict logic + CLI entry, no I/O, mirroring `fly-privacy-check.mjs`'s parser/wrapper split
-  - [ ] 8.2 Write `scripts/verify-panel-auth.sh` — collect live inputs (HTTP probes against a hostname arg, `fly secrets list` names, a signup attempt with a clearly-marked disposable address that deletes any account it creates), exit non-zero on any failure
-  - [ ] 8.3 Add `tests/unit/panel-auth-check.test.ts` — passing fixture; failing fixtures for `200` on a protected path, `200` on SSE, successful signup, missing env name, malformed/garbage input; fail-closed default
-  - [ ] 8.4 Remove `scripts/verify-fly-private.sh` and `panel/scripts/fly-privacy-check.mjs`; re-point their unit tests to the new parser
-  - [ ] 8.5 Update `.github/workflows/ci.yml`: run the parser unit tests and `shellcheck` on the new wrapper
-  - [ ] 8.6 Update the `panel/fly.toml` comment banner (app remains PRIVATE in this story — no public service, no public IP)
-  - [ ] 8.7 Record RED-then-reverted evidence for both gate directions in `workstream/` (pass on correct deployment; fail on each violation)
-  - [ ] 8.8 Update `docs/runbooks/panel-deployment.md` with the Phase A/B procedure, the Supabase config checklist, and rollback
-  - [ ] 8.9 Update `docs/technical-guidelines.md` §5/§6/§13/§18 (D16 reversed, SR2 replaced, R1 resolved) with a changelog row
-  - [ ] 8.10 Edge-case validation: redirect to a non-`/login` location (must fail); `401` with an HTML body; network timeout; unexpected Supabase signup error shape; empty output
-  - [ ] 8.11 Verify Acceptance Criterion: parser is pure and unit-tested (no I/O); wrapper supplies live inputs and exits non-zero on any failure
-  - [ ] 8.12 Verify Acceptance Criterion: gate asserts auth env var NAMES present (never values); unauthenticated protected UI path → `302 /login` not `200`; unauthenticated SSE → `401` not `200`
-  - [ ] 8.13 Verify Acceptance Criterion (AC17): attempted `signUp` is rejected; a successful signup fails the release
-  - [ ] 8.14 Verify Acceptance Criterion: gate is fail-closed (unreadable/unparseable/unconfirmable → non-zero exit); old privacy gate removed and its tests re-pointed; `fly.toml` remains private; CI runs parser tests + `shellcheck`
-  - [ ] 8.15 Map each AC to its named fixture case; record both-directions RED-then-reverted evidence
-  - [ ] 8.16 Manual verification: run `scripts/verify-panel-auth.sh` against the local dev server with and without a session; confirm verdicts
-  - [ ] 8.17 Run Tests: `pnpm run test:unit`, `bash scripts/verify-panel-auth.sh <host>`, then `pnpm run validate`
-  - [ ] 8.18 Update issue #161 checklist and mark the story complete
+  - [x] 8.1 Write `panel/scripts/panel-auth-check.mjs` — pure verdict logic + CLI entry, no I/O, mirroring `fly-privacy-check.mjs`'s parser/wrapper split
+  - [x] 8.2 Write `scripts/verify-panel-auth.sh` — collect live inputs (HTTP probes against a hostname arg, `fly secrets list` names, a signup attempt with a clearly-marked disposable address that deletes any account it creates), exit non-zero on any failure
+  - [x] 8.3 Add `tests/unit/panel-auth-check.test.ts` — passing fixture; failing fixtures for `200` on a protected path, `200` on SSE, successful signup, missing env name, malformed/garbage input; fail-closed default
+  - [x] 8.4 Remove `scripts/verify-fly-private.sh` and `panel/scripts/fly-privacy-check.mjs`; re-point their unit tests to the new parser
+  - [x] 8.5 Update `.github/workflows/ci.yml`: run the parser unit tests and `shellcheck` on the new wrapper
+  - [x] 8.6 Update the `panel/fly.toml` comment banner (app remains PRIVATE in this story — no public service, no public IP)
+  - [x] 8.7 Record RED-then-reverted evidence for both gate directions in `workstream/` (pass on correct deployment; fail on each violation)
+  - [x] 8.8 Update `docs/runbooks/panel-deployment.md` with the Phase A/B procedure, the Supabase config checklist, and rollback
+  - [x] 8.9 Update `docs/technical-guidelines.md` §5/§6/§13/§18 (D16 reversed, SR2 replaced, R1 resolved) with a changelog row
+  - [x] 8.10 Edge-case validation: redirect to a non-`/login` location (must fail); `401` with an HTML body; network timeout; unexpected Supabase signup error shape; empty output
+  - [x] 8.11 Verify Acceptance Criterion: parser is pure and unit-tested (no I/O); wrapper supplies live inputs and exits non-zero on any failure
+  - [x] 8.12 Verify Acceptance Criterion: gate asserts auth env var NAMES present (never values); unauthenticated protected UI path → `302 /login` not `200`; unauthenticated SSE → `401` not `200`
+  - [x] 8.13 Verify Acceptance Criterion (AC17): attempted `signUp` is rejected; a successful signup fails the release
+  - [x] 8.14 Verify Acceptance Criterion: gate is fail-closed (unreadable/unparseable/unconfirmable → non-zero exit); old privacy gate removed and its tests re-pointed; `fly.toml` remains private; CI runs parser tests + `shellcheck`
+  - [x] 8.15 Map each AC to its named fixture case; record both-directions RED-then-reverted evidence
+  - [x] 8.16 Manual verification: run `scripts/verify-panel-auth.sh` against the local dev server with and without a session; confirm verdicts
+  - [x] 8.17 Run Tests: `pnpm run test:unit`, `bash scripts/verify-panel-auth.sh <host>`, then `pnpm run validate`
+  - [x] 8.18 Update issue #161 checklist and mark the story complete
 
 - [ ] 9.0 Phase A completion gate (S-116 … S-122)
 
