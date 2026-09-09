@@ -94,7 +94,14 @@ export function createMiddlewareClient(
   request: NextRequest,
   makeClient: MiddlewareClientFactory = defaultMiddlewareClientFactory,
 ): MiddlewareClientBundle {
-  const response = NextResponse.next({ request });
+  // Wrap the incoming headers in a fresh `Headers` instance. This is the
+  // documented Supabase SSR pattern and it guarantees `init.request.headers` is
+  // a real `Headers` (Next asserts `instanceof Headers`), which the bare
+  // `NextResponse.next({ request })` form does not always satisfy across
+  // runtimes.
+  const response = NextResponse.next({
+    request: { headers: new Headers(request.headers) },
+  });
   const supabase = makeClient(request, response);
   return { supabase, response };
 }

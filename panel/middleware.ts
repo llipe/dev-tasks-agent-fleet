@@ -87,7 +87,9 @@ export function createMiddleware(makeClient?: MiddlewareClientFactory) {
     }
 
     if (!authenticated) {
-      return policy === "api" ? unauthorizedJson() : NextResponse.redirect(loginUrlFor(request));
+      return policy === "api"
+        ? unauthorizedJson()
+        : NextResponse.redirect(loginUrlFor(request), { status: 302 });
     }
 
     // Success: return the cookie-handler response so a refreshed token reaches
