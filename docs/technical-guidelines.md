@@ -185,7 +185,7 @@ passes (recorded S-117 decision). What is shipped as current state:
 - **Session lifetime.** Sessions are configured to expire after 12 hours of inactivity
   (surfaced to the operator as login-screen fine print).
 
-**Panel privacy remains the current deploy boundary until authentication is deployed
+**Panel privacy remains the current deploy state until the app is taken public
 (SR2 / D16, §6, §13).** The auth wave is committed but the panel is still a pre-deploy
 scaffold, so keeping the Fly app private remains the operative deploy state until the separate
 go-public step (S-123). **The security *boundary* that protects the invoke surface is now login,

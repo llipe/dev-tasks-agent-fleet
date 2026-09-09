@@ -156,9 +156,10 @@ recorded reason (see `TESTING.md`).
   `NextResponse.next()`), so a refreshed token reaches the browser and does not cause
   intermittent logouts. The cookie-threading client lives in `lib/supabase/auth-middleware.ts`
   (`createMiddlewareClient`, injectable factory for testing) and uses the anon key only — never
-  the service-role data client (SA1). The login/logout UI the redirect points at ships in later
-  stories (S-119/S-120); this story is the gate mechanism only. Auth reads for local dev still
-  require the `NEXT_PUBLIC_SUPABASE_*` pair documented above.
+  the service-role data client (SA1). The login/logout UI the redirect points at ships in
+  S-119/S-120 (both now merged — see the Login and Sign-out bullets below); this story is the
+  gate mechanism only. Auth reads for local dev still require the `NEXT_PUBLIC_SUPABASE_*` pair
+  documented above.
 
 - **Login screen (S-119).** `/login` is the panel's only **public** route — it lives at
   `app/login/` **outside** the `(panel)` route group, so it renders shell-free (no sidebar/top
@@ -177,7 +178,20 @@ recorded reason (see `TESTING.md`).
   (unknown-email ≡ wrong-password, one generic "Invalid email or password." message via
   `classifySignInError`), **redirect safety** (`safeRedirectTarget` server-side before use), and
   the password is never stored/logged/echoed. No signup/reset/confirmation/magic-link; accounts are
-  invitation-only (provisioned in the Supabase dashboard, never seeded). Sign-out UI lands in S-120.
+  invitation-only (provisioned in the Supabase dashboard, never seeded).
+
+- **Sign-out (S-120).** The operator ends a session from the **sidebar footer "Log out"** control
+  (`components/shell/LogOutItem.tsx`, rendered below "System health" and above "Collapse", only when
+  the request is authenticated — see `/DESIGN.md` §4.1). It is a plain
+  `<form method="post" action="/api/auth/logout">` submit button — **POST-only, no client JS** (a
+  `GET` logout is CSRF-triggerable). The route handler `app/api/auth/logout/route.ts` builds the
+  S-116 cookie-backed anon auth client, calls `signOut` best-effort/idempotent, and **always**
+  redirects `302 → /login` (it never 500s; no `GET` export, so a `GET` is a 405). `route-policy.ts`
+  classifies the **exact** path `/api/auth/logout` as `public` so the session-ending POST reaches
+  the handler even with an expiring/invalid session (siblings stay `api`). Whether "Log out" renders
+  is decided server-side — the `(panel)` layout resolves `authenticated` via `getClaims()`
+  (fail-closed) and threads it as a static prop into `AppShell → Sidebar`, so the shell performs no
+  auth I/O (SA1 preserved, S-106 hydration contract untouched). RLS stays deny-all (D11).
 
 - **Design system — Nocturne tokens (S-105).** Every color, font, spacing-scale,
   radius, and shadow value comes from a CSS custom property defined in
