@@ -202,7 +202,9 @@ recorded reason (see `TESTING.md`).
   212px/52px collapsible sidebar + a 38px top bar with a breadcrumb slot, wrapping a content
   region that owns its own scroll (`height:100dvh;overflow:hidden` on the shell; `overflow-y:auto`
   on the content column — the page never scrolls). `AppShell` is the only `"use client"` piece and
-  owns the collapse state; `app/layout.tsx` wraps `children` in it.
+  owns the collapse state; as of S-118 the authenticated route group's `app/(panel)/layout.tsx`
+  wraps `children` in it (the root `app/layout.tsx` keeps only `<html>`/`<body>`, the Inter fonts,
+  metadata, and the global CSS, so the public `/login` screen can render outside the shell).
 
   - **Hydration contract — do not read storage during render.** `localStorage` is not readable on
     the server, so the shell renders the fixed default (`DEFAULT_COLLAPSED`, expanded) on both the
