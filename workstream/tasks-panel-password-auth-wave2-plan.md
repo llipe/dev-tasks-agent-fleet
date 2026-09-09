@@ -38,36 +38,39 @@
 - `panel/tests/component/LiveLogViewer.test.tsx` - Session-expired notice assertion
 - `panel/tests/unit/panel-auth-check.test.ts` - Gate parser tests (pass + per-violation fail fixtures)
 - `panel/tests/e2e/auth.spec.ts` - E2E auth scenarios (redirect, valid login, tampered redirect, invalid creds, SHOW toggle, logout)
+- `panel/tests/e2e/auth.setup.ts` - Playwright auth setup project (signs in the operator once, saves storageState so existing protected-route specs run authenticated under the active gate)
+- `panel/tests/e2e/fixtures/auth.ts` - Test operator credentials + admin-API provisioning
+- `panel/tests/e2e/fixtures/storage.ts` - Authenticated storageState file location
 - `panel/tests/e2e/global-setup.ts` - Provision the test operator user
 
 ## Tasks
 
-- [ ] 5.0 Implement Story S-119 - https://github.com/llipe/dev-tasks-agent-fleet/issues/158: Login screen and sign-in action
+- [x] 5.0 Implement Story S-119 - https://github.com/llipe/dev-tasks-agent-fleet/issues/158: Login screen and sign-in action
 
   > Note: The only new screen. Security-critical parts: generic credential error (no user enumeration) and redirect sanitization. No signup, reset, confirmation, or magic link. Depends on S-116, S-117, S-118.
 
-  - [ ] 5.1 Add `app/login/page.tsx` (public, inline `force-dynamic`/`revalidate=0`/`fetchCache="force-no-store"`, redirects to `/` when already authenticated) and `app/login/layout.tsx` to bypass the shell
-  - [ ] 5.2 Add `app/login/actions.ts` with the `signIn` server action: validate fields, sanitize redirect via `safeRedirectTarget` before use, `signInWithPassword`, map errors via `lib/auth/errors.ts`
-  - [ ] 5.3 Add `components/auth/LoginForm.tsx` + `.module.css` reusing `Input`/`Button`/`KLabel`, with `useFormStatus` pending/disabled state
-  - [ ] 5.4 Add `components/auth/PasswordField.tsx` + `.module.css` — SHOW toggle, keyboard-operable, `aria-pressed`, defaults masked
-  - [ ] 5.5 Reuse the `Sidebar` brand markup pattern for the mark + wordmark; render heading, invitation-only subtitle, footer dead "Forgot password?" link, region tag, session-expiry fine print per spec §10.1
-  - [ ] 5.6 Add `tests/e2e/global-setup.ts` provisioning the test operator user via the admin API against the local stack
-  - [ ] 5.7 Add E2E scenarios in `tests/e2e/auth.spec.ts`: unauthenticated redirect, valid login, tampered redirect, invalid credentials, SHOW toggle
-  - [ ] 5.8 Add `tests/integration/auth-login.test.ts` (Layer 2.5, Docker-gated): seed a user; `signInWithPassword` succeeds + sets cookies; wrong password fails; cookie round-trips and verifies via `getClaims`; include the RLS-deny-all-unchanged assertion (spec §14.3)
-  - [ ] 5.9 Add `tests/component/LoginForm.test.tsx`: mockup elements present; labels associated; SHOW toggle + `aria-pressed`; `role="alert"` error region; button disabled while pending; "Forgot password?" not activatable
-  - [ ] 5.10 Edge-case validation: empty submit; email with surrounding whitespace; very long password; double-click submit; `redirect=/login` (no loop); `redirect=//evil.com`; already-signed-in visit; Supabase unreachable
-  - [ ] 5.11 Verify Acceptance Criterion (AC10): `/login` renders publicly, outside `AppShell`, matching the spec §10.1 element list
-  - [ ] 5.12 Verify Acceptance Criterion (AC3): valid credentials set an HttpOnly session cookie and redirect to the sanitized target, or `/` when absent
-  - [ ] 5.13 Verify Acceptance Criterion (AC4): absolute/off-origin `redirect` lands on `/`
-  - [ ] 5.14 Verify Acceptance Criterion (AC5): invalid credentials show generic "Invalid email or password." in `role="alert"`; password not echoed; button re-enabled; unknown-email and wrong-password indistinguishable
-  - [ ] 5.15 Verify Acceptance Criterion (AC13): SHOW toggle reveals/re-masks, keyboard-operable, reports `aria-pressed`, defaults masked
-  - [ ] 5.16 Verify Acceptance Criterion (AC16): "Forgot password?" is a styled non-link with `aria-disabled`, not `<a href="#">`
-  - [ ] 5.17 Verify Acceptance Criterion: already-authenticated visit to `/login` redirects to `/`; fields label-associated; focus rings visible; `token-discipline` test passes
-  - [ ] 5.18 Map each AC to its test evidence and record the mapping in the issue
-  - [ ] 5.19 Manual verification: compare rendered `/login` against the mockup; sign in with a real seeded user; confirm redirect; bad password; toggle SHOW; tab for focus rings
-  - [ ] 5.20 Update `DESIGN.md` with the login screen spec (changelog row required)
-  - [ ] 5.21 Run Tests: `pnpm run test`, `pnpm run test:integration`, `pnpm run test:e2e`, then `pnpm run validate`
-  - [ ] 5.22 Update issue #158 checklist and mark the story complete
+  - [x] 5.1 Add `app/login/page.tsx` (public, inline `force-dynamic`/`revalidate=0`/`fetchCache="force-no-store"`, redirects to `/` when already authenticated) and `app/login/layout.tsx` to bypass the shell
+  - [x] 5.2 Add `app/login/actions.ts` with the `signIn` server action: validate fields, sanitize redirect via `safeRedirectTarget` before use, `signInWithPassword`, map errors via `lib/auth/errors.ts`
+  - [x] 5.3 Add `components/auth/LoginForm.tsx` + `.module.css` reusing `Input`/`Button`/`KLabel`, with `useFormStatus` pending/disabled state
+  - [x] 5.4 Add `components/auth/PasswordField.tsx` + `.module.css` — SHOW toggle, keyboard-operable, `aria-pressed`, defaults masked
+  - [x] 5.5 Reuse the `Sidebar` brand markup pattern for the mark + wordmark; render heading, invitation-only subtitle, footer dead "Forgot password?" link, region tag, session-expiry fine print per spec §10.1
+  - [x] 5.6 Add `tests/e2e/global-setup.ts` provisioning the test operator user via the admin API against the local stack
+  - [x] 5.7 Add E2E scenarios in `tests/e2e/auth.spec.ts`: unauthenticated redirect, valid login, tampered redirect, invalid credentials, SHOW toggle
+  - [x] 5.8 Add `tests/integration/auth-login.test.ts` (Layer 2.5, Docker-gated): seed a user; `signInWithPassword` succeeds + sets cookies; wrong password fails; cookie round-trips and verifies via `getClaims`; include the RLS-deny-all-unchanged assertion (spec §14.3)
+  - [x] 5.9 Add `tests/component/LoginForm.test.tsx`: mockup elements present; labels associated; SHOW toggle + `aria-pressed`; `role="alert"` error region; button disabled while pending; "Forgot password?" not activatable
+  - [x] 5.10 Edge-case validation: empty submit; email with surrounding whitespace; very long password; double-click submit; `redirect=/login` (no loop); `redirect=//evil.com`; already-signed-in visit; Supabase unreachable
+  - [x] 5.11 Verify Acceptance Criterion (AC10): `/login` renders publicly, outside `AppShell`, matching the spec §10.1 element list
+  - [x] 5.12 Verify Acceptance Criterion (AC3): valid credentials set an HttpOnly session cookie and redirect to the sanitized target, or `/` when absent
+  - [x] 5.13 Verify Acceptance Criterion (AC4): absolute/off-origin `redirect` lands on `/`
+  - [x] 5.14 Verify Acceptance Criterion (AC5): invalid credentials show generic "Invalid email or password." in `role="alert"`; password not echoed; button re-enabled; unknown-email and wrong-password indistinguishable
+  - [x] 5.15 Verify Acceptance Criterion (AC13): SHOW toggle reveals/re-masks, keyboard-operable, reports `aria-pressed`, defaults masked
+  - [x] 5.16 Verify Acceptance Criterion (AC16): "Forgot password?" is a styled non-link with `aria-disabled`, not `<a href="#">`
+  - [x] 5.17 Verify Acceptance Criterion: already-authenticated visit to `/login` redirects to `/`; fields label-associated; focus rings visible; `token-discipline` test passes
+  - [x] 5.18 Map each AC to its test evidence and record the mapping in the issue
+  - [x] 5.19 Manual verification: compare rendered `/login` against the mockup; sign in with a real seeded user; confirm redirect; bad password; toggle SHOW; tab for focus rings
+  - [x] 5.20 Update `DESIGN.md` with the login screen spec (changelog row required)
+  - [x] 5.21 Run Tests: `pnpm run test`, `pnpm run test:integration`, `pnpm run test:e2e`, then `pnpm run validate`
+  - [x] 5.22 Update issue #158 checklist and mark the story complete
 
 - [ ] 6.0 Implement Story S-120 - https://github.com/llipe/dev-tasks-agent-fleet/issues/159: Logout route and sidebar Log out affordance
 

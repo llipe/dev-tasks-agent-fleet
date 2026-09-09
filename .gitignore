@@ -10,6 +10,10 @@ coverage
 panel/test-results/
 panel/playwright-report/
 
+# Playwright authenticated storage state (S-119). Written by the auth.setup
+# project each run; holds only a LOCAL-stack session cookie, never committed.
+panel/tests/e2e/.auth/
+
 # Secrets and environment
 .env
 .env.*
