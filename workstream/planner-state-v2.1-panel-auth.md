@@ -14,7 +14,7 @@
 | Sequence | Story ID | Issue # | Status      | PR   | Branch                        |
 | -------- | -------- | ------- | ----------- | ---- | ----------------------------- |
 | 1        | S-116    | #155    | ✅ Merged   | #163 | story/S-116-auth-foundation   |
-| 2        | S-118    | #157    | ⏳ Pending  | —    | —                             |
+| 2        | S-118    | #157    | ✅ Merged   | #164 | story/S-118-route-group       |
 | 3        | S-117    | #156    | ⏳ Pending  | —    | —                             |
 | 4        | S-119    | #158    | ⏳ Pending  | —    | —                             |
 | 5        | S-120    | #159    | ⏳ Pending  | —    | —                             |
@@ -24,9 +24,9 @@
 
 ## Current Position
 
-- Next story: S-118 (sequence 2)
-- Last merged PR: #163 (S-116)
-- Integration branch HEAD: 607c599
+- Next story: S-117 (sequence 3)
+- Last merged PR: #164 (S-118)
+- Integration branch HEAD: 2ad5b9d
 
 ## Decisions Log
 
