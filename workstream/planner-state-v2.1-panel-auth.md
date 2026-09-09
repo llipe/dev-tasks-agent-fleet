@@ -18,15 +18,15 @@
 | 3        | S-117    | #156    | ✅ Merged   | #165 | story/S-117-middleware-gate   |
 | 4        | S-119    | #158    | ✅ Merged   | #166 | story/S-119-login-screen      |
 | 5        | S-120    | #159    | ✅ Merged   | #167 | story/S-120-logout            |
-| 6        | S-121    | #160    | ⏳ Pending  | —    | —                             |
+| 6        | S-121    | #160    | ✅ Merged   | #168 | story/S-121-live-tail-401     |
 | 7        | S-122    | #161    | ⏳ Pending  | —    | —                             |
 | —        | S-123    | #162    | 🚫 Excluded | —    | operator-gated, separate PR   |
 
 ## Current Position
 
-- Next story: S-121 (sequence 6)
-- Last merged PR: #167 (S-120)
-- Integration branch HEAD: 1438e52
+- Next story: S-122 (sequence 7 — final Phase A story)
+- Last merged PR: #168 (S-121)
+- Integration branch HEAD: 7d4b2b2
 
 ## Decisions Log
 
