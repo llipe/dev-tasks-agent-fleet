@@ -15,7 +15,7 @@
 | -------- | -------- | ------- | ----------- | ---- | ----------------------------- |
 | 1        | S-116    | #155    | ✅ Merged   | #163 | story/S-116-auth-foundation   |
 | 2        | S-118    | #157    | ✅ Merged   | #164 | story/S-118-route-group       |
-| 3        | S-117    | #156    | ⏳ Pending  | —    | —                             |
+| 3        | S-117    | #156    | ✅ Merged   | #165 | story/S-117-middleware-gate   |
 | 4        | S-119    | #158    | ⏳ Pending  | —    | —                             |
 | 5        | S-120    | #159    | ⏳ Pending  | —    | —                             |
 | 6        | S-121    | #160    | ⏳ Pending  | —    | —                             |
@@ -24,9 +24,9 @@
 
 ## Current Position
 
-- Next story: S-117 (sequence 3)
-- Last merged PR: #164 (S-118)
-- Integration branch HEAD: 2ad5b9d
+- Next story: S-119 (sequence 4)
+- Last merged PR: #165 (S-117)
+- Integration branch HEAD: 6810465
 
 ## Decisions Log
 
