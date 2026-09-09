@@ -33,7 +33,10 @@
  */
 
 /** The auth env-var names that MUST be present on the app (names only, never values). */
-export const REQUIRED_AUTH_ENV_NAMES = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"];
+export const REQUIRED_AUTH_ENV_NAMES = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+];
 
 /** Coerce anything to a trimmed lower-cased string ("" for non-strings). */
 function s(v) {
@@ -157,7 +160,10 @@ export function checkSseUnauthorized(probe) {
  */
 export function checkSignupRejected(probe) {
   if (!probe || typeof probe !== "object") {
-    return { ok: false, reason: "Signup probe produced no result — cannot confirm signups are off." };
+    return {
+      ok: false,
+      reason: "Signup probe produced no result — cannot confirm signups are off.",
+    };
   }
   if (probe.rejected === true) {
     return { ok: true, reason: null };
