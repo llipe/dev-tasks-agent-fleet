@@ -91,7 +91,7 @@
   - [x] 6.13 Manual verification: sign in, confirm Log out in the footer, click it, land on `/login`, confirm `/` re-gates; collapse the sidebar and confirm icon-only rendering
   - [x] 6.14 Update `DESIGN.md` with the sidebar Log out item (changelog row required)
   - [x] 6.15 Run Tests: `pnpm run test`, `pnpm run test:e2e`, then `pnpm run validate`
-  - [ ] 6.16 Update issue #159 checklist and mark the story complete
+  - [x] 6.16 Update issue #159 checklist and mark the story complete
 
 - [ ] 7.0 Implement Story S-121 - https://github.com/llipe/dev-tasks-agent-fleet/issues/160: Live-tail 401 handling (stop infinite reconnect)
 

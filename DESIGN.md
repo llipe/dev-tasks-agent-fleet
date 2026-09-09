@@ -651,6 +651,7 @@ Use **Phosphor Icons** (https://phosphoricons.com) throughout, rendered as inlin
 | ⑃ | Repositories | `GitBranch` |
 | ⚙ | Settings | `GearSix` |
 | ◈ | System health | `Heartbeat` |
+| ⏻ | Log out (sidebar footer, §4.1) | `Power` |
 | « / » | Collapse/expand | `CaretLeft` / `CaretRight` |
 | › | Row chevron | `CaretRight` |
 | ✕ | Close | `X` |
