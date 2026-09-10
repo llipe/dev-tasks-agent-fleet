@@ -5,7 +5,7 @@
   "description": "Agent Fleet Control Plane — monorepo root (panel + agents + schema).",
   "packageManager": "pnpm@10.11.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22 <25"
   },
   "scripts": {
     "lint": "pnpm --filter panel run lint",
