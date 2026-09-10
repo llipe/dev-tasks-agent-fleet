@@ -39,22 +39,29 @@ import {
 } from "@/lib/supabase/auth-middleware";
 
 /**
- * Build the login redirect target for a denied UI request as a RELATIVE path
- * (`/login?redirect=<encoded original path+query>`), carrying the original
- * path + query so the operator lands back where they were after signing in.
+ * Build the login redirect URL for a denied UI request, carrying the original
+ * path + query as an encoded `redirect` param so the operator lands back where
+ * they were after signing in.
  *
- * A relative target is same-origin by definition, so it is immune to the host
- * the server binds to. Behind a reverse proxy like Fly, `request.nextUrl.origin`
- * can be the internal listener (`0.0.0.0:8080`) rather than the public host, so
- * an absolute redirect built from it can send the browser to an unreachable
- * origin. We therefore emit only the path + query.
+ * Uses `request.nextUrl.clone()` rather than a bare relative string: a Next.js
+ * middleware redirect goes through `NextResponse.redirect`, which re-parses the
+ * `Location` as an absolute `URL` — a relative `Location` throws
+ * `TypeError: Invalid URL` in the middleware pipeline. `nextUrl` is Next's
+ * proxy-normalized request URL (it reflects the forwarded host, unlike the raw
+ * `request.url` that binds to the internal `0.0.0.0:8080` listener on Fly), so
+ * cloning it and only replacing the path + query yields a same-origin redirect
+ * that is correct both locally and behind the proxy.
  *
  * The `redirect` value is sanitized on the way OUT (S-119 login action, via
  * `safeRedirectTarget`); here we only capture it.
  */
-function loginTargetFor(request: NextRequest): string {
+function loginUrlFor(request: NextRequest): URL {
   const originalTarget = request.nextUrl.pathname + request.nextUrl.search;
-  return `/login?redirect=${encodeURIComponent(originalTarget)}`;
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
+  loginUrl.searchParams.set("redirect", originalTarget);
+  return loginUrl;
 }
 
 /** The `401` body for denied API/SSE requests (spec §6.2). */
@@ -95,7 +102,7 @@ export function createMiddleware(makeClient?: MiddlewareClientFactory) {
     if (!authenticated) {
       return policy === "api"
         ? unauthorizedJson()
-        : new NextResponse(null, { status: 302, headers: { Location: loginTargetFor(request) } });
+        : NextResponse.redirect(loginUrlFor(request), { status: 302 });
     }
 
     // Success: return the cookie-handler response so a refreshed token reaches

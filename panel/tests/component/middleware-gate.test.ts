@@ -54,10 +54,13 @@ function req(path: string): NextRequest {
 
 /**
  * Parse a redirect `Location` header. The gate emits a RELATIVE location
- * (`/login?redirect=...`) so it is same-origin regardless of the host the
- * server binds to (behind Fly's proxy `nextUrl.origin` is the internal
- * `0.0.0.0:8080`, so an absolute redirect would be unreachable). Parsing with a
- * dummy base tolerates a relative Location and still exposes pathname/query.
+ * The gate redirects with `NextResponse.redirect(request.nextUrl.clone())`, so
+ * the `Location` is an ABSOLUTE same-origin URL. (A middleware redirect is
+ * re-parsed by Next as an absolute URL, so a bare relative Location throws
+ * `Invalid URL` — the relative-Location form is only correct in the logout
+ * *route handler*, not here.) `nextUrl` is Next's proxy-normalized request URL,
+ * so it carries the real forwarded host rather than the internal 0.0.0.0
+ * listener. Parsing with a dummy base tolerates either shape.
  */
 function parseLocation(res: Response): URL {
   const loc = res.headers.get("location");
@@ -73,13 +76,12 @@ describe("middleware auth gate — denial paths", () => {
     expect(res.status).toBe(302); // NextResponse.redirect with explicit 302 (spec §6.2)
     const location = res.headers.get("location");
     expect(location).not.toBeNull();
-    // Regression: the Location MUST be a same-origin RELATIVE path (no host) —
-    // an absolute URL built from nextUrl.origin leaks the internal 0.0.0.0 host
-    // behind a reverse proxy.
-    expect((location as string).startsWith("/login")).toBe(true);
-    expect(location as string).not.toMatch(/^https?:\/\//);
+    // Regression: the redirect must be SAME-ORIGIN as the request and must never
+    // leak the internal 0.0.0.0 bind address (built from nextUrl, not the raw
+    // request.url). req() builds against https://panel.example.com.
     expect(location as string).not.toContain("0.0.0.0");
     const url = parseLocation(res);
+    expect(url.origin).toBe("https://panel.example.com");
     expect(url.pathname).toBe("/login");
     expect(url.searchParams.get("redirect")).toBe("/");
     // Never an HTML/JSON body swap — it is a redirect, not a 401.
