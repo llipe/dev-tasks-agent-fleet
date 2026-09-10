@@ -52,6 +52,19 @@ function req(path: string): NextRequest {
   return new NextRequest(new URL(path, "https://panel.example.com"));
 }
 
+/**
+ * Parse a redirect `Location` header. The gate emits a RELATIVE location
+ * (`/login?redirect=...`) so it is same-origin regardless of the host the
+ * server binds to (behind Fly's proxy `nextUrl.origin` is the internal
+ * `0.0.0.0:8080`, so an absolute redirect would be unreachable). Parsing with a
+ * dummy base tolerates a relative Location and still exposes pathname/query.
+ */
+function parseLocation(res: Response): URL {
+  const loc = res.headers.get("location");
+  if (loc === null) throw new Error("no Location header");
+  return new URL(loc, "http://relative.invalid");
+}
+
 describe("middleware auth gate — denial paths", () => {
   it("unauthenticated UI route → 302 to /login with the original path as redirect (AC1)", async () => {
     const mw = createMiddleware(fakeFactory(NO_SESSION));
@@ -60,7 +73,13 @@ describe("middleware auth gate — denial paths", () => {
     expect(res.status).toBe(302); // NextResponse.redirect with explicit 302 (spec §6.2)
     const location = res.headers.get("location");
     expect(location).not.toBeNull();
-    const url = new URL(location as string);
+    // Regression: the Location MUST be a same-origin RELATIVE path (no host) —
+    // an absolute URL built from nextUrl.origin leaks the internal 0.0.0.0 host
+    // behind a reverse proxy.
+    expect((location as string).startsWith("/login")).toBe(true);
+    expect(location as string).not.toMatch(/^https?:\/\//);
+    expect(location as string).not.toContain("0.0.0.0");
+    const url = parseLocation(res);
     expect(url.pathname).toBe("/login");
     expect(url.searchParams.get("redirect")).toBe("/");
     // Never an HTML/JSON body swap — it is a redirect, not a 401.
@@ -70,14 +89,14 @@ describe("middleware auth gate — denial paths", () => {
   it("unauthenticated deeply-nested UI route preserves the full path in redirect", async () => {
     const mw = createMiddleware(fakeFactory(NO_SESSION));
     const res = await mw(req("/agents/dependency-update/history"));
-    const url = new URL(res.headers.get("location") as string);
+    const url = parseLocation(res);
     expect(url.searchParams.get("redirect")).toBe("/agents/dependency-update/history");
   });
 
   it("redirect param round-trips a UI path WITH query (AC1)", async () => {
     const mw = createMiddleware(fakeFactory(NO_SESSION));
     const res = await mw(req("/runs/abc?tab=logs&level=error"));
-    const url = new URL(res.headers.get("location") as string);
+    const url = parseLocation(res);
     // The query is preserved on the captured original target.
     expect(url.searchParams.get("redirect")).toBe("/runs/abc?tab=logs&level=error");
   });
@@ -161,7 +180,7 @@ describe("middleware auth gate — fail-closed", () => {
     const mw = createMiddleware(fakeFactory(AUTH_ERROR));
     const res = await mw(req("/"));
     expect(res.status).toBe(302);
-    expect(new URL(res.headers.get("location") as string).pathname).toBe("/login");
+    expect(parseLocation(res).pathname).toBe("/login");
   });
 
   it("auth error on an API route is treated as unauthenticated → 401", async () => {
@@ -180,7 +199,7 @@ describe("middleware auth gate — fail-closed", () => {
     const mw = createMiddleware(factory);
     const res = await mw(req("/"));
     expect(res.status).toBe(302);
-    expect(new URL(res.headers.get("location") as string).pathname).toBe("/login");
+    expect(parseLocation(res).pathname).toBe("/login");
   });
 });
 
@@ -194,7 +213,7 @@ describe("middleware auth gate — expired / invalid session (AC14 consequence)"
     const mw = createMiddleware(fakeFactory(EXPIRED));
     const res = await mw(req("/"));
     expect(res.status).toBe(302);
-    expect(new URL(res.headers.get("location") as string).pathname).toBe("/login");
+    expect(parseLocation(res).pathname).toBe("/login");
   });
 
   it("expired session on the SSE path is denied → 401 (AC14)", async () => {

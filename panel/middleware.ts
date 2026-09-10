@@ -39,16 +39,22 @@ import {
 } from "@/lib/supabase/auth-middleware";
 
 /**
- * Build the login redirect URL for a denied UI request, carrying the original
- * path + query as an encoded `redirect` param so the operator lands back where
- * they were after signing in. The `redirect` value is sanitized on the way OUT
- * (S-119 login action, via `safeRedirectTarget`); here we only capture it.
+ * Build the login redirect target for a denied UI request as a RELATIVE path
+ * (`/login?redirect=<encoded original path+query>`), carrying the original
+ * path + query so the operator lands back where they were after signing in.
+ *
+ * A relative target is same-origin by definition, so it is immune to the host
+ * the server binds to. Behind a reverse proxy like Fly, `request.nextUrl.origin`
+ * can be the internal listener (`0.0.0.0:8080`) rather than the public host, so
+ * an absolute redirect built from it can send the browser to an unreachable
+ * origin. We therefore emit only the path + query.
+ *
+ * The `redirect` value is sanitized on the way OUT (S-119 login action, via
+ * `safeRedirectTarget`); here we only capture it.
  */
-function loginUrlFor(request: NextRequest): URL {
-  const loginUrl = new URL("/login", request.nextUrl.origin);
+function loginTargetFor(request: NextRequest): string {
   const originalTarget = request.nextUrl.pathname + request.nextUrl.search;
-  loginUrl.searchParams.set("redirect", originalTarget);
-  return loginUrl;
+  return `/login?redirect=${encodeURIComponent(originalTarget)}`;
 }
 
 /** The `401` body for denied API/SSE requests (spec §6.2). */
@@ -89,7 +95,7 @@ export function createMiddleware(makeClient?: MiddlewareClientFactory) {
     if (!authenticated) {
       return policy === "api"
         ? unauthorizedJson()
-        : NextResponse.redirect(loginUrlFor(request), { status: 302 });
+        : new NextResponse(null, { status: 302, headers: { Location: loginTargetFor(request) } });
     }
 
     // Success: return the cookie-handler response so a refreshed token reaches
