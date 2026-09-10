@@ -33,20 +33,14 @@ vi.mock("@/lib/supabase/auth-server", () => ({
 }));
 
 import * as logoutRoute from "@/app/api/auth/logout/route";
-import type { NextRequest } from "next/server";
 
-function req(): NextRequest {
-  // The handler only reads `request.url`; a plain Request carries that. Cast to
-  // NextRequest to satisfy the handler signature without a full Next stub.
-  return new Request("https://panel.example.com/api/auth/logout", {
-    method: "POST",
-  }) as unknown as NextRequest;
-}
-
-/** The `Location` header path of a redirect response. */
-function redirectPath(res: Response): string {
-  const loc = res.headers.get("location");
-  return loc ? new URL(loc).pathname : "";
+/**
+ * The `Location` header of a redirect response. The handler emits a RELATIVE
+ * location (`/login`) so it is same-origin regardless of the host the server
+ * binds to — see the regression note below.
+ */
+function locationHeader(res: Response): string {
+  return res.headers.get("location") ?? "";
 }
 
 beforeEach(() => {
@@ -60,10 +54,10 @@ afterEach(() => {
 
 describe("POST /api/auth/logout (AC6)", () => {
   it("calls signOut and redirects (302) to /login", async () => {
-    const res = await logoutRoute.POST(req());
+    const res = await logoutRoute.POST();
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(302);
-    expect(redirectPath(res)).toBe("/login");
+    expect(locationHeader(res)).toBe("/login");
   });
 
   it("is idempotent: with no session it still redirects to /login without error", async () => {
@@ -72,16 +66,29 @@ describe("POST /api/auth/logout (AC6)", () => {
     signOut.mockResolvedValue({
       error: { name: "AuthSessionMissingError", message: "no session" },
     });
-    const res = await logoutRoute.POST(req());
+    const res = await logoutRoute.POST();
     expect(res.status).toBe(302);
-    expect(redirectPath(res)).toBe("/login");
+    expect(locationHeader(res)).toBe("/login");
   });
 
   it("still redirects to /login when signOut throws (never a 500)", async () => {
     signOut.mockRejectedValue(new Error("transient auth failure"));
-    const res = await logoutRoute.POST(req());
+    const res = await logoutRoute.POST();
     expect(res.status).toBe(302);
-    expect(redirectPath(res)).toBe("/login");
+    expect(locationHeader(res)).toBe("/login");
+  });
+
+  // Regression: behind a reverse proxy (Fly) the server binds to
+  // HOSTNAME=0.0.0.0:8080, so an absolute redirect built from `request.url`
+  // sent the browser to the unreachable `http://0.0.0.0:8080/login`. The
+  // Location MUST be a same-origin RELATIVE path with no host component.
+  it("uses a relative same-origin Location — never an absolute URL with a host", async () => {
+    const res = await logoutRoute.POST();
+    const loc = locationHeader(res);
+    expect(loc).toBe("/login");
+    expect(loc.startsWith("/")).toBe(true);
+    expect(loc).not.toMatch(/^https?:\/\//);
+    expect(loc).not.toContain("0.0.0.0");
   });
 });
 

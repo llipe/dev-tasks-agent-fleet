@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
 
@@ -37,7 +37,7 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   try {
     const cookieStore = await cookies();
     const supabase = createAuthServerClient(cookieStore);
@@ -49,7 +49,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // ending their session. Fall through to the redirect regardless.
   }
 
-  // 302 to the public login screen. Built against the request origin so it is
-  // always same-origin.
-  return NextResponse.redirect(new URL("/login", request.url), { status: 302 });
+  // 302 to the public login screen via a RELATIVE Location (`/login`).
+  //
+  // A relative redirect is same-origin by definition, so it is immune to the
+  // host the server binds to. Building an absolute URL from `request.url`
+  // (`new URL("/login", request.url)`) is WRONG behind a reverse proxy like
+  // Fly: `request.url` reflects the internal listener (`HOSTNAME=0.0.0.0:8080`
+  // from fly.toml), not the public host the browser used, so the operator was
+  // redirected to the unreachable `http://0.0.0.0:8080/login`. `request.url`
+  // does not carry the forwarded host, and this route deliberately depends on
+  // nothing from the request, so it no longer takes a `request` argument.
+  return new NextResponse(null, { status: 302, headers: { Location: "/login" } });
 }

@@ -41,12 +41,25 @@ import {
 /**
  * Build the login redirect URL for a denied UI request, carrying the original
  * path + query as an encoded `redirect` param so the operator lands back where
- * they were after signing in. The `redirect` value is sanitized on the way OUT
- * (S-119 login action, via `safeRedirectTarget`); here we only capture it.
+ * they were after signing in.
+ *
+ * Uses `request.nextUrl.clone()` rather than a bare relative string: a Next.js
+ * middleware redirect goes through `NextResponse.redirect`, which re-parses the
+ * `Location` as an absolute `URL` — a relative `Location` throws
+ * `TypeError: Invalid URL` in the middleware pipeline. `nextUrl` is Next's
+ * proxy-normalized request URL (it reflects the forwarded host, unlike the raw
+ * `request.url` that binds to the internal `0.0.0.0:8080` listener on Fly), so
+ * cloning it and only replacing the path + query yields a same-origin redirect
+ * that is correct both locally and behind the proxy.
+ *
+ * The `redirect` value is sanitized on the way OUT (S-119 login action, via
+ * `safeRedirectTarget`); here we only capture it.
  */
 function loginUrlFor(request: NextRequest): URL {
-  const loginUrl = new URL("/login", request.nextUrl.origin);
   const originalTarget = request.nextUrl.pathname + request.nextUrl.search;
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
   loginUrl.searchParams.set("redirect", originalTarget);
   return loginUrl;
 }
