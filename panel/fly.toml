@@ -1,35 +1,3 @@
-# Fly.io configuration for the Agent Fleet Control Plane panel.
-#
-# ---------------------------------------------------------------------------
-# THE SECURITY BOUNDARY IS NOW LOGIN, NOT NETWORK PRIVACY (auth wave, S-116..S-122).
-#
-# History: in v1 the panel had NO user authentication (D16), so its ONLY
-# security boundary was that the Fly app was unreachable from the public
-# internet. That decision has been REVERSED — the panel now requires a Supabase
-# password login (middleware gate + /login), so the boundary that protects the
-# invoke surface is authentication, mechanically asserted by the auth release
-# gate `scripts/verify-panel-auth.sh` (+ panel/scripts/panel-auth-check.mjs),
-# which proves on the DEPLOYED app that unauthenticated requests are denied
-# (protected UI -> 302 /login, SSE -> 401) and that public signups are rejected.
-#
-# BUT THIS STORY (S-122) DOES NOT MAKE THE APP PUBLIC. Going public is a
-# separate, final, operator-executed step (Phase B / S-123) taken only after the
-# auth gate is proven on the still-private app. So this file INTENTIONALLY still
-# declares:
-#   - NO [http_service] section
-#   - NO [[services]] with public ports / handlers
-#   - NO public [[services.ports]]
-#
-# The app is reached only over the private Fly 6PN/WireGuard network (e.g.
-# `fly proxy`, `flyctl ssh`, or a private allocation). In Phase A the auth gate
-# is run over that private network (`fly proxy 8080:8080` -> http://localhost:8080).
-#
-# Phase B (S-123, SEPARATE PR) will add the public HTTPS service + allocate a
-# public IP and rewrite this banner — but only after Phase A is deployed and the
-# auth gate passes privately, and only behind an explicit operator-confirmation
-# gate. See docs/runbooks/panel-deployment.md.
-# ---------------------------------------------------------------------------
-
 app = "dt-agent-fleet-panel"
 primary_region = "iad"
 
@@ -57,3 +25,10 @@ primary_region = "iad"
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
