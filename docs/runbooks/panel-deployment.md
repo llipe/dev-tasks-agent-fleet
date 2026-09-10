@@ -165,25 +165,38 @@ docker rmi dt-panel:local
    fly apps create dt-agent-fleet-panel        # or `fly launch --no-deploy` from the repo root
    ```
 
-2. **Set only the two required secrets — the Supabase service-role key and the role ARN. No AWS
-   access key of any kind (D12/AC8):**
+2. **Set the required secrets. `SUPABASE_URL` is REQUIRED — not optional. No AWS access key of any
+   kind (D12/AC8):**
 
    ```bash
    fly secrets set \
+     SUPABASE_URL='https://hegxeycmbmjfgzqpdiik.supabase.co' \
      SUPABASE_SERVICE_ROLE_KEY='<service_role key for hegxeycmbmjfgzqpdiik>' \
      AGENT_RUNTIME_ROLE_ARN='<role ARN from task 1.9>' \
      -a dt-agent-fleet-panel
-   # SUPABASE_URL and AWS_REGION are non-secret and live in fly.toml [env];
-   # set SUPABASE_URL as a secret too if you prefer not to commit the project URL.
    ```
+
+   > **`SUPABASE_URL` is REQUIRED at runtime.** The server-side data client
+   > (`panel/lib/supabase/server.ts` → `readSupabaseEnv`) reads `SUPABASE_URL` **and**
+   > `SUPABASE_SERVICE_ROLE_KEY`, and throws `SupabaseConfigError` if `SUPABASE_URL` is missing.
+   > It is a **server-only** name (deliberately NOT `NEXT_PUBLIC_`, SD2/D15) and is NOT declared in
+   > `fly.toml [env]` (only `NODE_ENV`/`PORT`/`HOSTNAME`/`AWS_REGION` are), so it MUST be provided
+   > here. Omitting it does not fail at startup — login and the middleware gate use the *auth* client
+   > (`NEXT_PUBLIC_SUPABASE_URL`) and work fine — but the first authenticated page that touches the
+   > data client (the dashboard) 500s with `SupabaseConfigError` / digest `3101215328`. It is fine as
+   > a `fly secrets` value (the project URL is not itself a credential); setting it as a secret also
+   > keeps it off the committed `fly.toml`. Note this is DISTINCT from `NEXT_PUBLIC_SUPABASE_URL`
+   > (the auth-client URL, delivered per the auth-env note below) — both point at the same project
+   > but are read by different clients under different names.
 
 3. **Assert there is NO AWS key of any kind (AC8/D12):**
 
    ```bash
    fly secrets list -a dt-agent-fleet-panel
-   # Expect the digest list to contain ONLY: SUPABASE_SERVICE_ROLE_KEY, AGENT_RUNTIME_ROLE_ARN
-   # (and optionally SUPABASE_URL). It MUST NOT contain AWS_ACCESS_KEY_ID,
-   # AWS_SECRET_ACCESS_KEY, or AWS_SESSION_TOKEN.
+   # Expect the digest list to contain the app config names:
+   #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AGENT_RUNTIME_ROLE_ARN
+   #   (plus the NEXT_PUBLIC_SUPABASE_* auth pair if delivered via secrets — see the auth-env note).
+   # It MUST NOT contain AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, or AWS_SESSION_TOKEN.
    ```
 
    Record the **secret-name list** (names only, never values) in the evidence table (task 1.20 / AC3).
