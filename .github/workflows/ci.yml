@@ -98,7 +98,8 @@ jobs:
       - name: Export local Supabase env
         # `supabase status -o env` prints API_URL / ANON_KEY / SERVICE_ROLE_KEY /
         # DB_URL for the running stack. Map them to the names the panel + tests
-        # read (SD2 server-only names — never NEXT_PUBLIC_*).
+        # read. SD2: only the anon URL + anon key get a NEXT_PUBLIC_ twin — the
+        # SERVICE_ROLE_KEY is exported ONLY under its server-only name.
         run: |
           set -euo pipefail
           supabase status -o env > /tmp/sb.env
@@ -110,6 +111,12 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
             echo "SUPABASE_DB_HOST=127.0.0.1"
             echo "SUPABASE_DB_PORT=54322"
+            # Publishable anon pair the auth clients (S-116) need at the CI job
+            # level so the spawned E2E `next dev` webServer has them (#170). This
+            # does NOT weaken SD2 — the service-role key is never given a
+            # NEXT_PUBLIC_ twin; only the anon URL + anon key are public.
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
           } >> "$GITHUB_ENV"
 
       - name: Lint (eslint)

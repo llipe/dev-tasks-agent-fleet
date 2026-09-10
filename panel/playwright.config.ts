@@ -22,6 +22,27 @@ import { OPERATOR_STORAGE_STATE } from "./tests/e2e/fixtures/storage";
 
 const isCI = process.env.CI === "true" || process.env.CI === "1";
 
+/**
+ * Forward a Supabase env var to the spawned dev server ONLY when a non-empty
+ * value is resolvable at config-load time (CI-fix for #170).
+ *
+ * Why "only when non-empty": Playwright merges `webServer.env` ON TOP OF the
+ * inherited `process.env` for the child, with `webServer.env` winning. In CI
+ * the values are present at config-load (exported to `$GITHUB_ENV` before the
+ * E2E step), so forwarding is authoritative. Locally they are resolved by
+ * `global-setup.ts` AFTER this config loads and written onto `process.env`,
+ * which the child still inherits — so here we must NOT emit an empty string,
+ * or we would clobber that later-set inherited value. Omitting the key leaves
+ * inheritance intact.
+ */
+function forwardEnv(pairs: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(pairs)) {
+    if (value && value.length > 0) out[key] = value;
+  }
+  return out;
+}
+
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: /.*\.spec\.ts$/,
@@ -78,11 +99,27 @@ export default defineConfig({
 
   /**
    * Launch the panel under test on a dedicated port (3100) so it never collides
-   * with a developer's `pnpm dev` on 3000. The Supabase env is populated into
-   * `process.env` by `global-setup.ts` (which runs before this server starts)
-   * and inherited here; we only add the AgentCore stub endpoint and fixed test
-   * AWS credentials so the REAL local credential branch + SDK signing runs
+   * with a developer's `pnpm dev` on 3000. The AgentCore stub endpoint + fixed
+   * test AWS credentials let the REAL local credential branch + SDK signing run
    * without needing SSO/a real profile (the stub ignores the signature).
+   *
+   * Supabase env forwarding (CI-fix for #170, run 34406811655):
+   *   The auth clients (S-116) read the `NEXT_PUBLIC_*` anon pair; the data path
+   *   reads the server-only names. Previously this config relied on the spawned
+   *   dev server IMPLICITLY inheriting `process.env` (server-only names exported
+   *   at the CI job level; NEXT_PUBLIC_* set only on global-setup's in-process
+   *   `process.env`). That inheritance is not reliable for the NEXT_PUBLIC_*
+   *   pair in CI, so `/login` 500'd with AuthConfigError and the setup project
+   *   timed out. We now forward the vars EXPLICITLY via `webServer.env` and the
+   *   CI workflow also exports the NEXT_PUBLIC_* pair to `$GITHUB_ENV`.
+   *
+   *   Timing note: Playwright constructs this `env` object when the config
+   *   module LOADS — before `globalSetup` runs. So in CI the AUTHORITATIVE fix
+   *   is the `$GITHUB_ENV` export (present at config-load); locally, global-setup
+   *   also writes these onto `process.env`, and the spawned server still
+   *   inherits `process.env`, so the forward + inheritance together cover both
+   *   paths. The `?? "" ` fallbacks guarantee this never throws at config-load
+   *   when a value is not yet resolved.
    *
    * The dev server is used deliberately rather than `next build && next start`:
    * these scenarios assert runtime behavior, and `next dev` exercises the same
@@ -107,6 +144,23 @@ export default defineConfig({
       AWS_ACCESS_KEY_ID: "test",
       AWS_SECRET_ACCESS_KEY: "test",
       AWS_REGION: "us-east-1",
+      // Supabase config forwarded EXPLICITLY (CI-fix for #170) so the dev server
+      // no longer relies on implicit process.env inheritance. The auth clients
+      // (S-116) need the NEXT_PUBLIC_* anon pair; fall back to the server-only
+      // names so a single resolved source populates both. Only non-empty values
+      // are forwarded (see `forwardEnv`) so we never clobber a value that
+      // global-setup sets onto process.env after this config loads (local path).
+      // SD2: only the anon URL + anon key are ever NEXT_PUBLIC_* — the
+      // service-role key is NEVER given a NEXT_PUBLIC_ twin.
+      ...forwardEnv({
+        NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL,
+        NEXT_PUBLIC_SUPABASE_ANON_KEY:
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY,
+        // Server-only names forwarded explicitly too (data path — SD2 names).
+        SUPABASE_URL: process.env.SUPABASE_URL,
+        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      }),
     },
   },
 });
