@@ -1,4 +1,21 @@
-# Operator Runbook — Panel deployment, privacy gate, and OIDC probe (Issue #128 / S-115)
+# Operator Runbook — Panel deployment, auth release gate, and OIDC probe (auth wave: #128/S-115 + #161/S-122; go-public: #162/S-123)
+
+> **What this runbook now covers.** It began as the S-115 deploy + privacy-gate + OIDC-probe
+> procedure. The Phase 2 **auth wave** (S-116…S-122) reversed the original "privacy is the only
+> boundary" decision (D16): the panel now requires a Supabase password login, so the security
+> boundary is **authentication**, mechanically asserted by the new **auth release gate**
+> (`scripts/verify-panel-auth.sh` + `panel/scripts/panel-auth-check.mjs`) that replaced the privacy
+> gate. This runbook is the single operator source for:
+>
+> - **Phase A (private):** deploy the auth build, configure Supabase, and verify the auth boundary
+>   over the **private** Fly network — the app stays unreachable from the internet. (S-122 ships the
+>   gate; the app remains private.)
+> - **Phase B (go public, S-123):** a **separate, operator-executed, separately-merged** step that
+>   allocates a public IP and enables a public HTTPS service — done **only** after Phase A passes,
+>   behind an explicit confirmation gate, reversible in one command.
+>
+> The S-115 AWS OIDC IdP / IAM-role / OIDC-socket-probe steps below are still required (they are how
+> the deployed panel gets AWS credentials with no static keys) and are unchanged.
 
 > **Audience:** the human operator with (a) a Fly.io account/org that can create and deploy
 > apps and set secrets, and (b) AWS credentials that can register an OIDC identity provider,
@@ -7,26 +24,26 @@
 >
 > **Why this runbook exists — these steps CANNOT be done by the developer agent.** They perform
 > **live, hard-to-reverse actions** against shared cloud state: registering an AWS OIDC IdP, creating
-> IAM roles/trust policies, setting production Fly secrets, deploying a public-facing platform app,
+> IAM roles/trust policies, setting production Fly secrets, deploying a platform app, going public,
 > and running a real (billable, DB-writing) agent invocation. Each is gated on **explicit operator
-> execution**. The committable artifacts (Dockerfile, `fly.toml`, the privacy release gate + its
-> tests, the `next build` fix) are already merged on the S-115 branch; this runbook is the
-> procedure + evidence log for the live half.
+> execution**. The committable artifacts (Dockerfile, `fly.toml`, the auth release gate + its tests,
+> the `next build` fix) are already merged; this runbook is the procedure + evidence log for the live
+> half.
 >
 > **No secret material is ever printed here.** Do not paste tokens, STS responses, assumed-role
-> credentials, or service-role keys into this file. Record only names, ARNs, claim *shapes* (key
-> names, not values), timestamps, and run ids.
+> credentials, service-role keys, or the anon key's value into this file. Record only names, ARNs,
+> claim *shapes* (key names, not values), timestamps, and run ids.
 
 | Field | Value |
 |-------|-------|
-| Issue | [#128](https://github.com/llipe/dev-tasks-agent-fleet/issues/128) (Story S-115) |
-| Depends on | S-114 (#127) merged — E2E green against the local stack |
+| Issues | [#128](https://github.com/llipe/dev-tasks-agent-fleet/issues/128) (S-115 deploy/OIDC), [#161](https://github.com/llipe/dev-tasks-agent-fleet/issues/161) (S-122 auth gate), [#162](https://github.com/llipe/dev-tasks-agent-fleet/issues/162) (S-123 go public) |
+| Depends on | Phase A auth wave (S-116…S-121) merged into `integration/v2.1-panel-auth`; S-114 (#127) E2E green |
 | Fly app | `dt-agent-fleet-panel` (see `panel/fly.toml`) |
 | Region | AWS `us-east-1`; Fly primary region `iad` |
 | Supabase project | `hegxeycmbmjfgzqpdiik` (dev-tasks-agent-fleet) — the deployed panel reads this project |
 | Runtime ARN | `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/dependencyupdate_dependency_update-UsQc5U5Yz0` (authoritative: `supabase/seed.sql` `agents.runtime_arn`) |
 | Agent slug | `dependency-update` |
-| Closes | AC8 (no static keys, live), spec **OQ1** (OIDC socket shape + `sub` normalization), **OQ2** (`prompt` wrapping — already observed, see #89), **SR2** (privacy as a release gate) |
+| Closes | AC8 (no static keys, live), spec **OQ1** (OIDC socket shape + `sub` normalization), **OQ2** (`prompt` wrapping — already observed, see #89); the **auth release gate** replaces SR2 privacy-as-a-boundary (D16 reversed) |
 
 ---
 
@@ -38,8 +55,10 @@
 - [x] Local tooling: `flyctl` (authenticated: `fly auth whoami`), `aws` CLI (authenticated:
       `aws sts get-caller-identity`), `docker` (for a local image sanity build, optional), `node`.
 - [x] The committable S-115 artifacts are present on the branch: `Dockerfile.panel` (repo root),
-      `.dockerignore` (repo root), `panel/fly.toml`, `scripts/verify-fly-private.sh`,
-      `panel/scripts/fly-privacy-check.mjs`.
+      `.dockerignore` (repo root), `panel/fly.toml`.
+- [x] The committable **S-122 auth-gate** artifacts are present: `scripts/verify-panel-auth.sh`,
+      `panel/scripts/panel-auth-check.mjs` (these REPLACE the removed S-115 privacy pair
+      `scripts/verify-fly-private.sh` + `panel/scripts/fly-privacy-check.mjs`).
 
 > **Dockerfile / .dockerignore live at the REPO ROOT, not under `panel/`.** Fly resolves
 > `[build].dockerfile`/`ignorefile` relative to the `fly.toml` directory (`panel/`), and Docker only
@@ -171,7 +190,7 @@ docker rmi dt-panel:local
 
 ---
 
-## Impl Step 4 — Deploy + privacy gate (tasks 1.11, 1.12) · **[LIVE / CONFIRM]**
+## Impl Step 4 — Deploy + confirm still private (tasks 1.11, 1.12) · **[LIVE / CONFIRM]**
 
 > **Effect:** deploys a running app to Fly. Reversible by redeploying the prior image (see Rollback).
 
@@ -185,19 +204,30 @@ docker rmi dt-panel:local
    fly deploy -a dt-agent-fleet-panel --config panel/fly.toml --local-only
    ```
 
-3. **Run the privacy release gate against the live app (task 1.12 / AC6). The release is only valid
-   if this exits 0:**
+3. **Confirm the deployed app is still PRIVATE (no public exposure introduced by the deploy).**
+   Auth reverses the old "privacy is the only boundary" rule, but S-122 keeps the app private —
+   `panel/fly.toml` declares no `[http_service]` and no public ports. Confirm no public IP was
+   allocated:
 
    ```bash
-   scripts/verify-fly-private.sh -a dt-agent-fleet-panel
-   # PASS: "[fly-privacy] RELEASE ALLOWED — app is private-only."
-   # FAIL (exit 1): a public IP or public service exists → the release is BLOCKED.
+   fly ips list -a dt-agent-fleet-panel
+   # Expect ONLY a private (6PN, type "private", fdaa:…) address — NO v4/v6/shared_v4 public IP.
    ```
 
 4. **Confirm unreachability from the public internet.** From a network with no Fly WireGuard/6PN
    access, the app must not resolve/serve; from a peered network, reach it via
-   `fly proxy 8080:8080 -a dt-agent-fleet-panel` then `curl http://localhost:8080`. Record both
+   `fly proxy 8080:8080 -a dt-agent-fleet-panel` then `curl -i http://localhost:8080`. Record both
    observations.
+
+5. **Run the AUTH release gate over the private network** — this is the substantive verification and
+   is covered in detail in **§Phase A — verify the auth boundary (private)** below. In short, with a
+   `fly proxy` tunnel open:
+
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… \
+     scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
+   # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signup REJECTED.
+   ```
 
 ---
 
@@ -257,7 +287,139 @@ select id, status, started_at, error_code from runs where id = '<run_id>';
 
 ---
 
-## OQ2 — `prompt` wrapping (task 1.17 / AC9): already settled by live observation
+## Supabase project configuration checklist (operator, out-of-band — do this FIRST)
+
+These are dashboard/API settings on the Supabase project (`hegxeycmbmjfgzqpdiik`), **not** in code —
+so they can drift silently. Do them **before** the Phase A deploy; the auth gate (Phase A step 5)
+then re-asserts the load-bearing ones by observation. No secret values recorded here — names/settings
+only.
+
+| # | Setting | Where | Why |
+|---|---------|-------|-----|
+| 1 | **Enable the Email provider** | Auth → Providers → Email | Password sign-in is the only supported method (spec §9.3). |
+| 2 | **DISABLE public signups** | Auth → Providers → Email → "Allow new users to sign up" = OFF | **Release blocker (R9 / PRD AC17).** Once the app is public (Phase B) the Auth endpoint is reachable; an open signup lets anyone self-register into the agent-invoke surface. The auth gate’s signup check (verify-panel-auth.sh check 4) fails the release if a `signUp` succeeds. |
+| 3 | **Refresh-token inactivity timeout = 12h** | Auth → Sessions (or Settings → Auth) → inactivity timeout | FR14 — sessions expire after 12h of inactivity (surfaced as the `/login` fine print). |
+| 4 | **Create the operator user(s)** | Auth → Users → Add user (email + password) | Invitation-only; accounts are provisioned here, never seeded by a migration. |
+| 5 | **Confirm signing keys are asymmetric** | Auth → Signing keys / JWKS | spec **OQ1 (auth)**: asymmetric (ES256/EC P-256) keys let `getClaims()` verify **locally** via cached JWKS with **no per-request network call** (confirmed by live JWKS probe, spec §11). If a project were on legacy symmetric (HS256) keys, `getClaims()` would need the auth server per request — a latency/availability change. Record which you observe. |
+
+> **Env delivery (spec OQ2 — auth):** the panel needs `NEXT_PUBLIC_SUPABASE_URL` and
+> `NEXT_PUBLIC_SUPABASE_ANON_KEY` at runtime. The anon (publishable) key is **safe for the browser**
+> (RLS-bound), so the recommended delivery is `panel/fly.toml [env]` (non-secret, visible in config).
+> Delivering it via `fly secrets` also works and keeps it out of the committed file; either is
+> acceptable. The **service-role** key stays a `fly secrets` secret and MUST NOT gain a
+> `NEXT_PUBLIC_` twin (SD2/D15). The auth gate checks only that the two `NEXT_PUBLIC_*` **names** are
+> present on the app — never their values.
+
+---
+
+## Phase A — deploy + verify the auth boundary (app stays PRIVATE)
+
+**Goal:** ship the auth build, configure Supabase, and prove the login boundary holds **over the
+private Fly network** — at no point is the app reachable from the internet. This removes the exposure
+window entirely (spec §15.1, R10): a public app never exists without a proven gate.
+
+**Ordering (do not reorder):**
+
+1. **Supabase checklist above** — email on, **signups off**, 12h inactivity, operator user created.
+2. **Set the auth env** on the app (per the OQ2 note above):
+   ```bash
+   # Recommended: anon key + URL in fly.toml [env] (publishable, non-secret). If you prefer secrets:
+   fly secrets set NEXT_PUBLIC_SUPABASE_URL='https://<project>.supabase.co' \
+                   NEXT_PUBLIC_SUPABASE_ANON_KEY='<publishable anon key>' -a dt-agent-fleet-panel
+   ```
+3. **Deploy the auth build** (Impl Step 4 above) — `fly.toml` still private, **no public IP**.
+4. **Verify over the private network** (`fly proxy`), unauthenticated:
+   ```bash
+   fly proxy 8080:8080 -a dt-agent-fleet-panel   # in one terminal; leave it open
+   # in another terminal:
+   curl -i  http://localhost:8080/                                   # expect 302 -> /login
+   curl -si http://localhost:8080/api/runs/00000000-0000-0000-0000-000000000000/events/stream \
+        -H 'Accept: text/event-stream' | head -1                     # expect HTTP/…​ 401
+   ```
+   Then confirm **login and logout both work** in a browser pointed at `http://localhost:8080`
+   (sign in as the operator user → dashboard renders; click the sidebar **Log out** → back to
+   `/login`; revisit `/` → redirected to `/login`).
+5. **Run the auth release gate against the PRIVATE host** (the mechanical form of step 4):
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL='https://<project>.supabase.co' \
+   NEXT_PUBLIC_SUPABASE_ANON_KEY='<publishable anon key>' \
+   SUPABASE_SERVICE_ROLE_KEY='<service role key>'   `# optional: lets the gate auto-delete a stray signup account` \
+     scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
+   # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signUp REJECTED.
+   # FAIL (exit 1): any check fails — FIX and redeploy. The app is still private; zero exposure.
+   ```
+   The gate’s check 4 attempts a `signUp` for a disposable `…@release-gate.invalid` address; if
+   signups are still on it FAILS the release and deletes any account it created (needs the
+   service-role key for the delete — otherwise it warns to delete manually).
+
+**Phase A is complete when:** the build is deployed, the app is still private (no public IP, no
+public service), and `verify-panel-auth.sh` exits 0 against the private host. **Do not proceed to
+Phase B until every check passes.**
+
+---
+
+## Phase B — go public · **SEPARATE, OPERATOR-EXECUTED, SEPARATE PR — NOT part of the auth wave (S-123 / #162)**
+
+> **This is Story S-123 and MUST NOT share a PR, story, or deploy with any Phase A story (spec
+> §15.1, R10).** It performs the single hard-to-reverse action of the whole feature — exposing the
+> app to the internet — behind an explicit operator-confirmation gate. It is reversible in one
+> command (`fly ips release`), which is why it is isolated: containment does not require a redeploy.
+
+**Preconditions:** Phase A is merged, deployed, and verified private; `verify-panel-auth.sh` passed
+against the private host; the Supabase checklist (esp. **signups OFF**) is confirmed.
+
+1. **Confirm the Supabase checklist again** — especially that public signups are OFF. This is the
+   last chance to catch drift before the Auth endpoint is internet-reachable.
+2. **Re-verify Phase A is deployed and private** (`fly ips list` shows only a 6PN address;
+   `verify-panel-auth.sh http://localhost:8080` via `fly proxy` exits 0).
+3. **EXPLICIT USER-CONFIRMATION GATE.** Do not run step 4 until the operator has explicitly confirmed
+   "go public". There is no feature flag and no automation for this step by design (spec §15.3) — the
+   deliberate manual action *is* the control.
+4. **Enable the public service in `panel/fly.toml`** — add an HTTPS service and **rewrite the SR2
+   banner** to state the app is now public and the auth gate is the boundary. Minimal service:
+   ```toml
+   [http_service]
+     internal_port = 8080
+     force_https = true
+     auto_stop_machines = true
+     auto_start_machines = true
+     min_machines_running = 1
+   ```
+5. **Deploy the public config:**
+   ```bash
+   fly deploy -a dt-agent-fleet-panel --config panel/fly.toml --local-only
+   ```
+6. **Allocate the public IP:**
+   ```bash
+   fly ips allocate-v4 -a dt-agent-fleet-panel
+   fly ips allocate-v6 -a dt-agent-fleet-panel   # optional
+   ```
+7. **Run the auth gate against the PUBLIC hostname** — same gate, public host. The **signup-rejected
+   check is now load-bearing** (the Auth endpoint is internet-reachable):
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… SUPABASE_SERVICE_ROLE_KEY=… \
+     scripts/verify-panel-auth.sh https://dt-agent-fleet-panel.fly.dev -a dt-agent-fleet-panel
+   # MUST exit 0. If it FAILS → CONTAIN FIRST (step below), diagnose second.
+   ```
+8. **Signed-in live walkthrough** (in a browser at the public URL): sign in as the operator →
+   **dashboard** renders seeded agents → open an agent’s **run history** → open a **run detail** →
+   confirm the **live tail** streams (SSE) on a running run → **Log out** returns to `/login`.
+
+### Phase B rollback / containment (faster than a redeploy)
+
+> **Rule: if ANY gate check fails after exposure, CONTAIN FIRST, diagnose SECOND.** The panel is
+> stateless; releasing the public IP makes it private again in one command without a redeploy.
+
+```bash
+fly ips list -a dt-agent-fleet-panel                 # find the public addr(s)
+fly ips release <public-addr> -a dt-agent-fleet-panel   # app is private again immediately
+# (optionally revert the [http_service] addition in fly.toml and redeploy to restore the private config)
+```
+
+Only after the app is private again: diagnose the gate failure, fix, re-run Phase A private
+verification, and re-attempt Phase B.
+
+
 
 **No new action required.** OQ2 was closed on **2026-09-06** against the deployed runtime: the panel
 sends **bare inner JSON** (`panel/lib/aws/invoke.ts`, no `prompt` wrapper), and a bare-sent payload
@@ -288,7 +450,10 @@ fly releases -a dt-agent-fleet-panel                 # find the prior release ve
 fly deploy -a dt-agent-fleet-panel --image <prior-image-ref>   # or `fly releases rollback`
 ```
 
-No database or migration rollback is involved (S-115 makes **no** schema/data change).
+No database or migration rollback is involved (the auth wave makes **no** schema/data change; auth
+state lives in Supabase-managed `auth.*` + cookies). If the app is already public and a check fails,
+prefer the **Phase B containment** above (`fly ips release`) — it makes the app private again in one
+command without a redeploy.
 
 ---
 
@@ -313,9 +478,10 @@ No database or migration rollback is involved (S-115 makes **no** schema/data ch
 | 1.9 | AC2 | OIDC IdP provider ARN | | ☐ |
 | 1.9 | AC2 | IAM role ARN; policy resource = runtime ARN (not `*`) | | ☐ |
 | 1.10 | AC3/AC8 | `fly secrets list` — names only; NO AWS key present | | ☐ |
-| 1.12 | AC6 | `verify-fly-private.sh` exit 0 against live app | | ☐ |
-| 1.12 | AC6 | app unreachable from public net; reachable via `fly proxy` | | ☐ |
-| 1.23 | AC6 | gate **observed failing** on a deliberately public service, then reverted | | ☐ |
+| A5 | S-122 | auth env NAMES present; **auth gate** exit 0 against PRIVATE host (`verify-panel-auth.sh`) | | ☐ |
+| A4 | S-122 | private, unauth: protected UI → 302 /login; SSE → 401; login+logout work | | ☐ |
+| A5 | AC17 | signUp REJECTED (signups OFF); any created probe account deleted | | ☐ |
+| A3 | S-122 | deployed app still PRIVATE — `fly ips list` shows only 6PN (no public IP) | | ☐ |
 | 1.13 | AC4 | OIDC socket response shape (key names) | | ☐ |
 | 1.13 | AC4 | normalized `sub` claim string | | ☐ |
 | 1.14 | AC4 | `credentials.ts` matches SD9 (no change) / corrected | | ☐ |
@@ -325,18 +491,27 @@ No database or migration rollback is involved (S-115 makes **no** schema/data ch
 | 1.17 | AC9 | OQ2 — cite #89 (settled 2026-09-06) or record residual | see `issue-89-live-verification.md` | ☑ (via #89) |
 | — | SR9 | live service-role smoke read returns rows | | ☐ |
 
-### AC6 fail-demonstration (task 1.23) — how to observe the gate failing live
+### Auth-gate fail-demonstration — how to observe the gate failing live
 
-To prove the gate actually blocks (not just that it passes), deliberately misconfigure, observe the
-failure, then **revert immediately**:
+To prove the gate actually blocks (not just that it passes), you can observe it failing against the
+deployed app, then revert. The safest live demonstration is the **signup** direction (no public
+exposure required): temporarily re-enable public signups in the Supabase dashboard, run the gate
+against the private host, observe the failure, then turn signups back OFF.
 
 ```bash
-fly ips allocate-v4 -a dt-agent-fleet-panel        # allocate a PUBLIC v4 (temporary!)
-scripts/verify-fly-private.sh -a dt-agent-fleet-panel   # EXPECT exit 1 — release BLOCKED
-fly ips release <the-allocated-v4> -a dt-agent-fleet-panel   # REVERT
-scripts/verify-fly-private.sh -a dt-agent-fleet-panel   # EXPECT exit 0 again
+# 1. In the Supabase dashboard, temporarily set "Allow new users to sign up" = ON.
+NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… SUPABASE_SERVICE_ROLE_KEY=… \
+  scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
+#    EXPECT exit 1 — "A signUp SUCCEEDED — public signups are ENABLED. Release BLOCKED."
+#    (the gate deletes the probe account it created via the admin API)
+# 2. Turn signups back OFF in the dashboard, then re-run:
+NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… \
+  scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
+#    EXPECT exit 0 again.
 ```
 
-Record both the failing and the reverted-passing runs. (The unit test
-`panel/tests/unit/fly-privacy-check.test.ts` already demonstrates the same failure deterministically
-on fixtures — this live demo confirms it against real `fly` output.)
+Record both the failing and the reverted-passing runs. The unit suite
+`panel/tests/unit/panel-auth-check.test.ts` already demonstrates **every** violation direction
+(200-on-protected-path, 200-on-SSE, successful signup, missing env, fail-closed) deterministically on
+fixtures, and `workstream/s122-negative-demos.md` records the both-directions evidence captured with
+the live wrapper against a local mock — this live demo confirms it against the real deployed app.

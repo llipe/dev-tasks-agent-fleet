@@ -35,10 +35,18 @@ export function AppShell({
   children,
   breadcrumb,
   actions,
+  authenticated = false,
 }: {
   children: ReactNode;
   breadcrumb?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Whether the current request is authenticated. Server-provided and static
+   * per request (the authenticated layout determines it via the auth-server
+   * client and passes it in) — the shell never fetches it client-side, so the
+   * S-106 hydration contract is untouched. Gates the sidebar Log out item.
+   */
+  authenticated?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState<boolean>(DEFAULT_COLLAPSED);
 
@@ -69,7 +77,11 @@ export function AppShell({
 
   return (
     <div className={styles.shell}>
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      <Sidebar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((c) => !c)}
+        authenticated={authenticated}
+      />
       <div className={styles.column}>
         <TopBar breadcrumb={breadcrumb} actions={actions} />
         <main className={styles.content}>{children}</main>

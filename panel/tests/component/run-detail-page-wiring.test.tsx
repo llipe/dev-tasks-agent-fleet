@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 /**
- * Page-wiring tests for the run-detail route (`app/runs/[id]/page.tsx`).
+ * Page-wiring tests for the run-detail route (`app/(panel)/runs/[id]/page.tsx`).
  *
  * The component tests cover the presentational pieces; these assert the wiring
  * they cannot — that the server component:
@@ -36,7 +36,7 @@ const queryMock = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase/queries", () => queryMock);
 
-import RunDetailPage from "@/app/runs/[id]/page";
+import RunDetailPage from "@/app/(panel)/runs/[id]/page";
 
 function vrun(overrides: Record<string, unknown> = {}) {
   const now = Date.now();

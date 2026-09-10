@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { AppShell } from "@/components/shell/AppShell";
-
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 
@@ -29,9 +27,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
         />
       </head>
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+      {/*
+        The app shell (sidebar + top bar) now lives in app/(panel)/layout.tsx
+        (Story S-118), so authenticated routes are wrapped there and the public
+        /login screen (S-119) can render outside it. The root layout keeps only
+        <html>/<body>, the Inter fonts, metadata, and the global CSS imports.
+      */}
+      <body>{children}</body>
     </html>
   );
 }

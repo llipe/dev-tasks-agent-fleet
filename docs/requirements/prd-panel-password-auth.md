@@ -9,6 +9,8 @@
 | 1.2     | 2026-09-09 | Removed sign-in audit logging from scope (dropped FR15, AC15, the login fine-print reference, and the security bullet; resolved OQ6 deferred). Kept "Forgot password?" as a dead link, real flow deferred (resolved OQ5). Adopted the sidebar mockup: FR9 + AC15 now specify a footer "Log out" item (power icon, below System health, above Collapse, icon-only when collapsed); other sidebar nav shown in the mockup remains deferred per §10. | product-engineer |
 | 1.3     | 2026-09-09 | Resolved OQ1: make the Fly app public on the same deploy for live testing (no private transition period). Strengthened FR12 and §16 into a hard auth-first deploy ordering — auth deployed and verified before a public IP is allocated — and re-pointed the privacy release gate to fail closed unless auth is configured. | product-engineer |
 | 1.4     | 2026-09-09 | Revised OQ1 per operator direction: public exposure is still the goal but becomes the **last, isolated step** — FR12 now forbids sharing a story/PR/deploy with the auth gate (Phase A verify-while-private → Phase B go-public), removing the exposure window rather than merely ordering it. Added **FR15** and **AC17**: public signups MUST be disabled and this is **mechanically verified** by the release gate (an attempted `signUp` must be rejected; success blocks the release) instead of relying on a runbook checkbox. Updated §8 business rules, §16 constraints, and AC11. | product-engineer |
+| 1.5     | 2026-09-09 | Confirmed the §15 signing-key assumption by live JWKS probe: the project uses **asymmetric ES256 (EC P-256)** keys, so `getClaims()` verifies locally with no per-request network call (spec OQ1 resolved). Assumption text updated from "default for new projects / either is acceptable" to a measured fact. No scope change. | product-engineer |
+| 1.6     | 2026-09-09 | Recorded the relationship to the pre-existing [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md), which was written earlier and prescribes a different architecture (GitHub OAuth, allowlist, `viewer`/`operator` roles, identity-based RLS replacing deny-all, SSE-relay removal). Per operator decision that PRD is now **DEFERRED — desired future direction, not currently implemented**, and this password-auth PRD is the simpler first iteration. Added §12.2 explaining the split, what the deferred work can reuse, and the two honest consequences (keeping deny-all forecloses relay removal; going public early inverts that PRD's non-goal). Added the OAuth/allowlist/RLS scope to §10 non-goals as explicitly deferred-not-cancelled. | product-engineer |
 
 ## 1. Executive Summary
 
@@ -108,6 +110,7 @@ No application schema or migration changes. Auth state lives in Supabase's manag
 ## 10. Non-Goals (Out of Scope)
 
 - Self-service signup, password reset / "forgot password" flow, email verification, magic-link or OAuth/SSO login. (A "Forgot password?" link is shown per the mockup but is a dead link — see §11 — and initiates no reset; a real flow is deferred.)
+- **GitHub OAuth, an access allowlist, `viewer`/`operator` roles, identity-based RLS policies replacing deny-all, `runs.triggered_by` attribution, and SSE-relay removal.** All of these are wanted, and all are specified in [`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md) — which is **DEFERRED**, not cancelled. This PRD is the deliberately simpler first iteration; see §12.2 for how the two relate.
 - In-app user management, roles, permissions, or multi-tenant separation.
 - Per-row authorization / RLS policies for authenticated users (data reads stay service-role).
 - Rate limiting / brute-force lockout beyond what Supabase Auth provides by default.
@@ -145,6 +148,22 @@ Design notes and reconciliations against scope:
 - **CDN/caching caveat:** responses carrying a refreshed `Set-Cookie` must not be cached, or one user could receive another's session. The panel's data routes are already `force-dynamic`/`no-store`; `/login` and gated routes must not be statically cached. The SSE route is already `force-dynamic`.
 - **SSE + auth:** the browser `EventSource` cannot set custom headers, so the stream must authenticate via the session cookie (sent automatically same-origin). The relay route validates the session server-side before subscribing.
 - **Middleware matcher:** exclude `_next/static`, `_next/image`, and favicon/asset paths so the proxy runs only where Supabase access matters.
+
+### 12.2 Relationship to the deferred OAuth + RLS PRD
+
+[`prd-panel-auth-and-rls.md`](prd-panel-auth-and-rls.md) (v1.1, **DEFERRED**) describes the desired end state for panel authorization: GitHub OAuth, an explicit allowlist, `viewer`/`operator` roles, identity-based RLS replacing deny-all, `runs.triggered_by` attribution, and removal of the SSE relay. This PRD is the deliberately **simpler first iteration** and is being implemented now; that one is not.
+
+The split is intentional rather than accidental:
+
+- **This iteration closes the actual gap** — "no authentication at all" (risk **R1**, decision **D16**) — with the smallest surface that does so. It touches no schema, no RLS policy, and no data query.
+- **That iteration changes the authorization model**, which is a larger and riskier change: it rewrites RLS, moves reads into the browser, and deletes a shipped, tested component (the SSE relay).
+
+Designed so the deferred work can build on this one rather than replace it: the cookie-session clients, the middleware chokepoint, `getClaims()`-based verification, the route-classification split, the `/login` screen, and the `app/(panel)/` route group are all reusable as-is. What the deferred PRD adds on top is the *provider* (OAuth) and the *authorization model* (allowlist, roles, RLS).
+
+Two consequences to be honest about:
+
+1. **Keeping deny-all forecloses a simplification.** The deferred PRD's argument is that deny-all is precisely *why* the SSE relay exists — authenticated RLS would let the browser subscribe directly, deleting a component instead of gating one. This PRD gates it instead. That is the right call for a first iteration (it is additive and reversible), but it means the relay becomes a tested component with reconnect semantics that a later refactor must remove deliberately, with regression coverage.
+2. **Going public early inverts an assumption of the deferred PRD.** It treats public exposure as an explicit non-goal and a later decision; this PRD does it in S-123. Its §17 threat model therefore needs re-reading against an internet-facing login endpoint before it is specified. Recorded in its §0.3.
 
 ```mermaid
 flowchart TD
@@ -188,7 +207,7 @@ flowchart TD
 
 - Supabase Auth Email provider is enabled and public signups are disabled in the project dashboard.
 - Operator user account(s) are created manually in the Supabase dashboard before first login.
-- The project uses asymmetric signing keys (the default for new projects), so `getClaims()` verifies locally via JWKS; if symmetric keys are in use, `getClaims()` falls back to a network validation — either is acceptable.
+- The project uses asymmetric signing keys (**confirmed 2026-09-09 by live JWKS probe: `alg: ES256`, `kty: EC`, `crv: P-256`** — spec OQ1 resolved), so `getClaims()` verifies locally via JWKS with no per-request network call.
 - One shared Supabase project; no separate auth tenancy needed.
 
 ## 16. Constraints & Dependencies

@@ -6,6 +6,7 @@
 | ------- | ---------- | ------- | ------ |
 | 1.0     | 2026-09-09 | Initial version. Technical design for Supabase password auth on the panel: `@supabase/ssr` cookie clients, `middleware.ts` gate + token refresh, `/login` screen, POST logout, sidebar Log out affordance, and the SR2/D16 private→public release-gate inversion. | product-engineer |
 | 1.1     | 2026-09-09 | Hardened the rollout per operator direction. §15.1 split into **Phase A (ship + verify auth, app stays private)** and **Phase B (go public, last and separate)** — Phase B MUST NOT share a story/PR/deploy with the auth gate, structurally removing the exposure window (R10). Made "public signups disabled" a **mechanically verified release blocker**: the §12.1 gate now attempts a `signUp` and fails the release if it succeeds (R9), rather than relying on a runbook checkbox. Updated §9.3 accordingly. | product-engineer |
+| 1.2     | 2026-09-09 | Resolved **spec OQ1 by live observation**: the project's JWKS endpoint returns `alg: ES256` / `kty: EC` / `crv: P-256`, so signing keys are **asymmetric** and `getClaims()` verifies locally via cached JWKS with **no per-request network call**. Updated §11 (middleware cost — symmetric contingency removed) and §17 OQ1. No design change; this removes a latency unknown from the middleware gate (#156). | product-engineer |
 
 ---
 
@@ -454,7 +455,7 @@ Minimal and non-blocking: `required` + `type="email"` for native hints. Authorit
 
 ## 11. Performance & Scalability Approach
 
-- **Middleware cost:** one `getClaims()` per matched request. With asymmetric signing keys (Supabase default) verification is local via a cached JWKS — no network round trip on the hot path. If the project uses symmetric keys, `getClaims()` validates over the network; acceptable at single-operator scale, and noted as OQ1 below.
+- **Middleware cost:** one `getClaims()` per matched request. The project uses **asymmetric (ES256/EC P-256) signing keys — confirmed by live JWKS probe, spec OQ1 resolved** — so verification is local via a cached JWKS with **no network round trip** on the hot path.
 - **Matcher scope:** static assets and images are excluded so the gate never runs on them.
 - **No new caching.** Auth responses MUST NOT be cached: a cached response carrying a refreshed `Set-Cookie` could hand one user another's session (a caveat the Supabase docs call out explicitly). All panel data routes are already `force-dynamic`/`force-no-store`; `/login` and the logout route MUST declare the same **inline** route-segment config per the §12 convention (Next.js ignores re-exported segment config).
 - **SSE unaffected:** the gate runs once at connection setup, not per streamed event.
@@ -656,7 +657,7 @@ None. An auth gate behind a flag is a footgun — a flag that disables the gate 
 
 ## 17. Open Questions
 
-1. **OQ1 (spec)** Does the Supabase project use asymmetric signing keys? If symmetric, every `getClaims()` becomes a network call in middleware — acceptable at this scale, but worth confirming to set expectations on request latency.
+1. **OQ1 (spec)** ~~Does the Supabase project use asymmetric signing keys?~~ — **Resolved 2026-09-09 by live observation.** The project's JWKS endpoint (`GET /auth/v1/.well-known/jwks.json`) returns one signing key with `alg: ES256`, `kty: EC`, `crv: P-256`, `use: sig`, `key_ops: ["verify"]`. The project therefore uses **asymmetric** signing keys, so `getClaims()` verifies **locally** against the cached JWKS and the middleware gate adds **no network round trip per request** (§11). The symmetric-key contingency noted in §7.5/§11 does not apply. Re-check with `curl -s https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json` if the key configuration is ever moved to the legacy JWT-secret system (an empty `keys` array indicates symmetric HS256).
 2. **OQ2 (spec)** `NEXT_PUBLIC_SUPABASE_ANON_KEY` via `fly.toml [env]` (visible in config, which is fine for a publishable key) or via `fly secrets` (consistent with other config)? Recommend `[env]` — it is publishable by design and keeps the deploy reproducible.
 3. **OQ3 (spec)** Should `/dev/**` be gated like the rest, or stay 404 in production only? Recommend gating it (it inherits `ui`), so it is never reachable unauthenticated even in a non-production build.
 4. **OQ4 (spec)** Do we want a "session expired" interstitial on the SSE hook (§8.4), or is a silent stop plus the next navigation's redirect sufficient? Recommend a small inline notice — a log tail that silently stops looks like a product bug.

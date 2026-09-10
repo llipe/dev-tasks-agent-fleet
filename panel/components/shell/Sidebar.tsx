@@ -13,6 +13,7 @@ import {
   SystemHealthIcon,
 } from "../icons";
 import { DisabledNavItem } from "./DisabledNavItem";
+import { LogOutItem } from "./LogOutItem";
 import styles from "./Sidebar.module.css";
 
 /**
@@ -22,13 +23,21 @@ import styles from "./Sidebar.module.css";
  * collapse toggle. Collapse *state* is owned by the parent AppShell so the
  * whole shell reacts to one source; this component only renders it and reports
  * toggles back up.
+ *
+ * The footer shows the "Log out" affordance (S-120) BELOW "System health" and
+ * ABOVE "Collapse", but only when `authenticated`. Auth state arrives as a prop
+ * (threaded from the authenticated layout via AppShell) — the shell stays
+ * presentational and performs no auth I/O (SD2 preserved). When unauthenticated
+ * the item is absent entirely.
  */
 export interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  /** Whether the current request is authenticated — gates the Log out item. */
+  authenticated: boolean;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
   const pathname = usePathname();
   // Agents owns "/" and every "/agents/..." run-history route.
   const agentsActive = pathname === "/" || pathname.startsWith("/agents");
@@ -61,6 +70,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </div>
 
       <div className={styles.footer}>
+        {authenticated && <LogOutItem collapsed={collapsed} />}
         <button
           type="button"
           className={styles.toggle}

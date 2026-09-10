@@ -98,7 +98,8 @@ jobs:
       - name: Export local Supabase env
         # `supabase status -o env` prints API_URL / ANON_KEY / SERVICE_ROLE_KEY /
         # DB_URL for the running stack. Map them to the names the panel + tests
-        # read (SD2 server-only names — never NEXT_PUBLIC_*).
+        # read. SD2: only the anon URL + anon key get a NEXT_PUBLIC_ twin — the
+        # SERVICE_ROLE_KEY is exported ONLY under its server-only name.
         run: |
           set -euo pipefail
           supabase status -o env > /tmp/sb.env
@@ -110,6 +111,12 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
             echo "SUPABASE_DB_HOST=127.0.0.1"
             echo "SUPABASE_DB_PORT=54322"
+            # Publishable anon pair the auth clients (S-116) need at the CI job
+            # level so the spawned E2E `next dev` webServer has them (#170). This
+            # does NOT weaken SD2 — the service-role key is never given a
+            # NEXT_PUBLIC_ twin; only the anon URL + anon key are public.
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
           } >> "$GITHUB_ENV"
 
       - name: Lint (eslint)
@@ -121,19 +128,22 @@ jobs:
       - name: Typecheck (tsc)
         run: pnpm --filter panel run typecheck
 
-      # Privacy release-gate parser (S-115, SR2/AC6). `fly deploy` is NOT run in
-      # CI, but the gate's decision logic (panel/scripts/fly-privacy-check.mjs)
-      # is pure and unit-tested — run it by name here so a regression in the
-      # gate parser reddens CI independently of the broader suite. A public-IP
-      # fixture must make the parser report a non-private verdict.
-      - name: Privacy-gate parser test (S-115)
-        run: pnpm --filter panel exec vitest run --project unit fly-privacy-check
+      # Auth release-gate parser (S-122, SR2 inversion / PRD AC17). This
+      # REPLACES the S-115 privacy-gate steps: auth reverses "privacy is the
+      # only boundary" (D16), so the mechanical check is replaced, not removed.
+      # `fly deploy` is NOT run in CI, but the gate's decision logic
+      # (panel/scripts/panel-auth-check.mjs) is pure and unit-tested — run it by
+      # name here so a regression in the gate parser reddens CI independently of
+      # the broader suite. A protected-path-200 / SSE-200 / successful-signup /
+      # missing-env fixture must make the parser report a failing verdict.
+      - name: Auth-gate parser test (S-122)
+        run: pnpm --filter panel exec vitest run --project unit panel-auth-check
 
       # Static-check the release-gate shell script itself (shellcheck ships on
       # the GitHub Ubuntu runner). The parser is unit-tested above; this catches
       # shell-level regressions in the wrapper that invokes it.
-      - name: Shellcheck the privacy-gate script (S-115)
-        run: shellcheck scripts/verify-fly-private.sh
+      - name: Shellcheck the auth-gate script (S-122)
+        run: shellcheck scripts/verify-panel-auth.sh
 
       # Warm up Supabase Realtime before the Layer 2.5 + E2E branch: right after
       # `db reset` a cold Realtime can flake the first subscription (stream-e2e,

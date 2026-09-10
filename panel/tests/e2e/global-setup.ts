@@ -28,6 +28,7 @@ import { Client } from "pg";
 import { resolveLocalSupabaseEnv } from "./fixtures/local-env";
 import { startAgentCoreStub, type AgentCoreStubHandle } from "./fixtures/agentcore-stub";
 import { AGENTCORE_STUB_PORT } from "./fixtures/stub-port";
+import { provisionTestOperator } from "./fixtures/auth";
 
 const READINESS_TIMEOUT_MS = Number(process.env.E2E_READINESS_TIMEOUT_MS ?? "60000");
 const POLL_INTERVAL_MS = 500;
@@ -216,6 +217,13 @@ export default async function globalSetup(): Promise<void> {
   process.env.SUPABASE_DB_HOST = env.SUPABASE_DB_HOST;
   process.env.SUPABASE_DB_PORT = env.SUPABASE_DB_PORT;
 
+  // The auth clients (S-116) and the middleware gate (S-117) read the
+  // NEXT_PUBLIC_* anon pair. Export them so the webServer (which reads
+  // process.env at launch) can create the cookie-backed auth client and the
+  // login/gate flow works end to end. These mirror the server URL/anon key.
+  process.env.NEXT_PUBLIC_SUPABASE_URL = env.SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = env.SUPABASE_ANON_KEY;
+
   const deadline = Date.now() + READINESS_TIMEOUT_MS;
 
   // 1. Optionally reset to the seeded baseline. This is OPT-IN
@@ -262,6 +270,12 @@ export default async function globalSetup(): Promise<void> {
   // 3c. Warm up Realtime so the first live-tail scenario does not race a cold
   //     subscription (E2E runs with retries:0). Explicit readiness wait.
   await warmUpRealtime(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+
+  // 3d. Provision the test operator user for the S-119 auth scenarios. The auth
+  //     gate is active, so every scenario needs a real account to sign in with.
+  //     Operator accounts are created in the dashboard in production — never
+  //     seeded by a migration — so the E2E suite provisions its own here.
+  await provisionTestOperator(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
   // 4. Start the AgentCore stub on its fixed port; the config points the SDK at it.
   const stub = await startAgentCoreStub(AGENTCORE_STUB_PORT);

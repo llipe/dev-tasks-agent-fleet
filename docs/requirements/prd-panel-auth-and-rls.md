@@ -5,12 +5,73 @@
 | Version | Date       | Summary         | Author             |
 | ------- | ---------- | --------------- | ------------------ |
 | 1.0     | 2026-08-27 | Initial version. Implements the "Supabase Auth with allowlist" backlog item from [`prd-agent-fleet-panel-v2.md`](prd-agent-fleet-panel-v2.md) §10, retires R1, and replaces the deny-all RLS posture (D11) with identity-based policies. Includes the two hardening items surfaced by the deny-all analysis (explicit `REVOKE`, `security_invoker` on `v_runs`). | product-engineer |
+| 1.1     | 2026-09-09 | **Status changed to DEFERRED — desired future direction, not currently implemented.** A simpler first step was chosen instead: email + password authentication, specified in [`prd-panel-password-auth.md`](prd-panel-password-auth.md) and being implemented as stories S-116…S-123 (issues #155–#162). This PRD's scope — GitHub OAuth, the allowlist, `viewer`/`operator` roles, identity-based RLS replacing deny-all, `runs.triggered_by` attribution, and SSE-relay removal — remains the intended evolution but is **not** being built now. No requirement was deleted; see the new §0 for the relationship between the two PRDs and what changed underneath this one. | product-engineer |
 
-> **Status: awaiting confirmation on five decisions.** This PRD proposes concrete answers rather than leaving blanks, because each blank would block the spec. The proposals are marked **[PROPOSED]** and listed together in §18. Confirm or override before the spec is generated.
+> ## ⚠️ Status: DEFERRED — future direction, not currently implemented
+>
+> This PRD describes the **desired end state** for panel authentication and authorization. It is **not** the implementation in progress.
+>
+> The panel is instead getting a **simpler first iteration** — email + password sign-in — specified in [`prd-panel-password-auth.md`](prd-panel-password-auth.md) (stories S-116…S-123, issues #155–#162). That decision was made deliberately: password auth closes the "no authentication at all" gap (risk **R1**, decision **D16**) with a much smaller surface, and does not require touching RLS, the data model, or the SSE relay.
+>
+> Everything in this document remains wanted. Nothing here is cancelled. But the five open decisions in §18 are **not** being resolved yet, and this PRD **MUST NOT** be used to generate a specification until it is reactivated. See **§0** for what the password-auth iteration already delivered, what this PRD still adds on top, and which assumptions in it have gone stale.
 
 ---
 
-## 1. Executive Summary
+## 0. Relationship to the shipped password-auth iteration
+
+This section exists because this PRD was written (2026-08-27) **before** a simpler authentication iteration was chosen. It records what is already covered elsewhere, what this PRD still uniquely adds, and which of its assumptions have gone stale — so that reactivating it does not start from a false baseline.
+
+### 0.1 Two PRDs, one panel — division of scope
+
+| Concern | Password auth (shipping now) | This PRD (deferred) |
+| --- | --- | --- |
+| Sign-in mechanism | Email + password (`signInWithPassword`) | **GitHub OAuth** — explicitly no password storage |
+| Session transport | Cookie-based via `@supabase/ssr` + middleware | Same foundation (reusable) |
+| Who may sign in | Anyone with an account the operator created in the Supabase dashboard; **public signups disabled and gate-verified** | **Explicit allowlist** — authentication proves identity, the allowlist grants access |
+| Roles | None — single implicit operator | **`viewer` / `operator`** — read vs. read + invoke |
+| RLS posture | **Unchanged: deny-all (D11)**, with a test proving it was not loosened | **Replaced** by identity-based policies |
+| Data reads | Server-side via the service-role client | Direct from the browser under RLS |
+| Live log tail | SSE relay **kept**, gated by the auth middleware | SSE relay **removed** — authenticated RLS makes a direct browser subscription safe |
+| `runs.triggered_by` | Untouched (constant) | Carries `auth.uid()` — real audit trail |
+| `v_runs` / `REVOKE` hardening | Not addressed | `security_invoker = true` + explicit `REVOKE` |
+| Fly app public | **Yes** — public exposure is the final isolated step (S-123) | Explicitly a non-goal (§10) — precondition only |
+
+### 0.2 What the password-auth iteration already delivers
+
+Reactivating this PRD does **not** require rebuilding these — they are foundations the OAuth work can sit on top of:
+
+- `@supabase/ssr` cookie-session clients (browser + server), separate from the service-role data client
+- `middleware.ts` as the single authorization chokepoint, with `getClaims()`-based verification (never `getSession()`)
+- Route classification (302 for UI routes, 401 for `/api/**` and the SSE stream)
+- Open-redirect-safe post-login redirect (`safeRedirectTarget`)
+- A Nocturne-styled `/login` screen and POST-only logout with a sidebar affordance
+- The `app/(panel)/` route group separating authenticated routes from the login screen
+- A fail-closed release gate asserting the auth boundary holds on the deployed app, including that public signups are rejected
+
+### 0.3 Assumptions in this PRD that are now stale
+
+These **MUST** be re-examined before this PRD is used to generate a spec:
+
+1. **"The panel is not publicly reachable."** No longer true once S-123 lands — the Fly app becomes public behind the login gate. This PRD's §10 non-goal ("making the Fly app public") is therefore already overtaken, and its threat model must be re-read assuming an internet-facing login endpoint.
+2. **"No authentication UI exists."** False once S-119 lands; a `/login` screen, a logout affordance, and the `DESIGN.md` §11.3 correction this PRD anticipated will already be done.
+3. **"R1 is open" / "D16 holds."** Both are resolved by the password-auth iteration. This PRD's framing of retiring R1 needs restating as *extending* authorization rather than introducing authentication.
+4. **Sign-in mechanism is an open choice.** A password provider will be enabled and in use. Adding GitHub OAuth becomes an *additional* provider decision — including whether password sign-in is then retained, disabled, or kept as a break-glass path (a new decision this PRD does not currently cover).
+5. **Session/JWT settings are Supabase defaults.** A 12-hour inactivity expiry will be configured, and the project is confirmed to use **asymmetric ES256 (EC P-256)** signing keys, so `getClaims()` verifies locally via JWKS.
+6. **"The SSE relay can be removed."** Still architecturally true under identity-based RLS, but the relay will by then be a tested, gated component with client-side reconnect semantics. Removal becomes a deliberate refactor with its own regression surface, not a simplification that falls out for free.
+
+### 0.4 Reactivation checklist
+
+Before generating a specification from this PRD:
+
+- [ ] Confirm the five §18 decisions (still unresolved)
+- [ ] Decide the fate of password sign-in once OAuth exists (retain / disable / break-glass)
+- [ ] Re-read §17 threat model against a **public** panel rather than a private one
+- [ ] Re-scope §10 — "making the Fly app public" will already be done
+- [ ] Re-validate the RLS policy matrix (§9) against the schema as it stands then
+- [ ] Treat SSE-relay removal as an explicit refactor story with regression coverage
+- [ ] Update this PRD's changelog and lift the DEFERRED banner
+
+---
 
 The panel currently has no user authentication (D16), and its only security boundary is that the Fly app is not publicly reachable — a boundary that a single future deploy could silently remove. This feature adds Supabase Auth with a GitHub OAuth provider and an explicit allowlist, then replaces the deny-all RLS posture with identity-based policies, retiring risk R1 and unlocking the secondary persona (small-team members) described in `product-context.md` §3.
 
@@ -197,7 +258,7 @@ erDiagram
 
 ## 10. Non-Goals (Out of Scope)
 
-- **Making the Fly app public.** This feature is the *precondition*, not the act. Going public needs its own decision covering rate limiting on the invoke route, abuse monitoring, and a review of what an authenticated-but-hostile allowlisted user could do. Bundling them would ship two risky changes as one.
+- **Making the Fly app public.** This feature is the *precondition*, not the act. Going public needs its own decision covering rate limiting on the invoke route, abuse monitoring, and a review of what an authenticated-but-hostile allowlisted user could do. Bundling them would ship two risky changes as one. **(Stale as of 2026-09-09 — see §0.3: the password-auth iteration makes the app public in S-123, so this non-goal is already overtaken.)**
 - **Multi-tenancy.** Single GitHub organization, single installation. No tenant isolation, no org scoping.
 - **Per-repository or per-agent permissions.** `viewer`/`operator` is global. `agent_repository_settings` remains backlog.
 - **SSO, SAML, MFA, or session-length policy.** Supabase Auth defaults are accepted.

@@ -1,0 +1,58 @@
+/* LoginForm — /DESIGN.md §5 layout + §3 primitives. Token-only CSS Module. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Generic credential/error region — rendered above the fields (AC5/AC10). */
+.alert {
+  border: 1px solid color-mix(in srgb, var(--st-fail) 35%, transparent);
+  background: color-mix(in srgb, var(--st-fail) 10%, transparent);
+  color: var(--color-text);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+}
+
+/* Full-width primary sign-in button. */
+.submit {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+/* Footer row: dead "Forgot password?" + region tag. */
+.footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Dead link — looks like a link, but is a non-actionable span (AC16). */
+.deadLink {
+  color: var(--faint);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  cursor: not-allowed;
+}
+
+.region {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.finePrint {
+  color: var(--faint);
+  font-family: var(--font-body);
+  font-size: 11px;
+  margin: 0;
+}

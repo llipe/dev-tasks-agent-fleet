@@ -5,7 +5,9 @@
 | Version | Date       | Summary                                                                                         | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-08-26 | Initial version. Extracted from high-fidelity prototype at `/docs/prototype/` (Nocturne DS). Documents design system, tokens, component inventory, layout architecture, screen specifications, interaction patterns, and formatting conventions. | product-engineer |
-| 1.1     | 2026-09-04 | Resolved the three self-contradictions the S-105 audit found in this document ([`workstream/fidelity-report-S-105.md`](workstream/fidelity-report-S-105.md) drift D1–D3), each in favor of the single consistent reading. **D1 — status-pill tint is a uniform 14%** for every status; §8.1 previously gave `running`/`queued` 16% while §3.4 specified 14% for all, with no rationale for the exception. **D2 — pulse cadence is 1.6s everywhere**, including `queued`, which §8.1 alone put at 1.4s. **D3 — §7.1 now defines one relative-time form, not two**; the "Dashboard last run — short relative" row (`14m ago`) is removed, so the run history table and the dashboard share `formatRelative`, and a screen never formats a relative time itself. All three now match the implementation shipped in S-105, so no code changes: this is the document catching up to a codebase that had already resolved the ambiguity the only way it could. Decided before Wave 3 started, because D3 was S-107 scope. | product-engineer |
+| 1.1     | 2026-09-04 | Resolved the three self-contradictions the S-105 audit found in this document ([`workstream/archive/fidelity-report-S-105.md`](workstream/archive/fidelity-report-S-105.md) drift D1–D3), each in favor of the single consistent reading. **D1 — status-pill tint is a uniform 14%** for every status; §8.1 previously gave `running`/`queued` 16% while §3.4 specified 14% for all, with no rationale for the exception. **D2 — pulse cadence is 1.6s everywhere**, including `queued`, which §8.1 alone put at 1.4s. **D3 — §7.1 now defines one relative-time form, not two**; the "Dashboard last run — short relative" row (`14m ago`) is removed, so the run history table and the dashboard share `formatRelative`, and a screen never formats a relative time itself. All three now match the implementation shipped in S-105, so no code changes: this is the document catching up to a codebase that had already resolved the ambiguity the only way it could. Decided before Wave 3 started, because D3 was S-107 scope. | product-engineer |
+| 1.2     | 2026-09-09 | Added **§5.5 Login (`/login`)** to the screen specifications (Story S-119 / issue #158). Documents the panel's only public, shell-free screen: the centered Nocturne card, the brand row reusing the §4.1 sidebar mark + wordmark, the "Sign in" heading + invitation-only subtitle, the faded rule, the `EMAIL`/`PASSWORD` fields with the keyboard-operable `SHOW`/`HIDE` toggle (`aria-pressed`, defaults masked), the full-width primary Sign in button with its pending/disabled state, the `role="alert"` region carrying the single generic anti-enumeration credential message, the footer row with the **dead** `aria-disabled` "Forgot password?" non-link and the monospace region tag, and the 12-hour session fine print. Token-only CSS Modules, label-associated fields, `:focus-visible` rings. Documentation catching up to the screen shipped in S-119 — no new visual token or component introduced (reuses `Input`/`Button`/`KLabel` and the §4.1 brand pattern). | developer |
+| 1.3     | 2026-09-09 | Added the **sidebar footer Log out affordance** to **§4.1 App Shell** (Story S-120 / issue #159). Documents the footer's two stacked controls and their order — **Log out below "System health" and above "Collapse"** — sharing the footer-control grid (icon + label, icon-only when collapsed). Log out uses the Phosphor `Power` icon (§10) and is a **POST-only** `<form action="/api/auth/logout">` submit button (a GET logout is CSRF-triggerable); the accessible name "Log out" is preserved in the collapsed icon-only state; token-only CSS, global `:focus-visible` ring. **Visibility gate:** the item renders only when the request is authenticated and is absent when unauthenticated, with auth state passed into the shell as a server-provided prop (the authenticated route-group layout computes it) — the shell performs no auth I/O (SD2 preserved). Documentation catching up to the affordance shipped in S-120 — no new visual token or component introduced (reuses the §4.1 footer `.toggle` grid pattern and the `Power` icon already in §10). | developer |
 
 ---
 
@@ -373,6 +375,15 @@ border-radius: 50%;
 - Body bg: `color-mix(in srgb, var(--color-bg) 88%, #000)`
 - Border between sidebar and content: `1px solid var(--rule)`
 
+#### Sidebar footer — Log out (authenticated only)
+
+The sidebar footer holds two controls, stacked in this order, sharing the footer-control grid pattern (icon + label, icon-only when collapsed):
+
+1. **Log out** — the session-ending affordance, shown **below "System health" and above "Collapse"**. It uses the Phosphor `Power` icon (§10) and is a plain `<form method="post" action="/api/auth/logout">` submit button (POST-only: a GET logout is CSRF-triggerable and can be fired by a prefetcher). The accessible name stays "Log out" in both expanded and collapsed states, so the icon-only collapsed control remains labeled. It reuses the footer `.toggle` grid + hover tint, token-only, and the global `:focus-visible` accent ring.
+2. **Collapse / Expand** — the existing sidebar toggle (`«`/`»`, `Cmd/Ctrl+\`).
+
+Visibility: **Log out renders only when the request is authenticated, and is absent entirely when unauthenticated.** Authentication state is passed into the shell as a server-provided prop (the authenticated route-group layout computes it via the auth-server client) — the shell performs no auth I/O itself (SD2 preserved).
+
 ### 4.2 Run Detail (full-height, no outer scroll)
 
 ```
@@ -451,6 +462,23 @@ Three density variants to choose from (or offer as a view toggle):
 - Schema preview toggle
 - Footer: API hint + Cancel + Run button
 - Success state: animated confirmation with run ID and link to detail
+
+### 5.5 Login (`/login`)
+
+The only public screen — rendered **outside** the app shell (no sidebar, no top bar), on the page background, as a single centered card (`--color-surface`, `--radius-lg`, `--shadow-lg`, max-width ~360px). Reached when the auth gate (S-117) redirects an unauthenticated request; an already-authenticated visit redirects to `/`.
+
+- **Brand row:** reuses the sidebar brand markup pattern — the accent-bordered mark with its glowing dot + the "Agent Fleet" wordmark (§4.1).
+- **"Sign in" heading:** h-scale heading, weight 500 (§2.6).
+- **Invitation subtitle:** `--muted`, ~12.5px body — invitation-only, contact an administrator.
+- **Faded rule:** the Nocturne fade-to-transparent divider (§1.1).
+- **`EMAIL` field:** `KLabel` + `Input` (`type="email"`, `autoComplete="email"`, placeholder `you@company.com`).
+- **`PASSWORD` field:** `KLabel` + `Input` (`autoComplete="current-password"`) with a **`SHOW`/`HIDE` toggle** right-aligned on the label row — a text button (accent, klabel-scale), keyboard-operable, `aria-pressed` reflecting the revealed state; the field **defaults to masked**.
+- **Sign in button:** `Button` `variant="primary"`, **full width**; disabled and showing a pending label while submitting (prevents double submit).
+- **Error region:** a `role="alert"` panel above the fields, tinted with `--st-fail`, carrying the **single generic** "Invalid email or password." message — unknown-email and wrong-password are indistinguishable (anti-enumeration).
+- **Footer row:** a **dead "Forgot password?"** control — a styled non-link `<span>` with `aria-disabled`, `--faint`, `not-allowed` cursor (never an `<a href="#">`, never activatable) — and a monospace `· <region>` tag (`--faint`, non-secret display value).
+- **Fine print:** "Sessions expire after 12 hours of inactivity." (`--faint`).
+
+Styling is token-only CSS Modules (Nocturne token discipline). Fields are label-associated, the form is semantic, and focus rings use the global `:focus-visible` accent ring.
 
 ---
 
@@ -623,6 +651,7 @@ Use **Phosphor Icons** (https://phosphoricons.com) throughout, rendered as inlin
 | ⑃ | Repositories | `GitBranch` |
 | ⚙ | Settings | `GearSix` |
 | ◈ | System health | `Heartbeat` |
+| ⏻ | Log out (sidebar footer, §4.1) | `Power` |
 | « / » | Collapse/expand | `CaretLeft` / `CaretRight` |
 | › | Row chevron | `CaretRight` |
 | ✕ | Close | `X` |

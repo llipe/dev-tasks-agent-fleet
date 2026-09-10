@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 
 /**
- * Page-wiring test for the dashboard route (`app/page.tsx`).
+ * Page-wiring test for the dashboard route (`app/(panel)/page.tsx`).
  *
  * The `DashboardClient` component tests already cover both invoke-route states.
  * What THIS asserts is the wiring the component tests cannot: that the page
@@ -35,7 +35,7 @@ vi.mock("@/lib/supabase/queries", () => ({
   }),
 }));
 
-import DashboardPage from "@/app/page";
+import DashboardPage from "@/app/(panel)/page";
 
 afterEach(cleanup);
 
