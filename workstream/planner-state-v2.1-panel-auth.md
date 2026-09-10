@@ -24,11 +24,11 @@
 
 ## Current Position
 
-- Phase A COMPLETE and delivered. Consolidated PR #170 (integration/v2.1-panel-auth → main) is OPEN, READY for review, MERGEABLE. Awaiting USER review + approval + merge (planner MUST NOT merge to main).
+- Phase A COMPLETE and delivered. Consolidated PR #170 (integration/v2.1-panel-auth → main) is OPEN, READY, MERGEABLE/CLEAN, **all CI checks GREEN** (run 34475964894: Panel JS/TS + Python 3.13/3.14 all success). Awaiting USER review + approval + merge (planner MUST NOT merge to main).
+- CI E2E failure (run 34406811655) diagnosed + fixed: the Playwright webServer (`next dev`) didn't receive the NEXT_PUBLIC_SUPABASE_* anon pair in CI → `/login` 500'd (AuthConfigError) → auth.setup timed out. Fixed in PR #171 (merged into integration): CI exports the anon pair to $GITHUB_ENV + playwright.config forwards it explicitly via webServer.env (SD2 preserved — service-role key never NEXT_PUBLIC_). E2E now 19/19 green locally and CI fully green.
 - Phase 5 gates all green: qa-engineer coverage_gate PASS; verifier PRD-level audit High fidelity (17/17 ACs, 4 Minor/Intended drifts routed, non-blocking, posted to #161); technical-writer drift-fixed (commit 1731501).
-- Integration branch is 17 commits ahead of origin/main, zero divergence — merges cleanly.
-- Last merged story PR: #169 (S-122). Consolidated PR: #170.
-- Integration branch HEAD: 1731501
+- Last merged into integration: #171 (CI fix). Story PRs #163-#169 all merged. Consolidated PR: #170.
+- Integration branch HEAD: 96a8b7c
 - Final local branch state: integration/v2.1-panel-auth (planner invariant).
 
 ## Phase 5 / Handoff Notes
