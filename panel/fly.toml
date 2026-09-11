@@ -1,6 +1,34 @@
 app = "dt-agent-fleet-panel"
 primary_region = "iad"
 
+# ============================================================================
+# SECURITY BOUNDARY — this app is PUBLIC over HTTPS. LOGIN is the boundary.
+# ============================================================================
+# Before the auth wave (S-116…S-122) the panel had no login at all, so its only
+# boundary was network privacy (SR2 / D16) and this file deliberately declared
+# NO public service. That decision is REVERSED: the panel now requires a
+# Supabase password login, enforced fail-closed at a single chokepoint
+# (panel/middleware.ts — protected UI redirects 302 -> /login, api/SSE returns
+# 401), and the boundary is asserted BY OBSERVATION against the deployed app by
+# the auth release gate `scripts/verify-panel-auth.sh`.
+# See docs/adr/ADR-007-auth-release-gate-replaces-privacy-gate.md.
+#
+# The [http_service] block below exposes this app to the internet ON PURPOSE
+# (Phase B / Story S-123, issue #162). Two rules travel with it:
+#
+#   1. Public signups MUST stay DISABLED in Supabase Auth (PRD AC17 / R9). The
+#      Auth endpoint is internet-reachable, so an open signup lets anyone
+#      self-register into the agent-invoke surface. The gate's check 4 fails the
+#      release if a signUp succeeds — a successful signup is a hard blocker.
+#
+#   2. If any gate check fails, CONTAIN FIRST, diagnose second:
+#        fly ips release <public-addr> -a dt-agent-fleet-panel
+#      That makes the app private again immediately, with no redeploy. Procedure:
+#      docs/runbooks/panel-deployment.md § "Phase B rollback / containment".
+#
+# Secrets are never declared here — see the [env] note below.
+# ============================================================================
+
 [build]
   # Fly resolves [build] paths relative to THIS fly.toml's directory (panel/),
   # NOT the build-context root. The Dockerfile + .dockerignore live at the repo
@@ -12,23 +40,22 @@ primary_region = "iad"
 
 [env]
   # Non-secret runtime config only. Secrets (SUPABASE_SERVICE_ROLE_KEY,
-  # AGENT_RUNTIME_ROLE_ARN) are set with `fly secrets set` and never appear
-  # here (SD2/D12/D15). PORT/HOSTNAME match the Dockerfile.
+  # AGENT_RUNTIME_ROLE_ARN, and the Supabase URL/key pair) are set with
+  # `fly secrets set` and never appear here (SD2/D12/D15). PORT/HOSTNAME match
+  # the Dockerfile.
   NODE_ENV = "production"
   PORT = "8080"
   HOSTNAME = "0.0.0.0"
   AWS_REGION = "us-east-1"
 
-# NO [http_service] / NO [[services]] with public ports — see the banner above.
-# The VM listens on the internal port for private-network access only.
-
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-
 [http_service]
+  # PUBLIC HTTPS service — intentional, see the boundary banner above.
   internal_port = 8080
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
   min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

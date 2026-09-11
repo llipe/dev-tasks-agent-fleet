@@ -487,22 +487,57 @@ command without a redeploy.
 
 | Task | AC | Item | Evidence (names/ARNs/timestamps only — no secrets) | Result |
 |------|----|------|-----------------------------------------------------|--------|
-| 1.4/1.5 | AC1 | `Dockerfile` + `fly.toml` committed; no `[http_service]`/public ports; SR2/D16 comment | committed on `story/S-115-fly-deploy-oidc`; image builds + boots (developer-verified) | ☐ |
-| 1.9 | AC2 | OIDC IdP provider ARN | | ☐ |
-| 1.9 | AC2 | IAM role ARN; policy resource = runtime ARN (not `*`) | | ☐ |
-| 1.10 | AC3/AC8 | `fly secrets list` — names only; NO AWS key present | | ☐ |
-| A5 | S-122 | auth env NAMES present; **auth gate** exit 0 against PRIVATE host (`verify-panel-auth.sh`) | | ☐ |
-| A4 | S-122 | private, unauth: protected UI → 302 /login; SSE → 401; login+logout work | | ☐ |
-| A5 | AC17 | signUp REJECTED (signups OFF); any created probe account deleted | | ☐ |
-| A3 | S-122 | deployed app still PRIVATE — `fly ips list` shows only 6PN (no public IP) | | ☐ |
-| 1.13 | AC4 | OIDC socket response shape (key names) | | ☐ |
-| 1.13 | AC4 | normalized `sub` claim string | | ☐ |
-| 1.14 | AC4 | `credentials.ts` matches SD9 (no change) / corrected | | ☐ |
-| 1.15 | AC5 | `DurationSeconds 900 ≤ MaxSessionDuration` (value) | | ☐ |
-| 1.16 | AC8 | live run `queued → running`; run id + timestamps; live log tail | | ☐ |
-| 1.16 | AC8 | deployed panel logs `credentialSource(): fly-oidc` | | ☐ |
+| 1.4/1.5 | AC1 | `Dockerfile` + `fly.toml` committed; no `[http_service]`/public ports; SR2/D16 comment | committed on `story/S-115-fly-deploy-oidc`; image builds + boots (developer-verified) | ☑ |
+| 1.9 | AC2 | OIDC IdP provider ARN | operator action (Impl Step 2) — not captured in this close-out | ☐ |
+| 1.9 | AC2 | IAM role ARN; policy resource = runtime ARN (not `*`) | operator action (Impl Step 2) — not captured in this close-out | ☐ |
+| 1.10 | AC3/AC8 | `fly secrets list` — names only; NO AWS key present | 2026-09-11: names present + Deployed — `AGENT_RUNTIME_ROLE_ARN`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_URL`. No `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` present | ☑ |
+| A5 | S-122 | auth env NAMES present; **auth gate** exit 0 against PRIVATE host (`verify-panel-auth.sh`) | not recorded on the private host — exposure was enabled out of order in PR #174 before a private gate run (see Deviation below); superseded by the PUBLIC-host run below | ☐ (deviation) |
+| A4 | S-122 | private, unauth: protected UI → 302 /login; SSE → 401; login+logout work | not recorded on the private host (see Deviation); public-host equivalents recorded in the Phase B rows below | ☐ (deviation) |
+| A5 | AC17 | signUp REJECTED (signups OFF); any created probe account deleted | see Phase B row (verified live against the public Auth endpoint) | ☑ |
+| A3 | S-122 | deployed app still PRIVATE — `fly ips list` shows only 6PN (no public IP) | N/A — the app is intentionally PUBLIC as of PR #174 (this is Phase B); see the go-public rows | n/a |
+| 1.13 | AC4 | OIDC socket response shape (key names) | operator action (Impl Step 5, OQ1) — **still open**, requires a live Machine probe | ☐ |
+| 1.13 | AC4 | normalized `sub` claim string | operator action (Impl Step 5, OQ1) — **still open** | ☐ |
+| 1.14 | AC4 | `credentials.ts` matches SD9 (no change) / corrected | pending OQ1 probe | ☐ |
+| 1.15 | AC5 | `DurationSeconds 900 ≤ MaxSessionDuration` (value) | pending OQ1 probe | ☐ |
+| 1.16 | AC8 | live run `queued → running`; run id + timestamps; live log tail | earlier live invocation recorded in `issue-89-live-verification.md` (run `a7203345-…`, `running` 2026-09-06 20:12:31 UTC) | ☑ (via #89) |
+| 1.16 | AC8 | deployed panel logs `credentialSource(): fly-oidc` | operator action — not captured in this close-out | ☐ |
 | 1.17 | AC9 | OQ2 — cite #89 (settled 2026-09-06) or record residual | see `issue-89-live-verification.md` | ☑ (via #89) |
-| — | SR9 | live service-role smoke read returns rows | | ☐ |
+| — | SR9 | live service-role smoke read returns rows | corroborated by the signed-in walkthrough (dashboard renders seeded agents) — operator to confirm at 1.6 | ☐ |
+
+### Phase B — go-public evidence (S-123 / #162)
+
+Exposure was enabled by **PR #174** (`[http_service]` added on the `fix/logout-redirect-relative-location`
+branch), with a dedicated public IPv4 **137.66.51.207** allocated. The boundary was then verified
+retroactively (this close-out).
+
+| Task | AC | Item | Evidence (no secrets) | Result |
+|------|----|------|------------------------|--------|
+| 1.1 | AC / checklist | Supabase config: Email ON, **public signups OFF**, 12h inactivity, operator user exists | operator-confirmed 2026-09-11; independently corroborated by gate check 4 | ☑ |
+| 1.2 | AC17 | **auth release gate against the PUBLIC host** `https://dt-agent-fleet-panel.fly.dev` | 2026-09-11 — exit 0: (2/4) protected UI `/` → **302 /login** PASS; (3/4) SSE → **401** PASS; (4/4) signUp disposable probe → **REJECTED** PASS. Check 1 used the documented `PANEL_AUTH_ENV_NAMES` override due to the parser defect fixed in task 1.27 | ☑ |
+| 1.4 | AC11 | `panel/fly.toml` declares a public HTTPS service; banner states **login** (not privacy) is the boundary, cites ADR-007 | committed on this branch (commit `3832e30`); `fly config validate` passes; `[http_service]` values byte-identical to deployed (no redeploy) | ☑ |
+| 1.13 | — | public IPv4 allocated; app reachable over HTTPS | `137.66.51.207` (allocated via PR #174, ~23h before verification) | ☑ |
+| 1.7 | — | unauthenticated public denial (raw `curl`) | operator to capture: `curl -i https://dt-agent-fleet-panel.fly.dev/` → 302 `/login?redirect=%2F`; `…/api/runs/00000000-…/events/stream` → 401 | ☐ (operator) |
+| 1.6 | — | signed-in public walkthrough — dashboard, run history, run detail, live tail, logout | operator (browser, live) | ☐ (operator) |
+| 1.17 | — | containment path documented + reversible in one command | `fly ips release 137.66.51.207 -a dt-agent-fleet-panel` (Phase B rollback §) | ☑ |
+
+### Deviation from the prescribed Phase A → Phase B ordering (task 1.9)
+
+The story and this runbook prescribe that exposure (Phase B) be an isolated, operator-confirmed step
+taken **only after** the auth gate passes over the **private** network (Phase A), so that a public app
+never exists without a proven gate (spec §15.1, R10). **That ordering did not hold in execution.**
+Exposure was enabled in **PR #174** on the `fix/logout-redirect-relative-location` branch — not an
+isolated go-public PR — and a public IPv4 was allocated at that time. The auth gate was **not** run
+against the private host, and was first run against the **public** hostname on **2026-09-11** (task
+1.2, exit 0).
+
+**Residual risk, stated plainly:** for the window between the public-IP allocation (PR #174) and the
+first recorded public gate run on 2026-09-11 (~23 h), the auth boundary on the internet-reachable app
+was **unverified by the gate**. The middleware gate and login were deployed and in force during that
+window (the auth wave shipped in Phase A), so the exposure was behind login the whole time — but the
+mechanical release-gate confirmation (including the AC17 signups-rejected check on the public Auth
+endpoint) was retroactive, not a precondition of exposure as designed. This is recorded here rather
+than reconstructed as if the order held. The private-network Phase A gate run prescribed by the story
+was never captured and **cannot be recreated retroactively** now that the app is public.
 
 ### Auth-gate fail-demonstration — how to observe the gate failing live
 

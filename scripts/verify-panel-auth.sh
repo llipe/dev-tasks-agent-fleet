@@ -104,18 +104,26 @@ if [[ -n "${PANEL_AUTH_ENV_NAMES:-}" ]]; then
     process.stdout.write(JSON.stringify(names));
   ' "$PANEL_AUTH_ENV_NAMES")"
 elif command -v fly >/dev/null 2>&1 && [[ -n "$APP" ]]; then
-  # `fly secrets list` prints a table of NAMES + digests (never values). Extract
-  # the NAME column only. Fail-closed: if the call fails, leave the list empty
-  # so the env-name check fails.
-  if SECRETS_RAW="$(fly secrets list -a "$APP" 2>/dev/null)"; then
-    ENV_NAMES_JSON="$(printf '%s\n' "$SECRETS_RAW" | node -e '
-      const lines = require("fs").readFileSync(0, "utf8").split("\n");
-      const names = [];
-      for (const line of lines) {
-        const m = line.match(/^([A-Z][A-Z0-9_]+)\b/);   // NAME column: UPPER_SNAKE
-        if (m && m[1] !== "NAME") names.push(m[1]);
-      }
-      process.stdout.write(JSON.stringify(names));
+  # `fly secrets list` reports NAMES + digests (never values). Prefer the
+  # `--json` output (a stable contract, immune to the drawn-table column layout
+  # and its leading-space/`│`-separator rows that broke the original inline
+  # regex — #162 task 1.27); fall back to the table if this flyctl lacks --json.
+  # Name extraction is delegated to the unit-tested pure parser so the real
+  # flyctl output shape is covered by a regression test. Fail-closed: if the
+  # call fails, leave the list empty so the env-name check fails.
+  if SECRETS_JSON="$(fly secrets list --json -a "$APP" 2>/dev/null)" && [[ -n "$SECRETS_JSON" ]]; then
+    ENV_NAMES_JSON="$(SECRETS_RAW="$SECRETS_JSON" node -e '
+      import("'"$PARSER"'").then((m) => {
+        const names = m.extractSecretNames(process.env.SECRETS_RAW || "", { json: true });
+        process.stdout.write(JSON.stringify(names));
+      });
+    ')"
+  elif SECRETS_RAW="$(fly secrets list -a "$APP" 2>/dev/null)"; then
+    ENV_NAMES_JSON="$(SECRETS_RAW="$SECRETS_RAW" node -e '
+      import("'"$PARSER"'").then((m) => {
+        const names = m.extractSecretNames(process.env.SECRETS_RAW || "", { json: false });
+        process.stdout.write(JSON.stringify(names));
+      });
     ')"
   else
     echo "[panel-auth]   WARN — could not read 'fly secrets list' (check will fail-closed)." >&2

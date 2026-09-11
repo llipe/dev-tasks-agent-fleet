@@ -6,6 +6,7 @@
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-08-26 | Initial version. Reformatted from consolidated PRD (tmp) into foundation doc format. No scope or decision changes. | product-engineer |
 | 1.1     | 2026-08-26 | Translated to English. Introduced two-phase delivery model (Phase 1: backend + agent; Phase 2: panel UI). | product-engineer |
+| 1.2     | 2026-09-11 | §9 Key Constraints — corrected the stale "No authentication in v1 … implies not exposing the panel publicly" constraint (issue #162 / S-123). The panel now requires a Supabase password login (D16 reversed) and is deployed **public** over HTTPS with login as the security boundary, mechanically asserted by the auth release gate. Current-state correction only; the D16/R1 decision-record cleanup in the spec/PRD is tracked in the separate drift-reconciliation pass. | developer |
 
 ## 1. Executive Summary
 
@@ -74,7 +75,7 @@ Differentiator: the panel explicitly models the domain (agents, repos, runs, ste
 ## 9. Key Constraints
 
 - **Personal / small-team scale.** Minimal budget and operational footprint: Supabase (free/low tier), Fly.io, AWS pay-per-use. No dedicated infrastructure team.
-- **No authentication in v1** (explicit decision, not an oversight — see Risks in the specification). Implies not exposing the panel publicly without minimal mitigation.
+- **User authentication now exists (Phase 2 auth wave), and the panel is deployed public behind it.** The original v1 decision was *no* authentication (D16), which implied not exposing the panel publicly without mitigation. That decision has been **reversed**: the panel requires a Supabase email+password login (fail-closed middleware gate, `/login`, POST logout), and as of S-123 (issue #162) it is deployed **public** over HTTPS with **login as the security boundary**, mechanically asserted by the auth release gate (see the technical guidelines §5/§6/§13). Public signups are disabled (a release blocker). The historical D16/R1 decision-record cleanup in the spec/PRD is tracked separately (drift-reconciliation).
 - **AgentCore controls the container lifecycle.** The panel cannot kill or pause an execution in v1; it can only detect it as stale.
 - **No static AWS keys.** Explicit design constraint (D12): the front-end authenticates via Fly OIDC + `AssumeRoleWithWebIdentity`.
 - **Retrofitting historical logs is not viable.** `run_steps` must be emitted from the first agent in production, even if the v1 front-end only displays raw log, because you cannot reconstruct step structure over already-written logs.
