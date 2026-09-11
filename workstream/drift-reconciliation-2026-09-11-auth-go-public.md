@@ -1,5 +1,10 @@
 # Drift Reconciliation Handoff — auth go-public close-out (2026-09-11)
 
+> **STATUS: COMPLETED 2026-09-11** (branch `docs/drift-reconcile-auth-go-public`). All seven items
+> below were written back: PRD v2.5 (D1), spec v1.7 (D2/OQ1/OQ2/OQ3), DESIGN.md v1.4 (DESIGN-1/2).
+> OQ1 was intentionally left **open** (needs a live Machine probe) but re-framed. This file is
+> retained as the audit record of the pass.
+
 > **Owner:** `product-engineer` (via `activity-drift-reconciliation`). **Source:** issue #162 / S-123
 > close-out (branch `issue/162-go-public-close-out`, PR #175) + the Road A/B reconciliation pass.
 > **Nature:** decision-record write-backs to the **spec/PRD** documents. These are deliberately
