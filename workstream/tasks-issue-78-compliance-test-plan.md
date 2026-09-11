@@ -77,18 +77,18 @@ Python agent (`agents/dependency-update/app/dependencyUpdate/`). Gate: `make val
   - [x] 3.4 Verify Acceptance Criterion (#78 header): "36/36 ACs have ≥1 positive + ≥1 negative test, 0 gaps" is either **now true by measurement**, or **restated truthfully** with the deferred set explicitly listed and accepted — the issue must not close on an unverified claim. **RESTATED TRUTHFULLY: 30/36 automated, 6 deferred-to-runbook (listed), 0 unaccounted.**
   - [x] 3.5 Decide artifact location: if the plan/matrix are now the maintained record, move them from `workstream/archive/` back to `workstream/`; otherwise update in place and note they remain archived. **MOVED to `workstream/` via `git mv` (history preserved).**
 
-- [ ] 4.0 Close-out
+- [x] 4.0 Close-out
 
-  - [ ] 4.1 Post a summary comment to #78 (`--body-file`) stating the reconciled coverage (measured counts, accepted deferrals) and linking the updated artifacts.
-  - [ ] 4.2 If any code/test was written (2.x), that rides a PR with `Closes #78`; if the outcome is **documentation-only** (plan truth-up, no new tests), confirm with the user whether #78 closes via a docs PR or via the summary comment alone.
-  - [ ] 4.3 `qa-engineer` pass + `coverage_gate` recorded; `verifier` audit only if code/tests changed (a pure-docs reconciliation may not warrant a code audit — confirm at 4.2).
+  - [x] 4.1 Post a summary comment to #78 (`--body-file`) stating the reconciled coverage (measured counts, accepted deferrals) and linking the updated artifacts. **Posted (github-ops).**
+  - [x] 4.2 If any code/test was written (2.x), that rides a PR with `Closes #78`; if the outcome is **documentation-only** (plan truth-up, no new tests), confirm with the user whether #78 closes via a docs PR or via the summary comment alone. **User chose docs PR → PR #179 (`Closes #78`).**
+  - [x] 4.3 `qa-engineer` pass + `coverage_gate` recorded; `verifier` audit only if code/tests changed (a pure-docs reconciliation may not warrant a code audit — confirm at 4.2). **`coverage_gate: SKIPPED(documentation-only)`; verifier audit run anyway (workspace steering, non-skippable) → HIGH fidelity, D1 fixed inline, D2 optional→product-engineer; technical-writer drift `clean`.**
 
 ## Definition of Done
 
-- [ ] Actual AC-by-AC coverage measured against the shipped suite (task 1.1-1.2)
-- [ ] Scope decision taken **with the user** before writing tests (task 1.5) — no unilateral 82-case build
-- [ ] Approved backfill tests (if any) written and passing; `make validate` green
-- [ ] `test-plan` + `traceability-matrix` + `TESTING.md` reflect measured reality (no false "0 gaps")
-- [ ] Deferred ACs explicitly listed with rationale (real-infra → operator runbook)
-- [ ] Migration lifecycle — N/A, documented opt-out
-- [ ] #78 closed on a **verified** claim (measured or truthfully restated), reviewed/merged by the user
+- [x] Actual AC-by-AC coverage measured against the shipped suite (task 1.1-1.2)
+- [x] Scope decision taken **with the user** before writing tests (task 1.5) — no unilateral 82-case build
+- [x] Approved backfill tests (if any) written and passing; `make validate` green — **N/A: no backfill approved; suite unchanged & green (460 passed)**
+- [x] `test-plan` + `traceability-matrix` + `TESTING.md` reflect measured reality (no false "0 gaps")
+- [x] Deferred ACs explicitly listed with rationale (real-infra → operator runbook)
+- [x] Migration lifecycle — N/A, documented opt-out
+- [ ] #78 closed on a **verified** claim (measured or truthfully restated), reviewed/merged by the user — **awaiting user review/merge of PR #179**
