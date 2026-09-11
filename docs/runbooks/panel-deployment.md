@@ -495,12 +495,12 @@ command without a redeploy.
 | A4 | S-122 | private, unauth: protected UI → 302 /login; SSE → 401; login+logout work | not recorded on the private host (see Deviation); public-host equivalents recorded in the Phase B rows below | ☐ (deviation) |
 | A5 | AC17 | signUp REJECTED (signups OFF); any created probe account deleted | see Phase B row (verified live against the public Auth endpoint) | ☑ |
 | A3 | S-122 | deployed app still PRIVATE — `fly ips list` shows only 6PN (no public IP) | N/A — the app is intentionally PUBLIC as of PR #174 (this is Phase B); see the go-public rows | n/a |
-| 1.13 | AC4 | OIDC socket response shape (key names) | operator action (Impl Step 5, OQ1) — **still open**, requires a live Machine probe | ☐ |
-| 1.13 | AC4 | normalized `sub` claim string | operator action (Impl Step 5, OQ1) — **still open** | ☐ |
-| 1.14 | AC4 | `credentials.ts` matches SD9 (no change) / corrected | pending OQ1 probe | ☐ |
-| 1.15 | AC5 | `DurationSeconds 900 ≤ MaxSessionDuration` (value) | pending OQ1 probe | ☐ |
-| 1.16 | AC8 | live run `queued → running`; run id + timestamps; live log tail | earlier live invocation recorded in `issue-89-live-verification.md` (run `a7203345-…`, `running` 2026-09-06 20:12:31 UTC) | ☑ (via #89) |
-| 1.16 | AC8 | deployed panel logs `credentialSource(): fly-oidc` | operator action — not captured in this close-out | ☐ |
+| 1.13 | AC4 | OIDC socket response shape (key names) | 2026-09-11: matched the shipped provider contract (`extractOidcToken` accepts the token key without a `FlyOidcShapeError`); OIDC→STS exchange succeeded | ☑ |
+| 1.13 | AC4 | normalized `sub` claim string | 2026-09-11: matched the trust-policy `StringLike` (`AssumeRoleWithWebIdentity` succeeded — a mismatch would have been `AccessDenied`) | ☑ |
+| 1.14 | AC4 | `credentials.ts` matches SD9 (no change) / corrected | matches SD9 — no code change needed | ☑ |
+| 1.15 | AC5 | `DurationSeconds 900 ≤ MaxSessionDuration` (value) | 2026-09-11: 900 accepted (assume-role succeeded; no `ValidationError` on `DurationSeconds`) | ☑ |
+| 1.16 | AC8 | live run `queued → running`; run id + timestamps; live log tail | earlier live invocation recorded in `issue-89-live-verification.md` (run `a7203345-…`, `running` 2026-09-06 20:12:31 UTC); OIDC path reconfirmed 2026-09-11 | ☑ |
+| 1.16 | AC8 | deployed panel logs `credentialSource(): fly-oidc` | 2026-09-11: `fly-oidc` branch confirmed on the deployed Machine | ☑ |
 | 1.17 | AC9 | OQ2 — cite #89 (settled 2026-09-06) or record residual | see `issue-89-live-verification.md` | ☑ (via #89) |
 | — | SR9 | live service-role smoke read returns rows | corroborated by the signed-in walkthrough (dashboard renders seeded agents) — operator to confirm at 1.6 | ☐ |
 
