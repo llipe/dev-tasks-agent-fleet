@@ -117,7 +117,7 @@ AC-28 live, AC-33 sequencing, AC-36 — AC-36 already verified); 0 unaccounted.
 | ACs with real automated (unit/component) coverage | **30 (83%)** |
 | ACs real-infra, deferred-to-runbook (listed + accepted) | **6** — AC-1, AC-2, AC-12 (live), AC-28 (live), AC-33 (9-step sequencing), AC-36 (already verified) |
 | ACs unaccounted | **0** |
-| Shipped tests (collected) | 460 (450 test functions), 17 unit + 3 component modules |
+| Shipped tests (collected) | 460 (450 test functions), 18 unit + 3 component modules |
 | Runnable markers | `unit`, `component` (no `e2e`, no `fuzz`; `hypothesis` not a dependency) |
 
 ### v1.0 designed-case counts (reference only — not implemented as marked layers)
