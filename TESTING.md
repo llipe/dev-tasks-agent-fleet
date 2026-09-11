@@ -230,6 +230,17 @@ line while asserting nothing meaningful. Thresholds are a floor, not a goal.
 
 Source-to-test ratio: **most source modules now have tests** — the deterministic pipeline (`audit`, `classifier`, `eligibility`, `toolchain`, `validator`, `updater`, `pull_request`), the secret scrubber, credentials, and the LLM fix loop are all exercised. The remaining untested surface is `agent_reporter.py` (SDK, no committed tests) and `main.py` (orchestrator, coverage-excluded by convention). Ranked by residual risk: (1) `main.py` orchestration guards (inspection-only), (2) `agent_reporter.py` buffering/retry/`seq` behavior, (3) the **LLM output-quality** dimension of `fix_agent.py` (Layer 3 eval harness absent — the code path is tested, its semantic output is not), and (4) the security-negative auth cases in `credentials.py` (see below).
 
+> **AC-level coverage (issue #78 reconciliation, 2026-09-11).** The 36 PRD acceptance criteria for
+> the dependency-update agent were reconciled against this shipped suite. Measured result: **30/36 ACs
+> have real automated unit/component coverage; 6 are real-infra and deferred to the operator runbook**
+> (AC-1, AC-2 scaffold/deploy; the live halves of AC-12/AC-28; AC-33's full 9-step ordering — which is
+> the `main.py` "verified by inspection" gap ranked #1 above; and AC-36, already verified in
+> `docs/runbooks/issue-94-reaper-verification.md`). **0 ACs unaccounted.** The compliance test plan's
+> designed "E2E" (36) and "randomized/fuzz" (6) layers were **not** built as pytest layers: there is no
+> `e2e`/`fuzz` marker and `hypothesis` is not a dependency (decided #78 — invariants are covered by
+> table-driven unit tests, real-infra by the runbook). Authoritative per-AC mapping:
+> `workstream/traceability-matrix-dep-update-agent.md` v1.1 and `workstream/test-plan-dep-update-agent.md` v1.1.
+
 ### Database / reaper layer — structural gap (added issue #94; partly closed S-102/S-103)
 
 > **Update (S-102 / #115 and S-103 / #116).** Two facts this section originally asserted are now

@@ -3,8 +3,9 @@
 > **Mode:** Issue Mode. **Nature:** this is a **Design / governance** issue (label `documentation`),
 > not a code feature. It tracks the compliance test plan for the dependency-update agent (PRD v1.2:
 > 65 requirements / 36 ACs; Spec v1.0). Its artifacts already exist:
-> `workstream/archive/test-plan-dep-update-agent.md` and
-> `workstream/archive/traceability-matrix-dep-update-agent.md`.
+> `workstream/test-plan-dep-update-agent.md` and
+> `workstream/traceability-matrix-dep-update-agent.md` (moved back from `workstream/archive/`
+> in task 3.5, now the maintained record).
 
 ## Read this first — why this plan is "reconcile & decide", not "build"
 
@@ -44,37 +45,37 @@ Python agent (`agents/dependency-update/app/dependencyUpdate/`). Gate: `make val
 
 ## Relevant Files
 
-- `workstream/archive/test-plan-dep-update-agent.md` — the 82-case Design plan (to reconcile; may move back to `workstream/` root while active, or be updated in place and left archived).
-- `workstream/archive/traceability-matrix-dep-update-agent.md` — the 36-AC → test mapping (to re-verify against real tests).
+- `workstream/test-plan-dep-update-agent.md` — the Design plan, reconciled to measured reality (v1.1) and moved back from `workstream/archive/` (task 3.5).
+- `workstream/traceability-matrix-dep-update-agent.md` — the 36-AC → real-test mapping, reconciled (v1.1) and moved back from `workstream/archive/` (task 3.5).
 - `agents/dependency-update/app/dependencyUpdate/tests/**` — the shipped suite (source of truth for actual coverage).
 - `agents/dependency-update/app/dependencyUpdate/pyproject.toml` — markers (would gain `e2e`/`fuzz` only if the decision gate approves those layers).
 - `TESTING.md` — the coverage/gaps record to update so it matches reality.
 
 ## Tasks
 
-- [ ] 1.0 DECISION GATE — reconcile the #78 plan against the shipped suite (produces the scope for everything below)
+- [x] 1.0 DECISION GATE — reconcile the #78 plan against the shipped suite (produces the scope for everything below)
 
-  - [ ] 1.1 Build an **actual coverage map**: for each of the 36 ACs in `traceability-matrix-dep-update-agent.md`, mark whether a real, runnable test asserts it today (name the test), and at which layer (unit / component). Use the shipped `tests/**` as truth, not the plan's claims.
-  - [ ] 1.2 Classify each AC into one of: **(a) covered** (cite the test), **(b) cheap backfill** (a unit/component test that should exist and can be added without real infra), **(c) defer** (genuinely needs real AWS/Supabase/GitHub — belongs to the manual `issue-77-deployment-e2e.md` runbook, not a pytest `e2e` marker), or **(d) randomized** (hypothesis property test — decide worth-it per AC).
-  - [ ] 1.3 Decide the **randomized/fuzz** question explicitly: does the agent adopt `hypothesis` for the 6 planned property tests (classifier range parsing, scrubber, eligibility invariants), or are those covered adequately by table-driven unit tests? Record the decision + rationale (adding `hypothesis` is a new dev dependency → `pip-audit --strict` must stay green).
-  - [ ] 1.4 Decide the **E2E** question explicitly: confirm the repo's position that real-infra agent verification lives in the operator runbook (manual), so #78's "36 E2E scenarios" are **reframed** as the runbook + the unit/component coverage of the same ACs — NOT a new `pytest -m e2e --run-e2e` harness — unless the user wants that harness built (large, real-credentials, out of proportion to a single-operator tool).
-  - [ ] 1.5 **Present the reconciliation summary to the user and get an explicit scope decision** before writing any test or editing the plan: which (b) backfills to write, whether to adopt hypothesis (d), and confirmation that (c) stays runbook-deferred. This is the gate — 2.x/3.x execute only the approved subset.
+  - [x] 1.1 Build an **actual coverage map**: for each of the 36 ACs in `traceability-matrix-dep-update-agent.md`, mark whether a real, runnable test asserts it today (name the test), and at which layer (unit / component). Use the shipped `tests/**` as truth, not the plan's claims.
+  - [x] 1.2 Classify each AC into one of: **(a) covered** (cite the test), **(b) cheap backfill** (a unit/component test that should exist and can be added without real infra), **(c) defer** (genuinely needs real AWS/Supabase/GitHub — belongs to the manual `issue-77-deployment-e2e.md` runbook, not a pytest `e2e` marker), or **(d) randomized** (hypothesis property test — decide worth-it per AC).
+  - [x] 1.3 Decide the **randomized/fuzz** question explicitly: does the agent adopt `hypothesis` for the 6 planned property tests (classifier range parsing, scrubber, eligibility invariants), or are those covered adequately by table-driven unit tests? Record the decision + rationale (adding `hypothesis` is a new dev dependency → `pip-audit --strict` must stay green). **DECISION: skip** — invariants covered by table-driven unit tests; property-style tests already exist in `test_heartbeat.py` without `hypothesis`.
+  - [x] 1.4 Decide the **E2E** question explicitly: confirm the repo's position that real-infra agent verification lives in the operator runbook (manual), so #78's "36 E2E scenarios" are **reframed** as the runbook + the unit/component coverage of the same ACs — NOT a new `pytest -m e2e --run-e2e` harness — unless the user wants that harness built (large, real-credentials, out of proportion to a single-operator tool). **DECISION: keep in runbook** — no `-m e2e` harness.
+  - [x] 1.5 **Present the reconciliation summary to the user and get an explicit scope decision** before writing any test or editing the plan: which (b) backfills to write, whether to adopt hypothesis (d), and confirmation that (c) stays runbook-deferred. This is the gate — 2.x/3.x execute only the approved subset. **DECISION (user, 2026-09-11): skip fuzz, keep E2E in runbook, no backfill (AC-33 as-is), close via docs PR, move artifacts to `workstream/`.**
 
-- [ ] 2.0 Execute the approved backfill (scope set by 1.5 — may be empty if the suite already covers the ACs)
+- [x] 2.0 Execute the approved backfill (scope set by 1.5 — **empty**: the suite already covers the automatable ACs; no tests written)
 
-  - [ ] 2.1 For each approved **(b) cheap-backfill** AC: write the unit/component test (following existing patterns), mapping it to its AC id.
-  - [ ] 2.2 If hypothesis was approved (d): add it as a pinned dev dependency, add a `fuzz` marker to `pyproject.toml`, and write the approved property tests with fixed seeds for reproducibility; confirm `pip-audit --strict` stays green.
-  - [ ] 2.3 If any AC was reclassified from the plan's E2E to a unit/component assertion, add that test and note the reframing in the traceability matrix.
-  - [ ] 2.x Verify: every newly written test passes and maps to a specific AC.
-  - [ ] 2.z Run Tests: `python -m pytest -m unit` + `-m component` (+ `-m fuzz` if adopted); then `make validate`.
+  - [x] 2.1 For each approved **(b) cheap-backfill** AC: write the unit/component test — **none approved (empty).**
+  - [x] 2.2 If hypothesis was approved (d): add it as a pinned dev dependency… — **not approved; no `pyproject.toml`/marker change.**
+  - [x] 2.3 If any AC was reclassified from the plan's E2E to a unit/component assertion… — **none reclassified to new tests; existing coverage cited in the matrix.**
+  - [x] 2.x Verify: every newly written test passes and maps to a specific AC — **N/A (no new tests).**
+  - [x] 2.z Run Tests — **N/A for new tests; existing suite unchanged (460 collected).**
 
-- [ ] 3.0 Truth-up the documents (the core deliverable of a documentation issue)
+- [x] 3.0 Truth-up the documents (the core deliverable of a documentation issue)
 
-  - [ ] 3.1 Update `test-plan-dep-update-agent.md`: replace the aspirational "82 cases / 0 gaps" summary with the **measured** state — actual counts per layer, ACs covered, and each **accepted gap** (the deferred-to-runbook E2E ACs) with its rationale. An honest "N covered, M deferred-to-runbook (listed), 0 unaccounted" is the target, not a false 82/82.
-  - [ ] 3.2 Update `traceability-matrix-dep-update-agent.md` so every AC row points at a **real** test name or the runbook step that exercises it (no phantom rows).
-  - [ ] 3.3 Update `TESTING.md`'s dependency-update-agent coverage/gaps section to match (it already tracks agent gaps — align it with the reconciled matrix).
-  - [ ] 3.4 Verify Acceptance Criterion (#78 header): "36/36 ACs have ≥1 positive + ≥1 negative test, 0 gaps" is either **now true by measurement**, or **restated truthfully** with the deferred set explicitly listed and accepted — the issue must not close on an unverified claim.
-  - [ ] 3.5 Decide artifact location: if the plan/matrix are now the maintained record, move them from `workstream/archive/` back to `workstream/`; otherwise update in place and note they remain archived. (Housekeeping consistency with the archive convention.)
+  - [x] 3.1 Update `test-plan-dep-update-agent.md`: replace the aspirational "82 cases / 0 gaps" summary with the **measured** state — actual counts per layer, ACs covered, and each **accepted gap** (the deferred-to-runbook E2E ACs) with its rationale. An honest "N covered, M deferred-to-runbook (listed), 0 unaccounted" is the target, not a false 82/82.
+  - [x] 3.2 Update `traceability-matrix-dep-update-agent.md` so every AC row points at a **real** test name or the runbook step that exercises it (no phantom rows).
+  - [x] 3.3 Update `TESTING.md`'s dependency-update-agent coverage/gaps section to match (it already tracks agent gaps — align it with the reconciled matrix).
+  - [x] 3.4 Verify Acceptance Criterion (#78 header): "36/36 ACs have ≥1 positive + ≥1 negative test, 0 gaps" is either **now true by measurement**, or **restated truthfully** with the deferred set explicitly listed and accepted — the issue must not close on an unverified claim. **RESTATED TRUTHFULLY: 30/36 automated, 6 deferred-to-runbook (listed), 0 unaccounted.**
+  - [x] 3.5 Decide artifact location: if the plan/matrix are now the maintained record, move them from `workstream/archive/` back to `workstream/`; otherwise update in place and note they remain archived. **MOVED to `workstream/` via `git mv` (history preserved).**
 
 - [ ] 4.0 Close-out
 
