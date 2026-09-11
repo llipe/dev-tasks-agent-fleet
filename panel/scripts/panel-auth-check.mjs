@@ -43,6 +43,60 @@ function s(v) {
   return typeof v === "string" ? v.trim().toLowerCase() : "";
 }
 
+/**
+ * Extract secret/config NAMES from the output of `fly secrets list`.
+ *
+ * NAMES ONLY — `flyctl` never prints secret values (only a digest), and this
+ * function is written so it can only ever return upper-snake identifiers.
+ *
+ * Two input shapes are supported so the wrapper can prefer the stable one:
+ *
+ *  - `--json` output (opts.json === true): a JSON array of objects, each with a
+ *    `Name` (or `name`) field. This is the stable, column-layout-independent
+ *    contract and is preferred when the installed flyctl supports it.
+ *  - the default drawn TABLE: `flyctl` prints a header row (`NAME  DIGEST  ...`)
+ *    and then one row per secret. Critically, every row is printed with a
+ *    LEADING SPACE and, on newer flyctl, boxed with `│` column separators — so
+ *    a start-anchored `/^([A-Z]...)/` match (the original S-122 defect, #162
+ *    task 1.27) extracts ZERO names and the gate fails closed even when all
+ *    secrets are present. We therefore strip leading whitespace and any leading
+ *    box-drawing/`|` separator before matching, and skip the `NAME` header.
+ *
+ * Total and defensive: any non-string / unparseable input yields `[]`, which
+ * makes CHECK 1 fail closed rather than throw.
+ */
+export function extractSecretNames(raw, opts = {}) {
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+
+  if (opts && opts.json) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(parsed)) return [];
+    const names = [];
+    for (const row of parsed) {
+      const name = row && typeof row === "object" ? (row.Name ?? row.name) : undefined;
+      if (typeof name === "string" && /^[A-Z][A-Z0-9_]*$/.test(name.trim())) {
+        names.push(name.trim());
+      }
+    }
+    return names;
+  }
+
+  // TABLE fallback. Strip a leading box separator + whitespace, then match the
+  // NAME column (UPPER_SNAKE). Skip the header row.
+  const names = [];
+  for (const line of raw.split("\n")) {
+    const cleaned = line.replace(/^[\s│|]+/, "");
+    const m = cleaned.match(/^([A-Z][A-Z0-9_]+)\b/);
+    if (m && m[1] !== "NAME") names.push(m[1]);
+  }
+  return names;
+}
+
 /** A finite integer status code, or null for anything else. */
 function statusOf(probe) {
   if (!probe || typeof probe !== "object") return null;

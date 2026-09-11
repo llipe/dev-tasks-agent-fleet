@@ -6,6 +6,7 @@ import {
   checkSignupRejected,
   checkSseUnauthorized,
   evaluateAuthGate,
+  extractSecretNames,
   REQUIRED_AUTH_ENV_NAMES,
 } from "@/scripts/panel-auth-check.mjs";
 
@@ -65,6 +66,90 @@ describe("checkEnvNames — auth env var NAMES present (names only, never values
     expect(checkEnvNames(undefined).ok).toBe(false);
     expect(checkEnvNames("NEXT_PUBLIC_SUPABASE_URL").ok).toBe(false);
     expect(checkEnvNames([]).ok).toBe(false);
+  });
+});
+
+describe("extractSecretNames — `fly secrets list` NAME extraction (#162 task 1.27 regression)", () => {
+  // The exact defect: flyctl prints every row with a LEADING SPACE, so the old
+  // start-anchored /^([A-Z]...)/ match extracted ZERO names and the gate failed
+  // closed even with all secrets present. These fixtures reproduce the real
+  // flyctl output shapes.
+
+  it("extracts names from a plain drawn table with the leading-space rows flyctl emits", () => {
+    // Real flyctl v0.1.x style: header, then rows each prefixed by a space.
+    const raw = [
+      "NAME                           DIGEST            CREATED AT ",
+      " NEXT_PUBLIC_SUPABASE_URL       abc123            1h ago     ",
+      " NEXT_PUBLIC_SUPABASE_ANON_KEY  def456            1h ago     ",
+      " SUPABASE_SERVICE_ROLE_KEY      aaa999            1h ago     ",
+      " AGENT_RUNTIME_ROLE_ARN         bbb000            1h ago     ",
+    ].join("\n");
+    const names = extractSecretNames(raw, { json: false });
+    expect(names).toEqual([
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "AGENT_RUNTIME_ROLE_ARN",
+    ]);
+    // And the whole point: the two required names are found, so the check passes.
+    expect(checkEnvNames(names).ok).toBe(true);
+  });
+
+  it("extracts names from a boxed table with `│` column separators (newer flyctl)", () => {
+    const raw = [
+      "┌───────────────────────────────┬──────────┬────────────┐",
+      "│ NAME                          │ DIGEST   │ CREATED AT │",
+      "├───────────────────────────────┼──────────┼────────────┤",
+      "│ NEXT_PUBLIC_SUPABASE_URL      │ abc123   │ 1h ago     │",
+      "│ NEXT_PUBLIC_SUPABASE_ANON_KEY │ def456   │ 1h ago     │",
+      "└───────────────────────────────┴──────────┴────────────┘",
+    ].join("\n");
+    const names = extractSecretNames(raw, { json: false });
+    expect(names).toEqual(["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]);
+    expect(checkEnvNames(names).ok).toBe(true);
+  });
+
+  it("skips the NAME header row and never emits it as a name", () => {
+    const raw = " NAME   DIGEST\n NEXT_PUBLIC_SUPABASE_URL   abc";
+    expect(extractSecretNames(raw, { json: false })).toEqual(["NEXT_PUBLIC_SUPABASE_URL"]);
+  });
+
+  it("extracts names from `fly secrets list --json` output (stable contract)", () => {
+    const raw = JSON.stringify([
+      { Name: "NEXT_PUBLIC_SUPABASE_URL", Digest: "abc123", CreatedAt: "..." },
+      { Name: "NEXT_PUBLIC_SUPABASE_ANON_KEY", Digest: "def456", CreatedAt: "..." },
+      { Name: "SUPABASE_SERVICE_ROLE_KEY", Digest: "aaa999", CreatedAt: "..." },
+    ]);
+    const names = extractSecretNames(raw, { json: true });
+    expect(names).toEqual([
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ]);
+    expect(checkEnvNames(names).ok).toBe(true);
+  });
+
+  it("accepts a lower-case `name` key in --json output", () => {
+    const raw = JSON.stringify([{ name: "NEXT_PUBLIC_SUPABASE_URL" }]);
+    expect(extractSecretNames(raw, { json: true })).toEqual(["NEXT_PUBLIC_SUPABASE_URL"]);
+  });
+
+  it("is fail-closed (returns []) on empty, non-string, or unparseable input", () => {
+    expect(extractSecretNames("", { json: false })).toEqual([]);
+    expect(extractSecretNames("   ", { json: false })).toEqual([]);
+    expect(extractSecretNames(null, { json: false })).toEqual([]);
+    expect(extractSecretNames(undefined, { json: true })).toEqual([]);
+    expect(extractSecretNames("not json", { json: true })).toEqual([]);
+    expect(extractSecretNames(JSON.stringify({ not: "an array" }), { json: true })).toEqual([]);
+  });
+
+  it("demonstrates the old start-anchored assumption would have failed on real output", () => {
+    // A row with a leading space: the pre-fix /^([A-Z]...)/ found nothing here.
+    const rowWithLeadingSpace = " NEXT_PUBLIC_SUPABASE_URL   abc123   1h ago";
+    expect(/^([A-Z][A-Z0-9_]+)\b/.test(rowWithLeadingSpace)).toBe(false); // the defect
+    expect(extractSecretNames(rowWithLeadingSpace, { json: false })).toEqual([
+      "NEXT_PUBLIC_SUPABASE_URL",
+    ]); // the fix
   });
 });
 
