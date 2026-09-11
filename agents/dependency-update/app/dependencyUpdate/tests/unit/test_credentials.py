@@ -7,16 +7,33 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from botocore.exceptions import ClientError
 
 from credentials import (
     CredentialError,
     TokenContext,
+    _fetch_pem,
     _get_installation,
     fetch_supabase_key,
     mint_installation_token,
     refresh_if_stale,
     resolve_github_credentials,
 )
+
+
+def _client_error() -> ClientError:
+    """A representative Secrets Manager ClientError. The handler does not
+    branch on the error code, so one representative error is sufficient."""
+    return ClientError(
+        {
+            "Error": {
+                "Code": "ResourceNotFoundException",
+                "Message": "Secrets Manager can't find the specified secret.",
+            }
+        },
+        "GetSecretValue",
+    )
+
 
 # ---------------------------------------------------------------------------
 # TokenContext
@@ -86,6 +103,98 @@ class TestFetchSupabaseKey:
             SecretId="agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY"
         )
 
+    @patch("credentials.boto3")
+    def test_client_error_raises_credential_error(self, mock_boto3):
+        """A Secrets Manager ClientError (missing secret / access denied /
+        throttling) must surface as a classified CredentialError, not a raw
+        boto3 exception — so the entrypoint's `except CredentialError` handler
+        yields a clean terminal chunk instead of falling through to
+        UNHANDLED_ERROR (issue #108)."""
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_secret_value.side_effect = _client_error()
+
+        with pytest.raises(CredentialError) as exc_info:
+            fetch_supabase_key("my-secret-id")
+
+        assert exc_info.value.code == "SUPABASE_KEY_UNAVAILABLE"
+        # The surfaced type must be CredentialError, not the raw boto3 type.
+        assert not isinstance(exc_info.value, ClientError)
+
+    @patch("credentials.boto3")
+    def test_missing_secret_string_raises_credential_error(self, mock_boto3):
+        """A response with no/empty SecretString (e.g. a binary-only secret)
+        must also classify as SUPABASE_KEY_UNAVAILABLE rather than raising a
+        raw KeyError."""
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_secret_value.return_value = {"SecretBinary": b"\x00"}
+
+        with pytest.raises(CredentialError) as exc_info:
+            fetch_supabase_key("my-secret-id")
+
+        assert exc_info.value.code == "SUPABASE_KEY_UNAVAILABLE"
+
+    @patch("credentials.boto3")
+    def test_error_message_does_not_leak_secret(self, mock_boto3):
+        """The classified error names the secret id for context but must not
+        carry any secret value."""
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_secret_value.side_effect = _client_error()
+
+        with pytest.raises(CredentialError) as exc_info:
+            fetch_supabase_key("my-secret-id")
+
+        assert "my-secret-id" in exc_info.value.message
+
+
+# ---------------------------------------------------------------------------
+# _fetch_pem
+# ---------------------------------------------------------------------------
+
+
+class TestFetchPem:
+    @patch("credentials.boto3")
+    def test_reads_pem_from_secrets_manager(self, mock_boto3):
+        """Happy path — closes the previous zero-coverage gap for _fetch_pem."""
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_secret_value.return_value = {
+            "SecretString": "-----BEGIN RSA PRIVATE KEY-----\n..."
+        }
+
+        result = _fetch_pem("arn:aws:secretsmanager:us-east-1:123:secret/key")
+
+        mock_boto3.client.assert_called_once_with("secretsmanager")
+        mock_client.get_secret_value.assert_called_once_with(
+            SecretId="arn:aws:secretsmanager:us-east-1:123:secret/key"
+        )
+        assert result == "-----BEGIN RSA PRIVATE KEY-----\n..."
+
+    @patch("credentials.boto3")
+    def test_client_error_raises_credential_error(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_secret_value.side_effect = _client_error()
+
+        with pytest.raises(CredentialError) as exc_info:
+            _fetch_pem("arn:aws:secretsmanager:us-east-1:123:secret/key")
+
+        assert exc_info.value.code == "PEM_UNAVAILABLE"
+        assert not isinstance(exc_info.value, ClientError)
+
+    @patch("credentials.boto3")
+    def test_missing_secret_string_raises_credential_error(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.get_secret_value.return_value = {"SecretBinary": b"\x00"}
+
+        with pytest.raises(CredentialError) as exc_info:
+            _fetch_pem("arn:aws:secretsmanager:us-east-1:123:secret/key")
+
+        assert exc_info.value.code == "PEM_UNAVAILABLE"
+
 
 # ---------------------------------------------------------------------------
 # _get_installation
@@ -145,6 +254,23 @@ class TestGetInstallation:
         # The classified error must not leak the raw requests exception type.
         assert not isinstance(exc_info.value, requests.RequestException)
 
+    @patch("credentials.requests")
+    def test_non_connection_request_exception_is_classified(self, mock_requests):
+        """A non-ConnectionError RequestException subclass (e.g. Timeout) is
+        caught by the base-class `except requests.RequestException` and
+        re-classified to SUPABASE_UNREACHABLE — asserted explicitly (issue
+        #109). No production change is expected; the #106 fix already catches
+        the base class."""
+        mock_requests.RequestException = requests.RequestException
+        mock_requests.Timeout = requests.Timeout
+        mock_requests.get.side_effect = requests.Timeout("read timed out")
+
+        with pytest.raises(CredentialError) as exc_info:
+            _get_installation("myorg", "https://proj.supabase.co", "sbp_key")
+
+        assert exc_info.value.code == "SUPABASE_UNREACHABLE"
+        assert not isinstance(exc_info.value, requests.RequestException)
+
 
 # ---------------------------------------------------------------------------
 # mint_installation_token
@@ -188,6 +314,24 @@ class TestMintInstallationToken:
         mock_requests.RequestException = requests.RequestException
         mock_requests.ConnectionError = requests.ConnectionError
         mock_requests.post.side_effect = requests.ConnectionError("api.github.com unreachable")
+
+        with pytest.raises(CredentialError) as exc_info:
+            mint_installation_token(app_id=100, installation_id=200, pem="-----BEGIN RSA...")
+
+        assert exc_info.value.code == "GITHUB_UNREACHABLE"
+        assert not isinstance(exc_info.value, requests.RequestException)
+
+    @patch("credentials.requests")
+    @patch("credentials.jwt")
+    def test_non_connection_request_exception_is_classified(self, mock_jwt, mock_requests):
+        """A non-ConnectionError RequestException subclass (e.g. Timeout) on the
+        GitHub token exchange is caught by the base-class `except` and
+        re-classified to GITHUB_UNREACHABLE — asserted explicitly (issue #109).
+        No production change is expected."""
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        mock_requests.RequestException = requests.RequestException
+        mock_requests.Timeout = requests.Timeout
+        mock_requests.post.side_effect = requests.Timeout("read timed out")
 
         with pytest.raises(CredentialError) as exc_info:
             mint_installation_token(app_id=100, installation_id=200, pem="-----BEGIN RSA...")

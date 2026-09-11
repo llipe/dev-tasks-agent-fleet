@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import boto3
 import jwt
 import requests
+from botocore.exceptions import ClientError
 
 from config import SUPABASE_KEY_SECRET_ID, SUPABASE_URL, TOKEN_STALE_THRESHOLD_MINUTES
 
@@ -47,8 +48,27 @@ def fetch_supabase_key(secret_id: str | None = None) -> str:
     """Read the Supabase service role key from AWS Secrets Manager."""
     sid = secret_id or SUPABASE_KEY_SECRET_ID
     sm = boto3.client("secretsmanager")
-    response = sm.get_secret_value(SecretId=sid)
-    return response["SecretString"]
+    try:
+        response = sm.get_secret_value(SecretId=sid)
+    except ClientError as exc:
+        # A Secrets Manager failure (missing secret, access denied, throttling)
+        # is a credential-resolution failure — classify it so the entrypoint's
+        # `except CredentialError` handler yields a clean terminal chunk rather
+        # than letting a raw boto3 exception fall through to UNHANDLED_ERROR
+        # (issue #108), mirroring the requests treatment in _get_installation.
+        raise CredentialError(
+            "SUPABASE_KEY_UNAVAILABLE",
+            f"Could not read the Supabase service role key from Secrets Manager "
+            f"(secret '{sid}'): {exc}",
+        ) from exc
+    key = response.get("SecretString")
+    if not key:
+        raise CredentialError(
+            "SUPABASE_KEY_UNAVAILABLE",
+            f"Secrets Manager returned no SecretString for the Supabase service "
+            f"role key (secret '{sid}')",
+        )
+    return key
 
 
 # ---------------------------------------------------------------------------
@@ -104,8 +124,24 @@ def _get_installation(org: str, supabase_url: str, supabase_key: str) -> dict:
 def _fetch_pem(secret_arn: str) -> str:
     """Read the GitHub App private key PEM from Secrets Manager."""
     sm = boto3.client("secretsmanager")
-    response = sm.get_secret_value(SecretId=secret_arn)
-    return response["SecretString"]
+    try:
+        response = sm.get_secret_value(SecretId=secret_arn)
+    except ClientError as exc:
+        # Classify a Secrets Manager failure reading the GitHub App PEM as a
+        # credential error (issue #108), consistent with fetch_supabase_key.
+        raise CredentialError(
+            "PEM_UNAVAILABLE",
+            f"Could not read the GitHub App private key from Secrets Manager "
+            f"(secret '{secret_arn}'): {exc}",
+        ) from exc
+    pem = response.get("SecretString")
+    if not pem:
+        raise CredentialError(
+            "PEM_UNAVAILABLE",
+            f"Secrets Manager returned no SecretString for the GitHub App "
+            f"private key (secret '{secret_arn}')",
+        )
+    return pem
 
 
 # ---------------------------------------------------------------------------
