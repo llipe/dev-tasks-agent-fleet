@@ -5,6 +5,29 @@
 | Version | Date       | Summary         | Author   |
 | ------- | ---------- | --------------- | -------- |
 | 1.0     | 2026-08-26 | Initial version. Derived from PRD v1.2 (65 requirements, 36 acceptance criteria) and spec v1.0. Covers E2E scenarios (36), contract tests (12), edge cases (28), and randomized tactics (6). | verifier |
+| 1.1     | 2026-09-11 | **Reconciliation against the shipped suite (issue #78).** v1.0 was a *Design*-mode plan; this revision records the *measured* state. The scenario/contract/edge/randomized catalogs (§3–§6) are retained unchanged as the design reference, but the aspirational summary framing is corrected: the "82 cases / 100% coverage" figure counted **designed** cases, not implemented tests. Ground truth (measured 2026-09-11): the agent ships a substantial **Layer 1 (unit) + Layer 2 (component)** suite — 460 tests collected across 18 unit + 3 component modules — and `pyproject.toml` declares **only** `unit` and `component` markers. There is **no `e2e` marker, no `fuzz` marker, and `hypothesis` is not a dependency**, so the planned 36 E2E + 6 randomized cases (§3, §6) do **not** exist as marked, runnable pytest layers. Real-infra verification is handled deliberately by the operator runbook (`docs/runbooks/issue-77-deployment-e2e.md` + the reaper runbook), not a pytest `-m e2e` harness. **Decisions taken with the user (2026-09-11):** (1) do **not** adopt `hypothesis`/fuzz — the classifier/eligibility/scrubber invariants are already densely covered by table-driven unit tests, and `test_heartbeat.py` already carries property-style tests without the dependency; (2) do **not** build a real-credentials `-m e2e` harness — E2E ACs are reframed as *runbook + the unit/component coverage of the same ACs*; (3) no test backfill — the shipped suite already covers the automatable ACs. Net measured result: **30 of 36 ACs have real automated unit/component coverage; 6 are real-infra and deferred-to-runbook (AC-1, AC-2, and the live halves of AC-12/AC-28/AC-33; AC-36 already verified in the reaper runbook), listed and accepted; 0 unaccounted.** §7 (Execution Checklist) and §8 (Test Layer Mapping) below are corrected accordingly. Companion write-backs: `traceability-matrix-dep-update-agent.md` v1.1 and `TESTING.md`. | developer |
+
+---
+
+## 0. Measured Coverage (v1.1 reconciliation) — read before §3–§6
+
+> **§3–§6 are the original Design catalog and are preserved verbatim as a reference.** They describe
+> cases across four layers *as designed*. This section records what is actually implemented and runnable
+> today, and is the authoritative statement of coverage for issue #78.
+
+**Suite as shipped (2026-09-11):** 460 tests collected, 450 test functions, 18 unit modules + 3
+component modules. Markers: `unit`, `component` only. No `e2e`/`fuzz` marker; `hypothesis` absent.
+
+| Layer | Status | Where |
+|---|---|---|
+| Unit (Layer 1) | **Implemented** | `tests/unit/**` — classifier, eligibility, outcome-mapping, mandate, scrubber, safe-path/fix-tools, toolchain, updater, validator, PR body, credentials, heartbeat, clock-invariant, signal-backstop, payload-contract, agent-reporter-start |
+| Component (Layer 2) | **Implemented** | `tests/component/**` — pipeline (payload unwrap/validate/defaults, metrics, heartbeat wiring), PR creation, fix-agent |
+| E2E (real infra) | **Runbook (manual), not a pytest layer** | `docs/runbooks/issue-77-deployment-e2e.md`; reaper interlock in `docs/runbooks/issue-94-reaper-verification.md` |
+| Randomized / fuzz | **Not adopted (decided against, #78)** | invariants covered by table-driven unit tests; property-style heartbeat tests exist without `hypothesis` |
+
+**AC verdict:** 30/36 ACs automated (unit/component); 6 real-infra deferred-to-runbook and accepted
+(AC-1, AC-2, the live halves of AC-12/AC-28/AC-33, and AC-36 — AC-36 already verified per the reaper
+runbook). 0 ACs unaccounted. Per-AC detail lives in `traceability-matrix-dep-update-agent.md` v1.1.
 
 ---
 
@@ -1019,24 +1042,32 @@
 
 ---
 
-## 7. Execution Checklist
+## 7. Execution Checklist (v1.1 — measured)
 
-- [ ] All 36 ACs mapped to ≥1 positive + ≥1 negative/edge test
-- [ ] E2E scenarios executable against real infrastructure (manual E2E gate)
-- [ ] Contract tests executable as unit/component tests with mocked HTTP
-- [ ] Edge cases executable as unit tests with fixtures
-- [ ] Randomized tactics executable with seed capture
-- [ ] Fixture repositories created (clean audit, breaking bump, major-only advisory, npm-only)
-- [ ] Audit JSON fixture corpus collected from real pnpm and npm
-- [ ] Test commands documented per story issue
+> Corrected to reflect what exists. `[x]` = implemented/decided; unchecked-with-note = deliberately
+> not built (see §0 and the Changelog v1.1 rationale).
+
+- [x] All 36 ACs reconciled: 30 automated (unit/component), 6 real-infra deferred-to-runbook, 0 unaccounted (see `traceability-matrix` v1.1)
+- [x] E2E scenarios handled via the manual operator runbook (`issue-77-deployment-e2e.md` + reaper runbook) — **not** a pytest `-m e2e` layer (decided #78)
+- [x] Contract cases (CT-1–CT-12) covered as unit/component tests with mocked HTTP (`test_pipeline.py`, `test_payload_contract_fixture.py`, `test_credentials.py`, `test_pr_creation.py`)
+- [x] Edge cases covered as unit/component tests with fixtures where automatable; real-infra edge cases (EC-11/12/13/22/25/26/28) are runbook-territory
+- [ ] Randomized tactics — **not adopted** (`hypothesis` intentionally not added; invariants covered by table-driven unit tests). See Changelog v1.1.
+- [x] Fixture repositories / audit JSON corpus present under `tests/fixtures/` for the automatable paths
+- [x] Test commands documented: `python -m pytest -m unit` / `-m component`; aggregate gate `make validate`
 
 ---
 
-## 8. Test Layer Mapping
+## 8. Test Layer Mapping (v1.1 — measured)
 
-| Layer | Test IDs | Framework | Trigger |
+> **Reality check:** only the Unit and Component rows are runnable pytest layers today. The E2E and
+> Randomized rows describe the *design* (§3, §6); they are **not** implemented as marked pytest layers.
+> `pytest -m e2e --run-e2e` and `pytest -m fuzz` do **not** exist — there is no `e2e`/`fuzz` marker and
+> no `hypothesis` dependency. The rows are kept to preserve the design's intent and the AC→scenario
+> traceability, with their real status called out.
+
+| Layer | Test IDs | Framework | Trigger / Actual status |
 |---|---|---|---|
-| Unit (Layer 1) | SC-24, SC-25, SC-31, SC-32, SC-33, EC-1–EC-28, RT-2–RT-4, RT-6 | pytest | `pytest -m unit` |
-| Component (Layer 2) | SC-16, SC-17, SC-27, SC-28, CT-1–CT-12 | pytest + moto + responses | `pytest -m component` |
-| E2E | SC-1–SC-15, SC-18–SC-23, SC-26, SC-29, SC-34–SC-36 | pytest + real infra | `pytest -m e2e --run-e2e` (manual) |
-| Randomized | RT-1–RT-6 | pytest + hypothesis | `pytest -m fuzz` |
+| Unit (Layer 1) | SC-24, SC-25, SC-31, SC-32, SC-33, EC-1–EC-28 (automatable subset), CT-3–CT-6 | pytest | `python -m pytest -m unit` — **implemented** |
+| Component (Layer 2) | SC-16, SC-17, SC-27, SC-28, CT-1, CT-2 | pytest (mocked externals) | `python -m pytest -m component` — **implemented** |
+| E2E | SC-1–SC-15, SC-18–SC-23, SC-26, SC-29, SC-34–SC-36; CT-7–CT-12 (live boundaries) | manual operator procedure | `docs/runbooks/issue-77-deployment-e2e.md` (+ reaper runbook for SC-36) — **runbook, not a pytest layer** |
+| Randomized | RT-1–RT-6 | — | **Not adopted** (decided #78); invariants covered by table-driven unit tests |

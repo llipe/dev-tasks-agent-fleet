@@ -83,21 +83,21 @@ adds **no new dependency**.
   - [x] 2.y Verify Acceptance Criterion (#109 AC2): no production-code change made (git diff shows `credentials.py` changes are entirely the #108 boto3 handling; the #109 half is test-only).
   - [x] 2.z Run Tests: `python -m pytest tests/unit/test_credentials.py` then `make validate` — AC3. → green.
 
-- [ ] 3.0 Close-out (both issues)
+- [x] 3.0 Close-out (both issues)
 
   - [x] 3.1 Edge-case matrix confirmed covered: `ClientError` (missing secret / access denied / throttling — one representative `ClientError` is sufficient, the handler does not branch on the error code), missing-`SecretString`, `Timeout` on each `requests` path, happy paths for all four functions.
   - [x] 3.2 Acceptance-criteria → test mapping recorded in the PR body (each of #108 AC1-4 and #109 AC1-3 → its test / gate evidence).
   - [x] 3.3 `make validate` green; record the pytest pass count + `credentials.py` coverage in the PR. → 460 passed, `credentials.py` 100%.
   - [x] 3.4 PR (draft → ready) with `--body-file`, `Closes #108` and `Closes #109`; targets `main` (user review + merge). Branch `issue/108-classify-secrets-manager-failures`. → Draft PR #178 opened; converted to ready after gates below.
-  - [ ] 3.5 After merge: confirm both #108 and #109 are closed.
+  - [x] 3.5 After merge: confirm both #108 and #109 are closed. → PR #178 merged into main (merge commit 4bac20a, by llipe); #108 and #109 both CLOSED (completed) via Closes.
 
 ## Definition of Done
 
-- [ ] Code implemented per technical guidelines (Python agent conventions; no `agent_reporter.py` change)
-- [ ] Unit tests written and passing (boto3 failure paths, `_fetch_pem` happy path, `Timeout` on both requests paths)
-- [ ] Quality gates passing (`make validate`: lint, format-check, typecheck, test-cov, audit)
-- [ ] Acceptance criteria verified and mapped to test evidence (#108 AC1-4, #109 AC1-3)
-- [ ] Migration lifecycle — N/A, documented opt-out (no schema/data change)
-- [ ] `qa-engineer` pass + `coverage_gate` recorded
-- [ ] `verifier` audit (audit mode) run + summary posted to the PR
-- [ ] PR reviewed, approved, and merged by the user; then both issues closed
+- [x] Code implemented per technical guidelines (Python agent conventions; no `agent_reporter.py` change)
+- [x] Unit tests written and passing (boto3 failure paths, `_fetch_pem` happy path, `Timeout` on both requests paths)
+- [x] Quality gates passing (`make validate`: lint, format-check, typecheck, test-cov, audit)
+- [x] Acceptance criteria verified and mapped to test evidence (#108 AC1-4, #109 AC1-3)
+- [x] Migration lifecycle — N/A, documented opt-out (no schema/data change)
+- [x] `qa-engineer` pass + `coverage_gate` recorded (PASS)
+- [x] `verifier` audit (audit mode) run + summary posted to the PR
+- [x] PR reviewed, approved, and merged by the user; then both issues closed
