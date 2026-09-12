@@ -218,10 +218,15 @@ export default async function globalSetup(): Promise<void> {
   process.env.SUPABASE_DB_PORT = env.SUPABASE_DB_PORT;
 
   // The auth clients (S-116) and the middleware gate (S-117) read the
-  // NEXT_PUBLIC_* anon pair. Export them so the webServer (which reads
-  // process.env at launch) can create the cookie-backed auth client and the
-  // login/gate flow works end to end. These mirror the server URL/anon key.
+  // NEXT_PUBLIC_* client pair. Export the publishable name (#172, preferred) so
+  // the webServer (which reads process.env at launch) can create the
+  // cookie-backed auth client and the login/gate flow works end to end. The
+  // local Supabase CLI stack only issues an anon-role key, so the same value is
+  // carried under the new name — exercising the publishable-first resolution
+  // path. The legacy anon name is also exported for one release so a mixed
+  // environment still resolves.
   process.env.NEXT_PUBLIC_SUPABASE_URL = env.SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = env.SUPABASE_ANON_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = env.SUPABASE_ANON_KEY;
 
   const deadline = Date.now() + READINESS_TIMEOUT_MS;

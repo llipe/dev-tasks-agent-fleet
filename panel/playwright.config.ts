@@ -146,14 +146,20 @@ export default defineConfig({
       AWS_REGION: "us-east-1",
       // Supabase config forwarded EXPLICITLY (CI-fix for #170) so the dev server
       // no longer relies on implicit process.env inheritance. The auth clients
-      // (S-116) need the NEXT_PUBLIC_* anon pair; fall back to the server-only
-      // names so a single resolved source populates both. Only non-empty values
-      // are forwarded (see `forwardEnv`) so we never clobber a value that
+      // (S-116, #172) need the NEXT_PUBLIC_* client pair; prefer the publishable
+      // name, fall back to the legacy anon name, then the server-only names so a
+      // single resolved source populates all. Only non-empty values are
+      // forwarded (see `forwardEnv`) so we never clobber a value that
       // global-setup sets onto process.env after this config loads (local path).
-      // SD2: only the anon URL + anon key are ever NEXT_PUBLIC_* — the
-      // service-role key is NEVER given a NEXT_PUBLIC_ twin.
+      // SD2: only the URL + publishable/anon client key are ever NEXT_PUBLIC_* —
+      // the service-role key is NEVER given a NEXT_PUBLIC_ twin.
       ...forwardEnv({
         NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL,
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+          process.env.SUPABASE_ANON_KEY,
+        // Legacy anon name still forwarded for one release (deprecated fallback).
         NEXT_PUBLIC_SUPABASE_ANON_KEY:
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY,
         // Server-only names forwarded explicitly too (data path — SD2 names).

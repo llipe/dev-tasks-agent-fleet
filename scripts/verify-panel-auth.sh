@@ -38,9 +38,10 @@
 #
 # Requires: `curl`, `node`. `fly` (flyctl) is required for check 1 unless the
 # env-name list is supplied out-of-band via PANEL_AUTH_ENV_NAMES (comma-sep).
-# The anon key + Supabase URL for check 4 come from env: NEXT_PUBLIC_SUPABASE_URL
-# and NEXT_PUBLIC_SUPABASE_ANON_KEY (the publishable key — safe to hold here; it
-# is NOT a secret value in the SR2 sense and is never printed).
+# The client key + Supabase URL for check 4 come from env: NEXT_PUBLIC_SUPABASE_URL
+# and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (the publishable key, #172; the legacy
+# NEXT_PUBLIC_SUPABASE_ANON_KEY is accepted as a fallback). Either is safe to hold
+# here; it is NOT a secret value in the SR2 sense and is never printed.
 #
 # Fail-closed: if any input cannot be obtained or parsed, the gate FAILS (exit 1).
 set -euo pipefail
@@ -184,9 +185,11 @@ fi
 echo "[panel-auth] (4/4) Attempting a signUp (expect REJECTED — signups must be disabled)..."
 SIGNUP_JSON='{"error":"probe not run"}'
 SB_URL="${NEXT_PUBLIC_SUPABASE_URL:-}"
-SB_ANON="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}"
+# Prefer the new publishable client key (#172); fall back to the legacy anon
+# name for one release. Either is a valid Auth `apikey` and is never printed.
+SB_ANON="${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}}"
 if [[ -z "$SB_URL" || -z "$SB_ANON" ]]; then
-  echo "[panel-auth]   WARN — NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY not set;" >&2
+  echo "[panel-auth]   WARN — NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy _ANON_KEY) not set;" >&2
   echo "[panel-auth]          signup check will fail-closed (cannot confirm signups are off)." >&2
   SIGNUP_JSON='{"error":"anon key / url not provided; cannot confirm signups are off"}'
 else

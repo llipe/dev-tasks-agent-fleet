@@ -44,20 +44,50 @@ describe("checkEnvNames — auth env var NAMES present (names only, never values
     expect(checkEnvNames(ENV_OK).ok).toBe(true);
   });
 
-  it("is case-insensitive on the reported names", () => {
-    expect(checkEnvNames(["next_public_supabase_url", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]).ok).toBe(
+  it("passes with the new publishable key name (#172)", () => {
+    expect(
+      checkEnvNames(["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]).ok,
+    ).toBe(true);
+  });
+
+  it("passes with the legacy anon key name (deprecated fallback, #172)", () => {
+    expect(checkEnvNames(["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]).ok).toBe(
       true,
     );
   });
 
-  it("FAILS (missing env) when the anon key name is absent", () => {
+  it("passes when BOTH client-key names are present", () => {
+    expect(
+      checkEnvNames([
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      ]).ok,
+    ).toBe(true);
+  });
+
+  it("is case-insensitive on the reported names", () => {
+    expect(
+      checkEnvNames(["next_public_supabase_url", "next_public_supabase_publishable_key"]).ok,
+    ).toBe(true);
+  });
+
+  it("FAILS (missing client key) when neither publishable nor anon name is present", () => {
     const r = checkEnvNames(["NEXT_PUBLIC_SUPABASE_URL"]);
     expect(r.ok).toBe(false);
-    expect(r.missing).toEqual(["NEXT_PUBLIC_SUPABASE_ANON_KEY"]);
+    expect(r.missing).toEqual([
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ]);
     expect(r.reason).toMatch(/missing/i);
   });
 
-  it("FAILS when both names are absent", () => {
+  it("FAILS when the URL name is absent even if a client key is present", () => {
+    const r = checkEnvNames(["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]);
+    expect(r.ok).toBe(false);
+    expect(r.missing).toEqual(["NEXT_PUBLIC_SUPABASE_URL"]);
+  });
+
+  it("FAILS when all names are absent", () => {
     expect(checkEnvNames(["SOME_OTHER_VAR"]).ok).toBe(false);
   });
 

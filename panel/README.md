@@ -111,21 +111,29 @@ recorded reason (see `TESTING.md`).
   `NEXT_PUBLIC_`-configured, RLS-bound — that never touches the service-role client
   (rule SA1). RLS stays deny-all (D11): authenticating a user grants no row access.
 
-- **Auth clients + environment (S-116).** The auth path reads the anon (publishable)
-  key pair, which — unlike the service-role key — is safe in the browser:
+- **Auth clients + environment (S-116; publishable-key migration #172).** The auth
+  path reads the publishable client-key pair, which — unlike the service-role key — is
+  safe in the browser:
 
-  | Variable                        | Scope                | Used by                                 |
-  | ------------------------------- | -------------------- | --------------------------------------- |
-  | `NEXT_PUBLIC_SUPABASE_URL`      | public               | `lib/supabase/{auth-server,browser}.ts` |
-  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public (publishable) | `lib/supabase/{auth-server,browser}.ts` |
-  | `SUPABASE_URL`                  | server               | `lib/supabase/server.ts` (unchanged)    |
-  | `SUPABASE_SERVICE_ROLE_KEY`     | server secret        | `lib/supabase/server.ts` (unchanged)    |
+  | Variable                               | Scope                | Used by                                                       |
+  | -------------------------------------- | -------------------- | ------------------------------------------------------------- |
+  | `NEXT_PUBLIC_SUPABASE_URL`             | public               | `lib/supabase/{auth-server,browser}.ts`                       |
+  | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public (publishable) | `lib/supabase/{auth-server,browser}.ts` — **preferred**       |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY`        | public (legacy)      | `lib/supabase/{auth-server,browser}.ts` — deprecated fallback |
+  | `SUPABASE_URL`                         | server               | `lib/supabase/server.ts` (unchanged)                          |
+  | `SUPABASE_SERVICE_ROLE_KEY`            | server secret        | `lib/supabase/server.ts` (unchanged)                          |
 
   `lib/supabase/auth-env.ts` validates the public pair with a named `AuthConfigError`
-  at first use (same fail-fast pattern as `readSupabaseEnv`). The service-role key MUST
+  at first use (same fail-fast pattern as `readSupabaseEnv`). It resolves
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` first and falls back to the **legacy**
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` with a one-time deprecation warning; it throws only
+  when neither is set. Supabase now treats the classic anon JWT as a legacy client
+  credential and recommends the new publishable API key (`sb_publishable_…`), which is
+  individually revocable without a project-wide session bust. The service-role key MUST
   NOT gain a `NEXT_PUBLIC_` twin. For local dev, add both `NEXT_PUBLIC_SUPABASE_*` values
-  to `panel/.env.local` (the anon URL is the same project URL as `SUPABASE_URL`; the anon
-  key is the project's publishable key from the Supabase dashboard → Project Settings → API).
+  to `panel/.env.local` (the URL is the same project URL as `SUPABASE_URL`; the client key
+  is the project's **publishable** key from the Supabase dashboard → Project Settings → API
+  keys — the legacy anon key still works as a fallback for one release).
   The pure policy modules `lib/auth/{route-policy,redirect,errors}.ts` are the
   security-relevant decision logic (route classification, open-redirect guard, and the
   anti-enumeration error mapping) and carry exhaustive unit suites.
@@ -320,7 +328,7 @@ Before and after every deploy:
    network via `fly proxy`; Phase B: publicly), run:
 
    ```bash
-   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… \
+   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=… \
      scripts/verify-panel-auth.sh <base-url> -a dt-agent-fleet-panel
    ```
 
