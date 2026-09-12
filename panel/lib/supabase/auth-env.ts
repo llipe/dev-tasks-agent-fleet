@@ -92,7 +92,6 @@ export function readAuthEnv(env: NodeJS.ProcessEnv = process.env): AuthEnv {
   if (legacyAnon) {
     if (!legacyFallbackWarned) {
       legacyFallbackWarned = true;
-      // eslint-disable-next-line no-console
       console.warn(
         "[auth-env] NEXT_PUBLIC_SUPABASE_ANON_KEY is deprecated. Supabase treats the classic anon " +
           "JWT as a legacy client credential; set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (sb_publishable_…) " +

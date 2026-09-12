@@ -115,13 +115,13 @@ recorded reason (see `TESTING.md`).
   path reads the publishable client-key pair, which — unlike the service-role key — is
   safe in the browser:
 
-  | Variable                               | Scope                | Used by                                 |
-  | -------------------------------------- | -------------------- | --------------------------------------- |
-  | `NEXT_PUBLIC_SUPABASE_URL`             | public               | `lib/supabase/{auth-server,browser}.ts` |
-  | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public (publishable) | `lib/supabase/{auth-server,browser}.ts` — **preferred** |
+  | Variable                               | Scope                | Used by                                                       |
+  | -------------------------------------- | -------------------- | ------------------------------------------------------------- |
+  | `NEXT_PUBLIC_SUPABASE_URL`             | public               | `lib/supabase/{auth-server,browser}.ts`                       |
+  | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public (publishable) | `lib/supabase/{auth-server,browser}.ts` — **preferred**       |
   | `NEXT_PUBLIC_SUPABASE_ANON_KEY`        | public (legacy)      | `lib/supabase/{auth-server,browser}.ts` — deprecated fallback |
-  | `SUPABASE_URL`                         | server               | `lib/supabase/server.ts` (unchanged)    |
-  | `SUPABASE_SERVICE_ROLE_KEY`            | server secret        | `lib/supabase/server.ts` (unchanged)    |
+  | `SUPABASE_URL`                         | server               | `lib/supabase/server.ts` (unchanged)                          |
+  | `SUPABASE_SERVICE_ROLE_KEY`            | server secret        | `lib/supabase/server.ts` (unchanged)                          |
 
   `lib/supabase/auth-env.ts` validates the public pair with a named `AuthConfigError`
   at first use (same fail-fast pattern as `readSupabaseEnv`). It resolves

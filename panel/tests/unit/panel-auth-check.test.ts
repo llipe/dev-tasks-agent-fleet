@@ -67,9 +67,9 @@ describe("checkEnvNames — auth env var NAMES present (names only, never values
   });
 
   it("is case-insensitive on the reported names", () => {
-    expect(checkEnvNames(["next_public_supabase_url", "next_public_supabase_publishable_key"]).ok).toBe(
-      true,
-    );
+    expect(
+      checkEnvNames(["next_public_supabase_url", "next_public_supabase_publishable_key"]).ok,
+    ).toBe(true);
   });
 
   it("FAILS (missing client key) when neither publishable nor anon name is present", () => {
