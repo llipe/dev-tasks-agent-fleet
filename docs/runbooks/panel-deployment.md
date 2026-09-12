@@ -237,8 +237,9 @@ docker rmi dt-panel:local
    `fly proxy` tunnel open:
 
    ```bash
-   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… \
+   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=… \
      scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
+   # (Legacy fallback for one release: NEXT_PUBLIC_SUPABASE_ANON_KEY=… also works.)
    # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signup REJECTED.
    ```
 
@@ -314,14 +315,17 @@ only.
 | 3 | **Refresh-token inactivity timeout = 12h** | Auth → Sessions (or Settings → Auth) → inactivity timeout | FR14 — sessions expire after 12h of inactivity (surfaced as the `/login` fine print). |
 | 4 | **Create the operator user(s)** | Auth → Users → Add user (email + password) | Invitation-only; accounts are provisioned here, never seeded by a migration. |
 | 5 | **Confirm signing keys are asymmetric** | Auth → Signing keys / JWKS | spec **OQ1 (auth)**: asymmetric (ES256/EC P-256) keys let `getClaims()` verify **locally** via cached JWKS with **no per-request network call** (confirmed by live JWKS probe, spec §11). If a project were on legacy symmetric (HS256) keys, `getClaims()` would need the auth server per request — a latency/availability change. Record which you observe. |
+| 6 | **Create a publishable API key** (#172) | Settings → API keys → new (`sb_publishable_…`) | Supabase treats the classic `anon` JWT as a **legacy** client key; the publishable key is the forward path and is **individually revocable** without a project-wide session bust. Deliver it as `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (see the env-delivery note). Record by **name only**, never the value. Once the deployed panel is confirmed working on it, **revoke the legacy anon key** as a distinct, recorded step. |
 
-> **Env delivery (spec OQ2 — auth):** the panel needs `NEXT_PUBLIC_SUPABASE_URL` and
-> `NEXT_PUBLIC_SUPABASE_ANON_KEY` at runtime. The anon (publishable) key is **safe for the browser**
-> (RLS-bound), so the recommended delivery is `panel/fly.toml [env]` (non-secret, visible in config).
-> Delivering it via `fly secrets` also works and keeps it out of the committed file; either is
-> acceptable. The **service-role** key stays a `fly secrets` secret and MUST NOT gain a
-> `NEXT_PUBLIC_` twin (SD2/D15). The auth gate checks only that the two `NEXT_PUBLIC_*` **names** are
-> present on the app — never their values.
+> **Env delivery (spec OQ2 — auth):** the panel needs `NEXT_PUBLIC_SUPABASE_URL` and the client key.
+> Prefer the new publishable name `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (#172); the panel also accepts
+> the **legacy** `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a deprecated fallback for one release. Either
+> publishable or anon key is **safe for the browser** (RLS-bound), so the recommended delivery is
+> `panel/fly.toml [env]` (non-secret, visible in config). Delivering it via `fly secrets` also works and
+> keeps it out of the committed file; either is acceptable. The **service-role** key stays a
+> `fly secrets` secret and MUST NOT gain a `NEXT_PUBLIC_` twin (SD2/D15). The auth gate checks only that
+> the two `NEXT_PUBLIC_*` **names** are present on the app (URL + **either** publishable or anon client
+> key) — never their values.
 
 ---
 
@@ -336,9 +340,11 @@ window entirely (spec §15.1, R10): a public app never exists without a proven g
 1. **Supabase checklist above** — email on, **signups off**, 12h inactivity, operator user created.
 2. **Set the auth env** on the app (per the OQ2 note above):
    ```bash
-   # Recommended: anon key + URL in fly.toml [env] (publishable, non-secret). If you prefer secrets:
+   # Recommended: publishable client key + URL in fly.toml [env] (publishable, non-secret). If you
+   # prefer secrets:
    fly secrets set NEXT_PUBLIC_SUPABASE_URL='https://<project>.supabase.co' \
-                   NEXT_PUBLIC_SUPABASE_ANON_KEY='<publishable anon key>' -a dt-agent-fleet-panel
+                   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='<sb_publishable_… key>' -a dt-agent-fleet-panel
+   # (Legacy fallback for one release: NEXT_PUBLIC_SUPABASE_ANON_KEY='<publishable anon key>'.)
    ```
 3. **Deploy the auth build** (Impl Step 4 above) — `fly.toml` still private, **no public IP**.
 4. **Verify over the private network** (`fly proxy`), unauthenticated:
@@ -355,7 +361,7 @@ window entirely (spec §15.1, R10): a public app never exists without a proven g
 5. **Run the auth release gate against the PRIVATE host** (the mechanical form of step 4):
    ```bash
    NEXT_PUBLIC_SUPABASE_URL='https://<project>.supabase.co' \
-   NEXT_PUBLIC_SUPABASE_ANON_KEY='<publishable anon key>' \
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='<sb_publishable_… key>' \
    SUPABASE_SERVICE_ROLE_KEY='<service role key>'   `# optional: lets the gate auto-delete a stray signup account` \
      scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
    # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signUp REJECTED.
@@ -410,7 +416,7 @@ against the private host; the Supabase checklist (esp. **signups OFF**) is confi
 7. **Run the auth gate against the PUBLIC hostname** — same gate, public host. The **signup-rejected
    check is now load-bearing** (the Auth endpoint is internet-reachable):
    ```bash
-   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… SUPABASE_SERVICE_ROLE_KEY=… \
+   NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=… SUPABASE_SERVICE_ROLE_KEY=… \
      scripts/verify-panel-auth.sh https://dt-agent-fleet-panel.fly.dev -a dt-agent-fleet-panel
    # MUST exit 0. If it FAILS → CONTAIN FIRST (step below), diagnose second.
    ```
