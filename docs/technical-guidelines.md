@@ -44,6 +44,10 @@
 | 1.31    | 2026-09-11 | Marked **spec OQ1 RESOLVED** (Fly OIDC → AWS STS) after the operator confirmed the deployed panel's OIDC connection to AWS works. **Current-state status correction only — no new decision, no new ADR** (precedent: rows 1.11–1.28). §5 credential bullet flipped from "Pending verification against the real Fly endpoint — OQ1 still open" to **verified**: the deployed panel obtains an OIDC token from the Fly local socket and exchanges it via `AssumeRoleWithWebIdentity` for short-lived credentials with **no static keys** (D12), with a live agent invocation reaching AgentCore over that path (`credentialSource(): fly-oidc`) — closing the live half of AC8; the socket shape / normalized `sub` / `DurationSeconds ≤ MaxSessionDuration` matched the shipped provider contract (`panel/lib/aws/credentials.ts`), which fails loudly on a mismatch. §13 deploy row's "Still operator-gated (spec OQ1)" clause updated to the confirmed state; the runbook (`panel-deployment.md`) evidence-log OIDC rows (1.13–1.16) flipped to ☑, with the probe procedure retained for re-verification. Companion write-backs in the same drift pass: PRD v2.5 §18 and spec v1.7 §9.1 (OQ1 → resolved). Source: `workstream/drift-reconciliation-2026-09-11-auth-go-public.md`. | product-engineer |
 | 1.32    | 2026-09-11 | Documented the agent's Secrets Manager credential-error classification (issues #108 + #109, PR #178) and closed the verifier's Minor D1 doc-gap by **cataloging the full agent-side credential-error surface**. Added a §8 "Credential resolution error classification" subsection recording that `fetch_supabase_key` and `_fetch_pem` now wrap the boto3 `get_secret_value` call in `try/except ClientError` (and guard a missing/empty `SecretString`), raising a classified `CredentialError` — `SUPABASE_KEY_UNAVAILABLE` / `PEM_UNAVAILABLE` — with `from exc` chaining, so a Secrets Manager failure yields a clean terminal chunk via the entrypoint's `except CredentialError` handler instead of falling through to `UNHANDLED_ERROR` (#108); this mirrors on the boto3 boundary the `requests`-transport treatment `SUPABASE_UNREACHABLE`/`GITHUB_UNREACHABLE` shipped in #106. The subsection tables **all five** codes (`SUPABASE_UNREACHABLE`, `GITHUB_UNREACHABLE`, `NO_INSTALLATION`, `SUPABASE_KEY_UNAVAILABLE`, `PEM_UNAVAILABLE`) with their raiser and trigger, and records the two invariants (cause-chaining; messages name secret id/arn or org, never the secret value). #109 is test-only (explicit `Timeout` assertions on both `requests` paths + the new `TestFetchPem` class closing prior zero-coverage) with **no production change**. Separately refreshed `TESTING.md`: `credentials.py` coverage 95% → **100%**, the gap-table note and the Security-Negative FINDING/Recommended block updated to credit the now-covered Secrets Manager failure paths and the `Timeout`/`_fetch_pem` coverage (the GitHub-server-side signature/expiry/issuer/tamper rejections remain a real GAP — the token endpoint is still mocked). Current-state status correction only — this is a defect-class follow-up to #106 (which itself took no ADR) that adds no new enforceable rule, decision, quality gate, security rule, or observability baseline, so **no new ADR is required** (precedent: rows 1.3/1.4/1.6/1.7/1.10 and the #106 documentation itself). No schema/data-model/API change (migration is a documented N/A opt-out); no `AGENTS.md`, user-guide, or OpenAPI parity triggered (none exists). | technical-writer |
 
+| 1.33    | 2026-09-12 | Documented the panel's **publishable-key client-credential migration** (issue #172 / PR #180): a **panel-only** env-name change to the auth (SA1) client family — **no schema/data-model/API change** (migration is a documented **N/A opt-out**), and `panel/lib/supabase/server.ts` (the SD2/D15 service-role data client) is **byte-unchanged**. §5 (**Authentication & Authorization**): renamed the SA1 bullet from "Separate anon-key auth client family" to "Separate **publishable-key** auth client family" and rewrote it to the shipped reality — `readAuthEnv()` resolves `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`) **first**, falls back to the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` for one release with a one-time deprecation warning, and throws `AuthConfigError` only when neither is set (the resolved `publishableKey` carries a back-compat `anonKey` alias so existing callers keep working); recorded *why* (Supabase now treats the classic `anon` JWT as a legacy client key and recommends the individually-revocable publishable API key, and the fallback lets local/CI/deploy environments cut over without a flag day). The §5 logout bullet's trailing "anon-key auth client family (SA1)" reference was updated to "publishable-key" for consistency. Reviewed and confirmed accurate/complete (no revert of the developer's on-branch edits): `panel/README.md` (the S-116 auth-env bullet + the new three-row env table listing publishable-preferred / anon-legacy) and `docs/runbooks/panel-deployment.md` (the env-delivery note, the Phase A/B command blocks using the publishable name, and the new Supabase-checklist item #6 to create the publishable key + revoke the legacy anon key post-cutover). The env-name gate accepts **either** name (`panel/scripts/panel-auth-check.mjs` `CLIENT_KEY_ENV_NAMES`, `scripts/verify-panel-auth.sh` prefers publishable, falls back to anon) — names only, **SD2 preserved**. Current-state status correction only — this traces to the existing **SA1/SD2/D15** decisions; the client change introduces **no new enforceable rule, decision, quality gate, security rule, or observability baseline**, so **no new ADR is required** (precedent: rows 1.11–1.28, all current-state updates without a new ADR). **Drift/stale-doc check across the auth/env documentation surface: `drift-fixed`** — one stale evidence-log row in the runbook (the 2026-09-11 `fly secrets list` entry still listed only `NEXT_PUBLIC_SUPABASE_ANON_KEY`) was annotated to note either the publishable or the legacy anon name satisfies the gate. No `AGENTS.md`, user-guide, or OpenAPI parity triggered — none exists (the panel is a pre-deploy scaffold with internal-only endpoints). The spec/PRD **D16/no-auth** decision-record write-backs remain **`product-engineer` territory** (routed, not touched here); no new spec write-back is required by this env-name change (the publishable/anon key is an operational credential name, not a spec decision record). | technical-writer |
+
+
+
 ## 1. Overview
 
 The system has three pieces with different languages and runtimes, joined by Supabase as the *system of record*:
@@ -118,13 +122,24 @@ passes (recorded S-117 decision). What is shipped as current state:
   out-of-band (invitation-only; created in the Supabase dashboard, never seeded by
   a migration). No schema/data-model change: auth state lives in Supabase's
   managed `auth.*` schema plus the session cookies, not in the application tables.
-- **Separate anon-key auth client family (SA1).** Authentication uses a cookie-backed
-  anon (publishable) key client (`lib/supabase/{auth-server,auth-middleware,browser}.ts`,
-  `lib/supabase/auth-env.ts`), validated fail-fast with `AuthConfigError`. It is
-  **distinct** from the service-role data client (SD2, §7) and never touches it; the
-  service-role key gains no `NEXT_PUBLIC_` twin. **RLS stays deny-all (D11):
-  authenticating a user grants no row access** — the panel still reads server-side
-  with the service-role key, and authentication is a gate, not a grant.
+- **Separate publishable-key auth client family (SA1).** Authentication uses a
+  cookie-backed **publishable** client-key client
+  (`lib/supabase/{auth-server,auth-middleware,browser}.ts`, `lib/supabase/auth-env.ts`),
+  validated fail-fast with `AuthConfigError`. As of the publishable-key migration
+  (issue #172), `readAuthEnv()` resolves `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+  (`sb_publishable_…`) **first** and falls back to the legacy
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` for one release — emitting a one-time deprecation
+  warning — and throws `AuthConfigError` only when neither is set (the returned
+  `publishableKey` also carries a back-compat `anonKey` alias so existing callers keep
+  working). Supabase now treats the classic `anon` JWT as a legacy client credential
+  and recommends the individually-revocable publishable API key; the fallback lets
+  local/CI/deploy environments cut over independently without a flag day, and the anon
+  fallback is removed in a follow-up once every environment carries the publishable key.
+  Either client key is browser-safe (RLS-bound). This family is **distinct** from the
+  service-role data client (SD2, §7) and never touches it; the service-role key gains no
+  `NEXT_PUBLIC_` twin. **RLS stays deny-all (D11): authenticating a user grants no row
+  access** — the panel still reads server-side with the service-role key, and
+  authentication is a gate, not a grant.
 - **Authorization chokepoint — the middleware gate (S-117).** `panel/middleware.ts`
   is the single place authorization is decided. It runs on every non-static request,
   short-circuits `public` routes (`/login`) before any auth work, verifies identity
@@ -185,7 +200,7 @@ passes (recorded S-117 decision). What is shipped as current state:
     never the spoofable `getSession()`; fail-closed — any error hides the control) and
     threads it as a static per-request prop into `AppShell → Sidebar`. The shell itself
     never calls Supabase, so the S-106 hydration contract is untouched. The logout path
-    uses the anon-key auth client family (SA1), never the service-role data client, and
+    uses the publishable-key auth client family (SA1), never the service-role data client, and
     **RLS stays deny-all (D11)**.
 - **Session lifetime.** Sessions are configured to expire after 12 hours of inactivity
   (surfaced to the operator as login-screen fine print).
