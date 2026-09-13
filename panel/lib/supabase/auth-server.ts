@@ -1,14 +1,15 @@
 /**
- * Cookie-backed server-side Supabase auth client (S-116, spec §7.1).
+ * Cookie-backed server-side Supabase auth client (S-116, spec §7.1;
+ * publishable-key migration #172).
  *
- * Uses the **anon** (publishable) key with a Next.js cookie store, so Server
+ * Uses the **publishable** client key with a Next.js cookie store, so Server
  * Components, route handlers, and server actions can read the current user
  * session and issue sign-in/out. This is a DIFFERENT client family from the
  * service-role data client in `server.ts` (SA1, D15): auth logic MUST NOT use
  * the service-role client, and data queries MUST NOT use this one.
  *
- * `import "server-only"` guards it out of any client bundle. The anon key is not
- * itself a secret (it is the publishable key), but binding the cookie adapter to
+ * `import "server-only"` guards it out of any client bundle. The publishable key
+ * is not itself a secret (it is browser-safe), but binding the cookie adapter to
  * a Next.js server cookie store means this factory only makes sense server-side.
  *
  * Server Components cannot write cookies; when this client is used from a pure
@@ -42,8 +43,8 @@ export interface CookieStore {
  * @param cookieStore the request cookie store (e.g. from `await cookies()`).
  */
 export function createAuthServerClient(cookieStore: CookieStore): SupabaseClient {
-  const { url, anonKey } = readAuthEnv();
-  return createServerClient(url, anonKey, {
+  const { url, publishableKey } = readAuthEnv();
+  return createServerClient(url, publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

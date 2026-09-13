@@ -32,11 +32,37 @@
  * outcome — counts as a FAILURE. Nothing is assumed to pass.
  */
 
-/** The auth env-var names that MUST be present on the app (names only, never values). */
-export const REQUIRED_AUTH_ENV_NAMES = [
-  "NEXT_PUBLIC_SUPABASE_URL",
+/**
+ * The auth env-var names that MUST be present on the app (names only, never values).
+ *
+ * The URL is always required. For the client key, EITHER the new publishable
+ * name (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, preferred, #172) OR the legacy
+ * anon name (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, deprecated fallback) satisfies the
+ * "publishable client key present" check — see `checkEnvNames`.
+ */
+export const REQUIRED_URL_ENV_NAME = "NEXT_PUBLIC_SUPABASE_URL";
+
+/** The accepted client-key env names, in preference order (publishable first). */
+export const CLIENT_KEY_ENV_NAMES = [
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ];
+
+/**
+ * The env-var names required for a passing gate, expressed as a checklist where
+ * each entry is satisfied by ANY of its listed names. The URL is a single
+ * required name; the client key is satisfied by either the publishable or the
+ * legacy anon name. Kept as a flat "either-of" structure so the check stays
+ * names-only and fail-closed.
+ */
+export const REQUIRED_AUTH_ENV_GROUPS = [[REQUIRED_URL_ENV_NAME], CLIENT_KEY_ENV_NAMES];
+
+/**
+ * Back-compat export: the flat list of names that, if ALL present, satisfy the
+ * gate. Retained so existing importers keep working; the canonical check is now
+ * `REQUIRED_AUTH_ENV_GROUPS` (either publishable OR anon satisfies the key).
+ */
+export const REQUIRED_AUTH_ENV_NAMES = [REQUIRED_URL_ENV_NAME, "NEXT_PUBLIC_SUPABASE_ANON_KEY"];
 
 /** Coerce anything to a trimmed lower-cased string ("" for non-strings). */
 function s(v) {
@@ -110,12 +136,22 @@ function statusOf(probe) {
  *
  * `presentNames` is the list of secret/config NAMES reported by
  * `fly secrets list` / `fly config show` (NAMES ONLY — the wrapper never
- * collects or passes values). Every name in REQUIRED_AUTH_ENV_NAMES must be
- * present. Missing/garbage input → fail (fail-closed).
+ * collects or passes values). The URL name must be present, AND at least one of
+ * the accepted client-key names (publishable preferred, #172; legacy anon
+ * accepted as a deprecated fallback). Missing/garbage input → fail (fail-closed).
  */
 export function checkEnvNames(presentNames) {
   const present = new Set((Array.isArray(presentNames) ? presentNames : []).map((n) => s(n)));
-  const missing = REQUIRED_AUTH_ENV_NAMES.filter((name) => !present.has(name.toLowerCase()));
+
+  const missing = [];
+  for (const group of REQUIRED_AUTH_ENV_GROUPS) {
+    const satisfied = group.some((name) => present.has(name.toLowerCase()));
+    if (!satisfied) {
+      // Report the group as "A or B" so the operator knows either name works.
+      missing.push(group.join(" or "));
+    }
+  }
+
   return {
     ok: missing.length === 0,
     missing,

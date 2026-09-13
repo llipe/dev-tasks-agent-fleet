@@ -40,10 +40,13 @@ const skipReason = !probe.available
 const runSuite = probe.available && keysPresent;
 
 // The auth clients read the NEXT_PUBLIC_* pair (auth-env.ts). Point them at the
-// local stack for this suite. Set before any auth client is created.
+// local stack for this suite, using the publishable name (#172, preferred). The
+// local CLI stack only issues an anon-role key, so it is carried under the new
+// name — exercising the publishable-first resolution. Set before any auth client
+// is created.
 if (runSuite) {
   process.env.NEXT_PUBLIC_SUPABASE_URL = API_URL;
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = ANON_KEY;
 }
 
 /**

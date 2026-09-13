@@ -63,6 +63,19 @@ describe("panel-auth-check CLI — exit-code contract (release gate)", () => {
     expect(r.stdout).toMatch(/auth boundary holds/i);
   });
 
+  it("exits 0 with the new publishable key env name (#172)", () => {
+    const publishableInput = join(dir, "publishable.json");
+    writeFileSync(
+      publishableInput,
+      JSON.stringify({
+        ...OK,
+        envNames: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"],
+      }),
+    );
+    const r = run(publishableInput);
+    expect(r.status).toBe(0);
+  });
+
   it("exits 1 (release BLOCKED) when a signUp succeeds — gate observed failing (AC17)", () => {
     const r = run(signupOpenInput);
     expect(r.status).toBe(1);
