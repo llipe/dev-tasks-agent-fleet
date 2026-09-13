@@ -438,7 +438,98 @@ fly ips release <public-addr> -a dt-agent-fleet-panel   # app is private again i
 Only after the app is private again: diagnose the gate failure, fix, re-run Phase A private
 verification, and re-attempt Phase B.
 
+---
 
+## Publishable-key credential cutover (#172) — for an ALREADY-DEPLOYED panel
+
+Issue #172 migrated the panel's **client/auth** Supabase credential off the legacy `anon` JWT onto the
+new **publishable** API key (`sb_publishable_…`), which is **individually revocable** without a
+project-wide session bust. `readAuthEnv()` (`panel/lib/supabase/auth-env.ts`) resolves
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` **first** and falls back to `NEXT_PUBLIC_SUPABASE_ANON_KEY` for
+one release, so the cutover has **no flag day** — the moment the publishable key is present, the panel
+uses it.
+
+> **Scope guardrails.** This is a **client-key** cutover only. It does **not** change the **server**
+> data client (`panel/lib/supabase/server.ts`, SD2/D15) — leave `SUPABASE_URL` and
+> `SUPABASE_SERVICE_ROLE_KEY` untouched (migrating the server client to a new **secret** key is a
+> separate concern). No schema/data change; auth state stays in Supabase-managed `auth.*` + cookies.
+
+**Preconditions:** the panel is already deployed and public behind the login boundary (see §13 / ADR-007),
+running today on the legacy anon key. `fly.toml` already declares the public `[http_service]` — this is
+**not** a go-public step, so no new IP allocation is involved.
+
+**Steps (do not reorder):**
+
+1. **Create the publishable key** (Supabase dashboard, operator — Supabase checklist #6 above):
+   Project Settings → API keys → new → **publishable** (`sb_publishable_…`) for project
+   `hegxeycmbmjfgzqpdiik`. Record it by **name only**, never the value.
+
+2. **Re-confirm the Supabase Auth settings** (unchanged preconditions): Email provider **on**, public
+   signups **OFF** (hard release blocker — the gate's check 4 fails on a successful signup), 12h
+   inactivity timeout, operator user exists.
+
+3. **Set the new key on the Fly app** (setting a secret triggers a rolling redeploy):
+   ```bash
+   fly secrets set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_…' -a dt-agent-fleet-panel
+   ```
+   Keep `NEXT_PUBLIC_SUPABASE_ANON_KEY` set during the cutover — the fallback keeps the app working if
+   anything about the publishable key is wrong. Confirm the name landed (names only):
+   ```bash
+   fly secrets list -a dt-agent-fleet-panel   # expect NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY present
+   ```
+   If that name is **absent**, the running app is still on the anon key — the secret did not take; set
+   it again and let the redeploy finish before continuing.
+
+4. **Run the auth release gate against the PUBLIC host.** The gate script reads the URL + client key
+   from **your shell environment** (it POSTs a disposable `signUp` to the Auth endpoint for check 4),
+   so the vars MUST be **exported** into the shell you launch it from — a plain `NAME=value` (not
+   exported) or a value set only via `fly secrets` will NOT be seen by the script, and check 4
+   **fail-closes** with `WARN — … not set … cannot confirm signups are off`.
+   ```bash
+   export NEXT_PUBLIC_SUPABASE_URL='https://hegxeycmbmjfgzqpdiik.supabase.co'
+   export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_…'
+   export SUPABASE_SERVICE_ROLE_KEY='<service-role key>'   # optional: lets the gate auto-delete a stray signup account
+
+   printenv NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY   # confirm it is EXPORTED (prints a value) before running
+
+   ./scripts/verify-panel-auth.sh https://dt-agent-fleet-panel.fly.dev -a dt-agent-fleet-panel
+   # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signUp REJECTED.
+   ```
+   > **Gotcha (recorded from a real run).** A fail-closed check 4 with the "not set" WARN almost always
+   > means the vars were *set but not exported* into the gate's shell — not an app problem (checks 1–3
+   > passing prove the deployed app is configured and enforcing). Use `export` (or the inline
+   > single-command form `VAR=… VAR=… ./scripts/verify-panel-auth.sh …` with every assignment on the
+   > invocation line, no blank lines/comments between them). Single-quote the values so `!`/`$` in the
+   > key are not mangled. "Could not confirm rejection" ≠ "signups are open" — it means the check could
+   > not run.
+
+5. **Signed-in live walkthrough** at the public URL: sign in as the operator → dashboard renders
+   seeded agents → open an agent's **run history** → a **run detail** → confirm the **live tail**
+   streams on a running run → **Log out** returns to `/login`. This proves the publishable key drives a
+   full authenticated session, not just the anonymous-boundary probes in step 4.
+
+6. **Revoke the legacy anon key** (the payoff — only after steps 4–5 confirm the app works on the
+   publishable key):
+   - Revoke the legacy `anon` key in the Supabase dashboard (individual revocation — no project-wide
+     session bust).
+   - Drop the now-unused fallback secret so the app runs on the publishable key alone:
+     ```bash
+     fly secrets unset NEXT_PUBLIC_SUPABASE_ANON_KEY -a dt-agent-fleet-panel
+     ```
+   - Re-run the gate (step 4) once more to confirm it still passes on the publishable name alone, and
+     update the evidence-log `fly secrets list` row below to replace `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+     with `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+
+**Containment.** If the gate ever fails after the cutover, this is still an internet-reachable app:
+contain first with `fly ips release <addr> -a dt-agent-fleet-panel` (private in one command, no
+redeploy — see "Phase B rollback / containment" above), then diagnose. If a bad publishable key is the
+cause and the anon fallback is still set, re-setting/using the anon key restores service without a
+build.
+
+**Other environments.** Local dev (`panel/.env.local`) and CI cut over independently — set
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` when convenient; the anon fallback keeps them working until then.
+
+---
 
 **No new action required.** OQ2 was closed on **2026-09-06** against the deployed runtime: the panel
 sends **bare inner JSON** (`panel/lib/aws/invoke.ts`, no `prompt` wrapper), and a bare-sent payload
