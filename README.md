@@ -13,15 +13,18 @@ See [`docs/product-context.md`](docs/product-context.md) for the full problem st
 
 The project is delivered in two phases:
 
-- **Phase 1 — Backend + Agent (current):** the Supabase schema, and the
-  `dependency-update` agent that runs on AgentCore, authenticates to GitHub via a GitHub
-  App, and reports its lifecycle/events back to Supabase (falling back to CloudWatch/stderr
-  when the API is unreachable).
-- **Phase 2 — Panel UI:** a Next.js app on Fly.io that visualizes runs (list, detail, live
-  log tail via Supabase Realtime) and provides the schema-driven invocation form. The `panel`
-  package is **scaffolded in the repo** (Next.js 15 App Router, React 19, TypeScript strict —
-  issue #114 / S-101); routes, the invocation form, live tail, and Fly deployment land in later
-  Phase 2 stories.
+- **Phase 1 — Backend + Agent (done):** the Supabase schema (applied via Supabase CLI
+  migrations), and the `dependency-update` agent that runs on AgentCore, authenticates to
+  GitHub via a GitHub App, and reports its lifecycle/events back to Supabase (falling back
+  to CloudWatch/stderr when the API is unreachable).
+- **Phase 2 — Panel UI (deployed):** a Next.js app on Fly.io that visualizes runs (agents
+  dashboard, run history, run detail with live log tail via Supabase Realtime/SSE) and
+  provides the schema-driven invocation form. The panel requires a **Supabase password
+  login** (`/login`, fail-closed middleware gate) and is **deployed and internet-reachable**
+  at `https://dt-agent-fleet-panel.fly.dev`, with login — not network privacy — as the
+  security boundary, mechanically asserted by the auth release gate on every deploy. See
+  [ADR-007](docs/adr/ADR-007-auth-release-gate-replaces-privacy-gate.md) and
+  [`docs/runbooks/panel-deployment.md`](docs/runbooks/panel-deployment.md).
 
 ## Repository layout
 
@@ -30,30 +33,41 @@ The project is delivered in two phases:
 ├── Makefile                 # Repo-root aggregate — runs a Python branch AND a JS/TS branch (both must pass)
 ├── package.json             # Workspace root — canonical scripts delegate to `panel` via pnpm --filter
 ├── pnpm-workspace.yaml       # Workspace members: panel, agents/dependency-update/agentcore/cdk
+├── Dockerfile.panel          # Panel production image (Next.js `standalone`, built from repo root)
 ├── TESTING.md               # Canonical testing contract (layers, commands, coverage)
 ├── DESIGN.md                # Nocturne design system for the Phase 2 panel
-├── docs/                    # Product context, technical guidelines, PRDs, specs, ADRs
+├── docs/                    # Product context, technical guidelines, PRDs, specs, ADRs, runbooks
 │   ├── product-context.md
 │   ├── technical-guidelines.md
-│   ├── reference/           # Schema/seed pointer stubs, agent_reporter.py, credentials.ts (MOVED stub → panel/lib/aws)
-│   └── requirements/        # PRDs
-├── panel/                   # Phase 2 Next.js (App Router) front-end — scaffolded in S-101
-│   ├── app/                 # layout.tsx + page.tsx placeholders (DESIGN §1.2 Inter link)
-│   ├── lib/aws/             # AWS credential provider + InvokeAgentRuntime wrapper (S-111)
-│   ├── tests/               # Vitest unit/component/integration projects
-│   └── README.md            # Panel-specific docs (scripts, conventions, SD2)
+│   ├── adr/                 # Architecture decision records (ADR-001…ADR-007)
+│   ├── runbooks/             # Operator procedures requiring live AWS/Supabase/Fly access
+│   ├── requirements/         # PRDs
+│   ├── prototype/            # High-fidelity Nocturne prototype (source for DESIGN.md)
+│   └── reference/            # Non-canonical pointer stubs — schema/seed/reporter/credentials moved elsewhere; do not edit
+├── supabase/                 # Canonical schema/seed — Supabase CLI migrations + seed.sql + config.toml
+├── panel/                   # Phase 2 Next.js (App Router) front-end — deployed to Fly.io
+│   ├── app/                 # Routes: `(panel)/` (authenticated, AppShell) + `login/` (public) + `api/`
+│   ├── lib/                 # supabase/ (server data + auth clients), aws/ (credentials/invoke), auth/, domain/, sse/
+│   ├── middleware.ts         # Fail-closed authorization chokepoint (getClaims(), never getSession())
+│   ├── fly.toml              # Public HTTPS service — login is the boundary, see ADR-007
+│   ├── scripts/              # panel-auth-check.mjs — the pure auth-gate parser
+│   ├── tests/                # Vitest unit/component/integration projects + Playwright E2E
+│   └── README.md            # Panel-specific docs (scripts, conventions, SD2, env vars)
+├── scripts/                  # Repo-root operator scripts — verify-panel-auth.sh (release gate), cleanup-duplicates.sh
+├── infra/                    # IAM policy documents (trust policy, invoke policy) for the Fly OIDC → AWS role
 ├── agents/
 │   └── dependency-update/   # The active Phase 1 agent (Python, AgentCore Container)
 │       ├── agentcore/       # Runtime config + CDK infra
 │       ├── app/dependencyUpdate/   # Agent source, tests, Makefile, pyproject.toml
 │       └── README.md        # Agent-specific docs (deployment, pipeline, env vars)
-└── workstream/              # Task lists, specs, test plans, fidelity reports
+└── workstream/              # Task lists, specs, test plans, fidelity reports; archive/ holds completed work
 ```
 
 The **active codebase** is the `dependency-update` Python agent under
-`agents/dependency-update/app/dependencyUpdate/`. Agent-specific details (pipeline,
-deployment, environment variables, runtime timeouts) live in
-[`agents/dependency-update/README.md`](agents/dependency-update/README.md).
+`agents/dependency-update/app/dependencyUpdate/` (Phase 1) and the `panel/` Next.js app
+(Phase 2, deployed). Agent-specific details (pipeline, deployment, environment variables,
+runtime timeouts) live in [`agents/dependency-update/README.md`](agents/dependency-update/README.md).
+Panel-specific details (scripts, conventions, env vars) live in [`panel/README.md`](panel/README.md).
 
 ## Prerequisites
 
@@ -63,6 +77,12 @@ deployment, environment variables, runtime timeouts) live in
 - **`make`** — the canonical command surface.
 - For local agent runs and deployment (see the agent README): the
   [AgentCore CLI](agents/dependency-update/README.md), Docker (ARM64), and the `gh` CLI.
+- For local panel dev, integration tests, and E2E (see [`panel/README.md`](panel/README.md)):
+  the [Supabase CLI](https://supabase.com/docs/guides/local-development) (`supabase start` /
+  `db reset` applies `supabase/migrations/` + `supabase/seed.sql`) and Docker.
+- For panel deploys and the auth release gate (see
+  [`docs/runbooks/panel-deployment.md`](docs/runbooks/panel-deployment.md)): the
+  [`flyctl` CLI](https://fly.io/docs/flyctl/) and `curl`.
 
 ## Getting started
 
@@ -137,19 +157,30 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs two jobs on eve
 - **`python-quality`** — the Python gate as explicit steps (lint → format-check → typecheck →
   test+coverage → audit) on a **Python 3.13 + 3.14** matrix.
 - **`panel-quality`** — the JS/TS gate for the `panel` package (Node 22 + pnpm): lint →
-  format:check → typecheck → test:coverage → audit.
+  format:check → typecheck → test:coverage → audit, plus a unit test of the auth release-gate
+  parser (`panel-auth-check.mjs`) and a `shellcheck` of `scripts/verify-panel-auth.sh`.
 
-There is currently no deploy-time gate; deployment is via the AgentCore CLI / CDK (Phase 1) and
-Fly.io (Phase 2).
+CI does not deploy or run the live release gate against the deployed app — that is an
+**operator-executed, deploy-time gate**: `scripts/verify-panel-auth.sh` runs after every panel
+deploy and mechanically fails the release (exit non-zero) unless the deployed app enforces the
+login boundary and rejects a test signup. See
+[`docs/runbooks/panel-deployment.md`](docs/runbooks/panel-deployment.md) and
+[ADR-007](docs/adr/ADR-007-auth-release-gate-replaces-privacy-gate.md). The
+`dependency-update` agent deploys via the AgentCore CLI / CDK (Phase 1), also operator-executed.
 
 ## Documentation map
 
 | Document | Purpose |
 | --- | --- |
 | [`docs/product-context.md`](docs/product-context.md) | Problem statement, users, goals, roadmap, constraints |
-| [`docs/technical-guidelines.md`](docs/technical-guidelines.md) | Stack, architecture patterns, data model, security, deployment |
-| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant) |
-| [`docs/runbooks/`](docs/runbooks/) | Operator procedures requiring live AWS/Supabase access — deployment + E2E (#77), `pg_cron` reaper scheduling + stale-run verification (#94) |
+| [`docs/technical-guidelines.md`](docs/technical-guidelines.md) | Stack, architecture patterns, data model, security, deployment (canonical current-state doc — see its changelog for the full delivery history) |
+| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant), ADR-007 (auth release gate replaces the privacy gate — login is now the panel's security boundary) |
+| [`docs/runbooks/`](docs/runbooks/) | Operator procedures requiring live AWS/Supabase/Fly access — [`panel-deployment.md`](docs/runbooks/panel-deployment.md) (Fly deploy, OIDC probe, auth release gate, go-public, **publishable-key credential cutover**), [`issue-77-deployment-e2e.md`](docs/runbooks/issue-77-deployment-e2e.md) (agent deploy + E2E, historical), [`issue-94-reaper-verification.md`](docs/runbooks/issue-94-reaper-verification.md) (`pg_cron` reaper scheduling + stale-run verification), [`issue-89-live-verification.md`](docs/runbooks/issue-89-live-verification.md) (invocation payload shape), [`issue-115-baseline-adoption.md`](docs/runbooks/issue-115-baseline-adoption.md) (Supabase CLI migration adoption), [`issue-116-english-sql-surface.md`](docs/runbooks/issue-116-english-sql-surface.md), [`issue-121-ac10-reaper-paused.md`](docs/runbooks/issue-121-ac10-reaper-paused.md) |
+| [`docs/requirements/`](docs/requirements/) | PRDs — [`prd-dependency-update-agent.md`](docs/requirements/prd-dependency-update-agent.md) (Phase 1), [`prd-agent-fleet-panel-v2.md`](docs/requirements/prd-agent-fleet-panel-v2.md) (Phase 2), [`prd-panel-password-auth.md`](docs/requirements/prd-panel-password-auth.md) (the shipped auth wave), [`prd-panel-auth-and-rls.md`](docs/requirements/prd-panel-auth-and-rls.md) (deferred RLS hardening), [`prd-agent-fleet-panel-v3-ui-depth.md`](docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md) |
+| [`docs/prototype/`](docs/prototype/) | High-fidelity Nocturne HTML prototype — the source `/DESIGN.md` was extracted from |
+| [`docs/reference/`](docs/reference/) | Non-canonical pointer stubs (schema/seed moved to `supabase/`, `credentials.ts` moved to `panel/lib/aws/`) — kept only so historical links resolve; `agent_reporter.py` here is still the canonical copy source |
 | [`agents/dependency-update/README.md`](agents/dependency-update/README.md) | Agent pipeline, deployment, environment variables, timeouts |
+| [`panel/README.md`](panel/README.md) | Panel scripts, conventions, env vars (incl. the publishable/anon auth-key pair), SD2 server-only boundary |
 | [`TESTING.md`](TESTING.md) | Testing contract — layers, commands, coverage, gaps |
 | [`DESIGN.md`](DESIGN.md) | Nocturne design system for the Phase 2 panel |
+| [`workstream/`](workstream/) | Active specs, PRDs-in-progress, test plans, and traceability matrices still cited by the docs above; `workstream/archive/` holds completed task lists, fidelity reports, and other execution artifacts for merged work |
