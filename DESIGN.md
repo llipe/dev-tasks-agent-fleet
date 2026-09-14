@@ -1,720 +1,233 @@
-# DESIGN.md — Agent Fleet Control Panel
+---
+version: alpha
+name: Design Standard
+description: Canonical visual and technical contract for UI artifacts, mockups, and implementation guidance in this repository.
+status: placeholder
+owner: ux-engineer
+# ─── Technical contract ───────────────────────────────────────────────────────
+platform: "<unfilled>" # web | mobile | both
+framework: "<unfilled>" # react | react-native | html
+css_approach: "<unfilled>" # tailwind | css-modules | styled-components | inline
+component_library: "<unfilled>" # shadcn | chakra | mui | custom | none
+primitive_base: "<unfilled>" # radix | base | aria — shadcn --base; only when component_library: shadcn
+component_library_version: "<unfilled>" # pin exactly, never ^ or latest
+theme_output: "<unfilled>" # where ux-theme-gen writes; default /mockups/.theme/
+responsive_breakpoints:
+  sm: "<unfilled>" # e.g. 640px
+  md: "<unfilled>" # e.g. 768px
+  lg: "<unfilled>" # e.g. 1024px
+  xl: "<unfilled>" # e.g. 1280px
+# ─── Visual tokens ────────────────────────────────────────────────────────────
+# Semantic slot names below match shadcn/ui so generated themes can override
+# them directly. Add project-specific extras under `colors-extended`.
+colors:
+  background: "<unfilled>"
+  foreground: "<unfilled>"
+  card: "<unfilled>"
+  card-foreground: "<unfilled>"
+  primary: "<unfilled>"
+  primary-foreground: "<unfilled>"
+  secondary: "<unfilled>"
+  secondary-foreground: "<unfilled>"
+  muted: "<unfilled>"
+  muted-foreground: "<unfilled>"
+  accent: "<unfilled>"
+  accent-foreground: "<unfilled>"
+  destructive: "<unfilled>"
+  destructive-foreground: "<unfilled>"
+  border: "<unfilled>"
+  input: "<unfilled>"
+  ring: "<unfilled>"
+colors-extended: {} # project tokens with no shadcn slot; declare the mapping below
+typography:
+  heading-xl:
+    fontFamily: "<unfilled>"
+    fontSize: "<unfilled>"
+    fontWeight: "<unfilled>"
+    lineHeight: "<unfilled>"
+  heading-md:
+    fontFamily: "<unfilled>"
+    fontSize: "<unfilled>"
+    fontWeight: "<unfilled>"
+    lineHeight: "<unfilled>"
+  body-md:
+    fontFamily: "<unfilled>"
+    fontSize: "<unfilled>"
+    fontWeight: "<unfilled>"
+    lineHeight: "<unfilled>"
+  body-sm:
+    fontFamily: "<unfilled>"
+    fontSize: "<unfilled>"
+    fontWeight: "<unfilled>"
+    lineHeight: "<unfilled>"
+  label-sm:
+    fontFamily: "<unfilled>"
+    fontSize: "<unfilled>"
+    fontWeight: "<unfilled>"
+    lineHeight: "<unfilled>"
+rounded:
+  sm: "<unfilled>"
+  md: "<unfilled>"
+  lg: "<unfilled>"
+spacing:
+  xs: "<unfilled>"
+  sm: "<unfilled>"
+  md: "<unfilled>"
+  lg: "<unfilled>"
+  xl: "<unfilled>"
+components: {} # component token overrides; see Components section
+---
+
+<!--
+PLACEHOLDER. This file ships with dev-tasks as a section contract only — it
+deliberately asserts no project-specific values.
+
+Run `ux-engineer` to inspect this repository and fill it in. The agent audits
+existing UI code for signal, presents inferred values as labelled proposals,
+interviews you for the decisions it cannot infer, and writes this file only
+after your explicit confirmation. It MUST NOT author a design system silently.
+
+The sentinel for an unset value is the string "<unfilled>" in front matter and
+`<!-- unfilled -->` in prose. `ux-theme-gen` refuses to generate while any
+
+sentinel remains, and agents MUST treat `status: placeholder` as "no standard
+established" rather than as permission.
+
+Owned by `ux-engineer`. `developer` keeps it current when the visual contract
+changes. Listed in `consumer_owned_paths`, so `dev-tasks update` will never
+overwrite a version you have filled in.
+-->
 
 ## Changelog
 
-| Version | Date       | Summary                                                                                         | Author           |
-| ------- | ---------- | ----------------------------------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-08-26 | Initial version. Extracted from high-fidelity prototype at `/docs/prototype/` (Nocturne DS). Documents design system, tokens, component inventory, layout architecture, screen specifications, interaction patterns, and formatting conventions. | product-engineer |
-| 1.1     | 2026-09-04 | Resolved the three self-contradictions the S-105 audit found in this document ([`workstream/archive/fidelity-report-S-105.md`](workstream/archive/fidelity-report-S-105.md) drift D1–D3), each in favor of the single consistent reading. **D1 — status-pill tint is a uniform 14%** for every status; §8.1 previously gave `running`/`queued` 16% while §3.4 specified 14% for all, with no rationale for the exception. **D2 — pulse cadence is 1.6s everywhere**, including `queued`, which §8.1 alone put at 1.4s. **D3 — §7.1 now defines one relative-time form, not two**; the "Dashboard last run — short relative" row (`14m ago`) is removed, so the run history table and the dashboard share `formatRelative`, and a screen never formats a relative time itself. All three now match the implementation shipped in S-105, so no code changes: this is the document catching up to a codebase that had already resolved the ambiguity the only way it could. Decided before Wave 3 started, because D3 was S-107 scope. | product-engineer |
-| 1.2     | 2026-09-09 | Added **§5.5 Login (`/login`)** to the screen specifications (Story S-119 / issue #158). Documents the panel's only public, shell-free screen: the centered Nocturne card, the brand row reusing the §4.1 sidebar mark + wordmark, the "Sign in" heading + invitation-only subtitle, the faded rule, the `EMAIL`/`PASSWORD` fields with the keyboard-operable `SHOW`/`HIDE` toggle (`aria-pressed`, defaults masked), the full-width primary Sign in button with its pending/disabled state, the `role="alert"` region carrying the single generic anti-enumeration credential message, the footer row with the **dead** `aria-disabled` "Forgot password?" non-link and the monospace region tag, and the 12-hour session fine print. Token-only CSS Modules, label-associated fields, `:focus-visible` rings. Documentation catching up to the screen shipped in S-119 — no new visual token or component introduced (reuses `Input`/`Button`/`KLabel` and the §4.1 brand pattern). | developer |
-| 1.3     | 2026-09-09 | Added the **sidebar footer Log out affordance** to **§4.1 App Shell** (Story S-120 / issue #159). Documents the footer's two stacked controls and their order — **Log out below "System health" and above "Collapse"** — sharing the footer-control grid (icon + label, icon-only when collapsed). Log out uses the Phosphor `Power` icon (§10) and is a **POST-only** `<form action="/api/auth/logout">` submit button (a GET logout is CSRF-triggerable); the accessible name "Log out" is preserved in the collapsed icon-only state; token-only CSS, global `:focus-visible` ring. **Visibility gate:** the item renders only when the request is authenticated and is absent when unauthenticated, with auth state passed into the shell as a server-provided prop (the authenticated route-group layout computes it) — the shell performs no auth I/O (SD2 preserved). Documentation catching up to the affordance shipped in S-120 — no new visual token or component introduced (reuses the §4.1 footer `.toggle` grid pattern and the `Power` icon already in §10). | developer |
-| 1.4     | 2026-09-11 | Drift-reconciliation write-back (auth go-public pass, issue #162). Two documentation-only corrections catching the design contract up to shipped reality; no visual token or component change. **§5.1 Agents Dashboard** — annotated the "time range filter (7d/30d/all)" common-element line: the chips were **deliberately not built** (S-107 scope decision), the dashboard ships the name+slug filter input only over "all" runs, because a client-side window misreports the loaded-set counts and a server-side window reintroduces the refetch the density toggle avoids. **§8.2 Outcome Tags** — added **`N/A`** (the `not_applicable` outcome) to the known-values list, which the run-history screen (S-108) already renders via `outcomeLabel`; it was omitted here and is distinct from `—` (pending/none). Source: `workstream/drift-reconciliation-2026-09-11-auth-go-public.md`; companion write-backs in PRD v2.5 and spec v1.7. | product-engineer |
-
----
-
-## 1. Design System — Nocturne
-
-The panel uses **Nocturne**, a dark, compact design system. The prototype lives at `docs/prototype/` and is the visual source of truth. This document codifies what the prototype shows so a developer can reproduce it in React/Next.js without re-reading raw HTML.
-
-### 1.1 Philosophy
-
-- **Dark ground, low chroma.** The background is near-neutral blue-grey. Color comes from tonal ramps, not saturation. The accent is a blurple used as a line and a glow — never flooded over large areas.
-- **Dense on purpose.** The 0.7x spacing scale makes the UI compact. Hierarchy comes from size and whitespace, not bold weight or color floods.
-- **Outlined, not filled.** Primary buttons are accent-bordered on transparent, not solid-filled.
-- **Rules fade.** Horizontal rules fade to transparent at both ends over 48px (a Nocturne signature).
-- **Monospace for data.** Timestamps, IDs, slugs, durations, counts, and code use monospace. UI labels, headings, and descriptions use the body font.
-
-### 1.2 Font Loading
-
-```html
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
-```
-
-Monospace uses the system stack: `ui-monospace, Menlo, monospace`. No custom monospace font is loaded.
-
----
-
-## 2. Design Tokens
-
-All values come from CSS custom properties on `:root`. Implementation MUST use these tokens — never hardcode hex values, font names, or pixel spacing.
-
-### 2.1 Colors — Core
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-bg` | `#161826` | Page/app background |
-| `--color-surface` | `#232532` | Cards, input fields, raised surfaces |
-| `--color-text` | `#e9e9ed` | Primary text color |
-| `--color-accent` | `#9184d9` | Primary accent (blurple) — buttons, links, active states |
-| `--color-divider` | `color-mix(in srgb, #e9e9ed 16%, transparent)` | Borders, rules, separators |
-
-### 2.2 Colors — Neutral Ramp (100-900)
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-neutral-100` | `#f3f5fe` | Text on dark tints |
-| `--color-neutral-200` | `#e4e7f5` | |
-| `--color-neutral-300` | `#cfd3e5` | |
-| `--color-neutral-400` | `#b2b6ca` | |
-| `--color-neutral-500` | `#9397ab` | |
-| `--color-neutral-600` | `#75798c` | |
-| `--color-neutral-700` | `#595d6c` | |
-| `--color-neutral-800` | `#3f424d` | Tag backgrounds, hovers |
-| `--color-neutral-900` | `#292b31` | |
-
-### 2.3 Colors — Accent Ramp (100-900)
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-accent-100` | `#f5f4ff` | |
-| `--color-accent-200` | `#e7e5fe` | |
-| `--color-accent-300` | `#d2cefd` | Running status text, repo names, link hover |
-| `--color-accent-400` | `#b5abfc` | Slug text, link hover |
-| `--color-accent-500` | `#968ae0` | |
-| `--color-accent-600` | `#796cbf` | |
-| `--color-accent-700` | `#5d5294` | |
-| `--color-accent-800` | `#423a6a` | Tag fills |
-| `--color-accent-900` | `#2b2741` | |
-
-### 2.4 Colors — Status (App-Level Tokens)
-
-These are NOT in the Nocturne DS stylesheet — defined per-page in the prototype, must be added to the app's global CSS.
-
-| Token | Value | Maps to |
-|-------|-------|---------|
-| `--st-ok` | `#74b58f` | `succeeded` |
-| `--st-fail` | `#d1706b` | `failed` |
-| `--st-timeout` | `#d1a45e` | `timed_out` |
-| (accent) | `#9184d9` | `running` |
-| (muted) | 38% text | `failed_to_start` |
-
-### 2.5 Colors — Utility Aliases
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--rule` | `var(--color-divider)` | Shorthand for borders |
-| `--muted` | `color-mix(in srgb, var(--color-text) 55%, transparent)` | Secondary text |
-| `--faint` | `color-mix(in srgb, var(--color-text) 38%, transparent)` | Tertiary/disabled text |
-
-### 2.6 Typography
-
-| Token | Value |
-|-------|-------|
-| `--font-heading` | `"Inter", system-ui, sans-serif` |
-| `--font-heading-weight` | `500` |
-| `--font-body` | `"Inter", system-ui, sans-serif` |
-| `--mono` | `ui-monospace, Menlo, monospace` |
-
-**Type scale (from DS):**
-
-| Element | Size | Weight | Line-height | Letter-spacing |
-|---------|------|--------|-------------|----------------|
-| h1 | 42px | 500 | 1.12 | -0.015em |
-| h2 | 32px | 500 | 1.12 | -0.015em |
-| h3 | 25px | 500 | 1.12 | -0.015em |
-| h4 | 20px | 500 | 1.12 | -0.015em |
-| h5 | 16px | 500 | 1.12 | -0.015em |
-| h6 | 13px | 500 | 1.12 | 0.08em, uppercase |
-| body | 15px | 400 | 1.55 | — |
-
-**Prototype overrides (smaller scale for the dense UI):**
-
-| Context | Font shorthand |
-|---------|---------------|
-| Page title | `500 19-21px/1.2 var(--font-heading)` |
-| Card/agent name | `500 13.5-15px var(--font-heading)` |
-| Nav items | `400 12.5px var(--font-body)` |
-| Descriptions | `400 11.5-12.5px/1.45-1.55 var(--font-body)` |
-| Section labels (`.klabel`) | `500 10px var(--font-body); letter-spacing:.08em; text-transform:uppercase` |
-| Monospace data | `400 11-12px var(--mono)` |
-| Log lines | `400 12px/1.65 var(--mono)` |
-| Status pills | `500 11px var(--mono); letter-spacing:.02em` |
-| Table headers | `500 10px var(--font-body); letter-spacing:.08em; text-transform:uppercase` |
-
-### 2.7 Spacing
-
-| Token | Value | Note |
-|-------|-------|------|
-| `--space-1` | `2.8px` | Tight gaps |
-| `--space-2` | `5.6px` | Button padding, small gaps |
-| `--space-3` | `8.4px` | Card padding, component gaps |
-| `--space-4` | `11.2px` | Section padding |
-| `--space-6` | `16.8px` | Larger gaps |
-| `--space-8` | `22.4px` | Major section spacing |
-
-**Common paddings observed in prototype:**
-
-| Context | Padding |
-|---------|---------|
-| Sidebar nav items | `6px 9px` |
-| Top bar | `0 14px` (height 38px) |
-| Page header | `18px 14px 14px` |
-| Content area | `0 14px 20px` |
-| Table rows | `9-11px 16px` |
-| Cards | `14px` |
-| Dialog | `12-20px` |
-| Log lines | `1.5px 16px` |
-
-### 2.8 Border Radius
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--radius-sm` | `4px` | Small badges, brand icon |
-| `--radius-md` | `8px` | Buttons, inputs, cards, nav items |
-| `--radius-lg` | `14px` | Dialogs, outer containers |
-
-**Additional radii in prototype:**
-
-| Value | Usage |
-|-------|-------|
-| `7px` | Nav items |
-| `6px` | Tags, step items |
-| `999px` | Pills (status, live tail, artifact links) |
-| `3px` | Status bar segments |
-| `2px` | Mini progress bars |
-| `1px` | Run strip bars |
-| `12px` | Invoke dialog outer |
-| `10px` | Content region border |
-
-### 2.9 Shadows / Elevation
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--shadow-sm` | `0 0 0 1px #3f424d` | Cards, subtle elevation |
-| `--shadow-md` | `0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55)` | Dropdowns |
-| `--shadow-lg` | `0 0 0 1px #9397ab, 0 16px 40px rgba(0,0,0,0.65)` | Dialogs, prototype cards |
-
----
-
-## 3. Component Inventory
-
-### 3.1 Buttons
-
-| Variant | Border | Text color | Hover BG | Active BG | Notes |
-|---------|--------|------------|----------|-----------|-------|
-| `.btn-primary` | `1px solid var(--color-accent)` | `var(--color-accent)` | 12% accent tint | 22% accent tint | Outlined, never filled |
-| `.btn-secondary` | `1px solid var(--color-divider)` | `var(--color-text)` | 7% text tint | 14% text tint | Subtle |
-| `.btn-ghost` | none | `var(--color-accent)` | 10% accent tint | 18% accent tint | Minimal |
-
-**Size variants observed:**
-
-| Size | min-height | padding | font-size |
-|------|------------|---------|-----------|
-| Default | 36px | `5.6px 10.08px` | 14px |
-| Small | 28-30px | `0 11-13px` | 12px |
-| Medium | 32px | `0 16-20px` | 12.5-13px |
-
-Disabled: `opacity:0.45; cursor:not-allowed`
-
-### 3.2 Inputs
-
-- Background: `var(--color-surface)`
-- Border: `1px solid var(--color-divider)` → hover: 45% text → focus: accent
-- Border-radius: `var(--radius-md)` (8px)
-- Caret: `var(--color-accent)`
-- Prototype uses small variants: `min-height:26-32px; font-size:11.5-12.5px`
-
-### 3.3 Tags
-
-| Variant | Background | Text | Border |
-|---------|------------|------|--------|
-| `.tag-accent` | `var(--color-accent-800)` | `var(--color-accent-100)` | none |
-| `.tag-neutral` | `var(--color-neutral-800)` | `var(--color-neutral-100)` | none |
-| `.tag-outline` | transparent | `var(--color-accent)` | `1px solid var(--color-accent)` |
-
-Prototype uses small variants: `font-size:9.5px; padding:1px 5-6px; letter-spacing:.06em`
-
-### 3.4 Status Pill
-
-Custom component (not in DS, prototype-defined):
-
-```css
-.st {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: 500 11px var(--mono);
-  letter-spacing: 0.02em;
-  padding: 2px 8px 2px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, <status-color> 14%, transparent);
-}
-.st .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: <status-color>;
-}
-```
-
-Running variant: dot has `animation: pulse 1.6s ease-in-out infinite`
-
-### 3.5 Nav Item
-
-```css
-.navitem {
-  display: grid;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 9px;
-  border-radius: 7px;
-  cursor: pointer;
-  font: 400 12.5px var(--font-body);
-}
-/* Expanded columns: 15px minmax(0,1fr) auto */
-/* Collapsed columns: 15px */
-```
-
-Active state: `background: color-mix(in srgb, var(--color-accent) 12%, transparent); border-left: 2px solid var(--color-accent)`
-
-### 3.6 Log Line
-
-```css
-.logline {
-  display: grid;
-  grid-template-columns: 82px 46px 108px minmax(0,1fr);
-  gap: 12px;
-  padding: 1.5px 16px;
-  font: 400 12px/1.65 var(--mono);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.logline:hover {
-  background: color-mix(in srgb, var(--color-text) 4%, transparent);
-}
-```
-
-Columns: `timestamp | level | step | message`
-
-### 3.7 Section Label (`.klabel`)
-
-```css
-.klabel {
-  font: 500 10px var(--font-body);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-```
-
-### 3.8 Status Bar (stacked)
-
-```css
-/* Container */
-height: 5px;
-border-radius: 3px;
-overflow: hidden;
-background: var(--rule);
-display: flex;
-
-/* Segments: percentage widths, colored by status */
-```
-
-### 3.9 Run Strip (24-bar sparkline)
-
-```css
-/* Container */
-height: 22px;
-display: flex;
-gap: 2px;
-align-items: flex-end;
-
-/* Each bar */
-flex: 1;
-height: 100%; /* or 33% for empty */
-border-radius: 1px;
-background: <status-color>;
-
-/* Running bar: animation: pulse 1.6s ease-in-out infinite */
-/* Empty/future: height:33%; background: color-mix(in srgb, var(--color-text) 13%, transparent) */
-```
-
-### 3.10 Toggle Switch (Invoke form)
-
-```css
-/* Track */
-width: 38px;
-height: 21px;
-border-radius: 999px;
-padding: 2px;
-transition: all 0.14s ease;
-
-/* Off: transparent bg, rule border, justify flex-start */
-/* On: accent-tinted bg, accent border, justify flex-end */
-
-/* Knob */
-width: 15px;
-height: 15px;
-border-radius: 50%;
-/* Off: muted color */
-/* On: accent color */
-```
-
----
-
-## 4. Layout Architecture
-
-### 4.1 App Shell
-
-```
-┌──────────────────────────────────────────────────────────┐
-│ height: 100dvh; overflow: hidden; display: flex          │
-├──────────────┬───────────────────────────────────────────┤
-│ Sidebar      │ Content Area                              │
-│ width: 212px │ flex: 1; min-width: 0; flex-direction: col│
-│ (52px coll.) │ ┌───────────────────────────────────────┐ │
-│ flex: none   │ │ Top Bar — height: 38px                │ │
-│              │ ├───────────────────────────────────────┤ │
-│              │ │ Page Content — flex:1; overflow-y:auto │ │
-│              │ └───────────────────────────────────────┘ │
-└──────────────┴───────────────────────────────────────────┘
-```
-
-- Sidebar transition: `width 0.14s ease`
-- Sidebar bg: `color-mix(in srgb, var(--color-bg) 92%, #000)`
-- Body bg: `color-mix(in srgb, var(--color-bg) 88%, #000)`
-- Border between sidebar and content: `1px solid var(--rule)`
-
-#### Sidebar footer — Log out (authenticated only)
-
-The sidebar footer holds two controls, stacked in this order, sharing the footer-control grid pattern (icon + label, icon-only when collapsed):
-
-1. **Log out** — the session-ending affordance, shown **below "System health" and above "Collapse"**. It uses the Phosphor `Power` icon (§10) and is a plain `<form method="post" action="/api/auth/logout">` submit button (POST-only: a GET logout is CSRF-triggerable and can be fired by a prefetcher). The accessible name stays "Log out" in both expanded and collapsed states, so the icon-only collapsed control remains labeled. It reuses the footer `.toggle` grid + hover tint, token-only, and the global `:focus-visible` accent ring.
-2. **Collapse / Expand** — the existing sidebar toggle (`«`/`»`, `Cmd/Ctrl+\`).
-
-Visibility: **Log out renders only when the request is authenticated, and is absent entirely when unauthenticated.** Authentication state is passed into the shell as a server-provided prop (the authenticated route-group layout computes it via the auth-server client) — the shell performs no auth I/O itself (SD2 preserved).
-
-### 4.2 Run Detail (full-height, no outer scroll)
-
-```
-flex-direction: column; (fills content area)
-├── Breadcrumb + actions (flex: none)
-├── [Optional banner] (flex: none)
-├── Summary panel (flex: none, 2-column grid)
-│   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr)
-│   gap: 28px
-├── Log toolbar (flex: none)
-├── Log viewer (flex: 1; overflow-y: auto)
-└── Log footer (flex: none)
-```
-
-### 4.3 Dashboard Table Grid
-
-```css
-grid-template-columns: 26px minmax(0,1fr) 128px 300px 132px 92px;
-```
-
-### 4.4 Run History Table Grid
-
-```css
-grid-template-columns: 118px 122px minmax(0,1fr) 96px 78px 104px 30px;
-```
-
-### 4.5 Dashboard Cards
-
-```css
-grid-template-columns: repeat(2, minmax(0, 1fr));
-gap: 14px;
-```
-
----
-
-## 5. Screen Specifications
-
-### 5.1 Agents Dashboard
-
-Three density variants to choose from (or offer as a view toggle):
-
-| Variant | ID | Description | Best for |
-|---------|-----|-------------|----------|
-| Dense rows | 1a | Table with status bar + legend per row | Many agents, data comparison |
-| Cards | 1b | 2-col card grid with 24-bar run strip | Visual overview, fewer agents |
-| Ledger | 1c | Maximum density, keyboard-first | Power users, keyboard nav |
-
-**Common elements:**
-- Page header: "Agents" + summary stats + time range filter (7d/30d/all) + filter input
-  - **Not built (S-107 scope decision, 2026-09-04).** The dashboard ships the **name+slug filter input only**, over "all" runs — the **7d/30d/all time-range chips were deliberately not implemented**: a client-side window would misreport the status-breakdown counts (they are derived from the loaded set), and a server-side window needs a `searchParams` write that reintroduces a refetch the density toggle is specifically designed to avoid. If a time window is wanted later it belongs to the v3 UI-depth run-history filtering work, not the dashboard header. See `technical-guidelines.md` row 1.18.
-- Per-agent: status dot, name (heading weight), slug (mono, accent-400), description (muted, truncated), run count, status breakdown, last run time + outcome tag, action button
-
-### 5.2 Agent Run History
-
-- Agent header with breadcrumb, name, description, metadata (params count, p50 duration, success rate)
-- Filter bar: status segmented control (with colored dots + counts), repo chips, search input, live indicator
-- Table with columns: Status pill | Outcome tag | Repository + branch + PR | Duration | Steps (n/m) | Started (relative) | Chevron
-- Pagination: "X of Y" + "Load more" button
-- Empty state: message + CTA buttons
-
-### 5.3 Run Detail
-
-- Full-height layout (log viewer owns the scroll)
-- Summary: status pill, outcome tag, title (Run ID), repository (accent-300), metadata grid (queued/started/finished/duration/branch), artifact links (pill-shaped)
-- Steps panel: vertical list with colored dot, name (mono 500), duration, event count; click filters log
-- Log viewer: 4-column grid (time/level/step/message), level coloring, hover highlight, live cursor block
-- State banners for terminal states (timed_out, failed_to_start) with colored border and background tint
-
-### 5.4 Invoke Agent
-
-- Centered dialog (max-width 760px) with `--shadow-lg`
-- Header: title + agent slug + close button
-- Schema-driven form: field rows with label+type+required on left, input on right (2-column grid: `minmax(0,1fr) 292px`)
-- Toggle switches for booleans
-- Select dropdowns for enums
-- Repository field rendered separately (first, outside params)
-- Schema preview toggle
-- Footer: API hint + Cancel + Run button
-- Success state: animated confirmation with run ID and link to detail
-
-### 5.5 Login (`/login`)
-
-The only public screen — rendered **outside** the app shell (no sidebar, no top bar), on the page background, as a single centered card (`--color-surface`, `--radius-lg`, `--shadow-lg`, max-width ~360px). Reached when the auth gate (S-117) redirects an unauthenticated request; an already-authenticated visit redirects to `/`.
-
-- **Brand row:** reuses the sidebar brand markup pattern — the accent-bordered mark with its glowing dot + the "Agent Fleet" wordmark (§4.1).
-- **"Sign in" heading:** h-scale heading, weight 500 (§2.6).
-- **Invitation subtitle:** `--muted`, ~12.5px body — invitation-only, contact an administrator.
-- **Faded rule:** the Nocturne fade-to-transparent divider (§1.1).
-- **`EMAIL` field:** `KLabel` + `Input` (`type="email"`, `autoComplete="email"`, placeholder `you@company.com`).
-- **`PASSWORD` field:** `KLabel` + `Input` (`autoComplete="current-password"`) with a **`SHOW`/`HIDE` toggle** right-aligned on the label row — a text button (accent, klabel-scale), keyboard-operable, `aria-pressed` reflecting the revealed state; the field **defaults to masked**.
-- **Sign in button:** `Button` `variant="primary"`, **full width**; disabled and showing a pending label while submitting (prevents double submit).
-- **Error region:** a `role="alert"` panel above the fields, tinted with `--st-fail`, carrying the **single generic** "Invalid email or password." message — unknown-email and wrong-password are indistinguishable (anti-enumeration).
-- **Footer row:** a **dead "Forgot password?"** control — a styled non-link `<span>` with `aria-disabled`, `--faint`, `not-allowed` cursor (never an `<a href="#">`, never activatable) — and a monospace `· <region>` tag (`--faint`, non-secret display value).
-- **Fine print:** "Sessions expire after 12 hours of inactivity." (`--faint`).
-
-Styling is token-only CSS Modules (Nocturne token discipline). Fields are label-associated, the form is semantic, and focus rings use the global `:focus-visible` accent ring.
-
----
-
-## 6. Interaction Patterns
-
-### 6.1 Animations
-
-| Name | Keyframes | Duration | Easing | Usage |
-|------|-----------|----------|--------|-------|
-| `pulse` | `0%,100%{opacity:1} 50%{opacity:.3}` | 1.6s | ease-in-out, infinite | Running dots, live indicators |
-| `pulse` (slow) | same | 2s | ease-in-out, infinite | Realtime indicator |
-| `spin` | `to{transform:rotate(360deg)}` | 0.9s | linear, infinite | Loading spinner (queued) |
-| `rise` | `from{opacity:0;translateY(6px)}` | 0.18s | ease, fill both | Success state appear |
-
-### 6.2 Transitions
-
-| Element | Property | Duration | Easing |
-|---------|----------|----------|--------|
-| Sidebar width | width | 0.14s | ease |
-| Toggle switch | all | 0.14s | ease |
-| Button hover/active | background | instant (no transition) | — |
-
-### 6.3 Hover States
-
-| Element | Effect |
-|---------|--------|
-| Nav items | `background: color-mix(in srgb, var(--color-text) 5%, transparent)` |
-| Log lines | `background: color-mix(in srgb, var(--color-text) 4%, transparent)` |
-| Table rows | 4% text tint overlay |
-| Links | color shifts to `var(--color-accent-400)` |
-| Buttons | Per-variant tints (see §3.1) |
-
-### 6.4 Focus States
-
-```css
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-```
-
-Never use browser default focus ring.
-
-### 6.5 Keyboard Shortcuts (shown in UI)
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+\` | Toggle sidebar collapse |
-| `Cmd+K` | Open command palette |
-| `Up/Down` | Navigate list (ledger view) |
-| `Enter` | Run selected (ledger view) |
-| `/` | Focus filter input (ledger view) |
-
-### 6.6 Live Tail Behavior
-
-- Auto-scrolls log when user is within 24px of bottom
-- Scrolling up pauses auto-scroll; shows "paused" state on live tail button
-- Click "live tail" re-scrolls to bottom and resumes
-- Active: green dot + green text + pulsing animation
-- Paused: transparent bg + muted text
-
----
-
-## 7. Data Formatting Conventions
-
-### 7.1 Timestamps
-
-| Context | Format | Example |
-|---------|--------|---------|
-| Log viewer | `HH:MM:SS` (24h, monospace) | `14:02:13` |
-| Run metadata | `HH:MM:SS` (24h, monospace) | `14:02:07` |
-| Relative time — **one form**, used by both the run history table and the dashboard "last run" | `just now` under a minute, `N min ago` under an hour, `Nh ago` under a day, `yesterday` at one day, `Nd ago` beyond | `just now`, `14 min ago`, `6h ago`, `yesterday`, `23d ago` |
-
-**There is one relative-time form, not two** (v1.1 correction). Earlier revisions listed a separate "Dashboard last run — short relative" row with a compact `14m ago`, which produced two forms for the same value and was never implemented. The single form above is what `panel/lib/format.ts` `formatRelative` emits, and both screens use it. If a compact form is ever wanted, it belongs here first as a second named formatter — a screen must never format a relative time itself.
-
-### 7.2 Durations
-
-| Context | Format | Example |
-|---------|--------|---------|
-| Run detail | `Xm XXs` | `3m 04s` |
-| Step list | Short | `4s`, `1m 12s` |
-| Run history | `Xm XXs` | `1m 48s` |
-| Running in-progress | `running · Xm` | `running · 2m` |
-
-### 7.3 Counts and IDs
-
-| Content | Format |
-|---------|--------|
-| Run ID | Short ULID-style, uppercase monospace: `01J8XQ2F` |
-| Run count | Plain number: `82` |
-| With label | `82 runs` |
-| Step progress | `2/4` |
-| Event count | `12 ev` |
-| Pagination | `8 of 82` |
-| Status legend | `65 ok · 11 fail · 6 timeout` |
-| Cards compact | `65 ✓ · 11 ✕ · 6 ⧗` |
-
-### 7.4 Typography Usage Rules
-
-| Content type | Font stack |
-|-------------|------------|
-| Headings, button labels, nav labels | `var(--font-heading)` weight 500 |
-| Body text, descriptions | `var(--font-body)` weight 400 |
-| Slugs, IDs, timestamps, durations, counts, code, branches, commit SHAs | `var(--mono)` |
-| Section headers | `.klabel` pattern (10px uppercase) |
-| Repository names | Monospace at 12.5px |
-| Status labels in pills | Monospace 500 11px |
-
-### 7.5 Truncation
-
-| Pattern | Usage |
-|---------|-------|
-| Single-line ellipsis | Agent descriptions in table, sidebar labels, step names |
-| 2-line clamp | Agent descriptions in cards |
-| Word-wrap | Log messages (never truncate log content) |
-
----
-
-## 8. Status Visualization
-
-### 8.1 Status → Visual Mapping
-
-| Status | Color | Dot | Animation | Pill BG |
-|--------|-------|-----|-----------|---------|
-| `running` | `var(--color-accent)` | 7px solid + `box-shadow: 0 0 7px` | `pulse 1.6s` | 14% accent |
-| `succeeded` | `var(--st-ok)` | 7px solid | none | 14% green |
-| `failed` | `var(--st-fail)` | 7px solid | none | 14% red |
-| `timed_out` | `var(--st-timeout)` | 7px solid | none | 14% amber |
-| `failed_to_start` | `var(--faint)` | 7px hollow (border only) | none | `var(--rule)` |
-| `queued` | `var(--color-accent)` | pulsing | `pulse 1.6s` | 14% accent |
-
-**Pill tint is a uniform 14% for every status** (v1.1 correction). Earlier revisions of this table gave `running` and `queued` 16% while §3.4 specified 14% for all — a self-contradiction inside this document, with no visual rationale for the exception. §3.4 is the authority; 14% applies everywhere. **Pulse cadence is 1.6s everywhere**, including `queued` (was 1.4s here, matching nothing else in the document). Both corrections align this table with the implementation shipped in S-105.
-
-### 8.2 Outcome Tags
-
-Always `.tag-outline` style. Uppercase text. Known values: `FIXED`, `NO VULNS`, `PARTIAL`, `NEEDS REVIEW`, `N/A` (the `not_applicable` outcome — e.g. a run that exits without calling `succeed()`, or an invalid-payload rejection), `—` (pending/none, with opacity 0.45).
-
-> **`N/A` added 2026-09-11.** The run-history screen (S-108) renders `N/A` for the `not_applicable` outcome (`outcomeLabel` in `panel/lib/domain/run-row.ts`), which this list originally omitted — a documentation gap, not a code change. `not_applicable` is a real outcome in the schema enum and is distinct from `—` (no outcome / pending). See `technical-guidelines.md` row 1.19.
-
-### 8.3 Terminal-State Banners (Run Detail)
-
-Shown above the log viewer for `timed_out` and `failed_to_start`:
-
-```css
-padding: 12px 16px;
-border-bottom: 1px solid color-mix(in srgb, <status-color> 35%, transparent);
-background: color-mix(in srgb, <status-color> 10%, transparent);
-```
-
-Contains: status dot + title (bold, colored) + explanation text + action buttons + metadata.
-
----
-
-## 9. Responsive Behavior
-
-The prototype targets **1180-1440px width** and does not define responsive breakpoints. For Phase 2 implementation:
-
-- **Minimum supported width:** 1024px (sidebar always visible)
-- **Below 1024px:** behavior undefined — acceptable for a single-operator internal tool
-- **Sidebar collapse** at 52px provides some flexibility but is a user preference, not a breakpoint response
-
----
-
-## 10. Icons
-
-Use **Phosphor Icons** (https://phosphoricons.com) throughout, rendered as inline SVG on `currentColor`. The prototype uses Unicode glyphs as stand-ins:
-
-| Glyph | Meaning | Phosphor equivalent |
-|-------|---------|-------------------|
-| ▦ | Agents | `GridFour` or `Robot` |
-| ≡ | All runs | `List` |
-| ⑃ | Repositories | `GitBranch` |
-| ⚙ | Settings | `GearSix` |
-| ◈ | System health | `Heartbeat` |
-| ⏻ | Log out (sidebar footer, §4.1) | `Power` |
-| « / » | Collapse/expand | `CaretLeft` / `CaretRight` |
-| › | Row chevron | `CaretRight` |
-| ✕ | Close | `X` |
-
----
-
-## 11. Implementation Notes
-
-### 11.1 CSS Architecture
-
-- Use CSS custom properties for all tokens (not Tailwind utility classes alone — the tokens must be the source of truth)
-- `color-mix()` is used extensively — requires Chrome 111+, Safari 16.2+, Firefox 113+
-- Consider a Tailwind plugin that maps to these tokens, or use CSS Modules with the token sheet
-
-### 11.2 Component Library
-
-The prototype maps cleanly to a small component set:
-
-| Component | Props |
-|-----------|-------|
-| `Button` | variant (primary/secondary/ghost), size (sm/md/default), disabled, icon |
-| `Tag` | variant (accent/neutral/outline), size (sm/default) |
-| `StatusPill` | status (running/succeeded/failed/timed_out/failed_to_start/queued) |
-| `StatusDot` | status, size (5px/6px/7px) |
-| `NavItem` | active, icon, label, badge, collapsed |
-| `Input` | size (sm/default), placeholder |
-| `LogLine` | timestamp, level, step, message |
-| `StatusBar` | segments: {color, percent}[] |
-| `RunStrip` | runs: {status}[], max (24) |
-| `Toggle` | checked, onChange |
-| `KLabel` | children |
-| `Breadcrumb` | items: {label, href, active}[] |
-
-### 11.3 Key Behavioral Contracts
-
-1. **Log auto-scroll:** If `scrollHeight - scrollTop - clientHeight < 24`, auto-scroll on new events
-2. **Sidebar state:** Persisted in localStorage; animated with CSS transition
-3. **Realtime:** Supabase Realtime subscription on `run_events` and `runs`; green indicator reflects connection state
-4. **Schema-driven form:** Generated from `agents.params_schema` JSON Schema (requirement from parent PRD D2)
-5. **No authentication UI:** Single-user system, no login screen, no user avatar, no roles
-
----
-
-## 12. Do / Don't
-
-### Do
-
-- Use tokens for every color, spacing, radius, and font value
-- Keep chroma low — lean on neutral ramp for surfaces and borders
-- Use monospace for all data values (timestamps, IDs, counts, slugs)
-- Use the compact spacing scale — this UI is intentionally dense
-- Outline buttons; let `:focus-visible` carry the accent
-- Fade rules at both ends (the `linear-gradient` to transparent pattern)
-
-### Don't
-
-- Do not flood large areas with the accent color
-- Do not use pure black or pure white — every value comes from the ramps
-- Do not bolden headings past weight 500
-- Do not stack heavy shadows — on a dark ground elevation is an edge + ambient darkness
-- Do not use browser default focus rings
-- Do not add decorative elements (badges, illustrations, gradients) — this is a utility panel
+| Version | Date | Summary                         | Author    |
+| ------- | ---- | ------------------------------- | --------- |
+| alpha   | —    | Shipped as an unfilled contract | dev-tasks |
+
+Add a row on every change once filled.
+
+## Overview
+
+Describe the intended feel of the product in two or three sentences: how
+structured or expressive it should be, how much visual weight to carry, and what
+the reader should trust about a screen at a glance.
+
+<!-- unfilled -->
+
+## Colors
+
+Declare how brand colour is applied versus neutral surface, and what each
+semantic slot means in this product.
+
+- `background` / `foreground` — base surface and its text
+- `primary` — principal action and brand emphasis
+- `secondary` — supporting emphasis and interactive accent
+- `muted` — low-emphasis surfaces and secondary text
+- `accent` — highlights and selected states
+- `destructive` — irreversible and error affordances
+- `border` / `input` / `ring` — separation and focus
+
+Any token without a shadcn slot goes in `colors-extended`, with its purpose and
+the slot it maps onto recorded here.
+
+<!-- unfilled -->
+
+## Typography
+
+State the hierarchy and where each token is used. Prioritize clarity and
+scanning over decorative range.
+
+<!-- unfilled -->
+
+## Layout
+
+State the layout model, the breakpoint intent, and whether the product is
+mobile-first or desktop-first.
+
+<!-- unfilled -->
+
+## Elevation and Depth
+
+State how separation is expressed — borders, shadow, or spacing — and how much
+depth is acceptable.
+
+<!-- unfilled -->
+
+## Shapes
+
+State the radius convention and which radius belongs to which component family.
+
+<!-- unfilled -->
+
+## Components
+
+Component tokens define the baseline visual contract for controls and
+containers. Model state-specific styling as separate component entries rather
+than as inline exceptions.
+
+<!-- unfilled -->
+
+## Voice and Tone
+
+### Communication principles
+
+- Register: <!-- unfilled --> (concise / friendly / formal / technical)
+- Voice: <!-- unfilled --> (active preferred, and where passive is acceptable)
+- Person: <!-- unfilled --> (first / second / third)
+
+### Microcopy patterns
+
+| Context              | Pattern                       | Example                                                   |
+| -------------------- | ----------------------------- | --------------------------------------------------------- |
+| Success confirmation | <!-- unfilled -->             | "Changes saved."                                          |
+| Error message        | cause + recovery action       | "Could not save. Check your connection and try again."    |
+| Empty state          | state + next action           | "No transactions yet. Add your first one to get started." |
+| Loading              | <!-- unfilled -->             | "Loading your data..."                                    |
+| Destructive action   | consequence + irreversibility | "This permanently deletes X. This cannot be undone."      |
+| Button labels        | verb or verb + noun           | "Save changes" / "Delete" / "Continue"                    |
+| Placeholder text     | example-prefixed              | "e.g., john@example.com"                                  |
+
+Examples above are defaults, not decisions — replace them with this product's
+actual phrasing when filling the contract.
+
+### Accessibility copy
+
+- Every interactive element has a visible label.
+- Error messages associate with their field via `aria-describedby`.
+- Status messages use `aria-live` regions.
+- Icon-only controls carry `sr-only` text alternatives.
+
+## Technical Standards
+
+### Framework and libraries
+
+Values come from the front matter above. Record the reasoning here, especially
+where the choice constrains future work.
+
+- Platform: <!-- unfilled -->
+- Framework: <!-- unfilled -->
+- CSS approach: <!-- unfilled -->
+- Component library and primitive base: <!-- unfilled -->
+
+### Token consumption
+
+- Mockups and production code **MUST** consume tokens from `ux-theme-gen`
+  output, not from hand-copied values.
+- Hardcoded colour or spacing values outside this file are findings.
+- Generated theme files are derived artifacts. Regenerate them; never hand-edit.
+- Colour values are emitted as declared here. `@theme` accepts any valid CSS
+  colour, so no colour-space conversion is performed.
+
+### File conventions
+
+- Components `PascalCase`; files `kebab-case`.
+- Web consumes CSS variables; React Native consumes the theme object.
+- Mobile-first, progressively enhanced.
+
+## Do's and Don'ts
+
+- Do keep contrast high for text and controls.
+- Do preserve visible focus indicators and accessible state messaging.
+- Do reuse tokens and component patterns before introducing new values.
+- Don't introduce arbitrary hex values outside this file.
+- Don't mix incompatible button, spacing, or radius patterns within one feature.
