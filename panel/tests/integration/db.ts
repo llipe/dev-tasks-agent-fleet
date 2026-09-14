@@ -29,6 +29,57 @@ export interface DbAvailability {
   reason: string;
 }
 
+// The PostgREST base URL + service-role key the query helpers (their production
+// transport) will actually use. Resolved the same way the suites resolve them.
+export function localRestConfig(): { url: string; serviceKey: string } {
+  return {
+    url: process.env.SUPABASE_URL ?? process.env.API_URL ?? "http://127.0.0.1:54321",
+    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SERVICE_ROLE_KEY ?? "",
+  };
+}
+
+/**
+ * Verify the resolved PostgREST endpoint actually ACCEPTS the resolved
+ * service-role key — i.e. the key belongs to the stack we are about to test.
+ *
+ * The pg-level `probeLocalDb` proves the database is *up*; it uses postgres/
+ * postgres and says nothing about the JWT. But the query helpers talk to
+ * PostgREST with the service-role JWT, and if `.env.local` (or the shell)
+ * carries a key for a DIFFERENT project than the running stack, every read
+ * fails with `PGRST301: None of the keys was able to decode the JWT` — 20+
+ * opaque failures that look like product bugs but are an env/stack mismatch
+ * (the R7 "local dev pointed at the hosted project" trap). This probe turns
+ * that into a single, clear skip/fail reason.
+ *
+ * Returns `null` when the endpoint accepts the key (or when no key is set — that
+ * case is a separate, already-handled skip reason), else a human-readable reason.
+ */
+export async function probeRestAuth(): Promise<string | null> {
+  const { url, serviceKey } = localRestConfig();
+  if (serviceKey.trim().length === 0) return null; // handled as its own skip reason by the suites
+  const base = url.replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/rest/v1/agents?select=id&limit=1`, {
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      signal: AbortSignal.timeout(Number(process.env.SUPABASE_REST_TIMEOUT_MS ?? "3000")),
+    });
+    if (res.status === 401) {
+      // PGRST301 / JWT-decode failure: the key does not belong to this stack.
+      return (
+        `PostgREST at ${base} rejected the service-role key (HTTP 401 — the JWT does not decode ` +
+        `against this stack's secret). SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY point at a DIFFERENT ` +
+        `project than the running local stack (the R7 trap — e.g. panel/.env.local carries the hosted ` +
+        `project's keys). Export the LOCAL stack's env for the integration run: ` +
+        `\`export $(supabase status -o env | grep -E 'SUPABASE_URL|ANON_KEY|SERVICE_ROLE_KEY')\`.`
+      );
+    }
+    return null; // 200 (or any non-401 read outcome) means the key decodes against this stack
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return `PostgREST at ${base} not reachable for auth probe — ${msg}`;
+  }
+}
+
 /**
  * `REQUIRE_LOCAL_DB=1` turns a Docker-gated skip into a hard failure (#134).
  *
@@ -59,7 +110,6 @@ export async function probeLocalDb(): Promise<DbAvailability> {
   try {
     await client.connect();
     await client.query("select 1");
-    return { available: true, reason: "local Supabase Postgres reachable" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const reason = `local Supabase Postgres not reachable at ${cfg.host}:${cfg.port} (run \`supabase start\` + \`supabase db reset\`; Docker required) — ${msg}`;
@@ -75,6 +125,22 @@ export async function probeLocalDb(): Promise<DbAvailability> {
   } finally {
     await client.end().catch(() => {});
   }
+
+  // The DB is up. Now verify the service-role JWT actually belongs to THIS
+  // stack — otherwise the helpers' PostgREST reads all fail with an opaque
+  // PGRST301 that looks like a product bug but is an env/stack mismatch (R7).
+  const authReason = await probeRestAuth();
+  if (authReason) {
+    if (requireLocalDb()) {
+      throw new Error(
+        `REQUIRE_LOCAL_DB=1 but the PostgREST auth probe failed: ${authReason} ` +
+          `In CI the Layer 2.5 reads must actually run against the local stack.`,
+      );
+    }
+    return { available: false, reason: authReason };
+  }
+
+  return { available: true, reason: "local Supabase Postgres reachable" };
 }
 
 // Convenience: run a query against the local stack with a fresh client.
