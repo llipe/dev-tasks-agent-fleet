@@ -1,37 +1,37 @@
 {
-  "version": "0.11.0",
+  "version": "0.12.0",
   "pinned": "0.11.0",
-  "installed_at": "2026-08-26T21:28:39.396Z",
+  "installed_at": "2026-09-14T15:37:37.752Z",
   "files": [
     {
       "path": ".kiro/agents/developer.md",
       "profile": "kiro",
-      "sha256": "1b7e7aba89da8e978bb3df9a1d9d2754112443bab65ac5b74d3bae18dd40a79a",
-      "origin_sha256": "1b7e7aba89da8e978bb3df9a1d9d2754112443bab65ac5b74d3bae18dd40a79a"
+      "sha256": "daeb09c234f7a4fe735bebc41514459b2349c37f5aeefbcac2eec686ed1207ac",
+      "origin_sha256": "daeb09c234f7a4fe735bebc41514459b2349c37f5aeefbcac2eec686ed1207ac"
     },
     {
       "path": ".kiro/agents/github-ops.md",
       "profile": "kiro",
-      "sha256": "54e73b78ffa8e4690830f751cef8e8e995fe719cbb8519e406c0b12258248b96",
-      "origin_sha256": "54e73b78ffa8e4690830f751cef8e8e995fe719cbb8519e406c0b12258248b96"
+      "sha256": "472d09cc8ab28b756bcd3def2c84faddfe8a297fa46b7cca4b71b807b48940a5",
+      "origin_sha256": "472d09cc8ab28b756bcd3def2c84faddfe8a297fa46b7cca4b71b807b48940a5"
     },
     {
       "path": ".kiro/agents/housekeeping.md",
       "profile": "kiro",
-      "sha256": "5da7b94a47aeb3b52d0d30ea897e46f9efda2795e8768b3d1e99339bcfdd5cb5",
-      "origin_sha256": "5da7b94a47aeb3b52d0d30ea897e46f9efda2795e8768b3d1e99339bcfdd5cb5"
+      "sha256": "3fae0f6942e51fc8be1136773a20b7ef1fade9a8f2da993de9d8b6d28ce587c6",
+      "origin_sha256": "3fae0f6942e51fc8be1136773a20b7ef1fade9a8f2da993de9d8b6d28ce587c6"
     },
     {
       "path": ".kiro/agents/planner.md",
       "profile": "kiro",
-      "sha256": "76e5c83dfa346a0ab3d99c247f3064901961074e55207c8af506e2ca2763ce0e",
-      "origin_sha256": "76e5c83dfa346a0ab3d99c247f3064901961074e55207c8af506e2ca2763ce0e"
+      "sha256": "fe24ee8c5062de39d5513eb56db2dad75090d77d5976cfcfd8e4fcad42a2b925",
+      "origin_sha256": "fe24ee8c5062de39d5513eb56db2dad75090d77d5976cfcfd8e4fcad42a2b925"
     },
     {
       "path": ".kiro/agents/product-engineer.md",
       "profile": "kiro",
-      "sha256": "22ee50a42b439660f16a1c57603814971b08ceb7e3ecc0274075801296b3f844",
-      "origin_sha256": "22ee50a42b439660f16a1c57603814971b08ceb7e3ecc0274075801296b3f844"
+      "sha256": "0bebb0f48c607c92cbfaeb4a3891eddebf82db148d463630e6b667fe8adbecba",
+      "origin_sha256": "0bebb0f48c607c92cbfaeb4a3891eddebf82db148d463630e6b667fe8adbecba"
     },
     {
       "path": ".kiro/agents/qa-engineer.md",
@@ -168,8 +168,8 @@
     {
       "path": ".kiro/skills/git-ops/SKILL.md",
       "profile": "kiro",
-      "sha256": "a829c624962b2ca372af5f7f5e850bccdb88463e3b5edf21013f7724da700de8",
-      "origin_sha256": "a829c624962b2ca372af5f7f5e850bccdb88463e3b5edf21013f7724da700de8"
+      "sha256": "4e6413d86d912113d9fa4bea2198617038207af148a2cdce775ffe091d932b5b",
+      "origin_sha256": "4e6413d86d912113d9fa4bea2198617038207af148a2cdce775ffe091d932b5b"
     },
     {
       "path": ".kiro/skills/memo-cli-usage/REFERENCE.md",
@@ -216,8 +216,8 @@
     {
       "path": ".kiro/steering/implement.md",
       "profile": "kiro",
-      "sha256": "7382a346cd9a2e4240d5ea259d153f9f2f607a44c60b49a398abd9f268cc2b8e",
-      "origin_sha256": "7382a346cd9a2e4240d5ea259d153f9f2f607a44c60b49a398abd9f268cc2b8e"
+      "sha256": "99c715266680c69b6bf39624906c674133c691ff089c8747c0a549e453485800",
+      "origin_sha256": "99c715266680c69b6bf39624906c674133c691ff089c8747c0a549e453485800"
     },
     {
       "path": ".kiro/steering/nextjs-pages-components.md",
@@ -254,6 +254,36 @@
       "profile": "root",
       "sha256": "2ff41564808cc6ece64a8f1f7261c8c633dace33665aa4be049b4083527e71b0",
       "origin_sha256": "2ff41564808cc6ece64a8f1f7261c8c633dace33665aa4be049b4083527e71b0"
+    },
+    {
+      "path": ".kiro/agents/infra-engineer.md",
+      "profile": "kiro",
+      "sha256": "73736b475fb7ecdd80b990f0c6db8eedeaeffef1b8181cc4e255634e127f8c0c",
+      "origin_sha256": "73736b475fb7ecdd80b990f0c6db8eedeaeffef1b8181cc4e255634e127f8c0c"
+    },
+    {
+      "path": ".kiro/skills/aws-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "803bf70c9de56d00538770b38310a1f5afe55f344d8bd595f575abee3bd69df3",
+      "origin_sha256": "803bf70c9de56d00538770b38310a1f5afe55f344d8bd595f575abee3bd69df3"
+    },
+    {
+      "path": ".kiro/skills/deploy-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "8948ecd057a2827c2f02f5cf4c9dd710e61160cce9e5d6b12cd52c2b38e45cfe",
+      "origin_sha256": "8948ecd057a2827c2f02f5cf4c9dd710e61160cce9e5d6b12cd52c2b38e45cfe"
+    },
+    {
+      "path": ".kiro/skills/fly-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "44a21eb30d3c6a21e346967508db7dbda923c583a5d2e333452713ead19a7347",
+      "origin_sha256": "44a21eb30d3c6a21e346967508db7dbda923c583a5d2e333452713ead19a7347"
+    },
+    {
+      "path": ".kiro/skills/supabase-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "9f183494b14c3da63ffcd9a63897ee53fe2813f7829493350167e2fc21f141c4",
+      "origin_sha256": "9f183494b14c3da63ffcd9a63897ee53fe2813f7829493350167e2fc21f141c4"
     }
   ],
   "extraction": {}
