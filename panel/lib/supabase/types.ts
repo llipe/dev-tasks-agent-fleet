@@ -55,6 +55,18 @@ export interface AgentRow {
   updated_at: string;
 }
 
+/** `github_installations` — the single GitHub App installation row (S-147). */
+export interface GithubInstallationRow {
+  id: string;
+  github_org_slug: string;
+  installation_id: number;
+  app_id: number;
+  private_key_secret_arn: string | null;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 /** `repositories` — repos enabled to run agents. */
 export interface RepositoryRow {
   id: string;

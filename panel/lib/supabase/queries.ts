@@ -19,6 +19,7 @@ import { escapeIlikeWildcards, type RunFilter } from "@/lib/domain/run-filter";
 import type { RunStatus } from "@/lib/domain/status";
 import type {
   AgentRow,
+  GithubInstallationRow,
   RepositoryRow,
   RunArtifactRow,
   RunEventRow,
@@ -675,3 +676,131 @@ export async function markRunFailedToStart(
     throw new DatabaseError("markRunFailedToStart", result.error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Repositories — list + add-by-reference (S-147 / #207) and archive (S-148).
+//
+// The panel's second user-triggered write and its first Server-Action-shaped
+// write (spec §6). `insertRepository` never calls the GitHub API (PRD §8
+// Business Rule) — it is a shape-validated INSERT against the existing
+// `repositories` table only. A duplicate `full_name` under the installation
+// is rejected with a friendly `REPOSITORY_ALREADY_EXISTS`, checked BOTH
+// pre-insert (the common case) and via the `23505` unique-violation fallback
+// (a race between two adds is still possible — spec §6/§12).
+// ---------------------------------------------------------------------------
+
+/** Postgres unique-violation SQLSTATE. */
+const PG_UNIQUE_VIOLATION = "23505";
+
+export const REPOSITORY_ALREADY_EXISTS = "REPOSITORY_ALREADY_EXISTS" as const;
+
+/**
+ * A `full_name` already exists under the target installation. Never surfaces
+ * the raw Postgres constraint error — this is the friendly, client-safe
+ * shape (spec §6/§12).
+ */
+export class RepositoryAlreadyExistsError extends Error {
+  readonly code = REPOSITORY_ALREADY_EXISTS;
+  readonly status = 400;
+
+  constructor(fullName: string) {
+    super(`Repository "${fullName}" already exists under this installation.`);
+    this.name = "RepositoryAlreadyExistsError";
+  }
+}
+
+/**
+ * 13. Resolves the single GitHub App installation row (`product-context.md`
+ * §11 — there is exactly one). Used to scope the Add-repository form's write
+ * without an installation picker (PRD §15 Assumption). Throws `DatabaseError`
+ * on a PostgREST failure; a genuinely empty table (mis-seeded environment) is
+ * a configuration fault, surfaced the same way rather than a silent null.
+ */
+export async function getSingleInstallation(
+  client: SupabaseClient,
+): Promise<GithubInstallationRow> {
+  const result = await client.from("github_installations").select("*").limit(1).maybeSingle();
+  const row = unwrap<GithubInstallationRow | null>("getSingleInstallation", result);
+  if (!row) {
+    throw new DatabaseError(
+      "getSingleInstallation",
+      new Error("No github_installations row exists — the environment is not seeded."),
+    );
+  }
+  return row;
+}
+
+/**
+ * 14. Repositories list (FR15). Excludes archived rows by default
+ * (`includeArchived` opts in); ordered by `full_name` for a stable list.
+ * Returns `[]` for an empty table — never null (EC-17 convention).
+ */
+export async function getRepositories(
+  client: SupabaseClient,
+  opts?: { includeArchived?: boolean },
+): Promise<RepositoryRow[]> {
+  let query = client.from("repositories").select("*").order("full_name", { ascending: true });
+  if (!opts?.includeArchived) {
+    query = query.is("archived_at", null);
+  }
+  const result = await query;
+  return unwrap<RepositoryRow[]>("getRepositories", result) ?? [];
+}
+
+/**
+ * 15. Insert a new repository by reference (FR16). NEVER calls the GitHub
+ * API — a shape-validated write only (the caller, `addRepository`, validates
+ * `full_name` via `parseFullName` first; this helper trusts its input).
+ *
+ * Duplicate rejection happens twice, deliberately:
+ *   1. A pre-check `select` scoped to `(installationId, fullName)` — the
+ *      common case, gives a fast friendly rejection without ever attempting
+ *      the insert.
+ *   2. A `23505` unique-violation fallback on the insert itself — because a
+ *      race between two concurrent adds of the same `full_name` can still
+ *      slip past the pre-check (TOCTOU). Both paths throw the SAME
+ *      `RepositoryAlreadyExistsError`, so the caller never has to
+ *      distinguish which one fired.
+ *
+ * Any other Postgres failure throws `DatabaseError` (pg code logged only).
+ */
+export async function insertRepository(
+  client: SupabaseClient,
+  row: { installationId: string; fullName: string; defaultBranch: string },
+): Promise<RepositoryRow> {
+  const precheck = await client
+    .from("repositories")
+    .select("id")
+    .eq("installation_id", row.installationId)
+    .eq("full_name", row.fullName)
+    .maybeSingle();
+  if (precheck.error) {
+    throw new DatabaseError("insertRepository:precheck", precheck.error);
+  }
+  if (precheck.data) {
+    throw new RepositoryAlreadyExistsError(row.fullName);
+  }
+
+  const result = await client
+    .from("repositories")
+    .insert({
+      installation_id: row.installationId,
+      full_name: row.fullName,
+      default_branch: row.defaultBranch,
+      is_enabled: true,
+    })
+    .select("*")
+    .single();
+
+  if (result.error) {
+    const pgCode = (result.error as { code?: string }).code;
+    if (pgCode === PG_UNIQUE_VIOLATION) {
+      throw new RepositoryAlreadyExistsError(row.fullName);
+    }
+    throw new DatabaseError("insertRepository", result.error);
+  }
+  return result.data as RepositoryRow;
+}
+
+// `archiveRepository` (FR17, soft delete) is Story S-148 scope — added by that
+// story, not this one (S-147 is list + add only).
