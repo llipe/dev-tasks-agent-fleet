@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import {
+  archiveRepository as archiveRepositoryRow,
   getSingleInstallation,
   insertRepository,
   REPOSITORY_ALREADY_EXISTS,
@@ -150,4 +151,89 @@ export async function addRepository(
       insert: (row) => insertRepository(client, row),
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// `archiveRepository` Server Action (Story S-148 / #208, spec §8.4/§13).
+//
+// Built the SAME WAY as `addRepository` above — a pure, injectable core
+// (`resolveArchiveRepository`) wrapped by a thin `"use server"` action:
+//   - The core validates the `id` field shape (non-empty string) BEFORE ever
+//     calling the injected `archive` function — an empty/malformed FormData
+//     value never reaches the DB layer.
+//   - `archive` is `archiveRepository` from `lib/supabase/queries.ts` (which
+//     is an idempotent `UPDATE`, never a `DELETE` — see that module's
+//     docstring). Any failure it throws maps to a generic `DATABASE_ERROR`,
+//     never leaking the raw Postgres detail (the standing convention).
+//   - No confirmation logic lives here — the confirm step is entirely a
+//     `RepositoryTable` UI concern (this action assumes the caller already
+//     confirmed); this action is reachable only via that confirmed submit.
+// ---------------------------------------------------------------------------
+
+// NOT exported: a `"use server"` file may only export async functions (Next.js
+// constraint) — a plain `export const` value here breaks the build. `typeof`
+// still works on a module-local const for the type below.
+const INVALID_ID = "INVALID_ID" as const;
+
+export interface ArchiveRepositorySuccess {
+  ok: true;
+}
+
+export interface ArchiveRepositoryFailure {
+  ok: false;
+  code: typeof INVALID_ID | "DATABASE_ERROR";
+  message: string;
+}
+
+export type ArchiveRepositoryResult = ArchiveRepositorySuccess | ArchiveRepositoryFailure;
+
+/** The minimal dependency surface the core needs (injectable, per the `addRepository` pattern). */
+export interface ArchiveRepositoryDeps {
+  archive: (id: string) => Promise<void>;
+}
+
+/**
+ * Pure decision core: validate the `id` shape, call the injected `archive`
+ * function, and map any error to a client-safe result. Never throws.
+ */
+export async function resolveArchiveRepository(
+  rawId: unknown,
+  deps: ArchiveRepositoryDeps,
+): Promise<ArchiveRepositoryResult> {
+  const id = typeof rawId === "string" ? rawId.trim() : "";
+  if (id === "") {
+    return {
+      ok: false,
+      code: INVALID_ID,
+      message: "Missing repository id.",
+    };
+  }
+
+  try {
+    await deps.archive(id);
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      code: "DATABASE_ERROR",
+      message: "Could not archive the repository. Try again.",
+    };
+  }
+}
+
+/**
+ * The `"use server"` action bound to `RepositoryTable`'s confirm dialog.
+ * Wires the real service-role client and runs the pure core.
+ *
+ * @param _prev previous action state (unused; required by `useActionState`).
+ * @param formData the submitted form data (`id`, the repository row id).
+ */
+export async function archiveRepository(
+  _prev: ArchiveRepositoryResult | null,
+  formData: FormData,
+): Promise<ArchiveRepositoryResult> {
+  const client = createServerClient();
+  return resolveArchiveRepository(formData.get("id"), {
+    archive: (id) => archiveRepositoryRow(client, id),
+  });
 }

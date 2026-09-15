@@ -19,9 +19,22 @@ import { describe, expect, it, vi } from "vitest";
  *   - `getInstallation` failing (config/DB error) also maps to `DATABASE_ERROR`
  *     without ever calling `insert`.
  *   - success returns `{ ok: true, repository }`.
+ *
+ * S-148 (#208) additions — `resolveArchiveRepository` (the same injectable-
+ * core shape, mirroring `resolveAddRepository`):
+ *   - a blank/missing `id` is rejected with `INVALID_ID` BEFORE `archive` is
+ *     ever called (never trusts an empty FormData field into a DB write).
+ *   - success returns `{ ok: true }`, calling `archive` with the given id.
+ *   - `archive` throwing maps to a generic `DATABASE_ERROR`, never leaking
+ *     the raw Postgres detail (same standing convention as `addRepository`).
  */
 
-import { resolveAddRepository, type AddRepositoryDeps } from "@/app/(panel)/repositories/actions";
+import {
+  resolveAddRepository,
+  resolveArchiveRepository,
+  type AddRepositoryDeps,
+  type ArchiveRepositoryDeps,
+} from "@/app/(panel)/repositories/actions";
 import { REPOSITORY_ALREADY_EXISTS } from "@/lib/supabase/queries";
 import { INVALID_REPOSITORY_FORMAT } from "@/lib/domain/repository-input";
 import type { RepositoryRow } from "@/lib/supabase/types";
@@ -176,5 +189,63 @@ describe("resolveAddRepository — generic failures never leak raw Postgres deta
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("DATABASE_ERROR");
     expect(insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveArchiveRepository (S-148) — id validation", () => {
+  function archiveDeps(overrides: Partial<ArchiveRepositoryDeps> = {}): ArchiveRepositoryDeps {
+    return {
+      archive: vi.fn(async () => undefined),
+      ...overrides,
+    };
+  }
+
+  it("rejects a missing id without calling archive", async () => {
+    const d = archiveDeps();
+    const r = await resolveArchiveRepository(undefined, d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("INVALID_ID");
+    expect(d.archive).not.toHaveBeenCalled();
+  });
+
+  it("rejects a blank/whitespace id without calling archive", async () => {
+    const d = archiveDeps();
+    const r = await resolveArchiveRepository("   ", d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("INVALID_ID");
+    expect(d.archive).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string id without calling archive", async () => {
+    const d = archiveDeps();
+    const r = await resolveArchiveRepository(42, d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("INVALID_ID");
+    expect(d.archive).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveArchiveRepository (S-148) — success", () => {
+  it("calls archive with the given id and returns { ok: true }", async () => {
+    const archive = vi.fn(async () => undefined);
+    const d: ArchiveRepositoryDeps = { archive };
+    const r = await resolveArchiveRepository("repo-42", d);
+    expect(r.ok).toBe(true);
+    expect(archive).toHaveBeenCalledWith("repo-42");
+  });
+});
+
+describe("resolveArchiveRepository (S-148) — generic failures never leak raw Postgres detail", () => {
+  it("maps any archive error to DATABASE_ERROR, never leaking the raw detail", async () => {
+    const archive = vi.fn(async () => {
+      throw new Error("connection reset by peer — internal detail");
+    });
+    const d: ArchiveRepositoryDeps = { archive };
+    const r = await resolveArchiveRepository("repo-42", d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe("DATABASE_ERROR");
+      expect(r.message).not.toContain("connection reset");
+    }
   });
 });

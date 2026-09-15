@@ -4,7 +4,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Client } from "pg";
 import { probeLocalDb, withDb } from "./db";
 import {
+  archiveRepository,
+  getEnabledRepositories,
   getRepositories,
+  getRunById,
   getSingleInstallation,
   insertRepository,
   REPOSITORY_ALREADY_EXISTS,
@@ -38,6 +41,17 @@ import {
  *   - RLS stays deny-all AFTER the write (the standing regression pattern
  *     every prior auth-adjacent story includes, spec §14)
  *
+ * S-148 (#208) additions — `archiveRepository`:
+ *   - sets `archived_at` to a non-null timestamp on the target row (AC1)
+ *   - is idempotent: archiving an already-archived row is a no-op `UPDATE`,
+ *     never throws, and the timestamp does not regress on the second call
+ *     (5.4 idempotency edge case)
+ *   - a run seeded against the repository BEFORE it is archived still
+ *     resolves `repository_full_name` correctly via `v_runs` AFTER the
+ *     archive (AC5/AC-12) — proves the write is an `UPDATE`, never a
+ *     `DELETE`, since a hard delete would null the FK and drop the joined
+ *     name
+ *
  * Docker-gated; skips with a recorded reason when the stack is down.
  */
 
@@ -55,7 +69,7 @@ const skipReason = !probe.available
     : "SUPABASE_SERVICE_ROLE_KEY / SERVICE_ROLE_KEY not set — export it from `supabase status -o env`";
 const runSuite = probe.available && keyPresent;
 
-const fx = { installationId: "", repoIds: [] as string[] };
+const fx = { installationId: "", repoIds: [] as string[], agentId: "", runIds: [] as string[] };
 
 async function seedFixture(c: Client): Promise<void> {
   // An isolated installation, so this suite's repository rows never collide
@@ -66,9 +80,30 @@ async function seedFixture(c: Client): Promise<void> {
      values ($1, $2, $3, $4)`,
     [fx.installationId, `s147-test-org-${fx.installationId.slice(0, 8)}`, 999000001, 999000002],
   );
+
+  // An isolated agent for S-148's "run against an archived repo still shows
+  // its name" fixture (below) — never reused across test files.
+  fx.agentId = randomUUID();
+  await c.query(
+    `insert into agents (id, slug, name, runtime_arn, requires_repository,
+                         max_runtime_seconds, grace_seconds, start_timeout_seconds)
+     values ($1, $2, $3, $4, true, 900, 60, 300)`,
+    [
+      fx.agentId,
+      `s148-test-agent-${fx.agentId.slice(0, 8)}`,
+      "S-148 archive-fixture agent",
+      "arn:test:runtime/s148archive",
+    ],
+  );
 }
 
 async function cleanupFixture(c: Client): Promise<void> {
+  if (fx.runIds.length > 0) {
+    await c.query(`delete from runs where id = any($1::uuid[])`, [fx.runIds]);
+  }
+  if (fx.agentId) {
+    await c.query(`delete from agents where id = $1`, [fx.agentId]);
+  }
   if (fx.installationId) {
     await c.query(`delete from repositories where installation_id = $1`, [fx.installationId]);
     await c.query(`delete from github_installations where id = $1`, [fx.installationId]);
@@ -259,6 +294,138 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — repository mutations (S-147)", (
     } else {
       expect(data ?? [], `repositories leaked ${data?.length ?? 0} row(s) to anon`).toHaveLength(0);
     }
+  });
+
+  describe("archiveRepository (S-148 / #208)", () => {
+    it("sets archived_at to a non-null timestamp on the target row (AC1)", async () => {
+      const fullName = `s148-org/archive-${randomUUID().slice(0, 8)}`;
+      const inserted = await insertRepository(client, {
+        installationId: fx.installationId,
+        fullName,
+        defaultBranch: "main",
+      });
+      fx.repoIds.push(inserted.id);
+      expect(inserted.archived_at).toBeNull();
+
+      await archiveRepository(client, inserted.id);
+
+      const rows = await getRepositories(client, { includeArchived: true });
+      const row = rows.find((r) => r.id === inserted.id);
+      expect(row).toBeDefined();
+      expect(row?.archived_at).not.toBeNull();
+    });
+
+    it("excludes the archived row from the default (non-archived) list (AC3)", async () => {
+      const fullName = `s148-org/archive-list-${randomUUID().slice(0, 8)}`;
+      const inserted = await insertRepository(client, {
+        installationId: fx.installationId,
+        fullName,
+        defaultBranch: "main",
+      });
+      fx.repoIds.push(inserted.id);
+
+      await archiveRepository(client, inserted.id);
+
+      const defaultRows = await getRepositories(client);
+      expect(defaultRows.some((r) => r.id === inserted.id)).toBe(false);
+
+      const allRows = await getRepositories(client, { includeArchived: true });
+      expect(allRows.some((r) => r.id === inserted.id)).toBe(true);
+    });
+
+    it("also disappears from the Invoke-dialog repository selector, with zero code change to the invoke path (AC4)", async () => {
+      // getEnabledRepositories is the exact read the Invoke dialog's
+      // repository selector uses — it already filters `archived_at is
+      // null`, unchanged by this story. This test proves that property
+      // holds after a real archive, not just that the filter exists.
+      const fullName = `s148-org/archive-invoke-${randomUUID().slice(0, 8)}`;
+      const inserted = await insertRepository(client, {
+        installationId: fx.installationId,
+        fullName,
+        defaultBranch: "main",
+      });
+      fx.repoIds.push(inserted.id);
+
+      const beforeArchive = await getEnabledRepositories(client);
+      expect(beforeArchive.some((r) => r.id === inserted.id)).toBe(true);
+
+      await archiveRepository(client, inserted.id);
+
+      const afterArchive = await getEnabledRepositories(client);
+      expect(afterArchive.some((r) => r.id === inserted.id)).toBe(false);
+    });
+
+    it("is idempotent — archiving an already-archived repository is a no-op, never throws, and the timestamp does not regress (AC2, 5.4)", async () => {
+      const fullName = `s148-org/archive-idempotent-${randomUUID().slice(0, 8)}`;
+      const inserted = await insertRepository(client, {
+        installationId: fx.installationId,
+        fullName,
+        defaultBranch: "main",
+      });
+      fx.repoIds.push(inserted.id);
+
+      await archiveRepository(client, inserted.id);
+      const afterFirst = await getRepositories(client, { includeArchived: true });
+      const firstTimestamp = afterFirst.find((r) => r.id === inserted.id)?.archived_at;
+      expect(firstTimestamp).toBeTruthy();
+
+      // Second call must not throw, and must not move the timestamp backward
+      // (a plain re-`now()` UPDATE would actually ADVANCE it; the acceptance
+      // criterion only requires it stays a no-op-shaped error-free call, so
+      // this asserts "still archived, still no throw", not "byte-identical".
+      await expect(archiveRepository(client, inserted.id)).resolves.toBeUndefined();
+
+      const afterSecond = await getRepositories(client, { includeArchived: true });
+      const secondTimestamp = afterSecond.find((r) => r.id === inserted.id)?.archived_at;
+      expect(secondTimestamp).toBeTruthy();
+      expect(new Date(secondTimestamp!).getTime()).toBeGreaterThanOrEqual(
+        new Date(firstTimestamp!).getTime(),
+      );
+    });
+
+    it("archiving a repository with zero runs against it still succeeds (edge case, no special-casing)", async () => {
+      const fullName = `s148-org/archive-zero-runs-${randomUUID().slice(0, 8)}`;
+      const inserted = await insertRepository(client, {
+        installationId: fx.installationId,
+        fullName,
+        defaultBranch: "main",
+      });
+      fx.repoIds.push(inserted.id);
+
+      await expect(archiveRepository(client, inserted.id)).resolves.toBeUndefined();
+    });
+
+    it("a pre-existing run against an archived repository still resolves repository_full_name correctly via v_runs (AC5/AC-12 — proves UPDATE, never DELETE)", async () => {
+      const fullName = `s148-org/archive-run-${randomUUID().slice(0, 8)}`;
+      const inserted = await insertRepository(client, {
+        installationId: fx.installationId,
+        fullName,
+        defaultBranch: "main",
+      });
+      fx.repoIds.push(inserted.id);
+
+      const runId = randomUUID();
+      await withDb((c) =>
+        c.query(
+          `insert into runs (id, agent_id, agent_version, status, repository_id,
+                             queued_at, started_at, finished_at, created_at,
+                             max_runtime_seconds, grace_seconds, start_timeout_seconds, outcome)
+           values ($1, $2, '0.1.0', 'succeeded'::run_status, $3,
+                   now() - interval '10 min', now() - interval '9 min',
+                   now() - interval '5 min', now() - interval '10 min',
+                   900, 60, 300, 'fixed'::run_outcome)`,
+          [runId, fx.agentId, inserted.id],
+        ),
+      );
+      fx.runIds.push(runId);
+
+      await archiveRepository(client, inserted.id);
+
+      const run = await getRunById(client, runId);
+      expect(run).not.toBeNull();
+      expect(run?.repository_full_name).toBe(fullName);
+      expect(run?.repository_id).toBe(inserted.id);
+    });
   });
 });
 
