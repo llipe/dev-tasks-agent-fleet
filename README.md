@@ -11,7 +11,7 @@ See [`docs/product-context.md`](docs/product-context.md) for the full problem st
 
 ## Delivery phases
 
-The project is delivered in two phases:
+The project is delivered in three phases:
 
 - **Phase 1 — Backend + Agent (done):** the Supabase schema (applied via Supabase CLI
   migrations), and the `dependency-update` agent that runs on AgentCore, authenticates to
@@ -25,6 +25,15 @@ The project is delivered in two phases:
   security boundary, mechanically asserted by the auth release gate on every deploy. See
   [ADR-007](docs/adr/ADR-007-auth-release-gate-replaces-privacy-gate.md) and
   [`docs/runbooks/panel-deployment.md`](docs/runbooks/panel-deployment.md).
+- **Phase 3 — Security Analyst Agent (in progress):** the fleet's second agent,
+  `agents/security-analyst/`, modeled on `dependency-update`. As of **S-125** only the
+  project scaffold, AgentCore deploy config, and reporting pipe exist — the entrypoint
+  validates the invocation payload and runs a placeholder pipeline
+  (`resolve_credentials` → `checkout` → `succeeded`/`no_findings`); **no scanners run
+  yet**. The five-scanner pipeline (Semgrep, Gitleaks, Trivy, Checkov, CodeQL) and the
+  bounded autofix path land in later stories (S-126+), per
+  [`docs/requirements/prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md).
+  Not yet deployed or registered in `supabase/seed.sql` (planned for S-141).
 
 ## Repository layout
 
@@ -56,17 +65,25 @@ The project is delivered in two phases:
 ├── scripts/                  # Repo-root operator scripts — verify-panel-auth.sh (release gate), cleanup-duplicates.sh
 ├── infra/                    # IAM policy documents (trust policy, invoke policy) for the Fly OIDC → AWS role
 ├── agents/
-│   └── dependency-update/   # The active Phase 1 agent (Python, AgentCore Container)
+│   ├── dependency-update/   # The active Phase 1 agent (Python, AgentCore Container)
+│   │   ├── agentcore/       # Runtime config + CDK infra
+│   │   ├── app/dependencyUpdate/   # Agent source, tests, Makefile, pyproject.toml
+│   │   └── README.md        # Agent-specific docs (deployment, pipeline, env vars)
+│   └── security-analyst/   # Phase 3 agent scaffold (Python, AgentCore Container) — no scanners wired yet
 │       ├── agentcore/       # Runtime config + CDK infra
-│       ├── app/dependencyUpdate/   # Agent source, tests, Makefile, pyproject.toml
-│       └── README.md        # Agent-specific docs (deployment, pipeline, env vars)
+│       ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
+│       └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
 └── workstream/              # Task lists, specs, test plans, fidelity reports; archive/ holds completed work
 ```
 
 The **active codebase** is the `dependency-update` Python agent under
-`agents/dependency-update/app/dependencyUpdate/` (Phase 1) and the `panel/` Next.js app
-(Phase 2, deployed). Agent-specific details (pipeline, deployment, environment variables,
-runtime timeouts) live in [`agents/dependency-update/README.md`](agents/dependency-update/README.md).
+`agents/dependency-update/app/dependencyUpdate/` (Phase 1), the `panel/` Next.js app
+(Phase 2, deployed), and the `security-analyst` Python agent scaffold under
+`agents/security-analyst/app/securityAnalyst/` (Phase 3, in progress — placeholder
+pipeline only, see Delivery phases above). Agent-specific details (pipeline, deployment,
+environment variables, runtime timeouts) live in
+[`agents/dependency-update/README.md`](agents/dependency-update/README.md) and
+[`agents/security-analyst/README.md`](agents/security-analyst/README.md).
 Panel-specific details (scripts, conventions, env vars) live in [`panel/README.md`](panel/README.md).
 
 ## Prerequisites
@@ -176,10 +193,11 @@ login boundary and rejects a test signup. See
 | [`docs/technical-guidelines.md`](docs/technical-guidelines.md) | Stack, architecture patterns, data model, security, deployment (canonical current-state doc — see its changelog for the full delivery history) |
 | [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant), ADR-007 (auth release gate replaces the privacy gate — login is now the panel's security boundary) |
 | [`docs/runbooks/`](docs/runbooks/) | Operator procedures requiring live AWS/Supabase/Fly access — [`panel-deployment.md`](docs/runbooks/panel-deployment.md) (Fly deploy, OIDC probe, auth release gate, go-public, **publishable-key credential cutover**), [`issue-77-deployment-e2e.md`](docs/runbooks/issue-77-deployment-e2e.md) (agent deploy + E2E, historical), [`issue-94-reaper-verification.md`](docs/runbooks/issue-94-reaper-verification.md) (`pg_cron` reaper scheduling + stale-run verification), [`issue-89-live-verification.md`](docs/runbooks/issue-89-live-verification.md) (invocation payload shape), [`issue-115-baseline-adoption.md`](docs/runbooks/issue-115-baseline-adoption.md) (Supabase CLI migration adoption), [`issue-116-english-sql-surface.md`](docs/runbooks/issue-116-english-sql-surface.md), [`issue-121-ac10-reaper-paused.md`](docs/runbooks/issue-121-ac10-reaper-paused.md) |
-| [`docs/requirements/`](docs/requirements/) | PRDs — [`prd-dependency-update-agent.md`](docs/requirements/prd-dependency-update-agent.md) (Phase 1), [`prd-agent-fleet-panel-v2.md`](docs/requirements/prd-agent-fleet-panel-v2.md) (Phase 2), [`prd-panel-password-auth.md`](docs/requirements/prd-panel-password-auth.md) (the shipped auth wave), [`prd-panel-auth-and-rls.md`](docs/requirements/prd-panel-auth-and-rls.md) (deferred RLS hardening), [`prd-agent-fleet-panel-v3-ui-depth.md`](docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md) |
+| [`docs/requirements/`](docs/requirements/) | PRDs — [`prd-dependency-update-agent.md`](docs/requirements/prd-dependency-update-agent.md) (Phase 1), [`prd-agent-fleet-panel-v2.md`](docs/requirements/prd-agent-fleet-panel-v2.md) (Phase 2), [`prd-panel-password-auth.md`](docs/requirements/prd-panel-password-auth.md) (the shipped auth wave), [`prd-panel-auth-and-rls.md`](docs/requirements/prd-panel-auth-and-rls.md) (deferred RLS hardening), [`prd-agent-fleet-panel-v3-ui-depth.md`](docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md), [`prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md) (Phase 3, in progress) |
 | [`docs/prototype/`](docs/prototype/) | High-fidelity Nocturne HTML prototype — the source `/DESIGN.md` was extracted from |
 | [`docs/reference/`](docs/reference/) | Non-canonical pointer stubs (schema/seed moved to `supabase/`, `credentials.ts` moved to `panel/lib/aws/`) — kept only so historical links resolve; `agent_reporter.py` here is still the canonical copy source |
 | [`agents/dependency-update/README.md`](agents/dependency-update/README.md) | Agent pipeline, deployment, environment variables, timeouts |
+| [`agents/security-analyst/README.md`](agents/security-analyst/README.md) | Agent status (scaffold-only as of S-125), layout, deployment, environment variables |
 | [`panel/README.md`](panel/README.md) | Panel scripts, conventions, env vars (incl. the publishable/anon auth-key pair), SD2 server-only boundary |
 | [`TESTING.md`](TESTING.md) | Testing contract — layers, commands, coverage, gaps |
 | [`DESIGN.md`](DESIGN.md) | Nocturne design system for the Phase 2 panel |
