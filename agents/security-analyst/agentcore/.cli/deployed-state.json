@@ -1,0 +1,17 @@
+{
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "security_analyst": {
+            "runtimeId": "securityanalyst_security_analyst-w6CpbYHRE0",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0",
+            "roleArn": "arn:aws:iam::755641879575:role/AgentCore-securityanalyst-ApplicationAgentSecurityA-GsDyfHWdZS1X"
+          }
+        },
+        "stackName": "AgentCore-securityanalyst-default",
+        "deployHash": "cc10c0dbc802b839"
+      }
+    }
+  }
+}
