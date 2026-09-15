@@ -13,6 +13,7 @@
 | 1.6     | 2026-09-15 | **§5.2 Agent Run History**'s filter bar/pagination/empty-state contract shipped as written (Story S-143 / issue #203) — documentation catching up to the built screen, no visual-contract change. One clarification: the search input's placeholder reads "repository or run id", but the shipped free-text match is a `repository_full_name` substring plus an **exact** `id` match only (a run-id *substring* match is not reachable through the read layer without a schema change — a query-shape constraint, see `docs/technical-guidelines.md` row 1.36); §5.2's "search input" bullet is otherwise unchanged. No new visual token or component introduced — reuses `Input`, `Button`, `StatusDot`, and the existing token set. | developer |
 | 1.7     | 2026-09-15 | Added **§5.6 Repositories (`/repositories`)** (Story S-147 / issue #207, FR15/FR16/FR18). Documents the list + Add-repository form as a **first-pass layout, not a dedicated `ux-engineer` design pass** (spec Open Question #4 was unresolved when this story started — explicitly flagged rather than improvised silently): the list reuses the `RunHistoryTable` semantic-table-on-CSS-grid pattern with a `Tag`-based enabled/disabled state; the form reuses `LoginForm`'s field-row + `role="alert"` + pending/disabled double-submit pattern. No Archive action yet (Story S-148 scope). Sidebar "Repositories" flips from `DisabledNavItem` to a live `NavItem`. No new visual token or component variant introduced — every primitive used (`Tag`, `Input`, `Button`, `KLabel`) already existed. | developer |
 | 1.8     | 2026-09-15 | Extended **§5.6 Repositories** with the **Archive action** (Story S-148 / issue #208, FR17). Documents the new Actions column + per-row "Archive" button and the panel's **first destructive-action confirm dialog** (a minimal, accessible `role="dialog"`/`aria-modal="true"` overlay — not a reusable primitive, since no other screen has one yet): names the repository, states the consequence in plain language (stops appearing as an invocation target; existing runs keep their history/name unchanged; not undoable from the UI, AC6), Cancel/Confirm actions, and a `router.refresh()`-driven re-fetch on success rather than client-side row removal. No new visual token — reuses `Button` (`variant="ghost"`/`"secondary"`/`"primary"`), the existing `--space-*`/`--rule`/`--st-fail` tokens, and the `role="alert"` error pattern already established by `AddRepositoryForm`. | developer |
+| 1.9     | 2026-09-15 | Planner-level drift pass (`integration/panel-v3-ui-depth` pre-merge check): added **§5.2a All Runs (`/runs`)** — Story S-146 / issue #206 shipped this cross-agent feed screen with no corresponding §5 section; it was documented in the changelog (row 1.39 there is none — see `docs/technical-guidelines.md` row 1.39) but never given its own screen-spec entry here. §5.2a documents it as a pure composition of the existing §5.2 filter bar + table plus one Agent column, matching the shipped code. Also added a **"Sidebar nav item state (current)"** note to **§4.1** stating plainly which of the five nav items are live (Agents, All runs, Repositories) versus still disabled (Settings, System health) — this fact was previously only recoverable by reading each screen section's closing sentence individually. Current-state, documentation-only additions; no visual token, component, or behavior change. | technical-writer |
 
 ---
 
@@ -389,6 +390,14 @@ The sidebar footer holds two controls, stacked in this order, sharing the footer
 
 Visibility: **Log out renders only when the request is authenticated, and is absent entirely when unauthenticated.** Authentication state is passed into the shell as a server-provided prop (the authenticated route-group layout computes it via the auth-server client) — the shell performs no auth I/O itself (SD2 preserved).
 
+#### Sidebar nav item state (current)
+
+Of the five primary nav items, **three are live links** — Agents (since S-101),
+**All runs** (since Story S-146, §5.2a), and **Repositories** (since Story
+S-147, §5.6) — and **two remain `DisabledNavItem`** — Settings and System
+health (`aria-disabled`, "not available in this phase", not focusable, per PRD
+§10; no story in the v3 "UI Depth" batch scoped either of these).
+
 ### 4.2 Run Detail (full-height, no outer scroll)
 
 ```
@@ -457,6 +466,22 @@ Three density variants to choose from (or offer as a view toggle):
 - Table with columns: Status pill | Outcome tag | Repository + branch + PR | Duration | Steps (n/m) | Started (relative) | Chevron
 - Pagination: "X of Y" + "Load more" button
 - Empty state: message + CTA buttons
+
+### 5.2a All Runs (`/runs`)
+
+The cross-agent run feed (Story S-146 / issue #206, FR13/FR14), reversing the
+v2.1 non-goal that deferred "All runs" out of Phase 2 scope. Visually and
+structurally **identical to §5.2's filter bar + table**, composed rather than
+redesigned: the same `RunFilterBar` (status counts, repo chips, debounced
+search, connection indicator) and the same table, unscoped to any agent
+(`agentSlug: null`) — so it reads across the whole fleet, newest-first — plus
+one addition: a leading **Agent** column (name + slug, monospace,
+`--color-accent-400`, the same agent-identity treatment `AgentCards` already
+uses on the dashboard, §5.1). There is no agent header block here (no
+metadata to show without an agent scope) and no disabled-agent 404 guard —
+a disabled agent's historical runs still appear. Sidebar: the "All runs" item
+(§4.1) flips from a `DisabledNavItem` to a live `NavItem` linking to `/runs`,
+active on both `/runs` and `/runs/[id]`.
 
 ### 5.3 Run Detail
 
