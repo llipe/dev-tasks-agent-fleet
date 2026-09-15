@@ -60,30 +60,30 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
   - [x] 1.13 Run Tests: `pnpm --filter panel test:unit` and `pnpm --filter panel test`
   - [x] 1.14 Acceptance-criteria-to-test mapping: AC1/AC2 -> `StatusDot.test.tsx`; AC3 -> `token-discipline.test.ts` (no new literal); AC4 -> `StatusPill.test.tsx`
 
-- [ ] 2.0 Implement Story S-143: Run History - filter, search, and pagination (#203)
+- [x] 2.0 Implement Story S-143: Run History - filter, search, and pagination (#203)
 
   > Foundational story for the run-list depth half of the PRD. Introduces `lib/domain/run-filter.ts` and `getFilteredRuns`, which S-146 reuses directly. Filters/pagination are URL-encoded and server-side (FR1-FR6, FR8).
 
-  - [ ] 2.1 Write `panel/lib/domain/run-filter.ts` (`parseRunFilter`/`serializeRunFilter`) test-first
-  - [ ] 2.2 Add `getFilteredRuns(client, filter, pageSize)` to `panel/lib/supabase/queries.ts` (`.select("*", {count:"exact"})` + conditional `.eq`/`.ilike` + `.range(0, filter.page*pageSize-1)`)
-  - [ ] 2.3 Build `panel/components/runs/RunFilterBar.tsx` (`"use client"`: segmented control + repo chips + search (300ms debounce) + connection indicator; mutates URL via `router.replace`)
-  - [ ] 2.4 Wire `panel/app/(panel)/agents/[slug]/page.tsx` to read `searchParams` -> `parseRunFilter` -> `getFilteredRuns`, replacing the direct `getAllRunsByAgentSlug` call for this screen; keep route-segment config declared inline
-  - [ ] 2.5 Grep for other callers of `getAllRunsByAgentSlug` before assuming it can be left as dead code; do not remove it if still referenced elsewhere
-  - [ ] 2.6 Add empty-state rendering + "Clear filters" CTA to `RunHistoryTable.tsx`
-  - [ ] 2.7 Migration: N/A opt-out - reads only, every column already exists
-  - [ ] 2.8 Verify Acceptance Criterion: status filter narrows to that `effective_status`, including a stale `running` row past threshold counting/filtering as `timed_out` (reaper paused fixture)
-  - [ ] 2.9 Verify Acceptance Criterion: repo chip narrows correctly; combined with status filter, the result is the intersection
-  - [ ] 2.10 Verify Acceptance Criterion: free-text search matches repo name/branch/run id; composes with other filters
-  - [ ] 2.11 Verify Acceptance Criterion: reloading a URL with `?status=failed&repo=<id>&q=foo` reproduces the identical filtered result from a fresh server-side query
-  - [ ] 2.12 Verify Acceptance Criterion: pagination renders "X of Y" + "Load more"; "Load more" under an active filter fetches the next cumulative page of the filtered set
-  - [ ] 2.13 Verify Acceptance Criterion: zero-match filter shows the empty state + working "Clear filters" CTA
-  - [ ] 2.14 Verify Acceptance Criterion: connection-state indicator present, reflecting last-fetch success (presentational only, no new Realtime subscription per spec §17 OQ1)
-  - [ ] 2.15 Run Tests: `panel/lib/domain/run-filter.test.ts` (round-trip, unknown-value fallback, default omission, never throws)
-  - [ ] 2.16 Run Tests: `panel/tests/integration/filtered-runs.test.ts` (Docker-gated, run live - status/repo/search combinations, stale-`running` fixture, paging beyond `max_rows`, `totalCount` accuracy)
-  - [ ] 2.17 Run Tests: edge cases - zero-match empty state; search string with regex metacharacters must not throw (literal substring only); repo chip with zero runs for this agent
-  - [ ] 2.18 Manual/UI: `/agents/dependency-update` against the seeded local stack - apply each filter individually and combined; confirm URL updates and reload reproduces the same view
-  - [ ] 2.19 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
-  - [ ] 2.20 Acceptance-criteria-to-test mapping: AC1->`filtered-runs.test.ts::status filter`; AC2->`::repo filter`; AC3->`::search`; AC4->`run-filter.test.ts::round-trip` + `::url-reload parity`; AC5->`::pagination`; AC6->`RunFilterBar.test.tsx::empty state`; AC8->`RunFilterBar.test.tsx::connection indicator`
+  - [x] 2.1 Write `panel/lib/domain/run-filter.ts` (`parseRunFilter`/`serializeRunFilter`) test-first
+  - [x] 2.2 Add `getFilteredRuns(client, filter, pageSize)` to `panel/lib/supabase/queries.ts` (`.select("*", {count:"exact"})` + conditional `.eq`/`.ilike` + `.range(0, filter.page*pageSize-1)`)
+  - [x] 2.3 Build `panel/components/runs/RunFilterBar.tsx` (`"use client"`: segmented control + repo chips + search (300ms debounce) + connection indicator; mutates URL via `router.replace`)
+  - [x] 2.4 Wire `panel/app/(panel)/agents/[slug]/page.tsx` to read `searchParams` -> `parseRunFilter` -> `getFilteredRuns`, replacing the direct `getAllRunsByAgentSlug` call for this screen; keep route-segment config declared inline
+  - [x] 2.5 Grep for other callers of `getAllRunsByAgentSlug` before assuming it can be left as dead code; do not remove it if still referenced elsewhere
+  - [x] 2.6 Add empty-state rendering + "Clear filters" CTA to `RunHistoryTable.tsx`
+  - [x] 2.7 Migration: N/A opt-out - reads only, every column already exists
+  - [x] 2.8 Verify Acceptance Criterion: status filter narrows to that `effective_status`, including a stale `running` row past threshold counting/filtering as `timed_out` (reaper paused fixture)
+  - [x] 2.9 Verify Acceptance Criterion: repo chip narrows correctly; combined with status filter, the result is the intersection
+  - [x] 2.10 Verify Acceptance Criterion: free-text search matches repo name/branch/run id; composes with other filters
+  - [x] 2.11 Verify Acceptance Criterion: reloading a URL with `?status=failed&repo=<id>&q=foo` reproduces the identical filtered result from a fresh server-side query
+  - [x] 2.12 Verify Acceptance Criterion: pagination renders "X of Y" + "Load more"; "Load more" under an active filter fetches the next cumulative page of the filtered set
+  - [x] 2.13 Verify Acceptance Criterion: zero-match filter shows the empty state + working "Clear filters" CTA
+  - [x] 2.14 Verify Acceptance Criterion: connection-state indicator present, reflecting last-fetch success (presentational only, no new Realtime subscription per spec §17 OQ1)
+  - [x] 2.15 Run Tests: `panel/lib/domain/run-filter.test.ts` (round-trip, unknown-value fallback, default omission, never throws)
+  - [x] 2.16 Run Tests: `panel/tests/integration/filtered-runs.test.ts` (Docker-gated, run live - status/repo/search combinations, stale-`running` fixture, paging beyond `max_rows`, `totalCount` accuracy)
+  - [x] 2.17 Run Tests: edge cases - zero-match empty state; search string with regex metacharacters must not throw (literal substring only); repo chip with zero runs for this agent
+  - [x] 2.18 Manual/UI: `/agents/dependency-update` against the seeded local stack - apply each filter individually and combined; confirm URL updates and reload reproduces the same view
+  - [x] 2.19 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
+  - [x] 2.20 Acceptance-criteria-to-test mapping: AC1->`filtered-runs.test.ts::status filter`; AC2->`::repo filter`; AC3->`::search`; AC4->`run-filter.test.ts::round-trip` + `::url-reload parity`; AC5->`::pagination`; AC6->`RunFilterBar.test.tsx::empty state`; AC8->`RunFilterBar.test.tsx::connection indicator`
 
 - [ ] 3.0 Implement Story S-144: Run History - inline branch and PR links (#204) [depends: S-143]
 
