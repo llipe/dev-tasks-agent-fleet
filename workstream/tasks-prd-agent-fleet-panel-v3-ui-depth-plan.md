@@ -41,24 +41,24 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-142: Fix the queued-status animation defect (#202)
+- [x] 1.0 Implement Story S-142: Fix the queued-status animation defect (#202)
 
   > Queued's status dot must spin (0.9s), distinct from running's pulse (1.6s), per `/DESIGN.md` §6.1/§8.1. Smallest, most contained story in this set - de-risks first.
 
-  - [ ] 1.1 Add `spin: boolean` to the `StatusMeta` interface in `panel/components/status-meta.ts`
-  - [ ] 1.2 Set `queued: { pulse: false, spin: true, ... }`; set `spin: false` on every other entry incl. the unknown-status fallback
-  - [ ] 1.3 Update `StatusDot.tsx`'s class list to include `meta.spin && styles.spin`
-  - [ ] 1.4 Add `.spin { animation: spin 0.9s linear infinite; }` to `StatusDot.module.css` (reuses the existing `@keyframes spin` in `styles/globals.css` - do not redefine it)
-  - [ ] 1.5 Migration: N/A opt-out - presentational CSS/TS only, no schema/data change
-  - [ ] 1.6 Verify Acceptance Criterion: a `queued` `StatusDot` renders `.spin` with `spin 0.9s linear infinite`
-  - [ ] 1.7 Verify Acceptance Criterion: a `running` `StatusDot` still renders `.pulse` (`pulse 1.6s ease-in-out infinite`), unchanged
-  - [ ] 1.8 Verify Acceptance Criterion: no other status's rendering changes
-  - [ ] 1.9 Verify Acceptance Criterion: `StatusPill` shows no visual regression for `queued`
-  - [ ] 1.10 Run Tests: extend `panel/tests/unit/status-meta.test.ts` (queued -> `{pulse:false, spin:true}`, every other status -> `spin:false`)
-  - [ ] 1.11 Run Tests: extend `panel/tests/component/StatusDot.test.tsx` (class-list assertion, queued vs running mutually exclusive)
-  - [ ] 1.12 Manual/UI: visually confirm in `panel/app/dev/gallery` that `queued` spins and `running` pulses side by side
-  - [ ] 1.13 Run Tests: `pnpm --filter panel test:unit` and `pnpm --filter panel test`
-  - [ ] 1.14 Acceptance-criteria-to-test mapping: AC1/AC2 -> `StatusDot.test.tsx`; AC3 -> `token-discipline.test.ts` (no new literal); AC4 -> `StatusPill.test.tsx`
+  - [x] 1.1 Add `spin: boolean` to the `StatusMeta` interface in `panel/components/status-meta.ts`
+  - [x] 1.2 Set `queued: { pulse: false, spin: true, ... }`; set `spin: false` on every other entry incl. the unknown-status fallback
+  - [x] 1.3 Update `StatusDot.tsx`'s class list to include `meta.spin && styles.spin`
+  - [x] 1.4 Add `.spin { animation: spin 0.9s linear infinite; }` to `StatusDot.module.css` (reuses the existing `@keyframes spin` in `styles/globals.css` - do not redefine it)
+  - [x] 1.5 Migration: N/A opt-out - presentational CSS/TS only, no schema/data change
+  - [x] 1.6 Verify Acceptance Criterion: a `queued` `StatusDot` renders `.spin` with `spin 0.9s linear infinite`
+  - [x] 1.7 Verify Acceptance Criterion: a `running` `StatusDot` still renders `.pulse` (`pulse 1.6s ease-in-out infinite`), unchanged
+  - [x] 1.8 Verify Acceptance Criterion: no other status's rendering changes
+  - [x] 1.9 Verify Acceptance Criterion: `StatusPill` shows no visual regression for `queued`
+  - [x] 1.10 Run Tests: extend `panel/tests/unit/status-meta.test.ts` (queued -> `{pulse:false, spin:true}`, every other status -> `spin:false`)
+  - [x] 1.11 Run Tests: extend `panel/tests/component/StatusDot.test.tsx` (class-list assertion, queued vs running mutually exclusive)
+  - [x] 1.12 Manual/UI: dev server requires `NEXT_PUBLIC_SUPABASE_URL`/auth env not present in this sandbox, so `panel/app/dev/gallery` could not be rendered live; verified equivalently via `StatusDot.test.tsx` class-list assertions (queued=.spin only, running=.pulse only) — flagged as a known limitation for a human to confirm visually
+  - [x] 1.13 Run Tests: `pnpm --filter panel test:unit` and `pnpm --filter panel test`
+  - [x] 1.14 Acceptance-criteria-to-test mapping: AC1/AC2 -> `StatusDot.test.tsx`; AC3 -> `token-discipline.test.ts` (no new literal); AC4 -> `StatusPill.test.tsx`
 
 - [ ] 2.0 Implement Story S-143: Run History - filter, search, and pagination (#203)
 
