@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { RunHistoryRow } from "@/components/runs/RunHistoryRow";
 import { buildRunRow, type RunRowInput } from "@/lib/domain/run-row";
@@ -74,6 +74,16 @@ describe("RunHistoryRow — inline PR link (AC1)", () => {
     renderRow({ pullRequestUrl: "https://github.com/llipe/ripley-ingest/pull/42" });
     expect(screen.getByText("llipe/ripley-ingest")).toBeInTheDocument();
     expect(screen.getByText("main")).toBeInTheDocument();
+  });
+
+  it("carries no onClick handler — regression guard for the RunHistoryRow/RunHistoryTable/AgentRunHistoryPage Server Component chain, which cannot serialize an event-handler prop (a native click must bubble past the link, not be stopped)", () => {
+    renderRow({ pullRequestUrl: "https://github.com/llipe/ripley-ingest/pull/42" });
+    const link = screen.getByRole("link", { name: /pr/i });
+    const outerHandler = vi.fn();
+    const row = link.closest("tr");
+    row?.addEventListener("click", outerHandler);
+    fireEvent.click(link);
+    expect(outerHandler).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -119,13 +119,7 @@ function PullRequestLink({ url }: { url: string | null }) {
 
   if (isSafeArtifactUrl(url)) {
     return (
-      <a
-        className={styles.repoPr}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <a className={styles.repoPr} href={url} target="_blank" rel="noopener noreferrer">
         PR
       </a>
     );
