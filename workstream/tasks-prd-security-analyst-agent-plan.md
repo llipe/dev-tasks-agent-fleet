@@ -48,15 +48,15 @@
   - [x] 1.3 Write `config.py` with this agent's own timeout constants (`SCANNER_TIMEOUT=600`, `FIX_COMMAND_TIMEOUT=180`, `IDLE_SESSION_TIMEOUT=900`, `MAX_LIFETIME=5400`, `HEARTBEAT_INTERVAL=120`) and `assert_clock_invariant()`
   - [x] 1.4 Implement `main.py`'s payload unwrap/validate/apply_defaults (including `min_severity`, `scanners` list validation)
   - [x] 1.5 Implement a placeholder pipeline that goes straight to `succeeded`/`no_findings` (no scanners run yet)
-  - [ ] 1.6 `agentcore deploy -y`; record `runtime_arn` for use in Story S-141 — **BLOCKED: routed to `infra-engineer`** (platform write — deploy provisions real AWS resources). `agentcore deploy --dry-run` confirms the CDK stack synthesizes cleanly; `agentcore validate` passes.
+  - [x] 1.6 `agentcore deploy -y`; record `runtime_arn` for use in Story S-141 — deployed by planner (direct user confirmation) after `infra-engineer` routing found no AWS AgentCore Runtime change-kind in its framework. `runtime_arn`: `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`
   - [x] 1.7 Write `pyproject.toml` (reuse `agent_reporter.py`'s ruff/mypy path-exclusion pattern) and `Makefile` targets (`install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate`)
-  - [ ] 1.8 Run once against a real (small) target repo; confirm a complete `runs` row with `resolve_credentials`/`checkout` steps and a terminal status — **BLOCKED: depends on 1.6** (also requires reading the prod `SUPABASE_SERVICE_ROLE_KEY` secret — routed to `infra-engineer`)
+  - [ ] 1.8 Run once against a real (small) target repo; confirm a complete `runs` row with `resolve_credentials`/`checkout` steps and a terminal status — **DEFERRED to S-141** (task 17.10 already plans this exact real invocation). Inserting a `queued` `runs` row requires an `agents.slug='security-analyst'` row, which only S-141's seed migration creates — no such row exists anywhere yet (confirmed no stub in `docs/reference/002_seed.sql` either). User confirmed: defer rather than do a one-off manual insert into the shared prod `agents` table.
   - [x] 1.9 Verify Acceptance Criterion: `/agents/security-analyst/` scaffolded by `agentcore create`, `agentcore validate` passes (PRD AC1)
-  - [ ] 1.10 Verify Acceptance Criterion: `agentcore deploy` provisions the runtime, `agentcore status` reports ready (PRD AC2) — **BLOCKED: depends on 1.6**
+  - [x] 1.10 Verify Acceptance Criterion: `agentcore deploy` provisions the runtime, `agentcore status` reports ready (PRD AC2) — confirmed: `agentcore status` reports `security_analyst: Deployed - Runtime: READY`
   - [x] 1.11 Verify Acceptance Criterion: invalid payload (missing field, unknown `mode`/`min_severity`, empty `scanners`) terminates `failed`/`INVALID_PARAMS` without cloning (PRD AC28)
-  - [ ] 1.12 Verify Acceptance Criterion: credential resolution/token minting/scrubbing works against the shared `github_installations` row (PRD AC25, AC26) — code reused unmodified (unit-covered by the sibling's own untouched test suite); live execution **BLOCKED: depends on 1.6/1.8**
+  - [ ] 1.12 Verify Acceptance Criterion: credential resolution/token minting/scrubbing works against the shared `github_installations` row (PRD AC25, AC26) — code reused unmodified (unit-covered by the sibling's own untouched test suite); live execution **DEFERRED to S-141** alongside 1.8 (same `agents` row dependency)
   - [x] 1.13 Verify Acceptance Criterion: `assert_clock_invariant()` runs at entrypoint start and fails fast on a deliberately misordered constant (PRD AC31 groundwork)
-  - [ ] 1.14 Verify Acceptance Criterion: PostgREST outage does not crash the pipeline; payload appears on stderr/CloudWatch (PRD AC30) — inherited from unmodified `agent_reporter.py`'s stderr fallback; live verification **BLOCKED: depends on 1.6/1.8**
+  - [ ] 1.14 Verify Acceptance Criterion: PostgREST outage does not crash the pipeline; payload appears on stderr/CloudWatch (PRD AC30) — inherited from unmodified `agent_reporter.py`'s stderr fallback; live verification **DEFERRED to S-141** alongside 1.8
   - [x] 1.15 Run Tests: `tests/unit/test_clock_invariant.py`, `tests/unit/test_payload_contract.py` — `make test-unit` (36/36 passed)
   - [x] 1.16 Run Tests: full quality gate — `make validate` (lint/format-check/typecheck/test-cov/audit all pass)
 
@@ -271,7 +271,7 @@
 
   > Note: Closes out the build. Corrects the one thing the codebase research surfaced: the seed row goes in `supabase/seed.sql`, **not** `docs/reference/002_seed.sql` (a stub). Depends on S-140, S-135 (both modes complete).
 
-  - [ ] 17.1 `agentcore deploy -y`; capture `runtime_arn`
+  - [x] 17.1 `agentcore deploy -y`; capture `runtime_arn` — already done during S-125 (deployed `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`; re-run only if the runtime needs redeploying by this point). S-125 tasks 1.8/1.12/1.14 (real `audit_only` invocation, live AC25/AC26/AC30 verification) were deferred here — fold that evidence into 17.10.
   - [ ] 17.2 **[MIGRATION — create artifact]** Append the `security-analyst` block to `supabase/seed.sql` (idempotent `on conflict (slug) do update`), per spec §5.2 exactly — never `docs/reference/002_seed.sql`
   - [ ] 17.3 **[MIGRATION — document rollback/impact]** Record that rollback is deleting/disabling the seed row; no data-loss risk (agent has no other persisted state)
   - [ ] 17.4 **[MIGRATION — confirmation gate]** Request explicit user confirmation before applying the seed against anything other than a local/dev Supabase stack
