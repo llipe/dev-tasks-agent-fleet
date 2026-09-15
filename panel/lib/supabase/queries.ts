@@ -802,5 +802,26 @@ export async function insertRepository(
   return result.data as RepositoryRow;
 }
 
-// `archiveRepository` (FR17, soft delete) is Story S-148 scope — added by that
-// story, not this one (S-147 is list + add only).
+/**
+ * 16. Archive a repository (FR17, soft delete — Story S-148 / #208). A plain
+ * `UPDATE ... SET archived_at = now() WHERE id = $1` — NEVER a `DELETE`.
+ * `runs.repository_id` is a nullable FK with `on delete set null`; a hard
+ * delete would silently sever every historical run's repository link. The
+ * soft delete exists specifically to keep that link intact (spec §8.4/§12,
+ * Business Rule).
+ *
+ * Idempotent by construction: re-running the same `UPDATE` against an
+ * already-archived row is not an error — it just re-sets `archived_at` to a
+ * newer `now()` (still non-null, never regressing to an earlier value) and
+ * affects zero-or-one row either way. Returns `void`; the caller does not
+ * need the updated row (the Server Action returns `{ ok: true }` only).
+ */
+export async function archiveRepository(client: SupabaseClient, id: string): Promise<void> {
+  const result = await client
+    .from("repositories")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("archiveRepository", result.error);
+  }
+}

@@ -12,6 +12,12 @@ import { cleanup, render, screen } from "@testing-library/react";
  *  - it renders the `AddRepositoryForm`
  *  - an empty repositories table renders the table's own empty state, not a
  *    page-level error (EC)
+ *
+ * S-148 (#208): `RepositoryTable` now renders a client-side Archive action
+ * (`useRouter` + the `archiveRepository` Server Action), so this page-wiring
+ * test mocks both `next/navigation` and the actions module — the same
+ * boundary-mocking pattern `AddRepositoryForm.test.tsx`/`RepositoryTable.test.tsx`
+ * already use — so this suite stays scoped to page-level wiring only.
  */
 
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: () => ({}) }));
@@ -20,6 +26,14 @@ const { getRepositories } = vi.hoisted(() => ({
   getRepositories: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/lib/supabase/queries", () => ({ getRepositories }));
+
+vi.mock("@/app/(panel)/repositories/actions", () => ({
+  addRepository: vi.fn(),
+  archiveRepository: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 import RepositoriesPage from "@/app/(panel)/repositories/page";
 

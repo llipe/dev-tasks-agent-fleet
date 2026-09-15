@@ -181,22 +181,22 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
   - [x] 6.18 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
   - [x] 6.19 Acceptance-criteria-to-test mapping: AC1->`RepositoryTable.test.tsx`; AC2/AC3/AC4->`repository-mutations.test.ts` + `AddRepositoryForm.test.tsx`; AC5->`Sidebar.test.tsx`; AC6->manual verification against the existing S-117 gate suite (no new gate test needed)
 
-- [ ] 7.0 Implement Story S-148: Repositories - archive (soft delete) (#208) [depends: S-147]
+- [x] 7.0 Implement Story S-148: Repositories - archive (soft delete) (#208) [depends: S-147]
 
   > A soft delete via the existing `repositories.archived_at` column - never a hard DELETE, so `runs.repository_id` never dangles and historical runs keep displaying their repository name.
 
-  - [ ] 7.1 Add `archiveRepository(client, id)` to `panel/lib/supabase/queries.ts` (`UPDATE ... SET archived_at = now()`), test-first including the idempotent-no-op case and the run-still-displays-name case
-  - [ ] 7.2 Add the `archiveRepository` Server Action to `panel/app/(panel)/repositories/actions.ts`
-  - [ ] 7.3 Add an "Archive" button + confirm dialog to `RepositoryTable.tsx` (the panel's first destructive-action confirm dialog)
-  - [ ] 7.4 Migration: N/A opt-out - `archived_at` already exists; this story only writes to it
-  - [ ] 7.5 Verify Acceptance Criterion: "Archive" sets `archived_at = now()`
-  - [ ] 7.6 Verify Acceptance Criterion: archiving is idempotent - archiving an already-archived repo is a no-op `UPDATE`, not an error
-  - [ ] 7.7 Verify Acceptance Criterion: an archived repository disappears from the default `/repositories` list view
-  - [ ] 7.8 Verify Acceptance Criterion: an archived repository disappears from the Invoke-dialog selector with no code change to the invoke path (the existing `getEnabledRepositories` filter already excludes it)
-  - [ ] 7.9 Verify Acceptance Criterion: a pre-existing run against an archived repository still displays its `repository_full_name` correctly on Run History and Run Detail
-  - [ ] 7.10 Verify Acceptance Criterion: no "restore" affordance exists in this story (explicitly out of scope for v1)
-  - [ ] 7.11 Run Tests: `repository-mutations.test.ts` extension (archive sets `archived_at`; archiving twice is a no-op, timestamp does not regress; a run against an archived repository still resolves `repository_full_name` via `v_runs`)
-  - [ ] 7.12 Run Tests: edge cases - archiving a repository with zero runs against it; archiving mid-invocation-form-selection (no real-time sync required - a page reload picks up the change)
-  - [ ] 7.13 Manual/UI: archive a repository via `/repositories`; confirm it disappears from the list and the Invoke dialog's selector; open an existing run against it and confirm its name still displays
-  - [ ] 7.14 Run Tests: `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
-  - [ ] 7.15 Acceptance-criteria-to-test mapping: AC1/AC2->`repository-mutations.test.ts::archive`; AC3->`RepositoryTable.test.tsx` (default view excludes archived); AC4->manual verification against the existing Invoke-dialog suite; AC5->`filtered-runs.test.ts`/run-history fixture extension; AC6->confirmed by the absence of a restore UI in this story's file list
+  - [x] 7.1 Add `archiveRepository(client, id)` to `panel/lib/supabase/queries.ts` (`UPDATE ... SET archived_at = now()`), test-first including the idempotent-no-op case and the run-still-displays-name case
+  - [x] 7.2 Add the `archiveRepository` Server Action to `panel/app/(panel)/repositories/actions.ts`
+  - [x] 7.3 Add an "Archive" button + confirm dialog to `RepositoryTable.tsx` (the panel's first destructive-action confirm dialog)
+  - [x] 7.4 Migration: N/A opt-out - `archived_at` already exists; this story only writes to it
+  - [x] 7.5 Verify Acceptance Criterion: "Archive" sets `archived_at = now()`
+  - [x] 7.6 Verify Acceptance Criterion: archiving is idempotent - archiving an already-archived repo is a no-op `UPDATE`, not an error
+  - [x] 7.7 Verify Acceptance Criterion: an archived repository disappears from the default `/repositories` list view
+  - [x] 7.8 Verify Acceptance Criterion: an archived repository disappears from the Invoke-dialog selector with no code change to the invoke path (the existing `getEnabledRepositories` filter already excludes it)
+  - [x] 7.9 Verify Acceptance Criterion: a pre-existing run against an archived repository still displays its `repository_full_name` correctly on Run History and Run Detail
+  - [x] 7.10 Verify Acceptance Criterion: no "restore" affordance exists in this story (explicitly out of scope for v1)
+  - [x] 7.11 Run Tests: `repository-mutations.test.ts` extension (archive sets `archived_at`; archiving twice is a no-op, timestamp does not regress; a run against an archived repository still resolves `repository_full_name` via `v_runs`)
+  - [x] 7.12 Run Tests: edge cases - archiving a repository with zero runs against it; archiving mid-invocation-form-selection (no real-time sync required - a page reload picks up the change)
+  - [x] 7.13 Manual/UI: archive a repository via `/repositories`; confirm it disappears from the list and the Invoke dialog's selector; open an existing run against it and confirm its name still displays
+  - [x] 7.14 Run Tests: `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
+  - [x] 7.15 Acceptance-criteria-to-test mapping: AC1/AC2->`repository-mutations.test.ts::archive`; AC3->`RepositoryTable.test.tsx` (default view excludes archived); AC4->manual verification against the existing Invoke-dialog suite; AC5->`filtered-runs.test.ts`/run-history fixture extension; AC6->confirmed by the absence of a restore UI in this story's file list
