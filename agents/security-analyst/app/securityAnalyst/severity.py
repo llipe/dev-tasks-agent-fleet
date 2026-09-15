@@ -18,6 +18,12 @@ every ``Finding`` MUST carry a normalized severity. This was flagged by the
 S-125 fidelity audit (test plan RT-4) as a discrepancy to fix, not to
 replicate -- ``severity_from_semgrep`` below uses the same ``.get(...,
 floor)`` pattern as the other four functions.
+
+The same reasoning applies to ``severity_from_checkov``'s present-value
+branch: spec S8.1a's literal raw indexing there would equally ``KeyError``
+on an out-of-table non-``None`` Checkov severity string. Confirmed by the
+S-126 fidelity audit as a second instance of the same fix, not a separate
+deviation -- it uses the identical ``.get(..., floor)`` pattern.
 """
 
 from __future__ import annotations
@@ -90,7 +96,9 @@ def severity_from_checkov(raw_severity: str | None) -> Severity:
     Present only when the check carries a Bridgecrew-assigned or custom
     severity; absent on plain OSS checks (the common case). When present,
     direct pass-through; when absent, falls to the shared unknown-severity
-    floor (requirement 60).
+    floor (requirement 60). An out-of-table non-``None`` value also falls
+    to the floor rather than raising -- the same defensive ``.get(...,
+    floor)`` fix as ``severity_from_semgrep`` (see module docstring).
     """
     if raw_severity is None:
         return _UNKNOWN_SEVERITY_FLOOR

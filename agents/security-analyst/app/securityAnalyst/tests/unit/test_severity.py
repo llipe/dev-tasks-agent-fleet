@@ -14,7 +14,9 @@ indexing literally shown in the spec — the literal version raises
 ``_UNKNOWN_SEVERITY_FLOOR``, which the spec's own §7.4b requirement 58 table
 implies is a total function ("MUST carry a normalized severity ... derived
 per tool"). ``TestSemgrepIsTotal`` below is the regression guard for this
-fix.
+fix. ``severity_from_checkov``'s present-value branch has the identical
+deviation (found by the S-126 fidelity audit); ``TestCheckovIsTotal`` is
+its regression guard.
 """
 
 from __future__ import annotations
@@ -137,6 +139,20 @@ class TestSeverityFromCheckov:
 
     def test_absent_severity_is_the_common_oss_case_falling_to_floor(self):
         assert severity_from_checkov(None) == _UNKNOWN_SEVERITY_FLOOR
+
+
+class TestCheckovIsTotal:
+    """Regression guard for the S-126 fidelity-audit finding: the same
+    class of deviation as TestSemgrepIsTotal above. Spec S8.1a's literal
+    raw-indexing form would KeyError on an out-of-table non-None Checkov
+    severity string; this function must instead fall to the shared
+    unknown-severity floor, exactly like the other four severity_from_*
+    functions.
+    """
+
+    @pytest.mark.parametrize("raw_severity", ["", "UNKNOWN", "critical", "Error", "informational"])
+    def test_out_of_table_value_falls_to_floor_not_keyerror(self, raw_severity):
+        assert severity_from_checkov(raw_severity) == _UNKNOWN_SEVERITY_FLOOR
 
 
 # ---------------------------------------------------------------------------
