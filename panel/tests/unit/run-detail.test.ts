@@ -4,8 +4,10 @@ import {
   selectBanner,
   buildLogLines,
   buildSummary,
+  buildStepsPanel,
   type SummaryInput,
   type LogEventInput,
+  type RunStepInput,
 } from "@/lib/domain/run-detail";
 import type { RunStatus } from "@/lib/domain/status";
 
@@ -203,5 +205,86 @@ describe("buildSummary — derived status + metadata", () => {
     expect(s.queuedClock).toBe("13:56:13");
     // started_at = T0 - 300_000 ms (5 min) = 13:57:13.
     expect(s.startedClock).toBe("13:57:13");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildStepsPanel (Story S-145, FR9)
+// ---------------------------------------------------------------------------
+
+describe("buildStepsPanel — steps panel projection (FR9)", () => {
+  function stepInput(overrides: Partial<RunStepInput> = {}): RunStepInput {
+    return {
+      id: "step-1",
+      key: "checkout",
+      title: "Checkout",
+      status: "succeeded",
+      startedAtMs: T0 - 10_000,
+      finishedAtMs: T0 - 4_000,
+      ...overrides,
+    };
+  }
+
+  it("maps each run_steps row to a panel row (dot status, name, duration, event count)", () => {
+    const [row] = buildStepsPanel([stepInput()], { "step-1": 12 });
+    expect(row.id).toBe("step-1");
+    expect(row.title).toBe("Checkout");
+    expect(row.status).toBe("succeeded");
+    expect(row.duration).toBe("6s");
+    expect(row.eventCount).toBe(12);
+  });
+
+  it("falls back to the step key when the title is null (reuses buildLogLines' label rule)", () => {
+    const [row] = buildStepsPanel([stepInput({ title: null, key: "npm_audit" })], {});
+    expect(row.title).toBe("npm_audit");
+  });
+
+  it("reuses lib/format.ts duration formatting (Xm XXs for >= 60s)", () => {
+    const [row] = buildStepsPanel([stepInput({ startedAtMs: T0 - 184_000, finishedAtMs: T0 })], {});
+    expect(row.duration).toBe("3m 04s");
+  });
+
+  it("a zero-event step reports event count 0, not undefined/NaN (edge case)", () => {
+    const [row] = buildStepsPanel([stepInput({ id: "step-2" })], {});
+    expect(row.eventCount).toBe(0);
+  });
+
+  it("an in-progress step with no finished_at shows a dash duration, not a crash", () => {
+    const [row] = buildStepsPanel(
+      [stepInput({ status: "running", startedAtMs: T0 - 5_000, finishedAtMs: null })],
+      { "step-1": 3 },
+    );
+    expect(row.duration).toBe("—");
+    expect(row.status).toBe("running");
+  });
+
+  it("a step never started (no started_at) also shows a dash duration", () => {
+    const [row] = buildStepsPanel(
+      [stepInput({ status: "pending", startedAtMs: null, finishedAtMs: null })],
+      {},
+    );
+    expect(row.duration).toBe("—");
+  });
+
+  it("returns [] for a zero-step run — an empty panel, not an error (edge case)", () => {
+    expect(buildStepsPanel([], {})).toEqual([]);
+  });
+
+  it("preserves the given step order (caller provides seq-ordered steps)", () => {
+    const rows = buildStepsPanel(
+      [stepInput({ id: "s1", key: "a" }), stepInput({ id: "s2", key: "b" })],
+      {},
+    );
+    expect(rows.map((r) => r.id)).toEqual(["s1", "s2"]);
+  });
+
+  it("CT-5: the sum of per-step counts never exceeds the total window (a partition, not an independent count)", () => {
+    const windowTotal = 10;
+    const rows = buildStepsPanel([stepInput({ id: "s1" }), stepInput({ id: "s2" })], {
+      s1: 6,
+      s2: 4,
+    });
+    const sum = rows.reduce((acc, r) => acc + r.eventCount, 0);
+    expect(sum).toBeLessThanOrEqual(windowTotal);
   });
 });

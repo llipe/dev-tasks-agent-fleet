@@ -13,17 +13,18 @@ import type { Json, RunEventRow, RunStepRow, VRunRow } from "@/lib/supabase/type
 import {
   buildSummary,
   buildLogLines,
+  buildStepsPanel,
   type LogEventInput,
   type LogStepInput,
   type LogLineView,
   type SummaryInput,
+  type RunStepInput,
 } from "@/lib/domain/run-detail";
 import { selectRecentWindow } from "@/lib/domain/log-window";
 import { effectiveStatus } from "@/lib/domain/status";
 import { RunSummary } from "@/components/run-detail/RunSummary";
 import { StateBanner } from "@/components/run-detail/StateBanner";
-import { LogViewer } from "@/components/run-detail/LogViewer";
-import { LiveLogViewer } from "@/components/run-detail/LiveLogViewer";
+import { RunDetailLogSection } from "@/components/run-detail/RunDetailLogSection";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { ArtifactView } from "@/components/run-detail/ArtifactLinks";
 
@@ -44,6 +45,32 @@ export const fetchCache = "force-no-store";
 
 function toStepInput(s: RunStepRow): LogStepInput {
   return { id: s.id, key: s.key, title: s.title };
+}
+
+function toStepsPanelInput(s: RunStepRow): RunStepInput {
+  return {
+    id: s.id,
+    key: s.key,
+    title: s.title,
+    status: s.status,
+    startedAtMs: s.started_at ? Date.parse(s.started_at) : null,
+    finishedAtMs: s.finished_at ? Date.parse(s.finished_at) : null,
+  };
+}
+
+/**
+ * Event counts per step, derived from the already-loaded window — zero
+ * marginal DB reads (spec §8.2, FR9). A live run's counts may under-count
+ * until the SSE tail catches up (accepted, spec §16); this is presentational
+ * and not re-derived live.
+ */
+function countEventsByStep(events: { stepId: string | null }[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const e of events) {
+    if (e.stepId == null) continue;
+    counts[e.stepId] = (counts[e.stepId] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function toEventInput(e: RunEventRow): LogEventInput {
@@ -128,6 +155,11 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
   const oldestLoadedSeq = window.oldestSeq;
   const hasEarlier = events.length >= RUN_EVENTS_READ_LIMIT && (oldestLoadedSeq ?? 1) > 1;
 
+  // Steps panel (Story S-145, FR9) — event counts derived from the SAME
+  // already-loaded window above, not a new query (spec §8.2).
+  const eventCountByStep = countEventsByStep(window.events.map(toEventInput));
+  const stepsPanel = buildStepsPanel(steps.map(toStepsPanelInput), eventCountByStep);
+
   const runId = resolved.id;
 
   // Whether the run is still live decides which viewer renders. A run whose
@@ -181,25 +213,34 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
 
       <RunSummary summary={summary} artifacts={artifacts.map(toArtifactView)} />
 
-      {isLive ? (
-        <LiveLogViewer
-          runId={runId}
-          initialLines={initialLines}
-          initialStatus={resolved.status}
-          maxRuntimeSeconds={resolved.max_runtime_seconds}
-          graceSeconds={resolved.grace_seconds}
-          startTimeoutSeconds={resolved.start_timeout_seconds}
-          startedAtMs={resolved.started_at ? Date.parse(resolved.started_at) : null}
-          queuedAtMs={Date.parse(resolved.queued_at)}
-        />
-      ) : (
-        <LogViewer
-          initialLines={initialLines}
-          hasEarlier={hasEarlier}
-          oldestSeq={oldestLoadedSeq}
-          loadEarlier={loadEarlier}
-        />
-      )}
+      <RunDetailLogSection
+        steps={stepsPanel}
+        isLive={isLive}
+        liveLogViewerProps={
+          isLive
+            ? {
+                runId,
+                initialLines,
+                initialStatus: resolved.status,
+                maxRuntimeSeconds: resolved.max_runtime_seconds,
+                graceSeconds: resolved.grace_seconds,
+                startTimeoutSeconds: resolved.start_timeout_seconds,
+                startedAtMs: resolved.started_at ? Date.parse(resolved.started_at) : null,
+                queuedAtMs: Date.parse(resolved.queued_at),
+              }
+            : undefined
+        }
+        logViewerProps={
+          isLive
+            ? undefined
+            : {
+                initialLines,
+                hasEarlier,
+                oldestSeq: oldestLoadedSeq,
+                loadEarlier,
+              }
+        }
+      />
     </section>
   );
 }

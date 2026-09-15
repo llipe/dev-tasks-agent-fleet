@@ -396,10 +396,19 @@ flex-direction: column; (fills content area)
 ├── Summary panel (flex: none, 2-column grid)
 │   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr)
 │   gap: 28px
-├── Log toolbar (flex: none)
+├── Steps panel (flex: none, vertical list — §5.3, Story S-145)
+├── Log toolbar (flex: none — hosts the log-level filter, §5.3, Story S-145)
 ├── Log viewer (flex: 1; overflow-y: auto)
 └── Log footer (flex: none)
 ```
+
+**Story S-145 note:** the Steps panel and the Log toolbar's level-filter control
+are owned by a single `"use client"` filter-state wrapper
+(`components/run-detail/RunDetailLogSection.tsx`) sitting between the Summary
+panel and whichever log viewer mounts (terminal `LogViewer` or live
+`LiveLogViewer`) — clicking a step row or changing the level select narrows
+the SAME already-loaded log window client-side (no new server read); neither
+control affects the log viewer's own pagination/live-tail state.
 
 ### 4.3 Dashboard Table Grid
 

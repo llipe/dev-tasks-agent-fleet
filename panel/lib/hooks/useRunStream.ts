@@ -81,6 +81,9 @@ function toLogLine(row: StreamEventRow, timeZone: string): LogLineView {
   // Kept lightweight: the appended clock uses the same formatter the server
   // used. Step labeling is best-effort ("" when unknown) — live lines rarely
   // resolve a step title client-side, and the grid tolerates an empty step.
+  // `stepId` IS carried through (Story S-145, FR10) — the step FILTER matches
+  // on the stable id, not the display label, so a live-appended line still
+  // composes correctly with an active step filter even though its label is "".
   const date = new Date(row.ts);
   const timestamp = Number.isNaN(date.getTime())
     ? ""
@@ -91,6 +94,7 @@ function toLogLine(row: StreamEventRow, timeZone: string): LogLineView {
     timestamp,
     level: row.level,
     step: "",
+    stepId: row.step_id,
     message: row.message,
   };
 }

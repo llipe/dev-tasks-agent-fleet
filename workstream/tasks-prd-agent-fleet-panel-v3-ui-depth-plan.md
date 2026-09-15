@@ -19,14 +19,24 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
 - `panel/tests/integration/pull-request-artifacts.test.ts` - new (S-144)
 - `panel/components/runs/RunHistoryRow.tsx` - add PR-link cell (S-144); add agent column rendering (S-146)
 - `panel/tests/component/RunHistoryRow.test.tsx` - new (S-144); actual path deviates from the plan's `panel/components/runs/RunHistoryRow.test.tsx` — this codebase's real convention (per `vitest.config.ts`) is colocated-by-layer under `tests/component/`, not colocated-by-component; extend for S-146
-- `panel/lib/domain/log-filter.ts` - new: step+level filter reducer over the loaded log window (S-145)
-- `panel/lib/domain/log-filter.test.ts` - new (S-145)
-- `panel/lib/domain/run-detail.ts` - extend with `buildStepsPanel` (S-145)
-- `panel/lib/domain/run-detail.test.ts` - extend (S-145)
-- `panel/components/run-detail/StepsPanel.tsx` (+ `.module.css`, `.test.tsx`) - new (S-145)
-- `panel/components/run-detail/LogViewer.tsx` - add filter consumption (S-145)
-- `panel/components/run-detail/LiveLogViewer.tsx` - add filter consumption (S-145)
-- `panel/app/(panel)/runs/[id]/page.tsx` - wire the filter-state wrapper (S-145)
+- `panel/lib/domain/log-filter.ts` - new: step+level (severity-threshold) filter reducer over the loaded log window (S-145)
+- `panel/tests/unit/log-filter.test.ts` - new; actual path deviates from the plan's colocated `panel/lib/domain/log-filter.test.ts` — this codebase's real convention (per `vitest.config.ts`) is `tests/unit/`, matching every other Layer 1 module, not colocation (same drift class as row 21's S-144 note) (S-145)
+- `panel/lib/domain/run-detail.ts` - extend with `buildStepsPanel`/`RunStepInput`/`StepPanelRow`, plus an optional `stepId` on `LogLineView` (S-145)
+- `panel/tests/unit/run-detail.test.ts` - extend (S-145)
+- `panel/components/run-detail/StepsPanel.tsx` (+ `.module.css`) - new (S-145)
+- `panel/tests/component/StepsPanel.test.tsx` - new (S-145)
+- `panel/components/run-detail/RunDetailLogSection.tsx` (+ `.module.css`) - new: the `"use client"` filter-state wrapper owning `{ stepId, level }`, not itemized in the story's own file list but required by its own Technical Notes prose ("a small filter-state wrapper... a `use client` parent owning state") (S-145)
+- `panel/tests/component/RunDetailLogSection.test.tsx` - new (S-145)
+- `panel/components/run-detail/LogViewer.tsx` - add optional `filter` prop consumption, backward-compatible default (S-145)
+- `panel/components/run-detail/LiveLogViewer.tsx` - add optional `filter` prop consumption; autoscroll effect re-pointed to the filtered lines (S-145)
+- `panel/lib/hooks/useRunStream.ts` - carry `step_id` through onto live-appended `LogLineView`s so the step filter composes with the SSE tail (S-145, not itemized in the story's own file list but required for AC4)
+- `panel/tests/component/use-run-stream.test.tsx` - extend (S-145)
+- `panel/tests/component/live-log-viewer.test.tsx` - extend (S-145)
+- `panel/tests/component/run-detail.test.tsx` - extend (S-145)
+- `panel/tests/component/run-detail-page-wiring.test.tsx` - extend (S-145)
+- `panel/app/(panel)/runs/[id]/page.tsx` - wire the filter-state wrapper + per-step event counts from the already-loaded window (S-145)
+- `DESIGN.md` - §4.2 layout diagram now names the Steps panel + Log toolbar level-filter control explicitly, closing an ambiguity between the diagram and the pre-existing §5.3 prose (S-145)
+- `docs/technical-guidelines.md` - changelog row 1.38 (S-145)
 - `panel/app/(panel)/runs/page.tsx` - new: All Runs screen (S-146)
 - `panel/components/shell/Sidebar.tsx` - enable "All runs" link (S-146); enable "Repositories" link (S-147)
 - `panel/components/shell/Sidebar.test.tsx` - extend (S-146, S-147)
@@ -103,27 +113,27 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
   - [x] 3.12 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration`, `pnpm --filter panel test`
   - [x] 3.13 Acceptance-criteria-to-test mapping: AC1/AC2 -> `RunHistoryRow.test.tsx`; AC3 -> integration grouped-read assertion; AC4 -> reuses `artifact-url.test.ts` (S-109), referenced in the PR description
 
-- [ ] 4.0 Implement Story S-145: Run Detail - steps panel with step and log-level filtering (#205)
+- [x] 4.0 Implement Story S-145: Run Detail - steps panel with step and log-level filtering (#205)
 
   > Steps panel + step-click filter + log-level filter share one new `log-filter.ts` reducer, operating client-side over the already-loaded log window (no new server read; event counts derived from the same window, zero marginal DB reads).
 
-  - [ ] 4.1 Write `panel/lib/domain/log-filter.ts` (`applyLogFilter`) test-first
-  - [ ] 4.2 Extend `panel/lib/domain/run-detail.ts` with `buildStepsPanel(steps, eventCountByStep)`, test-first
-  - [ ] 4.3 Build `panel/components/run-detail/StepsPanel.tsx` (colored status dot from `run_steps.status`, mono name, duration, event count; click sets filter, "All steps" clears it)
-  - [ ] 4.4 Add a `"use client"` filter-state wrapper around `LogViewer.tsx`/`LiveLogViewer.tsx` owning `{ stepId, level }`, wired to both the steps panel and a new level-filter control
-  - [ ] 4.5 Confirm live-run autoscroll/pause-resume (S-110) still works correctly with a filter active
-  - [ ] 4.6 Migration: N/A opt-out - reads only, `run_steps`/`run_events` already fully read for this screen
-  - [ ] 4.7 Verify Acceptance Criterion: steps panel renders each `run_steps` row (dot, name, duration, event count)
-  - [ ] 4.8 Verify Acceptance Criterion: clicking a step filters the log to that step's events; "All steps" clears it
-  - [ ] 4.9 Verify Acceptance Criterion: level filter narrows independently and composes with the step filter
-  - [ ] 4.10 Verify Acceptance Criterion: steps panel + both filters work identically on terminal (`LogViewer`) and live (`LiveLogViewer`) runs
-  - [ ] 4.11 Verify Acceptance Criterion: a live run's step event counts may under-count until the SSE tail catches up (documented, non-blocking - no test asserts an under-count as correct)
-  - [ ] 4.12 Run Tests: `panel/lib/domain/log-filter.test.ts` (step-only, level-only, both combined, neither, "All steps" reset, unknown `stepId` -> empty not a crash)
-  - [ ] 4.13 Run Tests: `run-detail.test.ts` extension for `buildStepsPanel` (duration formatting reuse, zero-event step, in-progress step with no `finished_at`)
-  - [ ] 4.14 Run Tests: edge cases - zero-step run (empty panel, not an error); zero-event step; live run mid-tail with a step filter applied (filtered-out step's new events don't appear; filtered-in step's new events still autoscroll)
-  - [ ] 4.15 Manual/UI: a run with a failed step - click it, confirm log narrows; click "All steps", confirm restore; apply a level filter on top; repeat on a live run
-  - [ ] 4.16 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test`
-  - [ ] 4.17 Acceptance-criteria-to-test mapping: AC1->`StepsPanel.test.tsx`; AC2/AC3->`log-filter.test.ts` + `StepsPanel.test.tsx`; AC4->`LiveLogViewer.test.tsx` extension; AC5->documented in PR description
+  - [x] 4.1 Write `panel/lib/domain/log-filter.ts` (`applyLogFilter`) test-first
+  - [x] 4.2 Extend `panel/lib/domain/run-detail.ts` with `buildStepsPanel(steps, eventCountByStep)`, test-first
+  - [x] 4.3 Build `panel/components/run-detail/StepsPanel.tsx` (colored status dot from `run_steps.status`, mono name, duration, event count; click sets filter, "All steps" clears it)
+  - [x] 4.4 Add a `"use client"` filter-state wrapper around `LogViewer.tsx`/`LiveLogViewer.tsx` owning `{ stepId, level }`, wired to both the steps panel and a new level-filter control
+  - [x] 4.5 Confirm live-run autoscroll/pause-resume (S-110) still works correctly with a filter active
+  - [x] 4.6 Migration: N/A opt-out - reads only, `run_steps`/`run_events` already fully read for this screen
+  - [x] 4.7 Verify Acceptance Criterion: steps panel renders each `run_steps` row (dot, name, duration, event count)
+  - [x] 4.8 Verify Acceptance Criterion: clicking a step filters the log to that step's events; "All steps" clears it
+  - [x] 4.9 Verify Acceptance Criterion: level filter narrows independently and composes with the step filter
+  - [x] 4.10 Verify Acceptance Criterion: steps panel + both filters work identically on terminal (`LogViewer`) and live (`LiveLogViewer`) runs
+  - [x] 4.11 Verify Acceptance Criterion: a live run's step event counts may under-count until the SSE tail catches up (documented, non-blocking - no test asserts an under-count as correct)
+  - [x] 4.12 Run Tests: `panel/lib/domain/log-filter.test.ts` (step-only, level-only, both combined, neither, "All steps" reset, unknown `stepId` -> empty not a crash)
+  - [x] 4.13 Run Tests: `run-detail.test.ts` extension for `buildStepsPanel` (duration formatting reuse, zero-event step, in-progress step with no `finished_at`)
+  - [x] 4.14 Run Tests: edge cases - zero-step run (empty panel, not an error); zero-event step; live run mid-tail with a step filter applied (filtered-out step's new events don't appear; filtered-in step's new events still autoscroll)
+  - [x] 4.15 Manual/UI: a run with a failed step - click it, confirm log narrows; click "All steps", confirm restore; apply a level filter on top; repeat on a live run
+  - [x] 4.16 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test`
+  - [x] 4.17 Acceptance-criteria-to-test mapping: AC1->`StepsPanel.test.tsx`; AC2/AC3->`log-filter.test.ts` + `StepsPanel.test.tsx`; AC4->`LiveLogViewer.test.tsx` extension; AC5->documented in PR description
 
 - [ ] 5.0 Implement Story S-146: All Runs - cross-agent run feed (#206) [depends: S-143]
 

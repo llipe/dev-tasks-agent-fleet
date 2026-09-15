@@ -69,7 +69,9 @@ function Harness({ runId, initial }: { runId: string; initial: LogLineView[] }) 
       <span data-testid="connected">{connected ? "yes" : "no"}</span>
       <ol data-testid="lines">
         {lines.map((l) => (
-          <li key={l.id}>{l.seq}</li>
+          <li key={l.id} data-step-id={l.stepId ?? ""}>
+            {l.seq}
+          </li>
         ))}
       </ol>
     </div>
@@ -191,5 +193,22 @@ describe("useRunStream", () => {
     });
     // The hook forwards the raw status; the viewer applies effectiveStatus.
     expect(screen.getByTestId("status").textContent).toBe("succeeded");
+  });
+
+  it("carries step_id through onto the appended LogLineView (Story S-145, FR10)", () => {
+    render(<Harness runId="r1" initial={[line(1)]} />);
+    act(() => {
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "t",
+        level: "info",
+        message: "x",
+        step_id: "step-9",
+      });
+    });
+    const items = screen.getByTestId("lines").querySelectorAll("li");
+    const appended = [...items].find((li) => li.textContent === "2")!;
+    expect(appended.getAttribute("data-step-id")).toBe("step-9");
   });
 });
