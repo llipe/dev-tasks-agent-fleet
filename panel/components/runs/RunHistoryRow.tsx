@@ -36,11 +36,29 @@ import styles from "./RunHistoryTable.module.css";
  */
 export interface RunHistoryRowProps {
   row: RunRow;
+  /**
+   * Renders a leading Agent cell (name + slug), Story S-146. Defaults `false`
+   * so `/agents/[slug]` renders exactly as before this story.
+   */
+  showAgentColumn?: boolean;
 }
 
-export function RunHistoryRow({ row }: RunHistoryRowProps) {
+export function RunHistoryRow({ row, showAgentColumn = false }: RunHistoryRowProps) {
+  const rowClass = showAgentColumn ? `${styles.row} ${styles.rowAgent}` : styles.row;
   return (
-    <tr className={styles.row}>
+    <tr className={rowClass}>
+      {showAgentColumn && (
+        <td className={styles.cell}>
+          {row.agentName != null || row.agentSlug != null ? (
+            <span className={styles.agent}>
+              <span className={styles.agentName}>{row.agentName ?? "—"}</span>
+              {row.agentSlug != null && <span className={styles.agentSlug}>{row.agentSlug}</span>}
+            </span>
+          ) : (
+            <span className={styles.pending}>—</span>
+          )}
+        </td>
+      )}
       <td className={styles.cell}>
         <StatusPill status={row.effectiveStatus} />
       </td>

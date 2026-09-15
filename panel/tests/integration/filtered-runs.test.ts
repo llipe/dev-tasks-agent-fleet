@@ -485,6 +485,63 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — getFilteredRuns / getRunStatusCo
     expect(result.rows.map((r) => r.id)).toEqual([idA]);
     expect(result.rows.map((r) => r.id)).not.toContain(idB);
   });
+
+  it("agentSlug: null returns rows across >=2 agents, newest-first, count accurate (S-146 AC1)", async () => {
+    const slugA = `filt-allruns-a-${randomUUID()}`;
+    const slugB = `filt-allruns-b-${randomUUID()}`;
+    let oldestId = "";
+    let middleId = "";
+    let newestId = "";
+    await withDb(async (c) => {
+      const agentA = await insertAgent(c, slugA);
+      const agentB = await insertAgent(c, slugB);
+      // Interleave insert order and agent ownership so a correct result can
+      // only come from an unscoped, `created_at desc`-ordered read — not from
+      // a coincidence of insertion or agent order.
+      oldestId = await insertRun(c, agentA, { status: "succeeded", minutesAgo: 30 });
+      newestId = await insertRun(c, agentB, { status: "succeeded", minutesAgo: 5 });
+      middleId = await insertRun(c, agentA, { status: "succeeded", minutesAgo: 15 });
+    });
+
+    // A large page size — this is a shared, non-isolated fixture DB (other
+    // suites/tests leave their own rows behind), so an unscoped, default-page
+    // read could push these three fixture rows off page 1 before the
+    // assertion below ever sees them. The property under test is ordering
+    // and cross-agent attribution, not pagination (already covered above),
+    // so a wide-enough page removes that false-negative risk.
+    const result = await getFilteredRuns(client(), baseFilter({ agentSlug: null }), 5000);
+    const ids = result.rows.map((r) => r.id);
+    // Both agents' runs are present (cross-agent, not scoped to one).
+    expect(ids).toEqual(expect.arrayContaining([oldestId, middleId, newestId]));
+    // Newest-first ordering, verified by relative position among the three
+    // fixture rows (ignoring any other rows that may exist in the fixture DB).
+    const positions = [newestId, middleId, oldestId].map((id) => ids.indexOf(id));
+    expect(positions[0]).toBeLessThan(positions[1]);
+    expect(positions[1]).toBeLessThan(positions[2]);
+    // Each row is correctly attributed to its own agent via `agent_slug`
+    // (the S-146 Agent column reads straight off this).
+    const bySlug = new Map(result.rows.map((r) => [r.id, r.agent_slug]));
+    expect(bySlug.get(oldestId)).toBe(slugA);
+    expect(bySlug.get(middleId)).toBe(slugA);
+    expect(bySlug.get(newestId)).toBe(slugB);
+  });
+
+  it("a disabled agent's historical runs still appear in an agentSlug:null read (S-146 EC — not agent-scoped, unlike /agents/[slug]'s 404 rule)", async () => {
+    const slug = `filt-disabled-${randomUUID()}`;
+    let runId = "";
+    await withDb(async (c) => {
+      const agentId = await insertAgent(c, slug);
+      runId = await insertRun(c, agentId, { status: "succeeded", minutesAgo: 5 });
+      await c.query(`update agents set is_enabled = false where id = $1`, [agentId]);
+    });
+
+    const result = await getFilteredRuns(
+      client(),
+      baseFilter({ agentSlug: null, search: runId }),
+      25,
+    );
+    expect(result.rows.map((r) => r.id)).toEqual([runId]);
+  });
 });
 
 if (!runSuite) {

@@ -217,6 +217,24 @@ describe("buildRunRow — outcome, steps, repository, time", () => {
     expect(row.id).toBe("01J8XQ2F-3K4M-5N6P");
     expect(row.shortId).toBe("01J8XQ2F");
   });
+
+  it("carries the agent name/slug through unmodified when present (S-146, showAgentColumn)", () => {
+    const row = buildRunRow(
+      run({ agentName: "Dependency Update", agentSlug: "dependency-update" }),
+      T0,
+    );
+    expect(row.agentName).toBe("Dependency Update");
+    expect(row.agentSlug).toBe("dependency-update");
+  });
+
+  it("defaults agentName/agentSlug to null when the caller omits them entirely (unaffected /agents/[slug] callers)", () => {
+    const input = run();
+    delete (input as Partial<RunRowInput>).agentName;
+    delete (input as Partial<RunRowInput>).agentSlug;
+    const row = buildRunRow(input, T0);
+    expect(row.agentName).toBeNull();
+    expect(row.agentSlug).toBeNull();
+  });
 });
 
 describe("buildRunRows — ordering", () => {

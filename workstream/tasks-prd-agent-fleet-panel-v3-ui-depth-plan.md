@@ -37,9 +37,13 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
 - `panel/app/(panel)/runs/[id]/page.tsx` - wire the filter-state wrapper + per-step event counts from the already-loaded window (S-145)
 - `DESIGN.md` - §4.2 layout diagram now names the Steps panel + Log toolbar level-filter control explicitly, closing an ambiguity between the diagram and the pre-existing §5.3 prose (S-145)
 - `docs/technical-guidelines.md` - changelog row 1.38 (S-145)
-- `panel/app/(panel)/runs/page.tsx` - new: All Runs screen (S-146)
+- `panel/lib/domain/run-row.ts` - add optional `agentName`/`agentSlug` to `RunRowInput`/`RunRow` (S-146)
+- `panel/tests/unit/run-row.test.ts` - extend: agent-identity passthrough + omitted-field default (S-146)
+- `panel/app/(panel)/runs/page.tsx` (+ `.module.css`) - new: All Runs screen (S-146)
+- `panel/tests/component/runs-page-wiring.test.tsx` - new: `/runs` page wiring, `agentSlug: null`, Agent-column attribution, `/runs`-scoped "Load more" href (S-146)
 - `panel/components/shell/Sidebar.tsx` - enable "All runs" link (S-146); enable "Repositories" link (S-147)
-- `panel/components/shell/Sidebar.test.tsx` - extend (S-146, S-147)
+- `panel/tests/component/Sidebar.test.tsx` - new; actual path deviates from the plan's colocated `panel/components/shell/Sidebar.test.tsx` — this codebase's real convention (per `vitest.config.ts`) is `tests/component/`, matching every other Layer 2 test (same drift class as row 21/23's notes) (S-146; extend for S-147)
+- `panel/tests/component/AppShell.test.tsx` - extend: "All runs" moves from the four-disabled-destinations assertion to a live-link assertion (S-146)
 - `panel/lib/domain/repository-input.ts` - new: `parseFullName` validator (S-147)
 - `panel/lib/domain/repository-input.test.ts` - new (S-147)
 - `panel/tests/integration/repository-mutations.test.ts` - new (S-147); extend for archive (S-148)
@@ -135,23 +139,23 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
   - [x] 4.16 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test`
   - [x] 4.17 Acceptance-criteria-to-test mapping: AC1->`StepsPanel.test.tsx`; AC2/AC3->`log-filter.test.ts` + `StepsPanel.test.tsx`; AC4->`LiveLogViewer.test.tsx` extension; AC5->documented in PR description
 
-- [ ] 5.0 Implement Story S-146: All Runs - cross-agent run feed (#206) [depends: S-143]
+- [x] 5.0 Implement Story S-146: All Runs - cross-agent run feed (#206) [depends: S-143]
 
   > Reverses the v2.1 non-goal per explicit user decision. Almost entirely composition: reuses S-143's `RunFilterBar`/`getFilteredRuns` minus agent scoping, plus a new Agent column.
 
-  - [ ] 5.1 Add `showAgentColumn` prop (default `false`) to `RunHistoryTable`/`RunHistoryRow`, test-first
-  - [ ] 5.2 Build `panel/app/(panel)/runs/page.tsx`, reusing `RunFilterBar` + `getFilteredRuns` with `agentSlug: null`
-  - [ ] 5.3 Update `panel/components/shell/Sidebar.tsx`: swap the "All runs" `DisabledNavItem` for a `NavItem` linking to `/runs`
-  - [ ] 5.4 Migration: N/A opt-out - reads only, reuses S-143's read path with a different filter value
-  - [ ] 5.5 Verify Acceptance Criterion: `/runs` shows runs from >=2 agents (fixture), newest-first, correctly attributed via the Agent column
-  - [ ] 5.6 Verify Acceptance Criterion: all of S-143's filter/pagination/empty-state/connection-indicator behavior works identically on `/runs`
-  - [ ] 5.7 Verify Acceptance Criterion: sidebar "All runs" is a live link to `/runs`
-  - [ ] 5.8 Verify Acceptance Criterion: `/agents/[slug]` is unaffected by this story
-  - [ ] 5.9 Run Tests: `filtered-runs.test.ts` extension - `agentSlug: null` returns rows across >=2 agents, newest-first, count accurate
-  - [ ] 5.10 Run Tests: edge cases - single-enabled-agent fleet (still renders correctly); a disabled agent's historical runs still appear in `/runs` (not agent-scoped, unlike `/agents/[slug]`'s disabled-agent-404 rule)
-  - [ ] 5.11 Manual/UI: seed two enabled agents locally, visit `/runs`, confirm both appear, filters work, sidebar link navigates correctly
-  - [ ] 5.12 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration`, `pnpm --filter panel test`; confirm the existing `/agents/[slug]` suite stays green unmodified
-  - [ ] 5.13 Acceptance-criteria-to-test mapping: AC1/AC2 -> `RunHistoryTable.test.tsx` (`showAgentColumn`) + `filtered-runs.test.ts` cross-agent case; AC3 -> `Sidebar.test.tsx`; AC4 -> existing `/agents/[slug]` suite green
+  - [x] 5.1 Add `showAgentColumn` prop (default `false`) to `RunHistoryTable`/`RunHistoryRow`, test-first
+  - [x] 5.2 Build `panel/app/(panel)/runs/page.tsx`, reusing `RunFilterBar` + `getFilteredRuns` with `agentSlug: null`
+  - [x] 5.3 Update `panel/components/shell/Sidebar.tsx`: swap the "All runs" `DisabledNavItem` for a `NavItem` linking to `/runs`
+  - [x] 5.4 Migration: N/A opt-out - reads only, reuses S-143's read path with a different filter value
+  - [x] 5.5 Verify Acceptance Criterion: `/runs` shows runs from >=2 agents (fixture), newest-first, correctly attributed via the Agent column
+  - [x] 5.6 Verify Acceptance Criterion: all of S-143's filter/pagination/empty-state/connection-indicator behavior works identically on `/runs`
+  - [x] 5.7 Verify Acceptance Criterion: sidebar "All runs" is a live link to `/runs`
+  - [x] 5.8 Verify Acceptance Criterion: `/agents/[slug]` is unaffected by this story
+  - [x] 5.9 Run Tests: `filtered-runs.test.ts` extension - `agentSlug: null` returns rows across >=2 agents, newest-first, count accurate
+  - [x] 5.10 Run Tests: edge cases - single-enabled-agent fleet (still renders correctly); a disabled agent's historical runs still appear in `/runs` (not agent-scoped, unlike `/agents/[slug]`'s disabled-agent-404 rule)
+  - [x] 5.11 Manual/UI: seed two enabled agents locally, visit `/runs`, confirm both appear, filters work, sidebar link navigates correctly
+  - [x] 5.12 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration`, `pnpm --filter panel test`; confirm the existing `/agents/[slug]` suite stays green unmodified
+  - [x] 5.13 Acceptance-criteria-to-test mapping: AC1/AC2 -> `RunHistoryTable.test.tsx` (`showAgentColumn`) + `filtered-runs.test.ts` cross-agent case; AC3 -> `Sidebar.test.tsx`; AC4 -> existing `/agents/[slug]` suite green
 
 - [ ] 6.0 Implement Story S-147: Repositories - list and add-by-reference (#207)
 

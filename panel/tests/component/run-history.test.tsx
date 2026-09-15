@@ -174,6 +174,59 @@ describe("RunHistoryTable — repository + outcome fallbacks (EC)", () => {
   });
 });
 
+describe("RunHistoryTable — showAgentColumn (S-146, /runs cross-agent feed)", () => {
+  it("omits the Agent column by default, unaffected callers stay exactly as before (AC4)", () => {
+    renderTable([run()]);
+    const table = screen.getByRole("table", { name: /run history/i });
+    expect(within(table).queryByRole("columnheader", { name: "Agent" })).toBeNull();
+  });
+
+  it("renders an Agent column header when showAgentColumn is true", () => {
+    render(
+      <RunHistoryTable
+        rows={buildRunRows(
+          [run({ agentName: "Dependency Update", agentSlug: "dependency-update" })],
+          NOW,
+        )}
+        invokeHref={null}
+        showAgentColumn
+      />,
+    );
+    const table = screen.getByRole("table", { name: /run history/i });
+    expect(within(table).getByRole("columnheader", { name: "Agent" })).toBeInTheDocument();
+  });
+
+  it("attributes each row to its agent via name + slug when showAgentColumn is true (AC1)", () => {
+    render(
+      <RunHistoryTable
+        rows={buildRunRows(
+          [
+            run({
+              id: "r-a",
+              agentName: "Dependency Update",
+              agentSlug: "dependency-update",
+              repositoryFullName: "llipe/aaa",
+            }),
+            run({
+              id: "r-b",
+              agentName: "Security Analyst",
+              agentSlug: "security-analyst",
+              repositoryFullName: "llipe/bbb",
+            }),
+          ],
+          NOW,
+        )}
+        invokeHref={null}
+        showAgentColumn
+      />,
+    );
+    expect(screen.getByText("Dependency Update")).toBeInTheDocument();
+    expect(screen.getByText("dependency-update")).toBeInTheDocument();
+    expect(screen.getByText("Security Analyst")).toBeInTheDocument();
+    expect(screen.getByText("security-analyst")).toBeInTheDocument();
+  });
+});
+
 describe("RunHistoryTable — empty state (AC6)", () => {
   it("renders a no-runs message with a disabled Invoke CTA when the route is unbuilt", () => {
     render(<RunHistoryTable rows={[]} invokeHref={null} />);
