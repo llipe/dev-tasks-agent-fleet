@@ -74,15 +74,15 @@
   - [x] 2.8 Verify Acceptance Criterion: no function inspects free-text rule metadata beyond the named fields (requirement 61)
   - [x] 2.9 Run Tests: one parametrized unit case per table row, per tool — `make test-unit`
 
-- [ ] 3.0 Implement Story S-127: Finding schema, fingerprinting — [Issue #187](https://github.com/llipe/dev-tasks-agent-fleet/issues/187)
+- [x] 3.0 Implement Story S-127: Finding schema, fingerprinting — [Issue #187](https://github.com/llipe/dev-tasks-agent-fleet/issues/187)
 
   > Note: Foundation for every scanner normalizer, dedup, classification, and the re-scan gate. Depends on S-126 for the `Severity` enum.
 
-  - [ ] 3.1 Define `Finding`/`Remediation` frozen dataclasses per spec §8.1
-  - [ ] 3.2 Implement `fingerprint()` with `_LINE_TOLERANCE_BAND = 3` per spec §8.2
-  - [ ] 3.3 Verify Acceptance Criterion: `Finding`/`Remediation` fields match spec §8.1 exactly
-  - [ ] 3.4 Verify Acceptance Criterion: fingerprint stable under a small line shift; changes on file/rule difference (PRD AC6)
-  - [ ] 3.5 Run Tests: `tests/unit/test_fingerprint.py` (stability, change-on-difference, boundary-of-tolerance-band, empty-`rule_id`-fallback cases) — `make test-unit`
+  - [x] 3.1 Define `Finding`/`Remediation` frozen dataclasses per spec §8.1
+  - [x] 3.2 Implement `fingerprint()` with `_LINE_TOLERANCE_BAND = 3` per spec §8.2
+  - [x] 3.3 Verify Acceptance Criterion: `Finding`/`Remediation` fields match spec §8.1 exactly
+  - [x] 3.4 Verify Acceptance Criterion: fingerprint stable under a small line shift; changes on file/rule difference (PRD AC6)
+  - [x] 3.5 Run Tests: `tests/unit/test_fingerprint.py` (stability, change-on-difference, boundary-of-tolerance-band, empty-`rule_id`-fallback cases) — `make test-unit` (20/20 passed; 105/105 full unit suite)
 
 - [ ] 4.0 Implement Story S-128: Semgrep scanner integration — [Issue #188](https://github.com/llipe/dev-tasks-agent-fleet/issues/188)
 

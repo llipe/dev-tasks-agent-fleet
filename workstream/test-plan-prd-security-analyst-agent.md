@@ -5,6 +5,7 @@
 | Version | Date       | Summary         | Author   |
 | ------- | ---------- | --------------- | -------- |
 | 1.0     | 2026-09-15 | Initial version. Design-mode plan derived from PRD v1.2 (64 numbered requirements, 31 acceptance criteria + AC12a/AC12b), spec v1.2, the 17-story user-stories doc (S-125–S-141), and the implementation task plan. Covers 44 E2E scenarios, 15 contract-validation scenarios, 46 edge cases, and 6 randomized/property tactics. Pre-implementation: no code exists yet at `agents/security-analyst/` as of this writing. | verifier |
+| 1.1     | 2026-09-15 | S-127 build-vs-skip reconciliation for RT-1 (`fingerprint()` line-tolerance property test). **Declined**, same call and same reasoning the sibling `dependency-update` agent made (see the design note in §6): `tests/unit/test_fingerprint.py`'s fixed-case suite (`TestFingerprintStabilityUnderLineShift`, `TestFingerprintChangesOnDifference`, `TestFingerprintBoundaryOfToleranceBand`) already exercises the exact modulo-banding boundary RT-1 would fuzz — hand-verified correct by the S-127 fidelity audit (`fidelity_verdict: High`) via independent REPL exercise and boundary-arithmetic recomputation, with no defect found. Recorded per this section's own instruction, after the audit flagged the missing entry as Minor/non-blocking drift. | planner |
 
 ---
 
