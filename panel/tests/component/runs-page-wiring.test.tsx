@@ -135,6 +135,19 @@ describe("/runs page wiring — cross-agent, unscoped (S-146, FR13)", () => {
     expect(screen.queryByRole("navigation", { name: /breadcrumb/i })).toBeNull();
   });
 
+  it("takes the first value of an array-valued searchParams entry (Next.js repeated-key edge case)", async () => {
+    const ui = await AllRunsPage({
+      searchParams: Promise.resolve({ status: ["succeeded", "failed"] }),
+    });
+    render(ui);
+
+    expect(getFilteredRuns).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "succeeded" }),
+      expect.any(Number),
+    );
+  });
+
   it("builds the 'Load more' href against /runs, preserving the active filter", async () => {
     getFilteredRuns.mockResolvedValue({ rows: [fixtureRun()], totalCount: 7 });
 

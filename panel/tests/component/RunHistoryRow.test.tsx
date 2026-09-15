@@ -129,4 +129,9 @@ describe("RunHistoryRow — showAgentColumn (S-146, /runs cross-agent feed)", ()
     renderRow({ agentName: undefined, agentSlug: undefined }, true);
     expect(screen.getByRole("table").textContent).not.toMatch(/null|undefined/);
   });
+
+  it("renders just the name when the slug is missing but the name is present (EC)", () => {
+    renderRow({ agentName: "Dependency Update", agentSlug: undefined }, true);
+    expect(screen.getByText("Dependency Update")).toBeInTheDocument();
+  });
 });
