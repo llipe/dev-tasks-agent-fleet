@@ -3,19 +3,21 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-128):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-129):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
-> `fingerprint()` (S-127), and the Semgrep scanner integration (S-128). The entrypoint still
-> validates the invocation payload and runs the S-125 placeholder pipeline
-> (`resolve_credentials` -> `checkout` -> `succeeded`/`no_findings`) — **`main.py` does not call
-> any scanner yet**. `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
-> `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s `Finding`/`Remediation`
-> dataclasses, and `fingerprint.py`'s `fingerprint()` are all pure/subprocess-mocked,
-> unit-and-component-tested, and not yet wired into the pipeline (no `run_scanners()` dispatcher
-> or `main.py` caller exists until **S-135**, `audit_only` mode end-to-end). This is a deliberate
-> bring-up milestone, not a shortcut: it proves the deploy/credential/reporting pipe end-to-end
-> (mirroring how `agents/dependency-update/` proved its own pipe first) before the scanner
-> integrations (S-128-S-132) are wired together and invoked (S-135-S-141).
+> `fingerprint()` (S-127), the Semgrep scanner integration (S-128), and the Gitleaks scanner
+> integration + secret redaction (S-129). The entrypoint still validates the invocation payload
+> and runs the S-125 placeholder pipeline (`resolve_credentials` -> `checkout` ->
+> `succeeded`/`no_findings`) — **`main.py` does not call any scanner yet**.
+> `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
+> `scanners/gitleaks_runner.py`'s `run_gitleaks()`/`normalize_gitleaks()`, `severity.py`'s five
+> `severity_from_<tool>()` functions, `normalize.py`'s `Finding`/`Remediation` dataclasses, and
+> `fingerprint.py`'s `fingerprint()` are all pure/subprocess-mocked, unit-and-component-tested, and
+> not yet wired into the pipeline (no `run_scanners()` dispatcher or `main.py` caller exists until
+> **S-135**, `audit_only` mode end-to-end). This is a deliberate bring-up milestone, not a
+> shortcut: it proves the deploy/credential/reporting pipe end-to-end (mirroring how
+> `agents/dependency-update/` proved its own pipe first) before the scanner integrations
+> (S-128-S-132) are wired together and invoked (S-135-S-141).
 
 ## Layout
 
@@ -33,7 +35,8 @@ agents/security-analyst/
 │   ├── scanners/
 │   │   ├── __init__.py        # Subpackage docstring: one module per tool, shared ScanStatus/ScanResult
 │   │   ├── types.py           # ScanStatus/ScanResult shared shape, reused verbatim by S-129-S-132 (S-127-adjacent, landed S-128)
-│   │   └── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — not yet called by main.py
+│   │   ├── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — not yet called by main.py
+│   │   └── gitleaks_runner.py # run_gitleaks(), normalize_gitleaks() (S-129) — not yet called by main.py
 │   ├── agent_reporter.py    # Reporting SDK (byte-identical copy, docs/reference/)
 │   ├── config.py            # Environment variable reads, this agent's own clock constants
 │   ├── credentials.py       # Supabase key + GitHub App token resolution (unmodified copy)
@@ -41,15 +44,23 @@ agents/security-analyst/
 │   ├── heartbeat.py         # Long-step keep-alive: live-yield heartbeat chunks (unmodified copy)
 │   ├── signal_backstop.py   # Best-effort SIGTERM terminal-report backstop (unmodified copy)
 │   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh — does NOT yet install the
-│   │                        # semgrep binary or any other scanner toolchain (S-128's tests mock
-│   │                        # subprocess.run; real binary install/wiring lands in a later story)
+│   │                        # semgrep/gitleaks binaries or any other scanner toolchain (S-128/
+│   │                        # S-129's tests mock subprocess.run; real binary install/wiring
+│   │                        # lands in a later story)
 │   ├── pyproject.toml       # Python dependencies (pinned)
 │   ├── Makefile              # install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate
 │   └── tests/
 │       ├── unit/            # Pure unit tests (no I/O), incl. test_severity.py (S-126),
-│       │                    # test_fingerprint.py (S-127), test_semgrep_runner.py (S-128)
-│       └── component/       # Component tests (mocked externals), incl.
-│                            # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked)
+│       │                    # test_fingerprint.py (S-127), test_semgrep_runner.py (S-128),
+│       │                    # test_gitleaks_runner.py + test_gitleaks_redaction.py (S-129)
+│       ├── component/       # Component tests (mocked externals), incl.
+│       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
+│       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked)
+│       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json)
+│                            # plus gitleaks_fixture_repo/ + gitleaks_fixture_repo.bundle (S-129):
+│                            # a tiny repo containing one clearly-labeled dummy secret
+│                            # (FIXTURE_DUMMY_SECRET_DO_NOT_USE_...) used to exercise
+│                            # run_gitleaks() end-to-end against a real file tree
 └── README.md                 # This file
 ```
 
@@ -64,11 +75,12 @@ agents/security-analyst/
 Later stories replace step 4 with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline
 (spec `workstream/specification-prd-security-analyst-agent.md` S8.8).
 
-> **Note (S-128):** `scanners/semgrep_runner.py`'s `run_semgrep()` is fully implemented and covered
-> by unit and component tests (with `subprocess.run` mocked — no real Semgrep binary invocation is
-> exercised yet), but **step 4 above still runs unmodified**: `main.py` does not import or call
-> `run_semgrep()`. The scan step's real wiring (`run_scanners()` dispatching across all requested
-> tools) lands in **S-135** (`audit_only` mode end-to-end).
+> **Note (S-128/S-129):** `scanners/semgrep_runner.py`'s `run_semgrep()` and
+> `scanners/gitleaks_runner.py`'s `run_gitleaks()` are both fully implemented and covered by unit
+> and component tests (with `subprocess.run` mocked — no real Semgrep or Gitleaks binary
+> invocation is exercised yet), but **step 4 above still runs unmodified**: `main.py` does not
+> import or call either runner. The scan step's real wiring (`run_scanners()` dispatching across
+> all requested tools) lands in **S-135** (`audit_only` mode end-to-end).
 
 ## Invocation payload (spec S6.1)
 
