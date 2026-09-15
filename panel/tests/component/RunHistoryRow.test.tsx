@@ -49,12 +49,12 @@ function run(overrides: Partial<RunRowInput> = {}): RunRowInput {
   };
 }
 
-function renderRow(overrides: Partial<RunRowInput> = {}) {
+function renderRow(overrides: Partial<RunRowInput> = {}, showAgentColumn = false) {
   const row = buildRunRow(run(overrides), NOW);
   return render(
     <table>
       <tbody>
-        <RunHistoryRow row={row} />
+        <RunHistoryRow row={row} showAgentColumn={showAgentColumn} />
       </tbody>
     </table>,
   );
@@ -109,5 +109,24 @@ describe("RunHistoryRow — no repository (EC, no crash)", () => {
       pullRequestUrl: "https://github.com/llipe/x/pull/1",
     });
     expect(screen.getByRole("table").textContent).not.toMatch(/null/);
+  });
+});
+
+describe("RunHistoryRow — showAgentColumn (S-146, /runs cross-agent feed)", () => {
+  it("renders no agent cell when showAgentColumn is false (default, /agents/[slug] unaffected)", () => {
+    renderRow({ agentName: "Dependency Update", agentSlug: "dependency-update" }, false);
+    expect(screen.queryByText("Dependency Update")).toBeNull();
+    expect(screen.queryByText("dependency-update")).toBeNull();
+  });
+
+  it("renders the agent name and slug when showAgentColumn is true", () => {
+    renderRow({ agentName: "Dependency Update", agentSlug: "dependency-update" }, true);
+    expect(screen.getByText("Dependency Update")).toBeInTheDocument();
+    expect(screen.getByText("dependency-update")).toBeInTheDocument();
+  });
+
+  it("renders a clean — for a missing agent identity, never null/undefined text (EC)", () => {
+    renderRow({ agentName: undefined, agentSlug: undefined }, true);
+    expect(screen.getByRole("table").textContent).not.toMatch(/null|undefined/);
   });
 });

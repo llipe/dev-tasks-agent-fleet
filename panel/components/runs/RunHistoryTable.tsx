@@ -35,6 +35,12 @@ export interface RunHistoryTableProps {
   hasActiveFilter?: boolean;
   /** Href that resets every filter to its default (S-143, FR6). Required when `hasActiveFilter` is true. */
   clearFiltersHref?: string;
+  /**
+   * Renders a leading Agent column (name + slug) on every row (Story S-146,
+   * `/runs` cross-agent feed). Defaults `false` so `/agents/[slug]` — already
+   * scoped to one agent — renders exactly as before this story.
+   */
+  showAgentColumn?: boolean;
 }
 
 export function RunHistoryTable({
@@ -42,6 +48,7 @@ export function RunHistoryTable({
   invokeHref,
   hasActiveFilter = false,
   clearFiltersHref,
+  showAgentColumn = false,
 }: RunHistoryTableProps) {
   if (rows.length === 0 && hasActiveFilter) {
     return (
@@ -89,10 +96,17 @@ export function RunHistoryTable({
     );
   }
 
+  const rowClass = showAgentColumn ? `${styles.row} ${styles.rowAgent}` : styles.row;
+
   return (
     <table className={styles.table} aria-label="Run history">
       <thead>
-        <tr className={`${styles.row} ${styles.headRow}`}>
+        <tr className={`${rowClass} ${styles.headRow}`}>
+          {showAgentColumn && (
+            <th scope="col" className={styles.headCell}>
+              Agent
+            </th>
+          )}
           <th scope="col" className={styles.headCell}>
             Status
           </th>
@@ -118,7 +132,7 @@ export function RunHistoryTable({
       </thead>
       <tbody>
         {rows.map((row) => (
-          <RunHistoryRow key={row.id} row={row} />
+          <RunHistoryRow key={row.id} row={row} showAgentColumn={showAgentColumn} />
         ))}
       </tbody>
     </table>

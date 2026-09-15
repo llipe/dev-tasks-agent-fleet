@@ -41,6 +41,9 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
   const pathname = usePathname();
   // Agents owns "/" and every "/agents/..." run-history route.
   const agentsActive = pathname === "/" || pathname.startsWith("/agents");
+  // All runs (S-146) owns "/runs" and every "/runs/[id]" run-detail route —
+  // Run Detail is conceptually nested under the run feed.
+  const allRunsActive = pathname === "/runs" || pathname.startsWith("/runs/");
 
   return (
     <nav
@@ -63,7 +66,13 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
           active={agentsActive}
           collapsed={collapsed}
         />
-        <DisabledNavItem icon={<AllRunsIcon />} label="All runs" collapsed={collapsed} />
+        <NavItem
+          href="/runs"
+          icon={<AllRunsIcon />}
+          label="All runs"
+          active={allRunsActive}
+          collapsed={collapsed}
+        />
         <DisabledNavItem icon={<RepositoriesIcon />} label="Repositories" collapsed={collapsed} />
         <DisabledNavItem icon={<SettingsIcon />} label="Settings" collapsed={collapsed} />
         <DisabledNavItem icon={<SystemHealthIcon />} label="System health" collapsed={collapsed} />
