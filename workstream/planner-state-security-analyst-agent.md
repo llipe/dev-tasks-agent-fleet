@@ -15,7 +15,7 @@
 | 1        | S-125    | #185    | ✅ Merged  | #218 | story/S-125-project-scaffold-deploy-reporting     |
 | 2        | S-126    | #186    | ✅ Merged  | #219 | story/S-126-severity-normalization                |
 | 3        | S-127    | #187    | ✅ Merged  | #220 | issue/187-finding-schema-fingerprint              |
-| 4        | S-128    | #188    | ⏳ Pending | —    | —                                                  |
+| 4        | S-128    | #188    | ✅ Merged  | #221 | issue/188-semgrep-scanner-integration             |
 | 5        | S-129    | #189    | ⏳ Pending | —    | —                                                  |
 | 6        | S-130    | #190    | ⏳ Pending | —    | —                                                  |
 | 7        | S-131    | #191    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-128
-- Last merged PR: #220
-- Integration branch HEAD: 5373f18
+- Next story: S-129
+- Last merged PR: #221
+- Integration branch HEAD: 4076249
 
 ## Decisions Log
 
@@ -48,3 +48,4 @@
 - `developer` subagent sessions have no Task/subagent-invocation tool available in this environment — they cannot invoke qa-engineer/verifier/technical-writer themselves despite their own operating rules calling for it. Planner must invoke technical-writer (docs drift) and verifier (per-story audit) itself for every story, not delegate that to developer. This is now the established pattern (done for S-125 and S-126).
 - S-126: verifier's fidelity audit found `severity_from_checkov()` carried the same undocumented `.get(..., floor)` defensive-pattern deviation from spec S8.1a as the disclosed `severity_from_semgrep()` fix (Minor drift, non-blocking per merge-gate rules, but fixed anyway before merge since it was cheap): documented in module/test docstrings, added `TestCheckovIsTotal` regression guard, commit bf82890.
 - S-127 (`normalize.py`/`fingerprint.py`): no spec deviation needed this time (developer proactively checked for the S-126-class KeyError-prone-pseudocode issue and confirmed none exists). Fidelity audit High/Minor: flagged that RT-1's build-vs-skip decision (fingerprint line-tolerance property test, declined) was never recorded in the test plan's own changelog per its explicit instruction. Recorded (test-plan v1.1 changelog entry, commit 65e48e0) before merge.
+- S-128 (Semgrep scanner): introduced `scanners/types.py` (shared `ScanStatus`/`ScanResult`) for reuse by S-129-S-132. Fixed a real spec bug: §8.6's literal pseudocode passes RULESET as one space-joined string to `--config`, which is invalid Semgrep CLI syntax (Semgrep requires one `--config <id>` flag per ruleset) — verifier independently confirmed this would have silently run zero/wrong rulesets. Fidelity High/Minor (one forward-looking note re: PRD req 52's RULESET-location wording once S-136/fixers lands, non-blocking). Dockerfile still doesn't install the semgrep binary or any scanner toolchain (pre-existing gap, flagged again, not yet fixed — will matter once a story needs a real scanner binary, likely S-135 or wherever Docker image build is next touched).
