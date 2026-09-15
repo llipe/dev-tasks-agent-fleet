@@ -7,6 +7,7 @@ import {
   getAllRunsByAgentSlug,
   getEnabledRepositories,
   getFilteredRuns,
+  getPullRequestArtifactsForRuns,
   getRunStatusCounts,
   getStepProgressForRuns,
 } from "@/lib/supabase/queries";
@@ -56,7 +57,12 @@ function paramsCount(schema: Json): number {
   return 0;
 }
 
-function toRunInput(row: VRunRow, done: number, total: number): RunRowInput {
+function toRunInput(
+  row: VRunRow,
+  done: number,
+  total: number,
+  pullRequestUrl: string | null = null,
+): RunRowInput {
   return {
     id: row.id,
     status: row.status,
@@ -73,6 +79,7 @@ function toRunInput(row: VRunRow, done: number, total: number): RunRowInput {
     repositoryBranch: repositoryBranch(row),
     stepsDone: done,
     stepsTotal: total,
+    pullRequestUrl,
   };
 }
 
@@ -145,10 +152,14 @@ export default async function AgentRunHistoryPage({
     getEnabledRepositories(client),
   ]);
 
-  const progress = await getStepProgressForRuns(
-    client,
-    filtered.rows.map((r) => r.id),
-  );
+  const filteredRunIds = filtered.rows.map((r) => r.id);
+  // Two grouped reads for the visible page of rows — step progress (S-108)
+  // and the S-144 PR-link lookup — each one query regardless of row count,
+  // never N+1 (spec §10/§11).
+  const [progress, pullRequestArtifacts] = await Promise.all([
+    getStepProgressForRuns(client, filteredRunIds),
+    getPullRequestArtifactsForRuns(client, filteredRunIds),
+  ]);
 
   // A single injected instant for every relative time + status derivation on
   // this render, so nothing reads an ambient clock mid-render.
@@ -167,7 +178,8 @@ export default async function AgentRunHistoryPage({
 
   const tableRunInputs: RunRowInput[] = filtered.rows.map((r) => {
     const p = progress.get(r.id) ?? { done: 0, total: 0 };
-    return toRunInput(r, p.done, p.total);
+    const pullRequestUrl = pullRequestArtifacts[r.id]?.url ?? null;
+    return toRunInput(r, p.done, p.total, pullRequestUrl);
   });
 
   const header = buildAgentHeader(headerInput, nowMs);

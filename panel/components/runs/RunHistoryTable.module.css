@@ -84,6 +84,32 @@
   white-space: nowrap;
 }
 
+/* Inline PR link/inert fragment in the repository cell (S-144). */
+.repoPr,
+.repoPrInert {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-divider);
+  white-space: nowrap;
+}
+
+.repoPr {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.repoPr:hover {
+  color: var(--color-accent-400);
+  border-color: var(--color-accent);
+}
+
+.repoPrInert {
+  color: var(--faint);
+  cursor: default;
+}
+
 .startedCell {
   text-align: right;
   justify-content: end;

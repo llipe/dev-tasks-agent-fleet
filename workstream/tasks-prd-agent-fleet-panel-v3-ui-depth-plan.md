@@ -18,7 +18,7 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
 - `panel/components/runs/RunHistoryTable.tsx` - add empty-state rendering (S-143); add `showAgentColumn` prop (S-146)
 - `panel/tests/integration/pull-request-artifacts.test.ts` - new (S-144)
 - `panel/components/runs/RunHistoryRow.tsx` - add PR-link cell (S-144); add agent column rendering (S-146)
-- `panel/components/runs/RunHistoryRow.test.tsx` - extend (S-144, S-146)
+- `panel/tests/component/RunHistoryRow.test.tsx` - new (S-144); actual path deviates from the plan's `panel/components/runs/RunHistoryRow.test.tsx` — this codebase's real convention (per `vitest.config.ts`) is colocated-by-layer under `tests/component/`, not colocated-by-component; extend for S-146
 - `panel/lib/domain/log-filter.ts` - new: step+level filter reducer over the loaded log window (S-145)
 - `panel/lib/domain/log-filter.test.ts` - new (S-145)
 - `panel/lib/domain/run-detail.ts` - extend with `buildStepsPanel` (S-145)
@@ -85,23 +85,23 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
   - [x] 2.19 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
   - [x] 2.20 Acceptance-criteria-to-test mapping: AC1->`filtered-runs.test.ts::status filter`; AC2->`::repo filter`; AC3->`::search`; AC4->`run-filter.test.ts::round-trip` + `::url-reload parity`; AC5->`::pagination`; AC6->`RunFilterBar.test.tsx::empty state`; AC8->`RunFilterBar.test.tsx::connection indicator`
 
-- [ ] 3.0 Implement Story S-144: Run History - inline branch and PR links (#204) [depends: S-143]
+- [x] 3.0 Implement Story S-144: Run History - inline branch and PR links (#204) [depends: S-143]
 
   > Branch display already exists (`run-row.ts` reads `runs.params.branch`). Only the PR-link half is new - a grouped `run_artifacts` read mirroring the existing `getStepProgressForRuns` shape.
 
-  - [ ] 3.1 Add `getPullRequestArtifactsForRuns(client, runIds)` to `panel/lib/supabase/queries.ts`, test-first (integration test against the local stack)
-  - [ ] 3.2 Extend `RunHistoryRow.tsx`'s repository cell to render the PR link when present, guarded by the existing `isSafeArtifactUrl` (`lib/domain/artifact-url.ts`, S-109) - do not reimplement URL-safety
-  - [ ] 3.3 Wire the new query into `panel/app/(panel)/agents/[slug]/page.tsx` alongside the existing `getStepProgressForRuns` call
-  - [ ] 3.4 Migration: N/A opt-out - reads only, `run_artifacts.type`/`url` already exist
-  - [ ] 3.5 Verify Acceptance Criterion: a run with a `pull_request` artifact shows a clickable inline PR link
-  - [ ] 3.6 Verify Acceptance Criterion: a run with no `pull_request` artifact shows unchanged branch-only rendering
-  - [ ] 3.7 Verify Acceptance Criterion: the PR-link lookup is a single grouped query per page of rows, never N+1
-  - [ ] 3.8 Verify Acceptance Criterion: the link is https-only via the reused `isSafeArtifactUrl` guard
-  - [ ] 3.9 Run Tests: integration test extension - grouped-read shape (never N+1, empty-list -> `{}`, non-`pull_request` artifact type excluded)
-  - [ ] 3.10 Run Tests: edge cases - a `pull_request` artifact carrying an unsafe URL (`javascript:`/relative) renders inert; empty page -> zero-cost lookup
-  - [ ] 3.11 Manual/UI: a run history page with a mix of runs with/without `pull_request` artifacts - confirm the link renders only where expected
-  - [ ] 3.12 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration`, `pnpm --filter panel test`
-  - [ ] 3.13 Acceptance-criteria-to-test mapping: AC1/AC2 -> `RunHistoryRow.test.tsx`; AC3 -> integration grouped-read assertion; AC4 -> reuses `artifact-url.test.ts` (S-109), referenced in the PR description
+  - [x] 3.1 Add `getPullRequestArtifactsForRuns(client, runIds)` to `panel/lib/supabase/queries.ts`, test-first (integration test against the local stack)
+  - [x] 3.2 Extend `RunHistoryRow.tsx`'s repository cell to render the PR link when present, guarded by the existing `isSafeArtifactUrl` (`lib/domain/artifact-url.ts`, S-109) - do not reimplement URL-safety
+  - [x] 3.3 Wire the new query into `panel/app/(panel)/agents/[slug]/page.tsx` alongside the existing `getStepProgressForRuns` call
+  - [x] 3.4 Migration: N/A opt-out - reads only, `run_artifacts.type`/`url` already exist
+  - [x] 3.5 Verify Acceptance Criterion: a run with a `pull_request` artifact shows a clickable inline PR link
+  - [x] 3.6 Verify Acceptance Criterion: a run with no `pull_request` artifact shows unchanged branch-only rendering
+  - [x] 3.7 Verify Acceptance Criterion: the PR-link lookup is a single grouped query per page of rows, never N+1
+  - [x] 3.8 Verify Acceptance Criterion: the link is https-only via the reused `isSafeArtifactUrl` guard
+  - [x] 3.9 Run Tests: integration test extension - grouped-read shape (never N+1, empty-list -> `{}`, non-`pull_request` artifact type excluded)
+  - [x] 3.10 Run Tests: edge cases - a `pull_request` artifact carrying an unsafe URL (`javascript:`/relative) renders inert; empty page -> zero-cost lookup
+  - [x] 3.11 Manual/UI: a run history page with a mix of runs with/without `pull_request` artifacts - confirm the link renders only where expected
+  - [x] 3.12 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration`, `pnpm --filter panel test`
+  - [x] 3.13 Acceptance-criteria-to-test mapping: AC1/AC2 -> `RunHistoryRow.test.tsx`; AC3 -> integration grouped-read assertion; AC4 -> reuses `artifact-url.test.ts` (S-109), referenced in the PR description
 
 - [ ] 4.0 Implement Story S-145: Run Detail - steps panel with step and log-level filtering (#205)
 
