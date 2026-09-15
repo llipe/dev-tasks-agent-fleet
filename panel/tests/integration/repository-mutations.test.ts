@@ -31,6 +31,10 @@ import {
  *     installation with zero repositories) renders an empty list, not an
  *     error
  *   - `getSingleInstallation` resolves the one seeded row
+ *   - a genuine non-duplicate Postgres failure (FK violation) surfaces as the
+ *     generic `DATABASE_ERROR`, never the more specific
+ *     `REPOSITORY_ALREADY_EXISTS` (test-plan §5.5 gap: "a real Postgres
+ *     error, not just the duplicate-constraint case")
  *   - RLS stays deny-all AFTER the write (the standing regression pattern
  *     every prior auth-adjacent story includes, spec §14)
  *
@@ -226,6 +230,17 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — repository mutations (S-147)", (
     fx.repoIds.push(upperRow.id);
 
     expect(upperRow.id).not.toBe(lower.id);
+  });
+
+  it("a genuine non-duplicate Postgres failure (FK violation on a nonexistent installationId) surfaces as DATABASE_ERROR, never REPOSITORY_ALREADY_EXISTS (test-plan §5.5 gap)", async () => {
+    const bogusInstallationId = randomUUID();
+    await expect(
+      insertRepository(client, {
+        installationId: bogusInstallationId,
+        fullName: `s147-org/fk-fail-${randomUUID().slice(0, 8)}`,
+        defaultBranch: "main",
+      }),
+    ).rejects.toMatchObject({ code: "DATABASE_ERROR" });
   });
 
   it("RLS stays deny-all AFTER the insertRepository write (standing regression check)", async () => {
