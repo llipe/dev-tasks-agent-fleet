@@ -118,7 +118,14 @@ export default async function AgentRunHistoryPage({
     if (typeof value === "string") urlSearchParams.set(key, value);
     else if (Array.isArray(value) && value.length > 0) urlSearchParams.set(key, value[0]!);
   }
-  const filter: RunFilter = { ...parseRunFilter(urlSearchParams), agentSlug: slug };
+  // `filter` is exactly what the URL encodes — `agentSlug` stays `null` here
+  // (it is only meaningful on `/runs`, spec §8.1) so this is the object
+  // `RunFilterBar`/`serializeRunFilter` mutate/emit; the route slug never
+  // leaks into an `?agent=` query param on this screen. `queryFilter` is the
+  // read-layer-only variant with the route's `slug` folded in, used solely
+  // for the `getFilteredRuns` call below.
+  const filter: RunFilter = parseRunFilter(urlSearchParams);
+  const queryFilter: RunFilter = { ...filter, agentSlug: slug };
 
   // The header's metadata (params count, p50 duration, success rate) is
   // agent-level, not scoped to the active filter (`/DESIGN.md` §5.2) — it
@@ -129,7 +136,7 @@ export default async function AgentRunHistoryPage({
   // narrows the table with a filter.
   const [allRunsForHeader, filtered, statusCounts, repositories] = await Promise.all([
     getAllRunsByAgentSlug(client, slug),
-    getFilteredRuns(client, filter, PAGE_SIZE),
+    getFilteredRuns(client, queryFilter, PAGE_SIZE),
     getRunStatusCounts(client, {
       agentSlug: slug,
       repositoryId: filter.repositoryId,
