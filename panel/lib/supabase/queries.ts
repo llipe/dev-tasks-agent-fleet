@@ -716,7 +716,9 @@ export class RepositoryAlreadyExistsError extends Error {
  * on a PostgREST failure; a genuinely empty table (mis-seeded environment) is
  * a configuration fault, surfaced the same way rather than a silent null.
  */
-export async function getSingleInstallation(client: SupabaseClient): Promise<GithubInstallationRow> {
+export async function getSingleInstallation(
+  client: SupabaseClient,
+): Promise<GithubInstallationRow> {
   const result = await client.from("github_installations").select("*").limit(1).maybeSingle();
   const row = unwrap<GithubInstallationRow | null>("getSingleInstallation", result);
   if (!row) {

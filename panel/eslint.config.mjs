@@ -37,9 +37,13 @@ const eslintConfig = [
     //
     // The restriction is scoped to the client-component trees: components/**
     // and the app/** subtree — but it MUST NOT fire on App Router server
-    // entrypoints (page/layout/route/template/default/error/loading/not-found),
-    // which read Supabase on purpose (SD2). Those filenames are excluded below.
-    // `server-only` remains the hard build-time guard for every server module.
+    // entrypoints (page/layout/route/template/default/error/loading/not-found)
+    // or on a "use server" Server Actions file (`actions.ts`, S-147 — the
+    // panel's first Server Action to read Supabase directly via
+    // `createServerClient()`, the same legitimate server-only usage as a route
+    // handler), which read Supabase on purpose (SD2). Those filenames are
+    // excluded below. `server-only` remains the hard build-time guard for
+    // every server module.
     files: ["components/**/*.ts", "components/**/*.tsx", "app/**/*.ts", "app/**/*.tsx"],
     ignores: [
       "app/**/page.tsx",
@@ -50,6 +54,7 @@ const eslintConfig = [
       "app/**/error.tsx",
       "app/**/loading.tsx",
       "app/**/not-found.tsx",
+      "app/**/actions.ts",
     ],
     rules: {
       "no-restricted-imports": [

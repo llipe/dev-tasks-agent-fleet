@@ -21,10 +21,7 @@ import { describe, expect, it, vi } from "vitest";
  *   - success returns `{ ok: true, repository }`.
  */
 
-import {
-  resolveAddRepository,
-  type AddRepositoryDeps,
-} from "@/app/(panel)/repositories/actions";
+import { resolveAddRepository, type AddRepositoryDeps } from "@/app/(panel)/repositories/actions";
 import { REPOSITORY_ALREADY_EXISTS } from "@/lib/supabase/queries";
 import { INVALID_REPOSITORY_FORMAT } from "@/lib/domain/repository-input";
 import type { RepositoryRow } from "@/lib/supabase/types";
@@ -88,21 +85,27 @@ describe("resolveAddRepository — client-shaped validation re-run server-side",
 
 describe("resolveAddRepository — defaultBranch defaulting", () => {
   it("defaults defaultBranch to 'main' when absent", async () => {
-    const insert = vi.fn(async (row: { defaultBranch: string }) => fakeRepository(row));
+    const insert = vi.fn(async (row: { defaultBranch: string }) =>
+      fakeRepository({ default_branch: row.defaultBranch }),
+    );
     const d = deps({ insert });
     await resolveAddRepository({ fullName: "acme/widgets", defaultBranch: undefined }, d);
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ defaultBranch: "main" }));
   });
 
   it("defaults defaultBranch to 'main' when blank/whitespace", async () => {
-    const insert = vi.fn(async (row: { defaultBranch: string }) => fakeRepository(row));
+    const insert = vi.fn(async (row: { defaultBranch: string }) =>
+      fakeRepository({ default_branch: row.defaultBranch }),
+    );
     const d = deps({ insert });
     await resolveAddRepository({ fullName: "acme/widgets", defaultBranch: "   " }, d);
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ defaultBranch: "main" }));
   });
 
   it("honors an explicit trimmed defaultBranch", async () => {
-    const insert = vi.fn(async (row: { defaultBranch: string }) => fakeRepository(row));
+    const insert = vi.fn(async (row: { defaultBranch: string }) =>
+      fakeRepository({ default_branch: row.defaultBranch }),
+    );
     const d = deps({ insert });
     await resolveAddRepository({ fullName: "acme/widgets", defaultBranch: "  develop  " }, d);
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({ defaultBranch: "develop" }));

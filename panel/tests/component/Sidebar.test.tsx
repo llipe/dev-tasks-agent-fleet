@@ -79,8 +79,6 @@ describe("Sidebar — Repositories is a live link (S-147, FR18)", () => {
   it("does not mark 'Repositories' active on an unrelated route", () => {
     pathname = "/runs";
     renderSidebar();
-    expect(screen.getByRole("link", { name: /repositories/i })).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(screen.getByRole("link", { name: /repositories/i })).not.toHaveAttribute("aria-current");
   });
 });

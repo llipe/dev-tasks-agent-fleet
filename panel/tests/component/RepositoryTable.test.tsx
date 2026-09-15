@@ -44,7 +44,12 @@ describe("RepositoryTable — lists rows (AC1)", () => {
       <RepositoryTable
         rows={[
           row({ id: "r1", full_name: "acme/widgets", default_branch: "main", is_enabled: true }),
-          row({ id: "r2", full_name: "acme/gadgets", default_branch: "develop", is_enabled: false }),
+          row({
+            id: "r2",
+            full_name: "acme/gadgets",
+            default_branch: "develop",
+            is_enabled: false,
+          }),
         ]}
       />,
     );

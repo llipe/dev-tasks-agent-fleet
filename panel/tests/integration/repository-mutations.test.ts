@@ -8,7 +8,6 @@ import {
   getSingleInstallation,
   insertRepository,
   REPOSITORY_ALREADY_EXISTS,
-  RepositoryAlreadyExistsError,
 } from "@/lib/supabase/queries";
 
 /**
@@ -163,10 +162,10 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — repository mutations (S-147)", (
     // Confirm no second row was inserted.
     const count = await withDb((c) =>
       c
-        .query(`select count(*)::text as n from repositories where installation_id = $1 and full_name = $2`, [
-          fx.installationId,
-          fullName,
-        ])
+        .query(
+          `select count(*)::text as n from repositories where installation_id = $1 and full_name = $2`,
+          [fx.installationId, fullName],
+        )
         .then((r) => r.rows[0]?.n),
     );
     expect(Number(count)).toBe(1);
@@ -196,10 +195,10 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — repository mutations (S-147)", (
 
     const count = await withDb((c) =>
       c
-        .query(`select count(*)::text as n from repositories where installation_id = $1 and full_name = $2`, [
-          fx.installationId,
-          fullName,
-        ])
+        .query(
+          `select count(*)::text as n from repositories where installation_id = $1 and full_name = $2`,
+          [fx.installationId, fullName],
+        )
         .then((r) => r.rows[0]?.n),
     );
     expect(Number(count)).toBe(1);
