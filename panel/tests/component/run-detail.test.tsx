@@ -5,6 +5,7 @@ import { RunSummary } from "@/components/run-detail/RunSummary";
 import { StateBanner } from "@/components/run-detail/StateBanner";
 import { LogViewer } from "@/components/run-detail/LogViewer";
 import { ArtifactLinks, type ArtifactView } from "@/components/run-detail/ArtifactLinks";
+import type { LogFilterState } from "@/lib/domain/log-filter";
 import {
   buildSummary,
   buildLogLines,
@@ -315,6 +316,88 @@ describe("LogViewer — load earlier (AC5, SC-9)", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /load earlier/i })).toBeNull();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC2/AC3 (Story S-145) — LogViewer step/level filter consumption
+// ---------------------------------------------------------------------------
+
+describe("LogViewer — step/level filter consumption (Story S-145, AC2/AC3/AC4)", () => {
+  const noop = async () => [];
+
+  function stepLine(seq: number, stepId: string | null, level = "info") {
+    return {
+      id: seq,
+      seq,
+      timestamp: "14:02:13",
+      level,
+      step: stepId ?? "",
+      stepId,
+      message: `event-${seq}`,
+    };
+  }
+
+  it("with no filter prop, renders the full unfiltered tail (backward compatible default)", () => {
+    render(
+      <LogViewer
+        initialLines={[stepLine(1, "step-1"), stepLine(2, "step-2")]}
+        hasEarlier={false}
+        oldestSeq={1}
+        loadEarlier={noop}
+      />,
+    );
+    expect(screen.getByText("event-1")).toBeInTheDocument();
+    expect(screen.getByText("event-2")).toBeInTheDocument();
+  });
+
+  it("a step filter narrows the rendered lines to that step only (AC2)", () => {
+    const filter: LogFilterState = { stepId: "step-1", level: "all" };
+    render(
+      <LogViewer
+        initialLines={[stepLine(1, "step-1"), stepLine(2, "step-2")]}
+        hasEarlier={false}
+        oldestSeq={1}
+        loadEarlier={noop}
+        filter={filter}
+      />,
+    );
+    expect(screen.getByText("event-1")).toBeInTheDocument();
+    expect(screen.queryByText("event-2")).toBeNull();
+  });
+
+  it("a level filter composes with a step filter (AC3 — both must match)", () => {
+    const filter: LogFilterState = { stepId: "step-1", level: "error" };
+    render(
+      <LogViewer
+        initialLines={[
+          stepLine(1, "step-1", "info"),
+          stepLine(2, "step-1", "error"),
+          stepLine(3, "step-2", "error"),
+        ]}
+        hasEarlier={false}
+        oldestSeq={1}
+        loadEarlier={noop}
+        filter={filter}
+      />,
+    );
+    expect(screen.queryByText("event-1")).toBeNull();
+    expect(screen.getByText("event-2")).toBeInTheDocument();
+    expect(screen.queryByText("event-3")).toBeNull();
+  });
+
+  it("a filter that matches nothing renders an empty-log message, not a crash (edge case)", () => {
+    const filter: LogFilterState = { stepId: "ghost-step", level: "all" };
+    render(
+      <LogViewer
+        initialLines={[stepLine(1, "step-1")]}
+        hasEarlier={false}
+        oldestSeq={1}
+        loadEarlier={noop}
+        filter={filter}
+      />,
+    );
+    expect(screen.getByText(/no log/i)).toBeInTheDocument();
   });
 });
 

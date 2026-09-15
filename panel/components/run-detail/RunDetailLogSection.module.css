@@ -1,0 +1,46 @@
+/*
+ * Run-detail log section — /DESIGN.md §4.2. Column order: Steps panel
+ * (flex: none), Log toolbar (flex: none, level filter), Log viewer (flex: 1,
+ * owns the scroll). Fills the remaining vertical space below the summary
+ * panel/banner.
+ */
+.section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.viewerColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.levelLabel {
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.levelSelect {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: 3px 8px;
+}
