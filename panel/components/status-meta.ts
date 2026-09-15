@@ -16,25 +16,58 @@ export interface StatusMeta {
   label: string;
   /** token reference used to drive the dot/pill color */
   colorVar: string;
-  /** true → animate the dot with the pulse keyframe (running/queued) */
+  /** true → animate the dot with the pulse keyframe (running) */
   pulse: boolean;
+  /** true → animate the dot with the spin keyframe (queued), distinct from pulse (§6.1/§8.1) */
+  spin: boolean;
   /** true → hollow dot (border only), used for failed_to_start */
   hollow: boolean;
 }
 
 const META: Record<string, StatusMeta> = {
-  running: { label: "running", colorVar: "var(--color-accent)", pulse: true, hollow: false },
-  queued: { label: "queued", colorVar: "var(--color-accent)", pulse: true, hollow: false },
-  succeeded: { label: "succeeded", colorVar: "var(--st-ok)", pulse: false, hollow: false },
-  failed: { label: "failed", colorVar: "var(--st-fail)", pulse: false, hollow: false },
-  timed_out: { label: "timed out", colorVar: "var(--st-timeout)", pulse: false, hollow: false },
+  running: {
+    label: "running",
+    colorVar: "var(--color-accent)",
+    pulse: true,
+    spin: false,
+    hollow: false,
+  },
+  queued: {
+    label: "queued",
+    colorVar: "var(--color-accent)",
+    pulse: false,
+    spin: true,
+    hollow: false,
+  },
+  succeeded: {
+    label: "succeeded",
+    colorVar: "var(--st-ok)",
+    pulse: false,
+    spin: false,
+    hollow: false,
+  },
+  failed: { label: "failed", colorVar: "var(--st-fail)", pulse: false, spin: false, hollow: false },
+  timed_out: {
+    label: "timed out",
+    colorVar: "var(--st-timeout)",
+    pulse: false,
+    spin: false,
+    hollow: false,
+  },
   failed_to_start: {
     label: "failed to start",
     colorVar: "var(--faint)",
     pulse: false,
+    spin: false,
     hollow: true,
   },
-  canceled: { label: "canceled", colorVar: "var(--muted)", pulse: false, hollow: false },
+  canceled: {
+    label: "canceled",
+    colorVar: "var(--muted)",
+    pulse: false,
+    spin: false,
+    hollow: false,
+  },
 };
 
 /**
@@ -48,6 +81,7 @@ export function statusMeta(status: RunStatus | (string & {})): StatusMeta {
       label: String(status),
       colorVar: "var(--muted)",
       pulse: false,
+      spin: false,
       hollow: false,
     }
   );
