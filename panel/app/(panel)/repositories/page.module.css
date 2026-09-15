@@ -1,0 +1,21 @@
+/* Repositories screen — /DESIGN.md §5.6 (first-pass layout, see stub note). */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: 24px;
+}
+
+.heading {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

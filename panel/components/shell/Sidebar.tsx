@@ -18,8 +18,9 @@ import styles from "./Sidebar.module.css";
 
 /**
  * The app-shell sidebar (`/DESIGN.md` §4.1, §3.5). A labeled `<nav>` holding
- * the single enabled destination (Agents) plus the four PRD §10 deferred ones,
- * rendered disabled. Client component: it reads the active route and drives the
+ * the enabled destinations (Agents, All runs, Repositories) plus the two
+ * remaining PRD §10 deferred ones (Settings, System health), rendered
+ * disabled. Client component: it reads the active route and drives the
  * collapse toggle. Collapse *state* is owned by the parent AppShell so the
  * whole shell reacts to one source; this component only renders it and reports
  * toggles back up.
@@ -44,6 +45,8 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
   // All runs (S-146) owns "/runs" and every "/runs/[id]" run-detail route —
   // Run Detail is conceptually nested under the run feed.
   const allRunsActive = pathname === "/runs" || pathname.startsWith("/runs/");
+  // Repositories (S-147) owns "/repositories".
+  const repositoriesActive = pathname === "/repositories";
 
   return (
     <nav
@@ -73,7 +76,13 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
           active={allRunsActive}
           collapsed={collapsed}
         />
-        <DisabledNavItem icon={<RepositoriesIcon />} label="Repositories" collapsed={collapsed} />
+        <NavItem
+          href="/repositories"
+          icon={<RepositoriesIcon />}
+          label="Repositories"
+          active={repositoriesActive}
+          collapsed={collapsed}
+        />
         <DisabledNavItem icon={<SettingsIcon />} label="Settings" collapsed={collapsed} />
         <DisabledNavItem icon={<SystemHealthIcon />} label="System health" collapsed={collapsed} />
       </div>

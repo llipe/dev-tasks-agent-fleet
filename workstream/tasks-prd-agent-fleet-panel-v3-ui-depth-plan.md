@@ -161,25 +161,25 @@ Source: [`user-stories-prd-agent-fleet-panel-v3-ui-depth.md`](user-stories-prd-a
 
   > Reverses the v2.1 non-goal, redefined as manual reference (not GitHub App sync). The panel's second user-triggered write and first Server-Action-shaped write.
 
-  - [ ] 6.1 Confirm `/DESIGN.md` §5.6 exists before building UI; if a `ux-engineer` pass has not landed, explicitly flag the gap in the PR description rather than improvising layout
-  - [ ] 6.2 Write `panel/lib/domain/repository-input.ts` (`parseFullName`) test-first
-  - [ ] 6.3 Add `insertRepository`, `getRepositories({includeArchived})`, `getSingleInstallation` to `panel/lib/supabase/queries.ts`, test-first against the local stack, including an RLS-deny-all-unchanged regression check
-  - [ ] 6.4 Build `panel/app/(panel)/repositories/actions.ts` (`"use server"` `addRepository`, following the `signIn`/`resolveSignIn` pure-core-plus-thin-action pattern)
-  - [ ] 6.5 Build `panel/app/(panel)/repositories/page.tsx` + `panel/components/repositories/{RepositoryTable,AddRepositoryForm}.tsx`
-  - [ ] 6.6 Update `panel/components/shell/Sidebar.tsx`: swap the "Repositories" `DisabledNavItem` for a `NavItem` linking to `/repositories`
-  - [ ] 6.7 Migration: N/A opt-out - every column (`full_name`, `default_branch`, `is_enabled`, `archived_at`) already exists in `supabase/migrations/20260902200101_initial_schema.sql`; this story only adds a write path against existing columns
-  - [ ] 6.8 Verify Acceptance Criterion: `/repositories` lists non-archived rows by default (`full_name`, `default_branch`, enabled state)
-  - [ ] 6.9 Verify Acceptance Criterion: "Add repository" inserts a new row without calling the GitHub API
-  - [ ] 6.10 Verify Acceptance Criterion: a duplicate `full_name` under the installation shows a friendly `REPOSITORY_ALREADY_EXISTS` error, not a raw Postgres error, and does not insert a second row
-  - [ ] 6.11 Verify Acceptance Criterion: a malformed `full_name` is rejected client-side before submission AND server-side inside the Server Action
-  - [ ] 6.12 Verify Acceptance Criterion: sidebar "Repositories" is a live link to `/repositories`
-  - [ ] 6.13 Verify Acceptance Criterion: the action is reachable only when authenticated (denied by the existing S-117 gate for an unauthenticated POST)
-  - [ ] 6.14 Run Tests: `panel/lib/domain/repository-input.test.ts` (valid/invalid `owner/repo` shapes, trimming, case sensitivity, empty string, missing/multiple slashes)
-  - [ ] 6.15 Run Tests: `panel/tests/integration/repository-mutations.test.ts` (Docker-gated, run live - success path, duplicate rejection via both the pre-check and the `23505` fallback, RLS-deny-all preserved after the write)
-  - [ ] 6.16 Run Tests: edge cases - mixed-case `full_name` differing only by case from an existing row (verify against real Postgres collation before asserting either way); concurrent double-submit racing two adds of the same `full_name` (exercise the `23505` fallback path, not just the pre-check); empty repositories table renders empty list, not an error
-  - [ ] 6.17 Manual/UI: add a valid repo, confirm it appears and is selectable in the Invoke dialog; attempt a duplicate; attempt a malformed name
-  - [ ] 6.18 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
-  - [ ] 6.19 Acceptance-criteria-to-test mapping: AC1->`RepositoryTable.test.tsx`; AC2/AC3/AC4->`repository-mutations.test.ts` + `AddRepositoryForm.test.tsx`; AC5->`Sidebar.test.tsx`; AC6->manual verification against the existing S-117 gate suite (no new gate test needed)
+  - [x] 6.1 Confirm `/DESIGN.md` §5.6 exists before building UI; if a `ux-engineer` pass has not landed, explicitly flag the gap in the PR description rather than improvising layout
+  - [x] 6.2 Write `panel/lib/domain/repository-input.ts` (`parseFullName`) test-first
+  - [x] 6.3 Add `insertRepository`, `getRepositories({includeArchived})`, `getSingleInstallation` to `panel/lib/supabase/queries.ts`, test-first against the local stack, including an RLS-deny-all-unchanged regression check
+  - [x] 6.4 Build `panel/app/(panel)/repositories/actions.ts` (`"use server"` `addRepository`, following the `signIn`/`resolveSignIn` pure-core-plus-thin-action pattern)
+  - [x] 6.5 Build `panel/app/(panel)/repositories/page.tsx` + `panel/components/repositories/{RepositoryTable,AddRepositoryForm}.tsx`
+  - [x] 6.6 Update `panel/components/shell/Sidebar.tsx`: swap the "Repositories" `DisabledNavItem` for a `NavItem` linking to `/repositories`
+  - [x] 6.7 Migration: N/A opt-out - every column (`full_name`, `default_branch`, `is_enabled`, `archived_at`) already exists in `supabase/migrations/20260902200101_initial_schema.sql`; this story only adds a write path against existing columns
+  - [x] 6.8 Verify Acceptance Criterion: `/repositories` lists non-archived rows by default (`full_name`, `default_branch`, enabled state)
+  - [x] 6.9 Verify Acceptance Criterion: "Add repository" inserts a new row without calling the GitHub API
+  - [x] 6.10 Verify Acceptance Criterion: a duplicate `full_name` under the installation shows a friendly `REPOSITORY_ALREADY_EXISTS` error, not a raw Postgres error, and does not insert a second row
+  - [x] 6.11 Verify Acceptance Criterion: a malformed `full_name` is rejected client-side before submission AND server-side inside the Server Action
+  - [x] 6.12 Verify Acceptance Criterion: sidebar "Repositories" is a live link to `/repositories`
+  - [x] 6.13 Verify Acceptance Criterion: the action is reachable only when authenticated (denied by the existing S-117 gate for an unauthenticated POST)
+  - [x] 6.14 Run Tests: `panel/lib/domain/repository-input.test.ts` (valid/invalid `owner/repo` shapes, trimming, case sensitivity, empty string, missing/multiple slashes)
+  - [x] 6.15 Run Tests: `panel/tests/integration/repository-mutations.test.ts` (Docker-gated, run live - success path, duplicate rejection via both the pre-check and the `23505` fallback, RLS-deny-all preserved after the write)
+  - [x] 6.16 Run Tests: edge cases - mixed-case `full_name` differing only by case from an existing row (verify against real Postgres collation before asserting either way); concurrent double-submit racing two adds of the same `full_name` (exercise the `23505` fallback path, not just the pre-check); empty repositories table renders empty list, not an error
+  - [x] 6.17 Manual/UI: add a valid repo, confirm it appears and is selectable in the Invoke dialog; attempt a duplicate; attempt a malformed name
+  - [x] 6.18 Run Tests: `pnpm --filter panel test:unit`, `pnpm --filter panel test:integration` (`REQUIRE_LOCAL_DB=1`), `pnpm --filter panel test`
+  - [x] 6.19 Acceptance-criteria-to-test mapping: AC1->`RepositoryTable.test.tsx`; AC2/AC3/AC4->`repository-mutations.test.ts` + `AddRepositoryForm.test.tsx`; AC5->`Sidebar.test.tsx`; AC6->manual verification against the existing S-117 gate suite (no new gate test needed)
 
 - [ ] 7.0 Implement Story S-148: Repositories - archive (soft delete) (#208) [depends: S-147]
 

@@ -4,16 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import { Sidebar } from "@/components/shell/Sidebar";
 
 /**
- * Component tests for the sidebar's "All runs" destination (Story S-146,
- * issue #206, FR14).
+ * Component tests for the sidebar's "All runs" (Story S-146, issue #206,
+ * FR14) and "Repositories" (Story S-147, issue #207, FR18) destinations.
  *
  * `AppShell.test.tsx` already covers the sidebar's general structure/collapse
- * behavior; this file focuses on the one regression the test-plan §5.6 calls
- * out explicitly: exactly the "All runs" item flips from a non-link
- * `DisabledNavItem` to a real `NavItem` linking to `/runs` — "Repositories",
- * "Settings", and "System health" stay disabled (their own stories are not
- * in scope here), so a future change doesn't silently enable all four at
- * once.
+ * behavior; this file focuses on the regression the test-plan §5.6 calls out
+ * explicitly: exactly "All runs" and "Repositories" flip from a non-link
+ * `DisabledNavItem` to a real `NavItem` — "Settings" and "System health" stay
+ * disabled (their own stories are not in scope here), so a future change
+ * doesn't silently enable all four at once.
  */
 
 let pathname = "/";
@@ -46,15 +45,42 @@ describe("Sidebar — All runs is a live link (S-146, FR14)", () => {
     expect(screen.getByRole("link", { name: /all runs/i })).toHaveAttribute("aria-current", "page");
   });
 
-  it("keeps Repositories, Settings, and System health disabled (only 'All runs' flips)", () => {
+  it("keeps Settings and System health disabled (only 'All runs' and 'Repositories' flip)", () => {
     pathname = "/";
     renderSidebar();
-    for (const label of ["Repositories", "Settings", "System health"]) {
+    for (const label of ["Settings", "System health"]) {
       expect(screen.queryByRole("link", { name: new RegExp(label, "i") })).toBeNull();
       expect(screen.getByLabelText(new RegExp(`${label} — not available`, "i"))).toHaveAttribute(
         "aria-disabled",
         "true",
       );
     }
+  });
+});
+
+describe("Sidebar — Repositories is a live link (S-147, FR18)", () => {
+  it("renders 'Repositories' as a real link to /repositories, not a DisabledNavItem", () => {
+    pathname = "/";
+    renderSidebar();
+    const link = screen.getByRole("link", { name: /repositories/i });
+    expect(link).toHaveAttribute("href", "/repositories");
+    expect(link).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("marks 'Repositories' active when the current route is /repositories", () => {
+    pathname = "/repositories";
+    renderSidebar();
+    expect(screen.getByRole("link", { name: /repositories/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("does not mark 'Repositories' active on an unrelated route", () => {
+    pathname = "/runs";
+    renderSidebar();
+    expect(screen.getByRole("link", { name: /repositories/i })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 });
