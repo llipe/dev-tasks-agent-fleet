@@ -13,7 +13,7 @@
 | Sequence | Story ID | Issue # | Status     | PR   | Branch                                          |
 | -------- | -------- | ------- | ---------- | ---- | ------------------------------------------------ |
 | 1        | S-125    | #185    | ✅ Merged  | #218 | story/S-125-project-scaffold-deploy-reporting     |
-| 2        | S-126    | #186    | ⏳ Pending | —    | —                                                  |
+| 2        | S-126    | #186    | ✅ Merged  | #219 | story/S-126-severity-normalization                |
 | 3        | S-127    | #187    | ⏳ Pending | —    | —                                                  |
 | 4        | S-128    | #188    | ⏳ Pending | —    | —                                                  |
 | 5        | S-129    | #189    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-126
-- Last merged PR: #218
-- Integration branch HEAD: 88d6853
+- Next story: S-127
+- Last merged PR: #219
+- Integration branch HEAD: 9292fe5
 
 ## Decisions Log
 
@@ -45,3 +45,5 @@
 - S-125 task 1.8 (real audit_only invocation, full runs-row proof) and the live verification of AC25/AC26/AC30 are DEFERRED to S-141: inserting a `queued` runs row requires an `agents.slug='security-analyst'` row, which only S-141's seed migration (supabase/seed.sql) creates. No stub row exists anywhere pre-S-141. S-141 task 17.10 already independently plans the identical real invocation, so this defers cleanly without a one-off write to the shared prod `agents` table. User confirmed this approach over a temporary manual insert.
 - `gh pr review`/`gh pr merge` are blocked for planner by the auto-mode classifier in this environment (requires a Bash permission rule change, not just in-session confirmation). PR #218 was approved and merged manually by the user instead. This will recur for every subsequent story's merge step unless the user changes their permission settings — flagged, not yet resolved.
 - No CI checks are currently wired for agents/security-analyst/ (ci.yml only covers agents/dependency-update/); technical-writer flagged this as a build-system gap, not a docs gap. Not treated as a merge-gate blocker since no checks exist to fail, but should be addressed before this agent nears production use.
+- `developer` subagent sessions have no Task/subagent-invocation tool available in this environment — they cannot invoke qa-engineer/verifier/technical-writer themselves despite their own operating rules calling for it. Planner must invoke technical-writer (docs drift) and verifier (per-story audit) itself for every story, not delegate that to developer. This is now the established pattern (done for S-125 and S-126).
+- S-126: verifier's fidelity audit found `severity_from_checkov()` carried the same undocumented `.get(..., floor)` defensive-pattern deviation from spec S8.1a as the disclosed `severity_from_semgrep()` fix (Minor drift, non-blocking per merge-gate rules, but fixed anyway before merge since it was cheap): documented in module/test docstrings, added `TestCheckovIsTotal` regression guard, commit bf82890.
