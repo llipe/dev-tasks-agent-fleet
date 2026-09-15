@@ -292,9 +292,10 @@ recorded reason (see `TESTING.md`).
     `isSidebarToggleShortcut` matches `Cmd+\` on macOS / `Ctrl+\` elsewhere (primary modifier only),
     and `isTypingTarget` suppresses the shortcut while an input/textarea/select/`contenteditable`
     has focus.
-  - **Deferred nav destinations.** Only Agents is an enabled link. All runs, Repositories, Settings,
-    and System health render as non-link `DisabledNavItem` spans (`aria-disabled`, "not available in
-    this phase", not focusable) per PRD §10 — the deferral is meant to be seen, not clicked.
+  - **Deferred nav destinations.** At S-106 ship time, only Agents was an enabled link; the other four
+    rendered as non-link `DisabledNavItem` spans (`aria-disabled`, "not available in this phase", not
+    focusable) per PRD §10 — the deferral is meant to be seen, not clicked. **All runs became a live
+    link to `/runs` in S-146** (issue #206); Repositories, Settings, and System health remain deferred.
   - **Two derived surface tokens.** `styles/tokens.css` defines `--color-sidebar-bg` (92% `--color-bg`
     over `#000`) and `--color-shell-bg` (88%), so the shell CSS references a token rather than a raw
     `#000` (the token-discipline gate).
