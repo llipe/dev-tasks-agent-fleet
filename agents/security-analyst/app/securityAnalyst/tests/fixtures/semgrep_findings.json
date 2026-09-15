@@ -1,0 +1,63 @@
+{
+  "version": "1.99.0",
+  "results": [
+    {
+      "check_id": "python.lang.security.audit.eval-detected",
+      "path": "app/main.py",
+      "start": { "line": 10, "col": 1 },
+      "end": { "line": 10, "col": 24 },
+      "extra": {
+        "message": "Detected use of eval(). This can lead to arbitrary code execution.",
+        "severity": "ERROR",
+        "metadata": {
+          "cwe": [
+            "CWE-95: Improper Neutralization of Special Elements used in an eval() Statement"
+          ]
+        },
+        "fix": "ast.literal_eval(user_input)"
+      }
+    },
+    {
+      "check_id": "javascript.lang.security.detect-child-process",
+      "path": "app/server.js",
+      "start": { "line": 42, "col": 5 },
+      "end": { "line": 42, "col": 38 },
+      "extra": {
+        "message": "Detected non-literal argument to child_process.exec().",
+        "severity": "WARNING",
+        "metadata": {
+          "cwe": "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+        }
+      }
+    },
+    {
+      "check_id": "python.security-audit.hardcoded-tmp-path",
+      "path": "app/utils.py",
+      "start": { "line": 7, "col": 1 },
+      "end": { "line": 7, "col": 20 },
+      "extra": {
+        "message": "Hardcoded use of /tmp for temp file storage.",
+        "severity": "INFO",
+        "metadata": {
+          "owasp": ["A01:2021 - Broken Access Control"]
+        },
+        "fix": ""
+      }
+    },
+    {
+      "check_id": "generic.secrets.unscored-check",
+      "path": "app/legacy.py",
+      "start": { "line": 3, "col": 1 },
+      "end": { "line": 3, "col": 12 },
+      "extra": {
+        "message": "Rule with an out-of-table native severity value.",
+        "severity": "UNSCORED"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": ["app/main.py", "app/server.js", "app/utils.py", "app/legacy.py"],
+    "skipped": []
+  }
+}

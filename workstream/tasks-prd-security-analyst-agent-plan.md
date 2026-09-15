@@ -84,18 +84,18 @@
   - [x] 3.4 Verify Acceptance Criterion: fingerprint stable under a small line shift; changes on file/rule difference (PRD AC6)
   - [x] 3.5 Run Tests: `tests/unit/test_fingerprint.py` (stability, change-on-difference, boundary-of-tolerance-band, empty-`rule_id`-fallback cases) — `make test-unit` (20/20 passed; 105/105 full unit suite)
 
-- [ ] 4.0 Implement Story S-128: Semgrep scanner integration — [Issue #188](https://github.com/llipe/dev-tasks-agent-fleet/issues/188)
+- [x] 4.0 Implement Story S-128: Semgrep scanner integration — [Issue #188](https://github.com/llipe/dev-tasks-agent-fleet/issues/188)
 
   > Note: First concrete scanner — establishes the `ScanStatus`/`ScanResult` pattern every later scanner story follows. Pins the PRD §7.4a/§7.4b ruleset scope (no `--config auto`). Depends on S-127, S-126.
 
-  - [ ] 4.1 Add `RULESET` constant: `p/javascript p/typescript p/python p/security-audit`
-  - [ ] 4.2 Implement `run_semgrep()` (`--json`, own `SCANNER_TIMEOUT`, crash/timeout → non-fatal `ScanStatus.FAILED`)
-  - [ ] 4.3 Implement `normalize_semgrep()` (sets `remediation.kind = "semgrep_autofix"` when the rule carries a native patch)
-  - [ ] 4.4 Build fixture corpus: `semgrep_clean.json`, `semgrep_findings.json` (with and without an autofix-carrying rule)
-  - [ ] 4.5 Verify Acceptance Criterion: pinned rulesets used, not `--config auto` (PRD requirement 52)
-  - [ ] 4.6 Verify Acceptance Criterion: independent `SCANNER_TIMEOUT`; crash/unparseable-output is non-fatal to the run (PRD requirement 18, 19)
-  - [ ] 4.7 Run Tests: `tests/unit/test_semgrep_runner.py` (normalize against fixtures) — `make test-unit`
-  - [ ] 4.8 Run Tests: `tests/component/test_semgrep_runner_subprocess.py` (mocked subprocess: zero findings, unparseable JSON, timeout) — `make test-component`
+  - [x] 4.1 Add `RULESET` constant: `p/javascript p/typescript p/python p/security-audit`
+  - [x] 4.2 Implement `run_semgrep()` (`--json`, own `SCANNER_TIMEOUT`, crash/timeout → non-fatal `ScanStatus.FAILED`)
+  - [x] 4.3 Implement `normalize_semgrep()` (sets `remediation.kind = "semgrep_autofix"` when the rule carries a native patch)
+  - [x] 4.4 Build fixture corpus: `semgrep_clean.json`, `semgrep_findings.json` (with and without an autofix-carrying rule)
+  - [x] 4.5 Verify Acceptance Criterion: pinned rulesets used, not `--config auto` (PRD requirement 52)
+  - [x] 4.6 Verify Acceptance Criterion: independent `SCANNER_TIMEOUT`; crash/unparseable-output is non-fatal to the run (PRD requirement 18, 19)
+  - [x] 4.7 Run Tests: `tests/unit/test_semgrep_runner.py` (normalize against fixtures) — `make test-unit` (22/22 passed; 127/127 full unit suite)
+  - [x] 4.8 Run Tests: `tests/component/test_semgrep_runner_subprocess.py` (mocked subprocess: zero findings, unparseable JSON, timeout) — `make test-component` (10/10 passed; 137/137 full suite incl. unit)
 
 - [ ] 5.0 Implement Story S-129: Gitleaks scanner integration + secret redaction — [Issue #189](https://github.com/llipe/dev-tasks-agent-fleet/issues/189)
 
