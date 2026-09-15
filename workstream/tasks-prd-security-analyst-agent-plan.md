@@ -97,18 +97,18 @@
   - [x] 4.7 Run Tests: `tests/unit/test_semgrep_runner.py` (normalize against fixtures) — `make test-unit` (22/22 passed; 127/127 full unit suite)
   - [x] 4.8 Run Tests: `tests/component/test_semgrep_runner_subprocess.py` (mocked subprocess: zero findings, unparseable JSON, timeout) — `make test-component` (10/10 passed; 137/137 full suite incl. unit)
 
-- [ ] 5.0 Implement Story S-129: Gitleaks scanner integration + secret redaction — [Issue #189](https://github.com/llipe/dev-tasks-agent-fleet/issues/189)
+- [x] 5.0 Implement Story S-129: Gitleaks scanner integration + secret redaction — [Issue #189](https://github.com/llipe/dev-tasks-agent-fleet/issues/189)
 
   > Note: Secret-value redaction (PRD §9.3/§12, R14) is bundled in, not deferred — a Gitleaks integration without redaction is unsafe to merge. Depends on S-127, S-126.
 
-  - [ ] 5.1 Implement `run_gitleaks()` (`--report-format json`, own `SCANNER_TIMEOUT`)
-  - [ ] 5.2 Implement `normalize_gitleaks()` (severity always `critical` via S-126; `remediation = None` always)
-  - [ ] 5.3 Implement/extend redaction pass (reuse `scrubber.py`'s utility) so `Finding.message` never carries the raw matched secret
-  - [ ] 5.4 Build a fixture repo/commit containing one known dummy secret
-  - [ ] 5.5 Verify Acceptance Criterion: `Finding.message` carries only location/rule, never the raw secret string, at every reporting surface (`run_events`, artifact, log output) (PRD AC27)
-  - [ ] 5.6 Verify Acceptance Criterion: crash/timeout non-fatal, same pattern as S-128
-  - [ ] 5.7 Run Tests: `tests/unit/test_gitleaks_runner.py`, `tests/unit/test_gitleaks_redaction.py` (asserting the dummy secret's literal value is absent from every output surface, including multiple-occurrence redaction) — `make test-unit`
-  - [ ] 5.8 Run Tests: `tests/component/test_gitleaks_runner.py` (mocked subprocess) — `make test-component`
+  - [x] 5.1 Implement `run_gitleaks()` (`--report-format json`, own `SCANNER_TIMEOUT`)
+  - [x] 5.2 Implement `normalize_gitleaks()` (severity always `critical` via S-126; `remediation = None` always)
+  - [x] 5.3 Implement/extend redaction pass (reuse `scrubber.py`'s utility) so `Finding.message` never carries the raw matched secret
+  - [x] 5.4 Build a fixture repo/commit containing one known dummy secret
+  - [x] 5.5 Verify Acceptance Criterion: `Finding.message` carries only location/rule, never the raw secret string, at every reporting surface (`run_events`, artifact, log output) (PRD AC27)
+  - [x] 5.6 Verify Acceptance Criterion: crash/timeout non-fatal, same pattern as S-128
+  - [x] 5.7 Run Tests: `tests/unit/test_gitleaks_runner.py`, `tests/unit/test_gitleaks_redaction.py` (asserting the dummy secret's literal value is absent from every output surface, including multiple-occurrence redaction) — `make test-unit`
+  - [x] 5.8 Run Tests: `tests/component/test_gitleaks_runner.py` (mocked subprocess) — `make test-component`
 
 - [ ] 6.0 Implement Story S-130: Trivy scanner integration (fs/config/image + D24/req 54 boundary) — [Issue #190](https://github.com/llipe/dev-tasks-agent-fleet/issues/190)
 
