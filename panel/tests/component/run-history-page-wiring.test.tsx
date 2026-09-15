@@ -89,6 +89,7 @@ vi.mock("@/lib/supabase/queries", () => ({
   }),
   getEnabledRepositories: vi.fn().mockResolvedValue([]),
   getStepProgressForRuns: vi.fn().mockResolvedValue(new Map()),
+  getPullRequestArtifactsForRuns: vi.fn().mockResolvedValue({}),
 }));
 
 import AgentRunHistoryPage from "@/app/(panel)/agents/[slug]/page";

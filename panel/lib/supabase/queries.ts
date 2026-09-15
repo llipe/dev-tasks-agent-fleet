@@ -292,6 +292,60 @@ export async function getStepProgressForRuns(
 }
 
 /**
+ * 11b. Pull-request artifacts for a set of runs, in ONE grouped read (never
+ * N+1 — Story S-144, spec §10/§11, issue #204). Mirrors the
+ * `getStepProgressForRuns` shape exactly: a single `run_artifacts` read
+ * filtered to `type = 'pull_request'` for every given run id, folded into a
+ * `run_id → RunArtifactRow` map (returned as a plain object per the story's
+ * documented `Record<string, RunArtifactRow>` shape).
+ *
+ * **Tie-break (v1.1 addendum, binding):** a single run may carry more than
+ * one `pull_request` artifact (e.g. superseded/reopened PR). The read orders
+ * `created_at` DESCENDING, and the fold keeps only the FIRST artifact seen per
+ * `run_id` — i.e. the most-recently-created one wins (`order by created_at
+ * desc limit 1` per `run_id`), never incidental row order.
+ *
+ * A run absent from the result has no `pull_request` artifact — the row
+ * renders its existing branch-only markup, unchanged (AC2). Paged with
+ * `.range()` below the PostgREST `max_rows` ceiling (same pattern as
+ * `getStepProgressForRuns`), so a page with an unusually large number of PRs
+ * per run is never silently truncated mid-tie-break.
+ *
+ * Returns `{}` for an empty id list — never issues a read for nothing
+ * (zero-cost, AC3).
+ */
+export async function getPullRequestArtifactsForRuns(
+  client: SupabaseClient,
+  runIds: string[],
+): Promise<Record<string, RunArtifactRow>> {
+  const result: Record<string, RunArtifactRow> = {};
+  if (runIds.length === 0) return result;
+
+  let offset = 0;
+  for (;;) {
+    const query = client
+      .from("run_artifacts")
+      .select("*")
+      .in("run_id", runIds)
+      .eq("type", "pull_request")
+      .order("created_at", { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+    const res = await query;
+    const page = unwrap<RunArtifactRow[]>("getPullRequestArtifactsForRuns", res) ?? [];
+    for (const artifact of page) {
+      // First occurrence per run_id wins — `created_at desc` ordering makes
+      // that occurrence the most-recently-created one (the binding tie-break).
+      if (!(artifact.run_id in result)) {
+        result[artifact.run_id] = artifact;
+      }
+    }
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return result;
+}
+
+/**
  * 12. Every run for an agent slug, newest-first, unfiltered and unpaginated
  * (Story S-108 / AC-108.1). Runs come from `v_runs`, so `effective_status`,
  * `agent_slug`, and `repository_full_name` are present.
