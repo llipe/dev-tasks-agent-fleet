@@ -60,19 +60,19 @@
   - [x] 1.15 Run Tests: `tests/unit/test_clock_invariant.py`, `tests/unit/test_payload_contract.py` — `make test-unit` (36/36 passed)
   - [x] 1.16 Run Tests: full quality gate — `make validate` (lint/format-check/typecheck/test-cov/audit all pass)
 
-- [ ] 2.0 Implement Story S-126: Severity normalization (`severity.py`) — [Issue #186](https://github.com/llipe/dev-tasks-agent-fleet/issues/186)
+- [x] 2.0 Implement Story S-126: Severity normalization (`severity.py`) — [Issue #186](https://github.com/llipe/dev-tasks-agent-fleet/issues/186)
 
   > Note: Pure functions, no I/O — implements the fixed per-tool severity table from PRD §7.4b (D28-D30). Depends on S-125 only for the project skeleton to add a module to.
 
-  - [ ] 2.1 Add `Severity` enum (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) and `_UNKNOWN_SEVERITY_FLOOR = Severity.MEDIUM`
-  - [ ] 2.2 Implement `severity_from_semgrep()` (`ERROR→high`, `WARNING→medium`, `INFO→low`)
-  - [ ] 2.3 Implement `severity_from_gitleaks()` (unconditional `critical`)
-  - [ ] 2.4 Implement `severity_from_trivy()` (direct pass-through 4 levels, `UNKNOWN→medium`)
-  - [ ] 2.5 Implement `severity_from_checkov()` (pass-through when present, `medium` when absent)
-  - [ ] 2.6 Implement `severity_from_codeql()` (`security-severity` thresholds → SARIF `level` fallback → `medium`)
-  - [ ] 2.7 Verify Acceptance Criterion: all five tools' mappings match PRD §7.4b's table exactly, including both unknown-severity-floor paths and CodeQL's dual fallback (PRD AC12a)
-  - [ ] 2.8 Verify Acceptance Criterion: no function inspects free-text rule metadata beyond the named fields (requirement 61)
-  - [ ] 2.9 Run Tests: one parametrized unit case per table row, per tool — `make test-unit`
+  - [x] 2.1 Add `Severity` enum (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`) and `_UNKNOWN_SEVERITY_FLOOR = Severity.MEDIUM`
+  - [x] 2.2 Implement `severity_from_semgrep()` (`ERROR→high`, `WARNING→medium`, `INFO→low`)
+  - [x] 2.3 Implement `severity_from_gitleaks()` (unconditional `critical`)
+  - [x] 2.4 Implement `severity_from_trivy()` (direct pass-through 4 levels, `UNKNOWN→medium`)
+  - [x] 2.5 Implement `severity_from_checkov()` (pass-through when present, `medium` when absent)
+  - [x] 2.6 Implement `severity_from_codeql()` (`security-severity` thresholds → SARIF `level` fallback → `medium`)
+  - [x] 2.7 Verify Acceptance Criterion: all five tools' mappings match PRD §7.4b's table exactly, including both unknown-severity-floor paths and CodeQL's dual fallback (PRD AC12a)
+  - [x] 2.8 Verify Acceptance Criterion: no function inspects free-text rule metadata beyond the named fields (requirement 61)
+  - [x] 2.9 Run Tests: one parametrized unit case per table row, per tool — `make test-unit`
 
 - [ ] 3.0 Implement Story S-127: Finding schema, fingerprinting — [Issue #187](https://github.com/llipe/dev-tasks-agent-fleet/issues/187)
 

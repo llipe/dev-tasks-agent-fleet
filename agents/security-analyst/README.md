@@ -3,12 +3,14 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125):** project scaffold, deploy, and reporting pipe only. The entrypoint validates
-> the invocation payload and runs a placeholder pipeline (`resolve_credentials` -> `checkout` ->
-> `succeeded`/`no_findings`) — **no scanners run yet**. This is a deliberate bring-up milestone, not
-> a shortcut: it proves the deploy/credential/reporting pipe end-to-end (mirroring how
-> `agents/dependency-update/` proved its own pipe first) before any scanner logic lands in later
-> stories (S-126-S-141).
+> **Status (S-125-S-126):** project scaffold, deploy, and reporting pipe (S-125), plus per-tool
+> severity normalization (S-126). The entrypoint validates the invocation payload and runs a
+> placeholder pipeline (`resolve_credentials` -> `checkout` -> `succeeded`/`no_findings`) —
+> **no scanners run yet**. `severity.py`'s five `severity_from_<tool>()` functions are pure,
+> unit-tested, and not yet wired into the pipeline (no `normalize_<tool>()` caller exists until
+> S-128+). This is a deliberate bring-up milestone, not a shortcut: it proves the
+> deploy/credential/reporting pipe end-to-end (mirroring how `agents/dependency-update/` proved its
+> own pipe first) before scanner integrations land in later stories (S-128-S-141).
 
 ## Layout
 
@@ -20,18 +22,19 @@ agents/security-analyst/
 │   └── cdk/                # CDK infrastructure (managed by agentcore CLI)
 ├── app/securityAnalyst/
 │   ├── main.py              # Pipeline orchestrator entrypoint (placeholder pipeline, S-125)
+│   ├── severity.py          # Per-tool severity normalization, pure functions (S-126)
 │   ├── agent_reporter.py    # Reporting SDK (byte-identical copy, docs/reference/)
 │   ├── config.py            # Environment variable reads, this agent's own clock constants
 │   ├── credentials.py       # Supabase key + GitHub App token resolution (unmodified copy)
 │   ├── scrubber.py          # Token scrubbing for output/errors (unmodified copy)
 │   ├── heartbeat.py         # Long-step keep-alive: live-yield heartbeat chunks (unmodified copy)
 │   ├── signal_backstop.py   # Best-effort SIGTERM terminal-report backstop (unmodified copy)
-│   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh (scanner toolchains land S-126+)
+│   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh (scanner toolchains land S-128+)
 │   ├── pyproject.toml       # Python dependencies (pinned)
 │   ├── Makefile              # install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate
 │   └── tests/
-│       ├── unit/            # Pure unit tests (no I/O)
-│       └── component/       # Component tests (mocked externals) — empty until S-126+
+│       ├── unit/            # Pure unit tests (no I/O), incl. test_severity.py (S-126)
+│       └── component/       # Component tests (mocked externals) — empty until S-128+
 └── README.md                 # This file
 ```
 
