@@ -15,6 +15,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DatabaseError, unwrap } from "@/lib/supabase/errors";
 import type { RunInsert } from "@/lib/domain/run-insert";
+import { escapeIlikeWildcards, type RunFilter } from "@/lib/domain/run-filter";
+import type { RunStatus } from "@/lib/domain/status";
 import type {
   AgentRow,
   RepositoryRow,
@@ -321,6 +323,155 @@ export async function getAllRunsByAgentSlug(
     offset += page.length;
   }
   return runs;
+}
+
+/**
+ * 12b. The Run History filter/pagination read (Story S-143, spec §8.1,
+ * FR1–FR6/FR13). Runs come from `v_runs` (so `effective_status` is always the
+ * filtered/displayed status, never raw `runs.status` — FR11a), newest-first,
+ * cumulative-offset-paged (spec §8.1's pagination decision: `page` means
+ * "show pages 1..page inclusive", matching the codebase's exclusive use of
+ * `.range()`-based offset paging elsewhere).
+ *
+ * `filter.agentSlug` scopes to one agent (`/agents/[slug]`); `null` reads
+ * across every agent (S-146's `/runs`, FR13 reuse). `filter.status === "all"`
+ * applies no status filter. `filter.search` is escaped for `ilike` wildcard
+ * metacharacters before being interpolated (spec §8.1 v1.1 addendum) and
+ * matches a `repository_full_name` substring, plus an exact `id` match when
+ * the search term is itself a syntactically valid UUID (a discovered query-
+ * shape constraint: PostgREST's `.or()` grammar rejects a `::type` cast in a
+ * filter column, and Postgres rejects an un-cast `ilike` against a `uuid`
+ * column — substring matching the run id is not reachable without a schema
+ * change, out of scope for this reads-only story; documented here as a shape
+ * decision). `branch` lives inside the unfilterable `params` JSON blob and is
+ * likewise out of scope (the binding spec text names only `repository_full_name`
+ * and the run id).
+ *
+ * Returns `{ rows: [], totalCount: 0 }` for a zero-match filter — never
+ * `null`/`undefined` (CT-2).
+ */
+export interface FilteredRunsResult {
+  rows: VRunRow[];
+  totalCount: number;
+}
+
+/** Builds the shared conditional filters (every clause except `.range()` and status). */
+function applyRunFilterClauses(
+  query: { eq: (col: string, val: string) => unknown; or: (clause: string) => unknown },
+  filter: Pick<RunFilter, "agentSlug" | "repositoryId" | "search">,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q: any = query;
+  if (filter.agentSlug != null) {
+    q = q.eq("agent_slug", filter.agentSlug);
+  }
+  if (filter.repositoryId != null) {
+    q = q.eq("repository_id", filter.repositoryId);
+  }
+  const trimmedSearch = filter.search?.trim();
+  if (trimmedSearch != null && trimmedSearch !== "") {
+    const escaped = escapeIlikeWildcards(trimmedSearch);
+    // `id` is a `uuid` column. PostgREST's embedded `.or()` logic-tree grammar
+    // does not accept a `::type` cast in the column reference (confirmed
+    // against the local stack — `PGRST100 failed to parse logic tree`), and an
+    // un-cast `ilike` against a `uuid` column is rejected by Postgres itself
+    // (`42883 operator does not exist: uuid ~~* unknown`). Substring matching
+    // against the run id is therefore not reachable through this read without
+    // a schema change (out of scope — this story is reads-only, N/A opt-out).
+    // A search term that is itself a syntactically valid UUID still resolves
+    // an exact `id` match (the common real case — pasting a full run id),
+    // composed with the repository-name substring match via `.or()`.
+    const clauses = [`repository_full_name.ilike.%${escaped}%`];
+    if (isUuidLike(trimmedSearch)) {
+      clauses.push(`id.eq.${trimmedSearch}`);
+    }
+    q = q.or(clauses.join(","));
+  }
+  return q;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidLike(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+export async function getFilteredRuns(
+  client: SupabaseClient,
+  filter: RunFilter,
+  pageSize: number,
+): Promise<FilteredRunsResult> {
+  let query = client.from("v_runs").select("*", { count: "exact" });
+  query = applyRunFilterClauses(query, filter);
+  if (filter.status !== "all") {
+    query = query.eq("effective_status", filter.status);
+  }
+  query = query
+    .order("created_at", { ascending: false })
+    .range(0, Math.max(filter.page, 1) * pageSize - 1);
+
+  const result = await query;
+  const rows = unwrap<VRunRow[]>("getFilteredRuns", result) ?? [];
+  const totalCount = result.count ?? 0;
+  return { rows, totalCount };
+}
+
+/**
+ * 12c. Per-status run counts for the segmented control (FR1's "colored dot +
+ * live count per option"). Counts reflect every filter EXCEPT `status` itself
+ * (so each option's count is "how many rows would this option show given the
+ * current repo/search/agent scope") — a single grouped read, paged with
+ * `.range()` below the PostgREST `max_rows` ceiling and folded in JS (same
+ * "one grouped read, never N+1" pattern as `getStepProgressForRuns`), rather
+ * than one query per status value.
+ */
+export type RunStatusCounts = Record<RunStatus | "all", number>;
+
+function zeroStatusCounts(): RunStatusCounts {
+  return {
+    all: 0,
+    queued: 0,
+    running: 0,
+    succeeded: 0,
+    failed: 0,
+    timed_out: 0,
+    failed_to_start: 0,
+    canceled: 0,
+  };
+}
+
+export async function getRunStatusCounts(
+  client: SupabaseClient,
+  filter: Pick<RunFilter, "agentSlug" | "repositoryId" | "search">,
+): Promise<RunStatusCounts> {
+  const counts = zeroStatusCounts();
+  let offset = 0;
+  for (;;) {
+    let query = client
+      .from("v_runs")
+      .select("effective_status")
+      .range(offset, offset + PAGE_SIZE - 1);
+    query = applyRunFilterClauses(query, filter);
+    const result = await query;
+    const page =
+      unwrap<Array<{ effective_status: string }>>(
+        "getRunStatusCounts",
+        result as unknown as {
+          data: Array<{ effective_status: string }> | null;
+          error: unknown;
+        },
+      ) ?? [];
+    for (const row of page) {
+      counts.all += 1;
+      if (row.effective_status in counts) {
+        counts[row.effective_status as RunStatus] += 1;
+      }
+    }
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+  }
+  return counts;
 }
 
 /**

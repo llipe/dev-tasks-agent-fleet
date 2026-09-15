@@ -33,6 +33,18 @@ vi.mock("@/lib/supabase/queries", () => ({
     is_enabled: true,
   }),
   getAllRunsByAgentSlug: vi.fn().mockResolvedValue([]),
+  getFilteredRuns: vi.fn().mockResolvedValue({ rows: [], totalCount: 0 }),
+  getRunStatusCounts: vi.fn().mockResolvedValue({
+    all: 0,
+    queued: 0,
+    running: 0,
+    succeeded: 0,
+    failed: 0,
+    timed_out: 0,
+    failed_to_start: 0,
+    canceled: 0,
+  }),
+  getEnabledRepositories: vi.fn().mockResolvedValue([]),
   getStepProgressForRuns: vi.fn().mockResolvedValue(new Map()),
 }));
 
@@ -44,6 +56,7 @@ describe("run-history page wiring — invoke route enabled", () => {
   it("passes a real invokeHref so the Invoke CTA links to the invoke route", async () => {
     const ui = await AgentRunHistoryPage({
       params: Promise.resolve({ slug: "dependency-update" }),
+      searchParams: Promise.resolve({}),
     });
     render(ui);
 
