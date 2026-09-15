@@ -292,19 +292,39 @@ recorded reason (see `TESTING.md`).
     `isSidebarToggleShortcut` matches `Cmd+\` on macOS / `Ctrl+\` elsewhere (primary modifier only),
     and `isTypingTarget` suppresses the shortcut while an input/textarea/select/`contenteditable`
     has focus.
-  - **Deferred nav destinations.** Only Agents is an enabled link. All runs, Repositories, Settings,
-    and System health render as non-link `DisabledNavItem` spans (`aria-disabled`, "not available in
-    this phase", not focusable) per PRD §10 — the deferral is meant to be seen, not clicked.
+  - **Deferred nav destinations.** At S-106 ship time, only Agents was an enabled link; the other four
+    rendered as non-link `DisabledNavItem` spans (`aria-disabled`, "not available in this phase", not
+    focusable) per PRD §10 — the deferral is meant to be seen, not clicked. **All runs became a live
+    link to `/runs` in S-146** (issue #206) and **Repositories became a live link to `/repositories`
+    in S-147** (issue #207); Settings and System health remain deferred.
   - **Two derived surface tokens.** `styles/tokens.css` defines `--color-sidebar-bg` (92% `--color-bg`
     over `#000`) and `--color-shell-bg` (88%), so the shell CSS references a token rather than a raw
     `#000` (the token-discipline gate).
+
+- **All Runs, Repositories, and the first Server Action write path ("UI Depth" PRD, S-142–S-148).**
+  Reversing the v2.1 non-goal, two more sidebar destinations are now live links:
+
+  - **`/runs` (All Runs, S-146).** The same `RunFilterBar` + `getFilteredRuns`/`getRunStatusCounts`
+    read path introduced for `/agents/[slug]`'s filter/search/pagination (S-143), called unscoped
+    (`agentSlug: null`) with one added Agent column — no new query, no new write.
+  - **`/repositories` (Repositories, S-147/S-148).** A manually-managed reference list — **not**
+    GitHub App repo sync. This is the panel's **second user-triggered database write** (after
+    S-112's Invoke) and its **first Server-Action-shaped write**:
+    `app/(panel)/repositories/actions.ts` exposes `"use server" addRepository` and
+    `archiveRepository`, both built pure-core-plus-thin-action (validation/shape logic in
+    `lib/domain/repository-input.ts`, the DB call in `lib/supabase/queries.ts`'s
+    `insertRepository`/`archiveRepository`), the same pattern as `app/login/actions.ts`'s `signIn`.
+    `app/**/actions.ts` (a `"use server"` file) joins the SD2 ESLint exclusion list alongside App
+    Router server entrypoints, since it is a second legitimate direct `createServerClient()`
+    call site. Archiving is a soft delete (`archived_at`, never a `DELETE`) with **no restore UI**
+    in v1 — reversal requires a direct DB action, an explicit accepted limitation, not an oversight.
 
 - **SD2 lint scope covers `app/**`(S-106).** The`no-restricted-imports`hint that forbids importing`lib/supabase/server`from a client component now covers`app/**`in addition to`components/**`
 (the S-104 audit D1 hardening). App Router server entrypoints
 (`page`/`layout`/`route`/`template`/`default`/`error`/`loading`/`not-found`) are excluded — those
 read Supabase on purpose (SD2). `import "server-only"` remains the hard build-time guard.
 
-## Deployment boundary — authentication (auth wave, S-116…S-122; ADR-007)
+## Deployment boundary — authentication (auth wave, S-116…S-123; ADR-007)
 
 > **This is a precondition for deploying the panel, not an implementation detail.**
 
@@ -315,9 +335,14 @@ fail-closed `middleware.ts` gate, the `/login` screen, POST logout, and a `401`
 on the SSE route. That boundary is mechanized as a **release gate** that proves
 it by observation on the deployed app.
 
-> **This story (S-122) keeps the app PRIVATE.** Going public is the separate,
-> operator-executed, separately-merged **Phase B (S-123)**. Until then
-> `panel/fly.toml` still declares no `[http_service]` and no public IP.
+> **The app is now PUBLIC (Phase B / S-123, issue #162).** `panel/fly.toml`
+> declares a public `[http_service]` and the panel is deployed and
+> internet-reachable over HTTPS at `https://dt-agent-fleet-panel.fly.dev`,
+> behind the login boundary above. Public signups **MUST** stay disabled in
+> Supabase Auth (PRD AC17 / R9) — the gate's check 4 fails the release if a
+> `signUp` succeeds. If any gate check fails, contain first
+> (`fly ips release <public-addr> -a dt-agent-fleet-panel`), diagnose second —
+> see `docs/runbooks/panel-deployment.md` § "Phase B rollback / containment".
 
 Before and after every deploy:
 

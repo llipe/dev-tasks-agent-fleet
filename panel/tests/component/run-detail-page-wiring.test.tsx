@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 /**
  * Page-wiring tests for the run-detail route (`app/(panel)/runs/[id]/page.tsx`).
@@ -159,5 +159,130 @@ describe("run-detail page wiring", () => {
       "data-sse-mount",
       "run-log",
     );
+  });
+
+  it("renders the steps panel with per-step event counts derived from the loaded window, not a new query (Story S-145, FR9)", async () => {
+    queryMock.getRunById.mockResolvedValue(vrun({ status: "failed", effective_status: "failed" }));
+    queryMock.getRunSteps.mockResolvedValue([
+      {
+        id: "step-1",
+        run_id: "r1",
+        seq: 1,
+        key: "checkout",
+        title: "Checkout",
+        status: "succeeded",
+        started_at: new Date(Date.now() - 20_000).toISOString(),
+        finished_at: new Date(Date.now() - 15_000).toISOString(),
+        error_message: null,
+        data: {},
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: "step-2",
+        run_id: "r1",
+        seq: 2,
+        key: "npm_audit",
+        title: null,
+        status: "failed",
+        started_at: new Date(Date.now() - 14_000).toISOString(),
+        finished_at: new Date(Date.now() - 10_000).toISOString(),
+        error_message: "boom",
+        data: {},
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    queryMock.getRunEvents.mockResolvedValue([
+      {
+        id: 1,
+        run_id: "r1",
+        step_id: "step-1",
+        seq: 1,
+        ts: new Date().toISOString(),
+        level: "info",
+        message: "checkout ok",
+        data: {},
+      },
+      {
+        id: 2,
+        run_id: "r1",
+        step_id: "step-2",
+        seq: 2,
+        ts: new Date().toISOString(),
+        level: "error",
+        message: "audit failed",
+        data: {},
+      },
+      {
+        id: 3,
+        run_id: "r1",
+        step_id: "step-2",
+        seq: 3,
+        ts: new Date().toISOString(),
+        level: "error",
+        message: "audit retry failed",
+        data: {},
+      },
+    ]);
+
+    const ui = await RunDetailPage({ params: Promise.resolve({ id: "r1" }) });
+    render(ui);
+
+    const panel = document.querySelector("[data-steps-panel]") as HTMLElement;
+    expect(within(panel).getByText("Checkout")).toBeInTheDocument();
+    expect(within(panel).getByText("npm_audit")).toBeInTheDocument();
+    expect(within(panel).getByText("1 ev")).toBeInTheDocument();
+    expect(within(panel).getByText("2 ev")).toBeInTheDocument();
+  });
+
+  it("clicking a step in the panel narrows the log to that step's events (Story S-145, AC2, page-wired)", async () => {
+    queryMock.getRunById.mockResolvedValue(vrun({ status: "failed", effective_status: "failed" }));
+    queryMock.getRunSteps.mockResolvedValue([
+      {
+        id: "step-1",
+        run_id: "r1",
+        seq: 1,
+        key: "checkout",
+        title: "Checkout",
+        status: "succeeded",
+        started_at: null,
+        finished_at: null,
+        error_message: null,
+        data: {},
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    queryMock.getRunEvents.mockResolvedValue([
+      {
+        id: 1,
+        run_id: "r1",
+        step_id: "step-1",
+        seq: 1,
+        ts: new Date().toISOString(),
+        level: "info",
+        message: "in-step-1",
+        data: {},
+      },
+      {
+        id: 2,
+        run_id: "r1",
+        step_id: null,
+        seq: 2,
+        ts: new Date().toISOString(),
+        level: "info",
+        message: "no-step",
+        data: {},
+      },
+    ]);
+
+    const ui = await RunDetailPage({ params: Promise.resolve({ id: "r1" }) });
+    render(ui);
+
+    expect(screen.getByText("in-step-1")).toBeInTheDocument();
+    expect(screen.getByText("no-step")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /checkout/i }));
+
+    expect(screen.getByText("in-step-1")).toBeInTheDocument();
+    expect(screen.queryByText("no-step")).toBeNull();
   });
 });

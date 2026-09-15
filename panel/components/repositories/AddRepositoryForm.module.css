@@ -1,0 +1,52 @@
+/* AddRepositoryForm — /DESIGN.md §5.6 (first-pass layout, see stub note).
+   Reuses the LoginForm field-row + alert token pattern. Token-only CSS Module. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 420px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Wraps the remountable field group (reset-on-success key) so its internal
+   spacing matches .form's gap without an extra visual seam. */
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Server-returned error region — rendered above the fields, matching LoginForm. */
+.alert {
+  border: 1px solid color-mix(in srgb, var(--st-fail) 35%, transparent);
+  background: color-mix(in srgb, var(--st-fail) 10%, transparent);
+  color: var(--color-text);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+}
+
+/* Inline per-field validation message (client-side, AC4). */
+.fieldError {
+  margin: 0;
+  color: var(--st-fail);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+}
+
+.success {
+  margin: 0;
+  color: var(--st-ok);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+}
+
+.submit {
+  align-self: flex-start;
+}

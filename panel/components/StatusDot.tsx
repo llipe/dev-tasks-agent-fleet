@@ -24,7 +24,13 @@ export interface StatusDotProps {
 
 export function StatusDot({ status, size = 7, decorative = false, className }: StatusDotProps) {
   const meta = statusMeta(status);
-  const classes = [styles.dot, meta.pulse && styles.pulse, meta.hollow && styles.hollow, className]
+  const classes = [
+    styles.dot,
+    meta.pulse && styles.pulse,
+    meta.spin && styles.spin,
+    meta.hollow && styles.hollow,
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
   const style = {

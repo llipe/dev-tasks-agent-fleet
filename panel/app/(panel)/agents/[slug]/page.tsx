@@ -1,9 +1,14 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createServerClient } from "@/lib/supabase/server";
 import {
   getAgentBySlug,
   getAllRunsByAgentSlug,
+  getEnabledRepositories,
+  getFilteredRuns,
+  getPullRequestArtifactsForRuns,
+  getRunStatusCounts,
   getStepProgressForRuns,
 } from "@/lib/supabase/queries";
 import type { AgentRow, Json, VRunRow } from "@/lib/supabase/types";
@@ -14,10 +19,15 @@ import {
   type AgentHeaderInput,
   type RunRowInput,
 } from "@/lib/domain/run-row";
+import { parseRunFilter, serializeRunFilter, type RunFilter } from "@/lib/domain/run-filter";
 import { AgentHeader } from "@/components/runs/AgentHeader";
 import { RunHistoryTable } from "@/components/runs/RunHistoryTable";
+import { RunFilterBar } from "@/components/runs/RunFilterBar";
 
 import styles from "./page.module.css";
+
+/** Run History page size (spec §8.1's pagination decision, `PAGE_SIZE = 25`). */
+const PAGE_SIZE = 25;
 
 /**
  * Agent run history (`/agents/[slug]`, Story S-108).
@@ -47,7 +57,12 @@ function paramsCount(schema: Json): number {
   return 0;
 }
 
-function toRunInput(row: VRunRow, done: number, total: number): RunRowInput {
+function toRunInput(
+  row: VRunRow,
+  done: number,
+  total: number,
+  pullRequestUrl: string | null = null,
+): RunRowInput {
   return {
     id: row.id,
     status: row.status,
@@ -64,6 +79,7 @@ function toRunInput(row: VRunRow, done: number, total: number): RunRowInput {
     repositoryBranch: repositoryBranch(row),
     stepsDone: done,
     stepsTotal: total,
+    pullRequestUrl,
   };
 }
 
@@ -83,8 +99,10 @@ function repositoryBranch(row: VRunRow): string | null {
 
 export default async function AgentRunHistoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug } = await params;
   const client = createServerClient();
@@ -98,20 +116,56 @@ export default async function AgentRunHistoryPage({
   // `notFound()` throws, so `agent` is a resolved AgentRow past this point.
   const resolved = agent as AgentRow;
 
-  const runs = await getAllRunsByAgentSlug(client, slug);
-  const progress = await getStepProgressForRuns(
-    client,
-    runs.map((r) => r.id),
-  );
+  // The URL is the single source of filter/pagination truth (spec §8.1
+  // Business Rule) — `parseRunFilter` is total and never throws for a
+  // malformed query string.
+  const rawSearchParams = await searchParams;
+  const urlSearchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(rawSearchParams)) {
+    if (typeof value === "string") urlSearchParams.set(key, value);
+    else if (Array.isArray(value) && value.length > 0) urlSearchParams.set(key, value[0]!);
+  }
+  // `filter` is exactly what the URL encodes — `agentSlug` stays `null` here
+  // (it is only meaningful on `/runs`, spec §8.1) so this is the object
+  // `RunFilterBar`/`serializeRunFilter` mutate/emit; the route slug never
+  // leaks into an `?agent=` query param on this screen. `queryFilter` is the
+  // read-layer-only variant with the route's `slug` folded in, used solely
+  // for the `getFilteredRuns` call below.
+  const filter: RunFilter = parseRunFilter(urlSearchParams);
+  const queryFilter: RunFilter = { ...filter, agentSlug: slug };
+
+  // The header's metadata (params count, p50 duration, success rate) is
+  // agent-level, not scoped to the active filter (`/DESIGN.md` §5.2) — it
+  // reads the full unfiltered history, same cost class as before this story
+  // (S-108). The table below reads the filtered, paginated set via the new
+  // `getFilteredRuns` (S-143, spec §8.1) — a deliberate two-reads shape, not
+  // an oversight, so the header never contradicts itself when an operator
+  // narrows the table with a filter.
+  const [allRunsForHeader, filtered, statusCounts, repositories] = await Promise.all([
+    getAllRunsByAgentSlug(client, slug),
+    getFilteredRuns(client, queryFilter, PAGE_SIZE),
+    getRunStatusCounts(client, {
+      agentSlug: slug,
+      repositoryId: filter.repositoryId,
+      search: filter.search,
+    }),
+    getEnabledRepositories(client),
+  ]);
+
+  const filteredRunIds = filtered.rows.map((r) => r.id);
+  // Two grouped reads for the visible page of rows — step progress (S-108)
+  // and the S-144 PR-link lookup — each one query regardless of row count,
+  // never N+1 (spec §10/§11).
+  const [progress, pullRequestArtifacts] = await Promise.all([
+    getStepProgressForRuns(client, filteredRunIds),
+    getPullRequestArtifactsForRuns(client, filteredRunIds),
+  ]);
 
   // A single injected instant for every relative time + status derivation on
   // this render, so nothing reads an ambient clock mid-render.
   const nowMs = Date.now();
 
-  const runInputs: RunRowInput[] = runs.map((r) => {
-    const p = progress.get(r.id) ?? { done: 0, total: 0 };
-    return toRunInput(r, p.done, p.total);
-  });
+  const headerRunInputs: RunRowInput[] = allRunsForHeader.map((r) => toRunInput(r, 0, 0));
 
   const headerInput: AgentHeaderInput = {
     name: resolved.name,
@@ -119,17 +173,58 @@ export default async function AgentRunHistoryPage({
     description: resolved.description,
     paramsCount: paramsCount(resolved.params_schema),
     isEnabled: resolved.is_enabled,
-    runs: runInputs,
+    runs: headerRunInputs,
   };
 
+  const tableRunInputs: RunRowInput[] = filtered.rows.map((r) => {
+    const p = progress.get(r.id) ?? { done: 0, total: 0 };
+    const pullRequestUrl = pullRequestArtifacts[r.id]?.url ?? null;
+    return toRunInput(r, p.done, p.total, pullRequestUrl);
+  });
+
   const header = buildAgentHeader(headerInput, nowMs);
-  const rows = buildRunRows(runInputs, nowMs);
+  const rows = buildRunRows(tableRunInputs, nowMs);
   const invokeHref = INVOKE_ROUTE_AVAILABLE ? `/agents/${slug}/invoke` : null;
+
+  const basePath = `/agents/${slug}`;
+  const hasActiveFilter =
+    filter.status !== "all" || filter.repositoryId != null || (filter.search ?? "") !== "";
+  const clearFiltersHref = basePath;
+
+  const shownCount = rows.length;
+  const totalCount = filtered.totalCount;
+  const nextPageHref =
+    shownCount < totalCount
+      ? `${basePath}?${serializeRunFilter({ ...filter, page: filter.page + 1 }).toString()}`
+      : null;
 
   return (
     <section className={styles.page} aria-label={`${resolved.name} run history`}>
       <AgentHeader header={header} invokeHref={invokeHref} />
-      <RunHistoryTable rows={rows} invokeHref={invokeHref} />
+      <RunFilterBar
+        basePath={basePath}
+        filter={filter}
+        statusCounts={statusCounts}
+        repositories={repositories.map((r) => ({ id: r.id, fullName: r.full_name }))}
+      />
+      <RunHistoryTable
+        rows={rows}
+        invokeHref={invokeHref}
+        hasActiveFilter={hasActiveFilter}
+        clearFiltersHref={clearFiltersHref}
+      />
+      {rows.length > 0 && (
+        <div className={styles.pagination}>
+          <span className={styles.paginationCount}>
+            {shownCount} of {totalCount}
+          </span>
+          {nextPageHref != null && (
+            <Link href={nextPageHref} className={styles.loadMore}>
+              Load more
+            </Link>
+          )}
+        </div>
+      )}
     </section>
   );
 }

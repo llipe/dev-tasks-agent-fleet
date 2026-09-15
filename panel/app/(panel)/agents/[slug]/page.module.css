@@ -3,3 +3,28 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Run History pagination footer (S-143, spec §8.1: "X of Y" + "Load more"). */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.paginationCount {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.loadMore {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-accent-300);
+  text-decoration: none;
+}
+
+.loadMore:hover {
+  text-decoration: underline;
+}

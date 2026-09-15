@@ -8,10 +8,15 @@
   flex: none;
 }
 
-/* running/queued — pulsing (§6.1) */
+/* running — pulsing (§6.1) */
 .pulse {
   animation: pulse 1.6s ease-in-out infinite;
   box-shadow: 0 0 7px var(--st-color);
+}
+
+/* queued — spinning (§6.1), distinct from running's pulse */
+.spin {
+  animation: spin 0.9s linear infinite;
 }
 
 /* failed_to_start — hollow (border only, §8.1) */

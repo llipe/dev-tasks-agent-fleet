@@ -1,0 +1,30 @@
+/* All Runs — cross-agent run feed. Story S-146. Shares the pagination footer
+   styling with /agents/[slug]/page.module.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.paginationCount {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.loadMore {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-accent-300);
+  text-decoration: none;
+}
+
+.loadMore:hover {
+  text-decoration: underline;
+}

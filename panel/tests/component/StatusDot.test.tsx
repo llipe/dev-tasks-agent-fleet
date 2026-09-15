@@ -34,4 +34,31 @@ describe("StatusDot", () => {
     render(<StatusDot status={"weird" as RunStatus} />);
     expect(screen.getByRole("img", { name: "weird" })).toBeInTheDocument();
   });
+
+  it("renders queued with the spin class, not the pulse class (AC1/S-142)", () => {
+    render(<StatusDot status="queued" />);
+    const dot = screen.getByRole("img", { name: "queued" });
+    expect(dot.className).toMatch(/spin/);
+    expect(dot.className).not.toMatch(/pulse/);
+  });
+
+  it("renders running with the pulse class, not the spin class, unchanged (AC2/S-142)", () => {
+    render(<StatusDot status="running" />);
+    const dot = screen.getByRole("img", { name: "running" });
+    expect(dot.className).toMatch(/pulse/);
+    expect(dot.className).not.toMatch(/spin/);
+  });
+
+  it.each<[RunStatus, string]>([
+    ["succeeded", "succeeded"],
+    ["failed", "failed"],
+    ["timed_out", "timed out"],
+    ["failed_to_start", "failed to start"],
+    ["canceled", "canceled"],
+  ])("does not add pulse or spin classes for %s (AC3/S-142)", (status, label) => {
+    render(<StatusDot status={status} />);
+    const dot = screen.getByRole("img", { name: label });
+    expect(dot.className).not.toMatch(/pulse/);
+    expect(dot.className).not.toMatch(/spin/);
+  });
 });

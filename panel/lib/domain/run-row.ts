@@ -48,6 +48,25 @@ export interface RunRowInput {
   repositoryBranch: string | null;
   stepsDone: number;
   stepsTotal: number;
+  /**
+   * The URL of the run's `pull_request` artifact, when one exists (Story
+   * S-144). Raw and unvalidated — `run_artifacts.url` is agent-written,
+   * untrusted input; the row shaper passes it through unmodified and the
+   * render layer (`RunHistoryRow`) is responsible for the `isSafeArtifactUrl`
+   * guard before ever using it as an `href` (spec §12, A10 — do not
+   * duplicate the guard here). `null`/omitted when the run has no
+   * `pull_request` artifact (AC2, unchanged branch-only rendering).
+   */
+  pullRequestUrl?: string | null;
+  /**
+   * The owning agent's display name/slug (Story S-146, `/runs` cross-agent
+   * feed). Optional and omitted by every pre-existing caller — `/agents/[slug]`
+   * never sets this (it is already scoped to one agent) — so this addition is
+   * purely additive. Only the `/runs` page populates it, paired with
+   * `RunHistoryTable`/`RunHistoryRow`'s `showAgentColumn` prop.
+   */
+  agentName?: string | null;
+  agentSlug?: string | null;
 }
 
 /** A run reduced to what the run-history table renders. */
@@ -66,6 +85,11 @@ export interface RunRow {
   hasRepository: boolean;
   /** Relative start time (`14 min ago`), from started_at → created_at. */
   startedRelative: string;
+  /** Raw, unvalidated PR-artifact URL, or null (Story S-144). See `RunRowInput`. */
+  pullRequestUrl: string | null;
+  /** The owning agent's display name/slug, or null (Story S-146). See `RunRowInput`. */
+  agentName: string | null;
+  agentSlug: string | null;
 }
 
 /** Outcome tag text (§8.2, uppercase). `—` for a pending/absent outcome. */
@@ -160,6 +184,9 @@ export function buildRunRow(run: RunRowInput, nowMs: number): RunRow {
     repositoryBranch: run.repositoryBranch,
     hasRepository: run.repositoryFullName != null,
     startedRelative: presentStartedRelative(run, nowMs),
+    pullRequestUrl: run.pullRequestUrl ?? null,
+    agentName: run.agentName ?? null,
+    agentSlug: run.agentSlug ?? null,
   };
 }
 

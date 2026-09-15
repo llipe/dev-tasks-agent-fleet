@@ -48,6 +48,22 @@ describe("run-history edge cases — table sizes", () => {
     expect(screen.getByText(/no runs yet/i)).toBeInTheDocument();
   });
 
+  it("renders the 'Clear filters' empty state instead of the invoke CTA when a filter produced zero rows (S-143, FR6)", () => {
+    render(
+      <RunHistoryTable
+        rows={[]}
+        invokeHref="/agents/dependency-update/invoke"
+        hasActiveFilter
+        clearFiltersHref="/agents/dependency-update"
+      />,
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByText(/no runs yet/i)).toBeNull();
+    expect(screen.getByText(/no runs match these filters/i)).toBeInTheDocument();
+    const clearLink = screen.getByRole("link", { name: /clear filters/i });
+    expect(clearLink).toHaveAttribute("href", "/agents/dependency-update");
+  });
+
   it("renders a single run as one body row", () => {
     render(<RunHistoryTable rows={buildRunRows([run({ id: "only" })], NOW)} invokeHref={null} />);
     expect(screen.getByRole("table")).toBeInTheDocument();

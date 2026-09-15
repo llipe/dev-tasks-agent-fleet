@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { LogLine } from "@/components/LogLine";
 import { priorWindowRange, LOG_WINDOW_SIZE, type SeqEvent } from "@/lib/domain/log-window";
 import type { LogLineView } from "@/lib/domain/run-detail";
+import { applyLogFilter, NO_LOG_FILTER, type LogFilterState } from "@/lib/domain/log-filter";
 
 import styles from "./LogViewer.module.css";
 
@@ -40,13 +41,31 @@ export interface LogViewerProps {
    * by `seq`. Injected (a server action on the page) so this stays testable.
    */
   loadEarlier: (fromSeq: number, toSeq: number) => Promise<LogLineView[]>;
+  /**
+   * The step + log-level filter (Story S-145, FR10/FR11), applied client-side
+   * over the loaded window via `applyLogFilter` — never re-fetches. Optional
+   * for backward compatibility with call sites that predate S-145; defaults to
+   * `NO_LOG_FILTER` (the full, unfiltered tail).
+   */
+  filter?: LogFilterState;
 }
 
-export function LogViewer({ initialLines, hasEarlier, oldestSeq, loadEarlier }: LogViewerProps) {
+export function LogViewer({
+  initialLines,
+  hasEarlier,
+  oldestSeq,
+  loadEarlier,
+  filter = NO_LOG_FILTER,
+}: LogViewerProps) {
   const [lines, setLines] = useState<LogLineView[]>(initialLines);
   const [cursor, setCursor] = useState<number | null>(oldestSeq);
   const [more, setMore] = useState<boolean>(hasEarlier);
   const [loading, setLoading] = useState(false);
+
+  // The filter never mutates `lines` (the "load earlier"/pagination state
+  // above stays over the FULL loaded window) — only what is RENDERED narrows.
+  const filteredLines = useMemo(() => applyLogFilter(lines, filter), [lines, filter]);
+  const filterActive = filter.stepId !== null || filter.level !== "all";
 
   const onLoadEarlier = useCallback(async () => {
     if (cursor == null || loading) return;
@@ -90,10 +109,14 @@ export function LogViewer({ initialLines, hasEarlier, oldestSeq, loadEarlier }: 
         aria-label="Run log"
         data-sse-mount="run-log"
       >
-        {lines.length === 0 ? (
-          <p className={styles.empty}>No log events for this run.</p>
+        {filteredLines.length === 0 ? (
+          <p className={styles.empty}>
+            {filterActive && lines.length > 0
+              ? "No log lines match the current filter."
+              : "No log events for this run."}
+          </p>
         ) : (
-          lines.map((l) => (
+          filteredLines.map((l) => (
             <LogLine
               key={l.id}
               timestamp={l.timestamp}

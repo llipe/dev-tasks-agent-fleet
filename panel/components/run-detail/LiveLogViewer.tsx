@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { LogLine } from "@/components/LogLine";
 import { StatusPill } from "@/components/StatusPill";
@@ -8,6 +8,7 @@ import { useRunStream } from "@/lib/hooks/useRunStream";
 import { effectiveStatus, type RunStatus } from "@/lib/domain/status";
 import { shouldAutoScroll } from "@/lib/sse/autoscroll";
 import type { LogLineView } from "@/lib/domain/run-detail";
+import { applyLogFilter, NO_LOG_FILTER, type LogFilterState } from "@/lib/domain/log-filter";
 
 import { LiveTailButton } from "./LiveTailButton";
 import styles from "./LogViewer.module.css";
@@ -53,6 +54,14 @@ export interface LiveLogViewerProps {
   /** Injectable for tests; defaults to the global EventSource. */
   eventSourceFactory?: (url: string) => EventSource;
   timeZone?: string;
+  /**
+   * The step + log-level filter (Story S-145, FR10/FR11), applied client-side
+   * over the hook's live `lines` via `applyLogFilter` — never re-fetches and
+   * never affects the SSE subscription itself. Optional for backward
+   * compatibility with call sites that predate S-145; defaults to
+   * `NO_LOG_FILTER` (the full, unfiltered tail).
+   */
+  filter?: LogFilterState;
 }
 
 export function LiveLogViewer({
@@ -66,6 +75,7 @@ export function LiveLogViewer({
   queuedAtMs,
   eventSourceFactory,
   timeZone = "UTC",
+  filter = NO_LOG_FILTER,
 }: LiveLogViewerProps) {
   const { lines, status, connected, closedReason, authStopped } = useRunStream({
     runId,
@@ -74,6 +84,13 @@ export function LiveLogViewer({
     eventSourceFactory,
     timeZone,
   });
+
+  // Story S-145: the filter narrows only what is RENDERED — the hook's `lines`
+  // (and the SSE subscription/dedupe cursor behind it) are never touched by an
+  // active filter. A live-appended line for a filtered-OUT step therefore
+  // still advances the hook's dedupe cursor but never reaches the DOM/scroll.
+  const filteredLines = useMemo(() => applyLogFilter(lines, filter), [lines, filter]);
+  const filterActive = filter.stepId !== null || filter.level !== "all";
 
   // AC5 — derive the displayed status through the shared effectiveStatus, so a
   // raw `running` push on an expired run cannot present as running. Recomputed
@@ -108,11 +125,14 @@ export function LiveLogViewer({
     setFollowing(true);
   }, []);
 
-  // After each new line, if following, pin to the bottom (§6.6).
+  // After each new RENDERED line, if following, pin to the bottom (§6.6). This
+  // depends on `filteredLines`, not the hook's raw `lines` — a new event for a
+  // filtered-out step changes nothing on screen, so it must not re-trigger a
+  // scroll; a new event for the filtered-in step still autoscrolls (S-145 AC4).
   useLayoutEffect(() => {
     const el = logRef.current;
     if (el !== null && following) el.scrollTop = el.scrollHeight;
-  }, [lines, following]);
+  }, [filteredLines, following]);
 
   // If the stream closes, following is meaningless — drop the control. An
   // auth stop (Story S-121) is also a closed state — no live control.
@@ -139,10 +159,14 @@ export function LiveLogViewer({
         ref={logRef}
         onScroll={onScroll}
       >
-        {lines.length === 0 ? (
-          <p className={styles.empty}>No log events for this run.</p>
+        {filteredLines.length === 0 ? (
+          <p className={styles.empty}>
+            {filterActive && lines.length > 0
+              ? "No log lines match the current filter."
+              : "No log events for this run."}
+          </p>
         ) : (
-          lines.map((l) => (
+          filteredLines.map((l) => (
             <LogLine
               key={l.id}
               timestamp={l.timestamp}

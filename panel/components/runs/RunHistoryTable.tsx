@@ -26,9 +26,51 @@ export interface RunHistoryTableProps {
   rows: RunRow[];
   /** Invoke route target for the empty-state CTA, or null while unbuilt (S-113). */
   invokeHref: string | null;
+  /**
+   * True when the Run History filter bar (S-143) has an active filter that
+   * produced zero rows — distinct from a genuinely never-invoked agent.
+   * Defaults `false` so every caller that predates filtering (and the
+   * existing empty-run-list tests) is unaffected.
+   */
+  hasActiveFilter?: boolean;
+  /** Href that resets every filter to its default (S-143, FR6). Required when `hasActiveFilter` is true. */
+  clearFiltersHref?: string;
+  /**
+   * Renders a leading Agent column (name + slug) on every row (Story S-146,
+   * `/runs` cross-agent feed). Defaults `false` so `/agents/[slug]` — already
+   * scoped to one agent — renders exactly as before this story.
+   */
+  showAgentColumn?: boolean;
 }
 
-export function RunHistoryTable({ rows, invokeHref }: RunHistoryTableProps) {
+export function RunHistoryTable({
+  rows,
+  invokeHref,
+  hasActiveFilter = false,
+  clearFiltersHref,
+  showAgentColumn = false,
+}: RunHistoryTableProps) {
+  if (rows.length === 0 && hasActiveFilter) {
+    return (
+      <div className={styles.empty} role="status">
+        <KLabel>No runs match these filters</KLabel>
+        <p className={styles.emptyBody}>
+          No runs match the current status, repository, or search combination. Clear the filters to
+          see the full history again.
+        </p>
+        <div className={styles.emptyActions}>
+          {clearFiltersHref != null ? (
+            <Link href={clearFiltersHref} className={styles.invokeLink}>
+              <Button variant="secondary" size="sm">
+                Clear filters
+              </Button>
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   if (rows.length === 0) {
     return (
       <div className={styles.empty} role="status">
@@ -54,10 +96,17 @@ export function RunHistoryTable({ rows, invokeHref }: RunHistoryTableProps) {
     );
   }
 
+  const rowClass = showAgentColumn ? `${styles.row} ${styles.rowAgent}` : styles.row;
+
   return (
     <table className={styles.table} aria-label="Run history">
       <thead>
-        <tr className={`${styles.row} ${styles.headRow}`}>
+        <tr className={`${rowClass} ${styles.headRow}`}>
+          {showAgentColumn && (
+            <th scope="col" className={styles.headCell}>
+              Agent
+            </th>
+          )}
           <th scope="col" className={styles.headCell}>
             Status
           </th>
@@ -83,7 +132,7 @@ export function RunHistoryTable({ rows, invokeHref }: RunHistoryTableProps) {
       </thead>
       <tbody>
         {rows.map((row) => (
-          <RunHistoryRow key={row.id} row={row} />
+          <RunHistoryRow key={row.id} row={row} showAgentColumn={showAgentColumn} />
         ))}
       </tbody>
     </table>

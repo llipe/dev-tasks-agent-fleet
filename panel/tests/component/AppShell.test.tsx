@@ -55,12 +55,19 @@ describe("AppShell — structure and a11y (AC1, AC3, AC5)", () => {
     expect(screen.getByText("page content")).toBeInTheDocument();
   });
 
-  it("marks Agents as the only enabled destination; the four deferred are disabled", () => {
+  it("marks Agents, All runs, and Repositories as enabled destinations; the remaining two deferred are disabled (S-146/S-147, FR14/FR18)", () => {
     render(<AppShell>{child()}</AppShell>);
     // Agents is a real link.
     expect(screen.getByRole("link", { name: /agents/i })).toHaveAttribute("href", "/");
-    // The four deferred destinations are NOT links.
-    for (const label of ["All runs", "Repositories", "Settings", "System health"]) {
+    // All runs is a real link too (S-146 flips this one from disabled to live).
+    expect(screen.getByRole("link", { name: /all runs/i })).toHaveAttribute("href", "/runs");
+    // Repositories is a real link too (S-147 flips this one from disabled to live).
+    expect(screen.getByRole("link", { name: /repositories/i })).toHaveAttribute(
+      "href",
+      "/repositories",
+    );
+    // The remaining two deferred destinations are NOT links.
+    for (const label of ["Settings", "System health"]) {
       expect(screen.queryByRole("link", { name: new RegExp(label, "i") })).toBeNull();
       const disabled = screen.getByLabelText(new RegExp(`${label} — not available`, "i"));
       expect(disabled).toHaveAttribute("aria-disabled", "true");

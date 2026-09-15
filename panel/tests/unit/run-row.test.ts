@@ -185,6 +185,22 @@ describe("buildRunRow — outcome, steps, repository, time", () => {
     expect(noRepo.repositoryFullName).toBeNull();
   });
 
+  it("carries the pull_request artifact URL through unmodified when present (S-144)", () => {
+    const withPr = buildRunRow(run({ pullRequestUrl: "https://github.com/llipe/x/pull/42" }), T0);
+    expect(withPr.pullRequestUrl).toBe("https://github.com/llipe/x/pull/42");
+  });
+
+  it("reports a null pullRequestUrl when the run has no pull_request artifact (AC2)", () => {
+    const noPr = buildRunRow(run({ pullRequestUrl: null }), T0);
+    expect(noPr.pullRequestUrl).toBeNull();
+  });
+
+  it("defaults pullRequestUrl to null when the caller omits it entirely", () => {
+    const input = run();
+    delete (input as Partial<RunRowInput>).pullRequestUrl;
+    expect(buildRunRow(input, T0).pullRequestUrl).toBeNull();
+  });
+
   it("formats the relative start time from started_at, falling back to created_at", () => {
     const started = buildRunRow(run({ startedAtMs: T0 - 14 * 60_000 }), T0);
     expect(started.startedRelative).toBe("14 min ago");
@@ -200,6 +216,24 @@ describe("buildRunRow — outcome, steps, repository, time", () => {
     const row = buildRunRow(run({ id: "01J8XQ2F-3K4M-5N6P" }), T0);
     expect(row.id).toBe("01J8XQ2F-3K4M-5N6P");
     expect(row.shortId).toBe("01J8XQ2F");
+  });
+
+  it("carries the agent name/slug through unmodified when present (S-146, showAgentColumn)", () => {
+    const row = buildRunRow(
+      run({ agentName: "Dependency Update", agentSlug: "dependency-update" }),
+      T0,
+    );
+    expect(row.agentName).toBe("Dependency Update");
+    expect(row.agentSlug).toBe("dependency-update");
+  });
+
+  it("defaults agentName/agentSlug to null when the caller omits them entirely (unaffected /agents/[slug] callers)", () => {
+    const input = run();
+    delete (input as Partial<RunRowInput>).agentName;
+    delete (input as Partial<RunRowInput>).agentSlug;
+    const row = buildRunRow(input, T0);
+    expect(row.agentName).toBeNull();
+    expect(row.agentSlug).toBeNull();
   });
 });
 

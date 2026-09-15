@@ -17,8 +17,8 @@
  */
 
 import { effectiveStatus, type RunStatus } from "@/lib/domain/status";
-import type { RunOutcome } from "@/lib/supabase/types";
-import { formatClock, formatDuration, formatRunId } from "@/lib/format";
+import type { RunOutcome, StepStatus } from "@/lib/supabase/types";
+import { formatClock, formatDuration, formatDurationShort, formatRunId } from "@/lib/format";
 import { outcomeLabel } from "@/lib/domain/run-row";
 
 // ---------------------------------------------------------------------------
@@ -86,8 +86,20 @@ export interface LogLineView {
   level: string;
   /** Step label (title → key), or "" when unlabeled/unresolvable. */
   step: string;
+  /**
+   * The raw `run_events.step_id`, or null/unresolvable (Story S-145, FR10) —
+   * carried separately from the display `step` label so `applyLogFilter` can
+   * match on the stable id rather than the (potentially duplicated) label.
+   * Optional so existing call sites/fixtures that predate S-145 still type-check.
+   */
+  stepId?: string | null;
   /** The raw message, verbatim — never truncated. Rendered as inert text. */
   message: string;
+}
+
+/** Shared step-label rule: the title when present, else the key. Never "undefined". */
+function stepLabel(step: { title: string | null; key: string }): string {
+  return step.title && step.title.length > 0 ? step.title : step.key;
 }
 
 /**
@@ -104,13 +116,14 @@ export function buildLogLines(
   const stepById = new Map<string, LogStepInput>(steps.map((s) => [s.id, s]));
   return events.map((e) => {
     const step = e.stepId != null ? stepById.get(e.stepId) : undefined;
-    const label = step ? (step.title && step.title.length > 0 ? step.title : step.key) : "";
+    const label = step ? stepLabel(step) : "";
     return {
       id: e.id,
       seq: e.seq,
       timestamp: formatClock(e.ts, timeZone),
       level: e.level,
       step: label,
+      stepId: e.stepId,
       message: e.message,
     };
   });
@@ -209,4 +222,66 @@ export function buildSummary(run: SummaryInput, nowMs: number, timeZone = "UTC")
     banner: selectBanner(effective),
     errorMessage: run.errorMessage,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Steps panel (Story S-145, FR9)
+// ---------------------------------------------------------------------------
+
+/** The minimal `run_steps` projection the steps panel needs. Timestamps are epoch ms. */
+export interface RunStepInput {
+  id: string;
+  key: string;
+  title: string | null;
+  /**
+   * `run_steps.status` — NOT `effective_status`. Steps carry no reaper-computed
+   * "effective" state; a reaped run's orphan steps are already closed `failed`
+   * by the reaper's step-closure (technical-guidelines §8), so no additional
+   * stale-step handling belongs here.
+   */
+  status: StepStatus;
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+}
+
+/** A steps-panel row (DESIGN §5.3): colored dot (from `status`), name, duration, event count. */
+export interface StepPanelRow {
+  id: string;
+  /** Display label — title → key, reusing the same rule `buildLogLines` uses. */
+  title: string;
+  status: StepStatus;
+  /** `formatDurationShort` (lib/format.ts), or "—" when the step never finished. */
+  duration: string;
+  eventCount: number;
+}
+
+/**
+ * Project `run_steps` rows into steps-panel rows. `eventCountByStep` is
+ * derived by the CALLER from the already-loaded `run_events` window
+ * (`selectRecentWindow`, spec §8.2) — this function issues no query and takes
+ * no client; event counts are zero marginal DB reads (CT-5: the sum of the
+ * counts this returns can never exceed the loaded window's total, since it is
+ * a partition of that window, not an independent count).
+ *
+ * A step with no matching key in `eventCountByStep` reports `0`, never
+ * `undefined`/`NaN` (a zero-event step is not an error). A step still running
+ * (no `finished_at`) or never started shows a dash duration rather than
+ * inventing a running-duration display — the steps panel is a static list,
+ * not a live-updating timer.
+ */
+export function buildStepsPanel(
+  steps: RunStepInput[],
+  eventCountByStep: Record<string, number>,
+): StepPanelRow[] {
+  return steps.map((s) => {
+    const durMs =
+      s.startedAtMs != null && s.finishedAtMs != null ? s.finishedAtMs - s.startedAtMs : null;
+    return {
+      id: s.id,
+      title: stepLabel(s),
+      status: s.status,
+      duration: durMs == null ? "—" : formatDurationShort(durMs),
+      eventCount: eventCountByStep[s.id] ?? 0,
+    };
+  });
 }

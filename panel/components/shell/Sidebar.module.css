@@ -19,12 +19,18 @@
   }
 }
 
-/* Brand row */
+/* Brand row — height matches TopBar.module.css's 38px exactly (/DESIGN.md
+   §4.1) so the sidebar/content bottom rules form one continuous horizontal
+   line. Vertical padding is intentionally omitted: the brand text inherits
+   body's line-height:1.55, which at 13px would otherwise size this row
+   taller than 38px via padding+content math; align-items:center on a fixed
+   height centers it precisely regardless of line-height. */
 .brand {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 11px 12px;
+  height: 38px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--rule);
 }
 

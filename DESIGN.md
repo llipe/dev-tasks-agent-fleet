@@ -9,6 +9,11 @@
 | 1.2     | 2026-09-09 | Added **§5.5 Login (`/login`)** to the screen specifications (Story S-119 / issue #158). Documents the panel's only public, shell-free screen: the centered Nocturne card, the brand row reusing the §4.1 sidebar mark + wordmark, the "Sign in" heading + invitation-only subtitle, the faded rule, the `EMAIL`/`PASSWORD` fields with the keyboard-operable `SHOW`/`HIDE` toggle (`aria-pressed`, defaults masked), the full-width primary Sign in button with its pending/disabled state, the `role="alert"` region carrying the single generic anti-enumeration credential message, the footer row with the **dead** `aria-disabled` "Forgot password?" non-link and the monospace region tag, and the 12-hour session fine print. Token-only CSS Modules, label-associated fields, `:focus-visible` rings. Documentation catching up to the screen shipped in S-119 — no new visual token or component introduced (reuses `Input`/`Button`/`KLabel` and the §4.1 brand pattern). | developer |
 | 1.3     | 2026-09-09 | Added the **sidebar footer Log out affordance** to **§4.1 App Shell** (Story S-120 / issue #159). Documents the footer's two stacked controls and their order — **Log out below "System health" and above "Collapse"** — sharing the footer-control grid (icon + label, icon-only when collapsed). Log out uses the Phosphor `Power` icon (§10) and is a **POST-only** `<form action="/api/auth/logout">` submit button (a GET logout is CSRF-triggerable); the accessible name "Log out" is preserved in the collapsed icon-only state; token-only CSS, global `:focus-visible` ring. **Visibility gate:** the item renders only when the request is authenticated and is absent when unauthenticated, with auth state passed into the shell as a server-provided prop (the authenticated route-group layout computes it) — the shell performs no auth I/O (SD2 preserved). Documentation catching up to the affordance shipped in S-120 — no new visual token or component introduced (reuses the §4.1 footer `.toggle` grid pattern and the `Power` icon already in §10). | developer |
 | 1.4     | 2026-09-11 | Drift-reconciliation write-back (auth go-public pass, issue #162). Two documentation-only corrections catching the design contract up to shipped reality; no visual token or component change. **§5.1 Agents Dashboard** — annotated the "time range filter (7d/30d/all)" common-element line: the chips were **deliberately not built** (S-107 scope decision), the dashboard ships the name+slug filter input only over "all" runs, because a client-side window misreports the loaded-set counts and a server-side window reintroduces the refetch the density toggle avoids. **§8.2 Outcome Tags** — added **`N/A`** (the `not_applicable` outcome) to the known-values list, which the run-history screen (S-108) already renders via `outcomeLabel`; it was omitted here and is distinct from `—` (pending/none). Source: `workstream/drift-reconciliation-2026-09-11-auth-go-public.md`; companion write-backs in PRD v2.5 and spec v1.7. | product-engineer |
+| 1.5     | 2026-09-15 | Fixed a self-contradiction in **§8.1 Status → Visual Mapping**: the `queued` row said `pulse 1.6s`, contradicting §6.1's own animation table, which already listed `spin` as "Loading spinner (queued)". §6.1 is the authority (it is the more specific animation-catalog source); the §8.1 row now reads `spin 0.9s`. This documentation fix accompanies the corresponding code fix (Story S-142 / issue #202) that flipped `queued`'s `StatusMeta` entry from `pulse:true` to `spin:true`, matching this table. No new visual token or component introduced — `spin` was already defined and unused in `styles/globals.css`. | developer |
+| 1.6     | 2026-09-15 | **§5.2 Agent Run History**'s filter bar/pagination/empty-state contract shipped as written (Story S-143 / issue #203) — documentation catching up to the built screen, no visual-contract change. One clarification: the search input's placeholder reads "repository or run id", but the shipped free-text match is a `repository_full_name` substring plus an **exact** `id` match only (a run-id *substring* match is not reachable through the read layer without a schema change — a query-shape constraint, see `docs/technical-guidelines.md` row 1.36); §5.2's "search input" bullet is otherwise unchanged. No new visual token or component introduced — reuses `Input`, `Button`, `StatusDot`, and the existing token set. | developer |
+| 1.7     | 2026-09-15 | Added **§5.6 Repositories (`/repositories`)** (Story S-147 / issue #207, FR15/FR16/FR18). Documents the list + Add-repository form as a **first-pass layout, not a dedicated `ux-engineer` design pass** (spec Open Question #4 was unresolved when this story started — explicitly flagged rather than improvised silently): the list reuses the `RunHistoryTable` semantic-table-on-CSS-grid pattern with a `Tag`-based enabled/disabled state; the form reuses `LoginForm`'s field-row + `role="alert"` + pending/disabled double-submit pattern. No Archive action yet (Story S-148 scope). Sidebar "Repositories" flips from `DisabledNavItem` to a live `NavItem`. No new visual token or component variant introduced — every primitive used (`Tag`, `Input`, `Button`, `KLabel`) already existed. | developer |
+| 1.8     | 2026-09-15 | Extended **§5.6 Repositories** with the **Archive action** (Story S-148 / issue #208, FR17). Documents the new Actions column + per-row "Archive" button and the panel's **first destructive-action confirm dialog** (a minimal, accessible `role="dialog"`/`aria-modal="true"` overlay — not a reusable primitive, since no other screen has one yet): names the repository, states the consequence in plain language (stops appearing as an invocation target; existing runs keep their history/name unchanged; not undoable from the UI, AC6), Cancel/Confirm actions, and a `router.refresh()`-driven re-fetch on success rather than client-side row removal. No new visual token — reuses `Button` (`variant="ghost"`/`"secondary"`/`"primary"`), the existing `--space-*`/`--rule`/`--st-fail` tokens, and the `role="alert"` error pattern already established by `AddRepositoryForm`. | developer |
+| 1.9     | 2026-09-15 | Planner-level drift pass (`integration/panel-v3-ui-depth` pre-merge check): added **§5.2a All Runs (`/runs`)** — Story S-146 / issue #206 shipped this cross-agent feed screen with no corresponding §5 section; it was documented in the changelog (row 1.39 there is none — see `docs/technical-guidelines.md` row 1.39) but never given its own screen-spec entry here. §5.2a documents it as a pure composition of the existing §5.2 filter bar + table plus one Agent column, matching the shipped code. Also added a **"Sidebar nav item state (current)"** note to **§4.1** stating plainly which of the five nav items are live (Agents, All runs, Repositories) versus still disabled (Settings, System health) — this fact was previously only recoverable by reading each screen section's closing sentence individually. Current-state, documentation-only additions; no visual token, component, or behavior change. | technical-writer |
 
 ---
 
@@ -385,6 +390,14 @@ The sidebar footer holds two controls, stacked in this order, sharing the footer
 
 Visibility: **Log out renders only when the request is authenticated, and is absent entirely when unauthenticated.** Authentication state is passed into the shell as a server-provided prop (the authenticated route-group layout computes it via the auth-server client) — the shell performs no auth I/O itself (SD2 preserved).
 
+#### Sidebar nav item state (current)
+
+Of the five primary nav items, **three are live links** — Agents (since S-101),
+**All runs** (since Story S-146, §5.2a), and **Repositories** (since Story
+S-147, §5.6) — and **two remain `DisabledNavItem`** — Settings and System
+health (`aria-disabled`, "not available in this phase", not focusable, per PRD
+§10; no story in the v3 "UI Depth" batch scoped either of these).
+
 ### 4.2 Run Detail (full-height, no outer scroll)
 
 ```
@@ -394,10 +407,19 @@ flex-direction: column; (fills content area)
 ├── Summary panel (flex: none, 2-column grid)
 │   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr)
 │   gap: 28px
-├── Log toolbar (flex: none)
+├── Steps panel (flex: none, vertical list — §5.3, Story S-145)
+├── Log toolbar (flex: none — hosts the log-level filter, §5.3, Story S-145)
 ├── Log viewer (flex: 1; overflow-y: auto)
 └── Log footer (flex: none)
 ```
+
+**Story S-145 note:** the Steps panel and the Log toolbar's level-filter control
+are owned by a single `"use client"` filter-state wrapper
+(`components/run-detail/RunDetailLogSection.tsx`) sitting between the Summary
+panel and whichever log viewer mounts (terminal `LogViewer` or live
+`LiveLogViewer`) — clicking a step row or changing the level select narrows
+the SAME already-loaded log window client-side (no new server read); neither
+control affects the log viewer's own pagination/live-tail state.
 
 ### 4.3 Dashboard Table Grid
 
@@ -445,6 +467,22 @@ Three density variants to choose from (or offer as a view toggle):
 - Pagination: "X of Y" + "Load more" button
 - Empty state: message + CTA buttons
 
+### 5.2a All Runs (`/runs`)
+
+The cross-agent run feed (Story S-146 / issue #206, FR13/FR14), reversing the
+v2.1 non-goal that deferred "All runs" out of Phase 2 scope. Visually and
+structurally **identical to §5.2's filter bar + table**, composed rather than
+redesigned: the same `RunFilterBar` (status counts, repo chips, debounced
+search, connection indicator) and the same table, unscoped to any agent
+(`agentSlug: null`) — so it reads across the whole fleet, newest-first — plus
+one addition: a leading **Agent** column (name + slug, monospace,
+`--color-accent-400`, the same agent-identity treatment `AgentCards` already
+uses on the dashboard, §5.1). There is no agent header block here (no
+metadata to show without an agent scope) and no disabled-agent 404 guard —
+a disabled agent's historical runs still appear. Sidebar: the "All runs" item
+(§4.1) flips from a `DisabledNavItem` to a live `NavItem` linking to `/runs`,
+active on both `/runs` and `/runs/[id]`.
+
 ### 5.3 Run Detail
 
 - Full-height layout (log viewer owns the scroll)
@@ -481,6 +519,20 @@ The only public screen — rendered **outside** the app shell (no sidebar, no to
 - **Fine print:** "Sessions expire after 12 hours of inactivity." (`--faint`).
 
 Styling is token-only CSS Modules (Nocturne token discipline). Fields are label-associated, the form is semantic, and focus rings use the global `:focus-visible` accent ring.
+
+### 5.6 Repositories (`/repositories`)
+
+> **First-pass layout, not a dedicated `ux-engineer` design pass.** Spec §10 assumed a `ux-engineer` pass would produce this section before Story S-147 started implementation (spec Open Question #4); that pass had not landed by the time S-147 was executed. Per the story's explicit fallback instruction, this section documents a first-pass layout composed entirely from EXISTING Nocturne primitives and established screen patterns — no new visual token, no new component variant — so the screen ships legibly rather than blocking on an unavailable design pass. **This is flagged here deliberately so a future design review can revisit it on purpose, rather than the gap going unnoticed.**
+
+A single server-rendered screen (`app/(panel)/repositories/page.tsx`) composed of two stacked sections, each headed by a `KLabel` eyebrow (§3.7):
+
+- **"Registered repositories"** — the list, rendered by `RepositoryTable`. Reuses the `RunHistoryTable` pattern exactly: a semantic `<table>` laid out on a CSS grid per `<tr>` (repository / default branch / state / actions), so it reads as a table to assistive tech rather than a div grid (§4.4 precedent). Columns: `full_name` (monospace, `--color-text`), `default_branch` (monospace, `--muted`), enabled state via a `Tag` (`variant="accent"` "Enabled" / `variant="neutral"` "Disabled", §3.3 — state conveyed by both color and text, never color alone), and (as of Story S-148, issue #208) an **Actions** column with a per-row "Archive" button. An empty list renders a `KLabel` + one line of body copy in a `role="status"` region (mirrors `RunHistoryTable`'s empty state), never a blank area or an error.
+- **Archive (Story S-148).** Clicking "Archive" opens the panel's **first destructive-action confirm dialog** — no other screen has one, so this is a simple, minimal, accessible overlay (`role="dialog"`, `aria-modal="true"`, `aria-label="Archive repository"`), not a reusable dialog primitive. The dialog names the repository, explains the consequence in plain language (stops appearing as an invocation target; existing runs keep their history and repository name unchanged; not undoable from the UI — no restore affordance exists, AC6), and offers Cancel / Confirm. Confirming submits the `archiveRepository` Server Action; on success the dialog closes and `router.refresh()` re-runs the server component's read, so the archived row disappears from the default list on the next render (no client-side row removal — matches `AddRepositoryForm`'s "server re-fetch is the source of truth" posture). A server-returned failure keeps the dialog open with an inline `role="alert"` error, never a silent failure. Each row owns an independent action/pending/error state (one row's in-flight archive never affects another row's).
+- **"Add repository"** — `AddRepositoryForm`, reusing the `LoginForm` field-row pattern exactly: a `KLabel` + `<label>` above each `Input` (`REPOSITORY` — placeholder `owner/repo`; `DEFAULT BRANCH` — placeholder `main`, optional), a `role="alert"` region above the fields for a server-returned error (duplicate / malformed), an inline per-field error under `REPOSITORY` for the client-side shape check, and a full-width-equivalent `Button variant="primary"` with the same pending/disabled double-submit guard as `LoginForm` (`useFormStatus`, "Adding…" label while pending). On success the fields clear (remounted under a fresh key, same technique `LoginForm` uses to reset its password field after a failure, applied here on the opposite branch) and a `role="status"` line names the added repository.
+
+Sidebar: the "Repositories" item (§4.1) flips from a `DisabledNavItem` to a live `NavItem` linking to `/repositories`, using the same `GitBranch` icon it already had while disabled.
+
+Styling is token-only CSS Modules, following the established grid/spacing/color-token set (`--space-*`, `--rule`, `--faint`, `--muted`, `--color-text`, `--st-fail`, `--st-ok`) — no new token introduced. No new component was built either: `RepositoryTable` and `AddRepositoryForm` are new FILES, but every visual primitive inside them (`Tag`, `Input`, `Button`, `KLabel`) already existed.
 
 ---
 
@@ -610,9 +662,9 @@ Never use browser default focus ring.
 | `failed` | `var(--st-fail)` | 7px solid | none | 14% red |
 | `timed_out` | `var(--st-timeout)` | 7px solid | none | 14% amber |
 | `failed_to_start` | `var(--faint)` | 7px hollow (border only) | none | `var(--rule)` |
-| `queued` | `var(--color-accent)` | pulsing | `pulse 1.6s` | 14% accent |
+| `queued` | `var(--color-accent)` | spinning | `spin 0.9s` | 14% accent |
 
-**Pill tint is a uniform 14% for every status** (v1.1 correction). Earlier revisions of this table gave `running` and `queued` 16% while §3.4 specified 14% for all — a self-contradiction inside this document, with no visual rationale for the exception. §3.4 is the authority; 14% applies everywhere. **Pulse cadence is 1.6s everywhere**, including `queued` (was 1.4s here, matching nothing else in the document). Both corrections align this table with the implementation shipped in S-105.
+**Pill tint is a uniform 14% for every status** (v1.1 correction). Earlier revisions of this table gave `running` and `queued` 16% while §3.4 specified 14% for all — a self-contradiction inside this document, with no visual rationale for the exception. §3.4 is the authority; 14% applies everywhere. **`running` pulses, `queued` spins** (v1.5 correction) — this row previously said `pulse 1.6s` for `queued`, contradicting §6.1's own animation table (`spin`, "Loading spinner (queued)"); §6.1 is the authority. Both corrections align this table with the implementation shipped in S-105/S-142.
 
 ### 8.2 Outcome Tags
 

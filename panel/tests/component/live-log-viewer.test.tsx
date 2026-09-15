@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { LiveLogViewer } from "@/components/run-detail/LiveLogViewer";
 import type { LogLineView } from "@/lib/domain/run-detail";
+import type { LogFilterState } from "@/lib/domain/log-filter";
 
 /**
  * Live log viewer (Story S-110) — the client wrapper that joins the SSE hook to
@@ -54,6 +55,18 @@ function latest() {
 
 function line(seq: number, message = `m${seq}`): LogLineView {
   return { id: seq, seq, timestamp: "00:00:00", level: "info", step: "", message };
+}
+
+function stepLine(seq: number, stepId: string | null, message = `m${seq}`): LogLineView {
+  return {
+    id: seq,
+    seq,
+    timestamp: "00:00:00",
+    level: "info",
+    step: stepId ?? "",
+    stepId,
+    message,
+  };
 }
 
 /** Stub a scroll region's geometry so distanceFromBottom is controllable. */
@@ -297,5 +310,137 @@ describe("LiveLogViewer", () => {
     });
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("still-live")).toBeInTheDocument();
+  });
+});
+
+describe("LiveLogViewer — step/level filter composition with live tail (Story S-145, AC4)", () => {
+  it("with no filter prop, renders every live-appended line (backward compatible default)", () => {
+    render(
+      <LiveLogViewer
+        runId="r1"
+        initialLines={[stepLine(1, "step-1")]}
+        initialStatus="running"
+        maxRuntimeSeconds={900}
+        graceSeconds={60}
+        startTimeoutSeconds={300}
+        startedAtMs={Date.now()}
+        queuedAtMs={Date.now()}
+        eventSourceFactory={factory}
+      />,
+    );
+    act(() => {
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "t",
+        level: "info",
+        message: "m2",
+        step_id: "step-2",
+      });
+    });
+    expect(screen.getByText("m1")).toBeInTheDocument();
+    expect(screen.getByText("m2")).toBeInTheDocument();
+  });
+
+  it("a step filter hides a live-appended line for a DIFFERENT (filtered-out) step", () => {
+    const filter: LogFilterState = { stepId: "step-1", level: "all" };
+    render(
+      <LiveLogViewer
+        runId="r1"
+        initialLines={[stepLine(1, "step-1")]}
+        initialStatus="running"
+        maxRuntimeSeconds={900}
+        graceSeconds={60}
+        startTimeoutSeconds={300}
+        startedAtMs={Date.now()}
+        queuedAtMs={Date.now()}
+        eventSourceFactory={factory}
+        filter={filter}
+      />,
+    );
+    act(() => {
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "t",
+        level: "info",
+        message: "filtered-out-step",
+        step_id: "step-2",
+      });
+    });
+    expect(screen.queryByText("filtered-out-step")).toBeNull();
+  });
+
+  it("a live-appended line for the FILTERED-IN step still appears and still autoscrolls (AC4/S-110)", () => {
+    const filter: LogFilterState = { stepId: "step-1", level: "all" };
+    render(
+      <LiveLogViewer
+        runId="r1"
+        initialLines={[stepLine(1, "step-1")]}
+        initialStatus="running"
+        maxRuntimeSeconds={900}
+        graceSeconds={60}
+        startTimeoutSeconds={300}
+        startedAtMs={Date.now()}
+        queuedAtMs={Date.now()}
+        eventSourceFactory={factory}
+        filter={filter}
+      />,
+    );
+    const region = screen.getByRole("log", { name: /run log/i });
+    setScrollGeometry(region, { scrollHeight: 200, clientHeight: 200, scrollTop: 0 });
+
+    act(() => {
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "t",
+        level: "info",
+        message: "filtered-in-step",
+        step_id: "step-1",
+      });
+    });
+    expect(screen.getByText("filtered-in-step")).toBeInTheDocument();
+    // Still following (default) — pinned to the bottom (S-110 AC6 behavior
+    // preserved under an active filter).
+    expect(region.scrollTop).toBe(region.scrollHeight);
+  });
+
+  it("a level filter composes with the step filter for live-appended lines (AC3+AC4)", () => {
+    const filter: LogFilterState = { stepId: "step-1", level: "error" };
+    render(
+      <LiveLogViewer
+        runId="r1"
+        initialLines={[]}
+        initialStatus="running"
+        maxRuntimeSeconds={900}
+        graceSeconds={60}
+        startTimeoutSeconds={300}
+        startedAtMs={Date.now()}
+        queuedAtMs={Date.now()}
+        eventSourceFactory={factory}
+        filter={filter}
+      />,
+    );
+    act(() => {
+      latest().emit("event", {
+        id: 1,
+        seq: 1,
+        ts: "t",
+        level: "info",
+        message: "step1-info",
+        step_id: "step-1",
+      });
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "t",
+        level: "error",
+        message: "step1-error",
+        step_id: "step-1",
+      });
+    });
+    expect(screen.queryByText("step1-info")).toBeNull();
+    expect(screen.getByText("step1-error")).toBeInTheDocument();
   });
 });
