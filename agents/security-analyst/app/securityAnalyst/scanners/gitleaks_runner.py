@@ -107,8 +107,13 @@ def normalize_gitleaks(raw_output: str) -> list[Finding]:
     (spec S8.1, PRD requirement 58 row 2 / D29).
 
     Pure function over the raw JSON text. Gitleaks writes a bare ``null``
-    (not ``[]``) on some versions when zero leaks are found -- both are
-    treated identically as "no leaks". Raises `json.JSONDecodeError` on
+    (not ``[]``) on some versions when zero leaks are found, and -- S-141
+    real-invocation finding, confirmed against the real v8.30.1 binary --
+    writes literally **nothing** to ``--report-path`` at all (zero bytes)
+    on a clean scan via the ``/dev/stdout`` redirect this module uses (see
+    `run_gitleaks()`'s own docstring for why that redirect exists); all
+    three (``null``, ``[]``, empty string) are treated identically as "no
+    leaks" rather than a parse failure. Raises `json.JSONDecodeError` on
     invalid JSON, `TypeError` on a structurally-unexpected top-level shape
     (anything other than a list or `null`), and `KeyError` on a leak record
     missing a required field -- `run_gitleaks()` below catches all three and
@@ -125,6 +130,8 @@ def normalize_gitleaks(raw_output: str) -> list[Finding]:
     cross-tool dedup key (`fingerprint()`'s `rule_id or cwe_or_category`) is
     never empty.
     """
+    if raw_output.strip() == "":
+        return []
     data = json.loads(raw_output)
     if data is None:
         return []

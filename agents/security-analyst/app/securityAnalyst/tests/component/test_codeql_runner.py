@@ -124,7 +124,7 @@ class TestRunCodeqlSingleLanguageDispatch:
 
         create_cmd = mock_run.call_args_list[0].args[0]
         assert create_cmd[0] == "codeql"
-        assert "--language=javascript-typescript" in create_cmd
+        assert "--language=javascript" in create_cmd
         assert f"--source-root={workspace_js_ts}" in create_cmd
         # S-141 real-repo finding: without this flag, `database create`
         # defaults to running the language's autobuild script (JS/TS: npm
@@ -201,7 +201,7 @@ class TestRunCodeqlBothLanguagesDispatch:
         languages_created = {
             arg for call in create_calls for arg in call.args[0] if arg.startswith("--language=")
         }
-        assert languages_created == {"--language=javascript-typescript", "--language=python"}
+        assert languages_created == {"--language=javascript", "--language=python"}
 
     @patch("scanners.codeql_runner.subprocess.run")
     def test_findings_from_both_languages_are_merged_no_double_count(

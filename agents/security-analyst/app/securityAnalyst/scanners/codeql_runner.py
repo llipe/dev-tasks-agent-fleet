@@ -156,6 +156,25 @@ _QUERY_PACKS: dict[str, str] = {
     "python": "codeql/python-queries",
 }
 
+# S-141 real-invocation finding: "javascript-typescript" is this module's
+# OWN internal bucket name (used for detect_languages()'s return values and
+# as the _QUERY_PACKS dict key) -- it is not a real CodeQL CLI language
+# identifier. Confirmed via `codeql resolve languages`: the actual
+# extractor name is "javascript" (which extracts both .js and .ts content;
+# there is no separate "typescript" or "javascript-typescript" extractor).
+# Passing the internal name straight to `--language=` (as this module did
+# until this finding) is silently accepted by the CLI but is not a
+# recognized language, so `database create` falls back to legacy behavior
+# that still runs the JS autobuild script even with --build-mode=none --
+# the same class of internal-name-vs-external-identifier bug already found
+# and fixed once for the query pack name (see module docstring above).
+# "python" needs no translation -- it's already both this module's bucket
+# name and the real CodeQL language identifier.
+_CLI_LANGUAGE_NAMES: dict[str, str] = {
+    "javascript-typescript": "javascript",
+    "python": "python",
+}
+
 _JS_TS_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx"}
 _JS_TS_MARKER_FILES = {"package.json"}
 _PY_EXTENSIONS = {".py"}
@@ -231,7 +250,7 @@ def _build_create_command(workspace: Path, db_path: Path, language: str) -> list
         "database",
         "create",
         str(db_path),
-        f"--language={language}",
+        f"--language={_CLI_LANGUAGE_NAMES[language]}",
         f"--source-root={workspace}",
         "--build-mode=none",
         "--overwrite",
