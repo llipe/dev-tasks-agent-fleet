@@ -179,22 +179,22 @@
   - [x] 10.9 Verify Acceptance Criterion: classification is deterministic parsing only, no LLM call (PRD requirement 25)
   - [x] 10.10 Run Tests: `tests/unit/test_classifier.py` — every branch, including the JS/TS-excluded vs. Python-not-excluded boundary side by side, and the `lockfile_managed=True` + major-bump simultaneous case — `make test-unit`
 
-- [ ] 11.0 Implement Story S-135: `audit_only` mode end-to-end, including `min_severity` gating — [Issue #195](https://github.com/llipe/dev-tasks-agent-fleet/issues/195)
+- [x] 11.0 Implement Story S-135: `audit_only` mode end-to-end, including `min_severity` gating — [Issue #195](https://github.com/llipe/dev-tasks-agent-fleet/issues/195)
 
   > Note: First fully usable mode — everything from S-126–S-134 converges here. Depends on S-128–S-134 (all scanners, dedup, classifier), S-125 (scaffold/reporting).
 
-  - [ ] 11.1 Wire `main.py`'s `scan` step to call `run_scanners()` across the requested tools, wrapped in `heartbeat.run_with_heartbeat(...)`
-  - [ ] 11.2 Wire `classify` step (dedupe → classify)
-  - [ ] 11.3 Implement `audit_report` artifact construction (findings grouped by bucket/tool/severity)
-  - [ ] 11.4 Implement `determine_outcome()`'s `audit_only` branch with `_at_or_above_floor()` `min_severity` gating (spec §8.10)
-  - [ ] 11.5 Verify Acceptance Criterion: clean repo → `succeeded`/`no_findings`, `audit_report` artifact, no branch/PR (PRD AC3)
-  - [ ] 11.6 Verify Acceptance Criterion: findings + `fail_on_findings=true` → `failed`/`AUDIT_FINDINGS` (PRD AC4)
-  - [ ] 11.7 Verify Acceptance Criterion: findings + `fail_on_findings=false` → `succeeded`/`needs_review` (PRD AC5)
-  - [ ] 11.8 Verify Acceptance Criterion: `min_severity=high` with only low/medium findings → `succeeded`/`no_findings`, but all findings still fully listed in the artifact (PRD AC12b)
-  - [ ] 11.9 Verify Acceptance Criterion: same repo + one `high` finding → `failed`/`AUDIT_FINDINGS`
-  - [ ] 11.10 Verify Acceptance Criterion: all scanners failing → `failed`/`ALL_SCANNERS_FAILED`; one of five failing → run continues normally (PRD AC24)
-  - [ ] 11.11 Run Tests: `tests/unit/test_determine_outcome.py` (parametrized over PRD §8.1 `audit_only` rows + `min_severity` crossing) — `make test-unit`
-  - [ ] 11.12 Run Tests: `tests/component/test_audit_only_pipeline.py` (all five scanners mocked; full-failure and one-of-five-failure cases) — `make test-component`
+  - [x] 11.1 Wire `main.py`'s `scan` step to call `run_scanners()` across the requested tools, wrapped in `heartbeat.run_with_heartbeat(...)`
+  - [x] 11.2 Wire `classify` step (dedupe → classify)
+  - [x] 11.3 Implement `audit_report` artifact construction (findings grouped by bucket/tool/severity)
+  - [x] 11.4 Implement `determine_outcome()`'s `audit_only` branch with `_at_or_above_floor()` `min_severity` gating (spec §8.10)
+  - [x] 11.5 Verify Acceptance Criterion: clean repo → `succeeded`/`no_findings`, `audit_report` artifact, no branch/PR (PRD AC3)
+  - [x] 11.6 Verify Acceptance Criterion: findings + `fail_on_findings=true` → `failed`/`AUDIT_FINDINGS` (PRD AC4)
+  - [x] 11.7 Verify Acceptance Criterion: findings + `fail_on_findings=false` → `succeeded`/`needs_review` (PRD AC5)
+  - [x] 11.8 Verify Acceptance Criterion: `min_severity=high` with only low/medium findings → `succeeded`/`no_findings`, but all findings still fully listed in the artifact (PRD AC12b)
+  - [x] 11.9 Verify Acceptance Criterion: same repo + one `high` finding → `failed`/`AUDIT_FINDINGS`
+  - [x] 11.10 Verify Acceptance Criterion: all scanners failing → `failed`/`ALL_SCANNERS_FAILED`; one of five failing → run continues normally (PRD AC24)
+  - [x] 11.11 Run Tests: `tests/unit/test_determine_outcome.py` (parametrized over PRD §8.1 `audit_only` rows + `min_severity` crossing) — `make test-unit`
+  - [x] 11.12 Run Tests: `tests/component/test_audit_only_pipeline.py` (all five scanners mocked; full-failure and one-of-five-failure cases) — `make test-component`
 
 - [ ] 12.0 Implement Story S-136: Mechanical fix application (Semgrep autofix, Trivy version bump) — [Issue #196](https://github.com/llipe/dev-tasks-agent-fleet/issues/196)
 
