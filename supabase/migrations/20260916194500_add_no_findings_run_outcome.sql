@@ -1,0 +1,33 @@
+-- =====================================================================
+-- S-141 real-invocation finding -- add 'no_findings' to run_outcome
+--
+-- security-analyst's determine_outcome() (main.py) emits exactly five
+-- outcome strings: 'fixed', 'partial', 'needs_review', 'not_applicable',
+-- and 'no_findings' (clean audit_only scan, no findings at or above
+-- min_severity -- PRD AC3/AC12b). The baseline run_outcome enum
+-- (20260902200101_initial_schema.sql) has the first four -- they happen
+-- to match dependency-update's own conventions -- but only
+-- 'no_vulnerabilities', not 'no_findings', for the "nothing to report"
+-- case. Every real audit_only invocation against a clean/low-severity
+-- repo fails to PATCH runs (Postgres error 22P02, invalid enum input),
+-- leaving the run stuck in 'running' forever in the panel -- this was
+-- never caught by any story's tests since none of them touch a live
+-- Postgres enum; S-140's component tests mock RunReporter entirely.
+--
+-- Deliberately ADDs a value rather than reusing 'no_vulnerabilities':
+-- 'no_findings' is the term used consistently across the security-analyst
+-- PRD, spec, and all 17 stories' tests (AC3, AC5, AC12b, et al.) --
+-- renaming the agent's own vocabulary to match the enum would be far
+-- more invasive than widening the enum, and the two agents' terms are
+-- close enough in meaning that collapsing them would only save one enum
+-- value at the cost of forcing dependency-update's rows to a
+-- differently-worded outcome or vice versa.
+--
+-- Rollback: `ALTER TYPE ... DROP VALUE` does not exist in Postgres.
+-- Reverting requires recreating the enum type (rename old, create new
+-- without the value, migrate the column, drop old) -- only necessary if
+-- 'no_findings' is later found to be wrong; no data-loss risk in the
+-- forward direction (this only adds a permitted value, touches no rows).
+-- =====================================================================
+
+alter type run_outcome add value if not exists 'no_findings';
