@@ -52,22 +52,32 @@ attempted sub-calls" convention `trivy_runner.py`'s three-mode dispatch and
 two phases per language, per-language (so up to 4 subprocess calls total in
 the both-languages case, each independently bounded).
 
-**Deviation 1 -- `--output=/dev/stdout`, not a real output file, mirroring
-`gitleaks_runner.py`'s identical fix (S-129).** CodeQL's real `database
-analyze` CLI has no "print SARIF to stdout" mode -- `--output` is a
-mandatory file-path flag. Rather than introduce a temp-file-then-read
-lifecycle unique to this one scanner module (every other `run_<tool>()`,
-including this one's own `database create` phase, reads/inspects
-`proc.stdout`/`proc.returncode` directly with no side-effect file to manage
-across a mock boundary), this module points `--output` at `/dev/stdout` --
-the same Linux-device-file trick `gitleaks_runner.py`'s module docstring
-documents and justifies (AgentCore Runtime's container target is Linux,
-PRD S12.3/`agentcore.json`). This keeps `_run_language()`'s analyze phase
-byte-for-byte structurally identical to every sibling scanner's
-subprocess-capture-then-normalize pattern, which S-135's `run_scanners()`
-dispatcher relies on being uniform. Flagged per this story's pre-authorized
-"apply proactively" instruction -- same class of decision as
-`gitleaks_runner.py`'s own identical fix.
+**Deviation 1 -- `--output=<real temp file>`, REVERTED from an earlier
+`/dev/stdout` attempt (S-141 real-invocation finding).** CodeQL's real
+`database analyze` CLI has no "print SARIF to stdout" mode -- `--output` is
+a mandatory file-path flag. This module originally pointed `--output` at
+`/dev/stdout`, mirroring `gitleaks_runner.py`'s identical device-file trick
+(S-129), to keep `_run_language()`'s analyze phase structurally identical
+to every sibling scanner's subprocess-capture-then-normalize pattern.
+That trick does NOT survive real-world use here: confirmed against the real
+CLI that when the calling process's own stdout is a pipe (exactly what
+`subprocess.run(..., capture_output=True)` gives it -- the shape every
+`run_<tool>()` in this codebase uses), CodeQL also emits a human-readable
+one-line post-analysis summary ("CodeQL scanned N out of M ... files...")
+onto that same pipe, landing ahead of the SARIF JSON and breaking
+`json.loads()` at position 0 -- reproduced 100% of the time via real
+binary + real Python subprocess capture, not visible when testing only via
+a shell `>`-redirected real file (where this summary line does not appear
+in the redirected stream at all, which is what made this trick look correct
+during S-132's original implementation and audit). `_run_language()` now
+writes SARIF to a real file inside its own per-call `tempfile.
+TemporaryDirectory` (the same directory already holding `db_path`, so no
+extra cleanup lifecycle is introduced) and reads that file's contents in
+Python before calling `normalize_codeql()`. This is a narrow, contained
+exception to the "no side-effect file to manage" symmetry with the other
+four scanners -- accepted because the alternative (parsing out a
+non-deterministic-length human-readable prefix line from valid JSON) is far
+more fragile than a two-line file read.
 
 **Deviation 2 -- `security-severity` lives on the SARIF *rule* definition,
 not the result.** A literal reading of `severity_from_codeql()`'s own
@@ -257,9 +267,8 @@ def _build_create_command(workspace: Path, db_path: Path, language: str) -> list
     ]
 
 
-def _build_analyze_command(db_path: Path, language: str) -> list[str]:
-    # See module docstring Deviation 1 -- /dev/stdout stands in for a native
-    # stdout-output mode CodeQL's real CLI does not have.
+def _build_analyze_command(db_path: Path, sarif_path: Path, language: str) -> list[str]:
+    # See module docstring Deviation 1 -- a real temp file, not /dev/stdout.
     return [
         "codeql",
         "database",
@@ -267,7 +276,7 @@ def _build_analyze_command(db_path: Path, language: str) -> list[str]:
         str(db_path),
         _QUERY_PACKS[language],
         "--format=sarif-latest",
-        "--output=/dev/stdout",
+        f"--output={sarif_path}",
         "--threads=0",
     ]
 
@@ -471,7 +480,8 @@ def _run_language(workspace: Path, language: str, timeout: int) -> tuple[list[Fi
                 f"{create_proc.stderr.strip()[:300]}"
             )
 
-        analyze_cmd = _build_analyze_command(db_path, language)
+        sarif_path = Path(tmp) / f"sarif-{language}.json"
+        analyze_cmd = _build_analyze_command(db_path, sarif_path, language)
         try:
             analyze_proc = subprocess.run(
                 analyze_cmd, capture_output=True, text=True, timeout=timeout
@@ -487,7 +497,12 @@ def _run_language(workspace: Path, language: str, timeout: int) -> tuple[list[Fi
             )
 
         try:
-            findings = normalize_codeql(analyze_proc.stdout, language=language)
+            sarif_text = sarif_path.read_text()
+        except OSError as exc:
+            return [], f"codeql ({language}) SARIF output file missing/unreadable: {exc}"
+
+        try:
+            findings = normalize_codeql(sarif_text, language=language)
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             return [], f"unparseable codeql ({language}) SARIF output: {exc}"
 
