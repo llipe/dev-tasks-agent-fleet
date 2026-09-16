@@ -14,6 +14,18 @@ dependencies = [
     "requests==2.34.2",
     "PyJWT==2.13.0",
     "cryptography==50.0.1",
+    # Scanner toolchains: semgrep and checkov ship as pip packages with a
+    # bundled scan binary; gitleaks and trivy are separate Go binaries
+    # installed in the Dockerfile (no PyPI package). Real-repo verification
+    # (S-141) found these four were never added to the image -- only CodeQL's
+    # toolchain (a two-part CLI + query-pack install) landed in S-132.
+    "semgrep==1.177.0",
+    # checkov pinned to 3.2.0, not latest (3.3.17): checkov>=3.2.100 pins
+    # boto3 to an exact old version (e.g. ==1.35.49), which conflicts with
+    # this project's own boto3==1.43.81 pin (needed by bedrock-agentcore/
+    # strands-agents). 3.2.0 is the newest checkov release with a loose
+    # boto3 range (>=1.28.0,<2.0.0) that resolves cleanly against both.
+    "checkov==3.2.0",
 ]
 
 [project.optional-dependencies]

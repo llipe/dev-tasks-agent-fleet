@@ -4,14 +4,13 @@
 # container build and rolls back the whole stack (sibling agent's issue #77).
 #
 # This story (S-125) scaffolded the deployable no-op with no scanner
-# toolchains installed. S-132 (CodeQL, this addition) is the first story to
-# extend this Dockerfile per spec S15.2 -- Semgrep/Gitleaks/Trivy/Checkov's
-# own toolchain installs (S-128-S-131) are tracked as a separate, still-open
-# gap flagged to planner (this story's own task list scopes only task 8.1,
-# "add the two query packs to the Dockerfile") -- not fixed here to keep this
-# story's diff scoped to its own issue (#192). git + gh CLI are enough for
-# S-125's checkout step; CodeQL's own toolchain needs no compiler at all
-# (see below).
+# toolchains installed. S-132 (CodeQL, this addition) was the first story to
+# extend this Dockerfile per spec S15.2. Semgrep/Gitleaks/Trivy/Checkov's own
+# toolchain installs (S-128-S-131) were left as a tracked, still-open gap
+# across those stories to keep each one's diff scoped to its own issue --
+# closed out in S-141 (below) once real-repo verification hit all four
+# missing binaries at once. git + gh CLI are enough for S-125's checkout
+# step; CodeQL's own toolchain needs no compiler at all (see below).
 
 FROM public.ecr.aws/docker/library/python:3.13-slim AS base
 
@@ -71,7 +70,30 @@ RUN curl -sSfL \
 # both locally and matching this exact command.
 RUN codeql pack download codeql/javascript-queries codeql/python-queries
 
-# Python deps
+# S-141: Gitleaks and Trivy toolchains (S-129/S-130's own tracked gap,
+# closed out here alongside the CodeQL package-name fix above). Both ship
+# as standalone Go binaries via GitHub Releases tarballs, same download-
+# and-link pattern as the CodeQL CLI install above -- no package-registry
+# involvement, so none of that step's auth/naming issues apply here.
+ARG GITLEAKS_VERSION=8.30.1
+RUN curl -sSfL \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_arm64.tar.gz" \
+    -o /tmp/gitleaks.tar.gz && \
+    tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks && \
+    rm /tmp/gitleaks.tar.gz && \
+    chmod +x /usr/local/bin/gitleaks
+
+ARG TRIVY_VERSION=0.74.0
+RUN curl -sSfL \
+    "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-ARM64.tar.gz" \
+    -o /tmp/trivy.tar.gz && \
+    tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy && \
+    rm /tmp/trivy.tar.gz && \
+    chmod +x /usr/local/bin/trivy
+
+# Python deps -- includes semgrep and checkov (S-141: their scanner
+# binaries ship as pip packages, pinned in pyproject.toml's dependencies;
+# see that file for the same S-128/S-131 toolchain-gap note).
 WORKDIR /app
 COPY pyproject.toml .
 RUN pip install --no-cache-dir .
