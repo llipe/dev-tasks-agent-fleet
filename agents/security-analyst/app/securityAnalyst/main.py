@@ -4,15 +4,30 @@ security-analyst agent — pipeline orchestrator entrypoint.
 Receives invocation payloads via AgentCore HTTP protocol. S-125 scaffolded
 the project, deploy, and reporting/credential pipe with a placeholder
 pipeline that went straight to `succeeded` / `no_findings` for every mode —
-zero scanners run. This story (S-135) replaces that placeholder for
-`mode=audit_only` with the real five-tool dispatch → dedupe → classify →
-report → `determine_outcome()` pipeline (spec §8.8's state machine up to and
-including `audit_report`). `mode=fix` is intentionally left on the S-125
-placeholder here — S-136-S-140 wire `fix`/`rescan`/`open_pr` into it; this
-story's task list explicitly scopes out touching that path.
+zero scanners run. S-135 replaced that placeholder for `mode=audit_only`
+with the real five-tool dispatch → dedupe → classify → report →
+`determine_outcome()` pipeline (spec §8.8's state machine up to and
+including `audit_report`). This story (S-140) is the capstone: it wires
+`mode=fix`'s `fix` → `rescan` → `open_pr` steps into the same orchestrator,
+completing the full state machine for both modes and reconciling the two
+forward-reference gaps S-135/S-139 left open (see `determine_outcome()`'s
+and `pull_request.py`'s docstrings for the resolution of each).
 
-Step keys (spec S8.8, this story's subset):
-    resolve_credentials, checkout, scan, classify
+Step keys (spec S8.8):
+    resolve_credentials, checkout, scan, classify — shared by both modes.
+    fix, rescan, open_pr — `mode=fix` only (spec §8.8's diagram: `classify
+    --> fix: mode=fix`; `classify --> audit_report: mode=audit_only` has no
+    step of its own — `audit_report` is an artifact, not a `run_steps` key,
+    exactly as `fix`/`rescan`/`open_pr` are).
+
+`mode=fix`'s no-mechanical-findings short-circuit (AC21) enters only the
+`fix` step and then terminates — `rescan`/`open_pr` are never entered in
+that case, mirroring how `audit_only` mode never enters `fix`/`rescan`/
+`open_pr` at all. AC29's "all 7 run_steps present" is therefore a property
+of the full happy/blocked-at-rescan path (where mechanical findings existed
+and the run reached at least the `rescan` step), not every possible branch
+— the same precedent already established by `audit_only`'s 4-step-only
+happy path never needing a 5th step for `audit_report`.
 """
 
 from __future__ import annotations
@@ -41,7 +56,13 @@ from config import (
 )
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
 from dedupe import MergedFinding, dedupe
+from fingerprint import fingerprint
+from fix_agent import run_fix_loop_for_finding
+from fixers.semgrep_autofix import apply_semgrep_autofix
+from fixers.trivy_bump import apply_trivy_bump
 from heartbeat import HeartbeatResult, is_heartbeat_chunk, run_with_heartbeat, terminal_chunk
+from pull_request import PipelineState, PullRequestError, build_pr_body, open_pr_if_needed
+from rescan import rescan_gate
 from scanners import AllScannersFailedError, run_scanners
 from scanners.types import ScanStatus
 from scrubber import scrub, scrub_process_error
@@ -249,40 +270,101 @@ def determine_outcome(
     findings: list[MergedFinding],
     min_severity: str,
     fail_on_findings: bool,
+    *,
+    mechanical_findings: list[MergedFinding] | None = None,
+    manual_or_unscannable_findings: list[MergedFinding] | None = None,
+    rescan_clean: bool | None = None,
+    pr_existed: bool = False,
 ) -> tuple[str, str, str | None]:
     """Pure function: (status, outcome, error_code) from pipeline state (spec §8.10).
 
     `findings` MUST be the full, unfiltered set — `min_severity` is applied
-    here only, via `_at_or_above_floor()` (PRD requirement 63).
+    here only, via `_at_or_above_floor()` (PRD requirement 63). For
+    `mode="fix"`, `findings` is only used by callers for logging/symmetry;
+    the actual gating input is `manual_or_unscannable_findings` (see below).
 
-    Scope (story S-135): only the `audit_only` branch of spec §8.10's
-    pseudocode is implemented. `mode="fix"` is out of this story's scope
-    (S-136-S-140 wire `fix`/`rescan`/`open_pr`); callers must not reach this
-    function with `mode="fix"` yet — `main.invoke()` keeps that mode on the
-    S-125 placeholder pipeline instead of calling this function.
+    `audit_only` (story S-135, unchanged): `mechanical_findings` /
+    `manual_or_unscannable_findings` / `rescan_clean` / `pr_existed` are all
+    ignored — this branch's behavior and return values are byte-for-byte
+    identical to before this story, so every already-merged `audit_only`
+    test keeps passing unmodified.
 
-    Deviation from spec §8.10's literal pseudocode: the spec's
+    `fix` (story S-140, spec §8.10's second pseudocode block):
+      - `mechanical_findings` empty -> `succeeded`, outcome is
+        `needs_review` if any of `manual_or_unscannable_findings` clears
+        `min_severity`, else `no_findings` (AC21). `min_severity` never
+        changes *which* findings were fixed/scanned (req 63) — it only
+        labels the outcome here, exactly as the `audit_only` branch does.
+      - `mechanical_findings` non-empty and `rescan_clean` is falsy ->
+        `failed`/`needs_review`/`RESCAN_NOT_CLEAN`, no PR (AC14/AC15).
+      - `mechanical_findings` non-empty and `rescan_clean` is true and
+        `pr_existed` -> `succeeded`/`not_applicable` (PRD AC22's
+        idempotency short-circuit).
+      - Otherwise -> `succeeded`, `fixed` if `manual_or_unscannable_findings`
+        is empty else `partial` (AC13).
+
+    Deviation from spec §8.10's literal pseudocode, carried forward
+    unchanged from S-135 and now resolved by this story (documented in both
+    places per that story's own forward-reference note): the spec's
     `determine_outcome()` returns a 4-tuple `(status, outcome, error_code,
-    pr_opened)`, mirroring the sibling agent's `PipelineState`-driven shape.
-    This story's caller has no PR-opening branch to report (`audit_only`
-    never opens a PR — PRD §8.1), so `pr_opened` is dropped here rather than
-    hard-coded to `False` at every call site; this mirrors the sibling
-    agent's own `main.py::determine_outcome()`, which returns a 3-tuple for
-    the identical reason. S-140 (which adds the `fix` branch, where
-    `pr_opened` is meaningful) is expected to either widen this signature
-    back to 4 elements or compute `pr_opened` separately at the call site, as
-    the sibling agent does — a call-site decision, not re-litigated here.
-    """
-    gated_findings = _at_or_above_floor(findings, min_severity)
+    pr_opened)`. This function keeps the existing 3-tuple shape for BOTH
+    modes — `audit_only` never opens a PR (`pr_opened` would always be
+    `False`, redundant to carry), and for `fix` mode, `pr_opened` is fully
+    recoverable by the caller as `status == "succeeded" and outcome in
+    ("fixed", "partial")` (it is *not* opened for `not_applicable` — the
+    idempotency case — since no NEW PR is created there, only an existing
+    one referenced). `main.invoke()` computes `pr_opened` at the call site
+    for exactly this reason, mirroring the sibling agent's own
+    `determine_outcome()`, which likewise takes `pr_existed` as a
+    caller-supplied flag it does not compute internally rather than
+    re-deriving it from a raw URL. Widening the tuple was the other
+    documented option; a 3-tuple was chosen because it required zero changes
+    to every already-merged `audit_only` call site/test (this story's
+    explicit mandate: "keeps `audit_only`'s already-merged, already-tested
+    behavior unchanged").
 
+    A second, related deviation: spec §8.10's pseudocode checks
+    `state.existing_pr_url` as the very FIRST statement in the function,
+    before even computing `gated_findings` — implying idempotency is
+    resolved before any mode branching. This function instead takes
+    `pr_existed` as a plain bool, checked only within the `fix`/clean-gate
+    branch (mirroring the sibling agent's own `determine_outcome()`, which
+    also takes `pr_existed` as a narrow, call-site-supplied flag rather than
+    a URL it resolves itself). `main.invoke()` only calls
+    `pull_request.open_pr_if_needed()` — which performs the actual
+    `existing_pr()` lookup — from within the `open_pr` step, itself only
+    reached after a clean re-scan with mechanical findings present (spec
+    §8.8's diagram: `rescan --> open_pr: gate clean` is the only edge into
+    `open_pr`). Checking idempotency any earlier (e.g. before `scan`) is not
+    supported by the state diagram and is not implemented.
+    """
     if mode == "audit_only":
+        gated_findings = _at_or_above_floor(findings, min_severity)
         if not gated_findings:
             return "succeeded", "no_findings", None
         if not fail_on_findings:
             return "succeeded", "needs_review", None
         return "failed", "needs_review", "AUDIT_FINDINGS"
 
-    raise NotImplementedError(f"determine_outcome: mode={mode!r} not yet wired (S-136-S-140 scope)")
+    if mode == "fix":
+        mechanical = mechanical_findings or []
+        remainder = manual_or_unscannable_findings or []
+
+        if not mechanical:
+            gated_remainder = _at_or_above_floor(remainder, min_severity)
+            outcome = "needs_review" if gated_remainder else "no_findings"
+            return "succeeded", outcome, None
+
+        if not rescan_clean:
+            return "failed", "needs_review", "RESCAN_NOT_CLEAN"
+
+        if pr_existed:
+            return "succeeded", "not_applicable", None
+
+        outcome = "partial" if remainder else "fixed"
+        return "succeeded", outcome, None
+
+    raise NotImplementedError(f"determine_outcome: mode={mode!r} is not a recognized mode")
 
 
 def _finding_summary(merged: MergedFinding, bucket: Bucket) -> dict:
@@ -333,6 +415,21 @@ def build_audit_report(classified: list[tuple[MergedFinding, Bucket]]) -> dict:
         "by_bucket": by_bucket,
         "by_tool": by_tool,
         "by_severity": by_severity,
+    }
+
+
+def _bucket_counts(classified: list[tuple[MergedFinding, Bucket]]) -> dict:
+    """The `{"mechanical": n, "manual": n, "unscannable": n}` shape used for
+    both `findings_before` and `findings_after` (requirement 47, story
+    S-140). Reuses `build_audit_report()`'s own grouping rather than
+    re-deriving it, discarding the `by_tool`/`by_severity` breakdown that
+    shape also carries (not part of `findings_before`/`findings_after`'s own
+    contract, spec S6.2)."""
+    report = build_audit_report(classified)
+    return {
+        "mechanical": len(report["by_bucket"]["mechanical"]),
+        "manual": len(report["by_bucket"]["manual"]),
+        "unscannable": len(report["by_bucket"]["unscannable"]),
     }
 
 
@@ -393,23 +490,59 @@ def clone_repo(org: str, name: str, token: str, secrets: list[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Main orchestrator (placeholder pipeline, spec S8.8 subset)
+# Heartbeated scan (spec §9.2) — shared by the initial `scan` step and the
+# `fix`-mode `rescan` step (story S-140) so both invocations of
+# `run_scanners()` share one heartbeat-draining implementation rather than
+# duplicating it.
+# ---------------------------------------------------------------------------
+
+
+async def _scan_with_heartbeat(workspace: str, scanners: list[str]):
+    """Run `run_scanners()` in a worker thread under `run_with_heartbeat()`,
+    yielding heartbeat chunks as they arrive and finally a `HeartbeatResult`
+    carrying the scan results (or re-raising the underlying error). Callers
+    drain this exactly like `run_with_heartbeat()` itself: `isinstance(item,
+    HeartbeatResult)` marks the terminal item, everything else is a
+    heartbeat chunk to `yield` straight through the entrypoint's own
+    generator so the AgentCore response stream never goes idle (issue #98 /
+    spec §9.2)."""
+
+    def _do_scan():
+        return run_scanners(Path(workspace), scanners, SCANNER_TIMEOUT)
+
+    holder: dict = {}
+    async for item in run_with_heartbeat(_do_scan, interval=HEARTBEAT_INTERVAL):
+        if isinstance(item, HeartbeatResult):
+            if item.error is not None:
+                raise item.error
+            holder["result"] = item.value
+        elif is_heartbeat_chunk(item):
+            yield item
+    yield HeartbeatResult(value=holder["result"])
+
+
+# ---------------------------------------------------------------------------
+# Main orchestrator (spec S8.8, full state machine — story S-140)
 # ---------------------------------------------------------------------------
 
 
 @app.entrypoint
 async def invoke(payload: dict, context):
     """
-    Main invocation handler — pipeline orchestrator.
+    Main invocation handler — pipeline orchestrator (spec §8.8's full state
+    machine, both modes).
 
-    `mode=audit_only` (this story, S-135): resolve_credentials -> checkout ->
-    scan -> classify -> `audit_report` artifact -> `determine_outcome()`.
-    `scan` is wrapped in `heartbeat.run_with_heartbeat()` (spec §8.8 — the
-    single longest step, CodeQL's database-build phase in particular).
+    `mode=audit_only` (S-135): resolve_credentials -> checkout -> scan ->
+    classify -> `audit_report` artifact -> `determine_outcome()`.
 
-    `mode=fix` remains on the S-125 placeholder pipeline (straight to
-    `succeeded`/`no_findings`, no scanners run) — S-136-S-140 wire
-    `fix`/`rescan`/`open_pr` into it; out of this story's scope.
+    `mode=fix` (this story, S-140): resolve_credentials -> checkout -> scan
+    -> classify -> fix (deterministic fixers, then the LLM escape hatch for
+    findings they could not resolve) -> rescan -> open_pr (only reached on a
+    clean re-scan gate — D23, no PR without one) -> `determine_outcome()`.
+    `scan` and `rescan` are both wrapped in `heartbeat.run_with_heartbeat()`
+    via `_scan_with_heartbeat()` (spec §8.8/§9.2 — CodeQL's database-build
+    phase is the single most likely step to exceed the idle-session bound
+    without it).
     """
     secrets: list[str] = []
 
@@ -465,54 +598,44 @@ async def invoke(payload: dict, context):
                 workspace = clone_repo(org, name, token_ctx.token, secrets)
                 log.info("Repository cloned to %s", workspace)
 
+            # --- Step: scan — heartbeated, shared by both modes ---
+            with run.step("scan"):
+                scan_holder: dict = {}
+                async for _item in _scan_with_heartbeat(workspace, params["scanners"]):
+                    if isinstance(_item, HeartbeatResult):
+                        scan_holder["result"] = _item.value
+                    else:
+                        yield _item
+                scan_results = scan_holder["result"]
+
+            scanners_run = [r.tool for r in scan_results if r.status == ScanStatus.PASSED]
+            scanners_skipped = [r.tool for r in scan_results if r.status == ScanStatus.SKIPPED]
+            scanners_failed = [r.tool for r in scan_results if r.status == ScanStatus.FAILED]
+            for r in scan_results:
+                if r.status == ScanStatus.FAILED:
+                    # req 18 -- per-tool failure recorded at error level,
+                    # non-fatal to the run (AllScannersFailedError already
+                    # handles the all-failed case, raised inside run_scanners).
+                    log.error("Scanner %s failed: %s", r.tool, r.reason)
+            log.info(
+                "Scan complete: run=%s skipped=%s failed=%s",
+                scanners_run,
+                scanners_skipped,
+                scanners_failed,
+            )
+
+            # --- Step: classify — dedupe then classify, shared by both modes ---
+            with run.step("classify"):
+                all_findings = [f for r in scan_results for f in r.findings]
+                merged = dedupe(all_findings)
+                classified = [(m, classify(m)) for m in merged]
+
+            findings_before = _bucket_counts(classified)
+
             if params["mode"] == "audit_only":
-                # --- Step: scan (S-135) — heartbeated, longest step ---
-                with run.step("scan"):
-
-                    def _do_scan():
-                        return run_scanners(Path(workspace), params["scanners"], SCANNER_TIMEOUT)
-
-                    _scan_holder: dict = {}
-                    async for _item in run_with_heartbeat(_do_scan, interval=HEARTBEAT_INTERVAL):
-                        if isinstance(_item, HeartbeatResult):
-                            if _item.error is not None:
-                                raise _item.error
-                            _scan_holder["result"] = _item.value
-                        elif is_heartbeat_chunk(_item):
-                            yield _item
-                    scan_results = _scan_holder["result"]
-
-                scanners_run = [r.tool for r in scan_results if r.status == ScanStatus.PASSED]
-                scanners_skipped = [r.tool for r in scan_results if r.status == ScanStatus.SKIPPED]
-                scanners_failed = [r.tool for r in scan_results if r.status == ScanStatus.FAILED]
-                for r in scan_results:
-                    if r.status == ScanStatus.FAILED:
-                        # req 18 -- per-tool failure recorded at error level,
-                        # non-fatal to the run (AllScannersFailedError already
-                        # handles the all-failed case, raised inside run_scanners).
-                        log.error("Scanner %s failed: %s", r.tool, r.reason)
-                log.info(
-                    "Scan complete: run=%s skipped=%s failed=%s",
-                    scanners_run,
-                    scanners_skipped,
-                    scanners_failed,
-                )
-
-                # --- Step: classify (S-135) — dedupe then classify ---
-                with run.step("classify"):
-                    all_findings = [f for r in scan_results for f in r.findings]
-                    merged = dedupe(all_findings)
-                    classified = [(m, classify(m)) for m in merged]
-
                 # --- audit_report artifact (task 11.3) — full, unfiltered set ---
                 audit_report = build_audit_report(classified)
                 run.artifact("audit_report", title="Security scan findings", **audit_report)
-
-                findings_before = {
-                    "mechanical": len(audit_report["by_bucket"]["mechanical"]),
-                    "manual": len(audit_report["by_bucket"]["manual"]),
-                    "unscannable": len(audit_report["by_bucket"]["unscannable"]),
-                }
 
                 status, outcome, error_code = determine_outcome(
                     mode="audit_only",
@@ -548,17 +671,235 @@ async def invoke(payload: dict, context):
                         metrics=build_metrics(result),
                     )
                 yield terminal_chunk(json.dumps(result))
+                return
 
-            else:
-                # --- Placeholder outcome for mode=fix (S-136-S-140 wire this) ---
-                result = build_return_payload(
-                    status="succeeded",
-                    outcome="no_findings",
-                    error_code=None,
-                    scanners_skipped=params["scanners"],
+            # --- mode=fix (story S-140) ---
+            mechanical = [m for m, b in classified if b == Bucket.MECHANICAL]
+            manual_findings = [m for m, b in classified if b == Bucket.MANUAL]
+            unscannable_findings = [m for m, b in classified if b == Bucket.UNSCANNABLE]
+            remainder = manual_findings + unscannable_findings
+
+            # --- Step: fix ---
+            with run.step("fix"):
+                if not mechanical:
+                    # AC21 -- nothing mechanical to fix. `rescan`/`open_pr`
+                    # are never entered (module docstring): there is nothing
+                    # to re-verify and D23 permits no PR without a fix to
+                    # verify in the first place.
+                    fix_attempts_deterministic = 0
+                    fix_attempts_llm = 0
+                    llm_used = False
+                    llm_fixed: list[MergedFinding] = []
+                else:
+                    semgrep_outcome = apply_semgrep_autofix(Path(workspace), mechanical)
+                    trivy_outcome = apply_trivy_bump(Path(workspace), mechanical)
+                    unresolved_deterministic = list(semgrep_outcome.unresolved) + list(
+                        trivy_outcome.unresolved
+                    )
+                    fix_attempts_deterministic = len(mechanical)
+
+                    # AC13 -- the LLM escape hatch is invoked ONLY for
+                    # findings the deterministic fixers left unresolved, and
+                    # ONLY when `max_fix_attempts > 0`. A finding fully
+                    # resolved by the deterministic path never reaches this
+                    # loop -- `run_fix_loop_for_finding` (and therefore
+                    # `Agent(...)`/Bedrock) is never called for it, not
+                    # merely called-and-immediately-successful. When
+                    # `unresolved_deterministic` is empty (every mechanical
+                    # finding resolved deterministically), this loop body
+                    # never executes at all -- zero LLM invocations, so
+                    # `fix_attempts_llm`/`llm_used` stay at their falsy
+                    # defaults, matching AC13's `metrics.llm_used=false`.
+                    llm_fixed = []
+                    fix_attempts_llm = 0
+                    if unresolved_deterministic and params["max_fix_attempts"] > 0:
+                        for mf in unresolved_deterministic:
+                            fix_attempts_llm += 1
+                            fa_result = run_fix_loop_for_finding(
+                                workspace, mf, params["max_fix_attempts"]
+                            )
+                            if fa_result.resolved:
+                                llm_fixed.append(mf)
+                    llm_used = fix_attempts_llm > 0
+
+            if not mechanical:
+                status, outcome, error_code = determine_outcome(
+                    mode="fix",
+                    findings=merged,
+                    min_severity=params["min_severity"],
+                    fail_on_findings=params["fail_on_findings"],
+                    mechanical_findings=[],
+                    manual_or_unscannable_findings=remainder,
                 )
-                run.succeed(result["outcome"], metrics=build_metrics(result))
+                result = build_return_payload(
+                    status=status,
+                    outcome=outcome,
+                    error_code=error_code,
+                    findings_before=findings_before,
+                    findings_after=findings_before,
+                    scanners_run=scanners_run,
+                    scanners_skipped=scanners_skipped,
+                    scanners_failed=scanners_failed,
+                )
+                # AC21's branch is always `succeeded` (spec §8.10) -- there is
+                # no failure path when there was nothing mechanical to fix.
+                run.succeed(outcome, metrics=build_metrics(result))
                 yield terminal_chunk(json.dumps(result))
+                return
+
+            targeted_fingerprints = {fingerprint(mf.finding) for mf in mechanical}
+
+            # --- Step: rescan — heartbeated, full re-scan against the same
+            # scanner set as the initial scan (rescan.py's gate needs a
+            # comprehensive before/after picture, not just the fixed files'
+            # own tool, to catch an unrelated regression anywhere -- AC15).
+            with run.step("rescan"):
+                rescan_holder: dict = {}
+                async for _item in _scan_with_heartbeat(workspace, params["scanners"]):
+                    if isinstance(_item, HeartbeatResult):
+                        rescan_holder["result"] = _item.value
+                    else:
+                        yield _item
+                rescan_results = rescan_holder["result"]
+
+                rescan_all_findings = [f for r in rescan_results for f in r.findings]
+                after_merged = dedupe(rescan_all_findings)
+                gate = rescan_gate(
+                    before=merged, after=after_merged, targeted=targeted_fingerprints
+                )
+                if not gate.clean:
+                    log.error(
+                        "Re-scan gate not clean: still_present=%s unexplained_new=%s",
+                        sorted(gate.still_present),
+                        sorted(gate.unexplained_new),
+                    )
+
+            after_classified = [(m, classify(m)) for m in after_merged]
+            findings_after = _bucket_counts(after_classified)
+
+            if not gate.clean:
+                # AC14/AC15 -- the re-scan gate blocks the PR even though the
+                # working tree may carry a genuine local change (an
+                # unresolved fix attempt, or the LLM's mandate-confined
+                # edits): `open_pr` is never entered (spec §8.8's diagram
+                # has no edge from a not-clean `rescan` into `open_pr`), so
+                # no branch is ever created/pushed and no PR is ever opened.
+                status, outcome, error_code = determine_outcome(
+                    mode="fix",
+                    findings=merged,
+                    min_severity=params["min_severity"],
+                    fail_on_findings=params["fail_on_findings"],
+                    mechanical_findings=mechanical,
+                    manual_or_unscannable_findings=remainder,
+                    rescan_clean=False,
+                )
+                result = build_return_payload(
+                    status=status,
+                    outcome=outcome,
+                    error_code=error_code,
+                    findings_before=findings_before,
+                    findings_after=findings_after,
+                    scanners_run=scanners_run,
+                    scanners_skipped=scanners_skipped,
+                    scanners_failed=scanners_failed,
+                    fix_attempts_deterministic=fix_attempts_deterministic,
+                    fix_attempts_llm=fix_attempts_llm,
+                    llm_used=llm_used,
+                )
+                assert error_code is not None
+                run.fail(
+                    error_code,
+                    error_message=(
+                        "re-scan gate not clean: "
+                        f"still_present={sorted(gate.still_present)} "
+                        f"unexplained_new={sorted(gate.unexplained_new)}"
+                    ),
+                    outcome=outcome,
+                    metrics=build_metrics(result),
+                )
+                yield terminal_chunk(json.dumps(result))
+                return
+
+            # --- Step: open_pr — only reached on a clean re-scan gate (D23) ---
+            with run.step("open_pr"):
+                dependency_update_boundary = [
+                    m
+                    for m in manual_findings
+                    if m.finding.remediation is not None
+                    and m.finding.remediation.kind == "version_bump"
+                    and m.finding.remediation.lockfile_managed
+                ]
+                major_version_guard = [
+                    m
+                    for m in manual_findings
+                    if m.finding.remediation is not None
+                    and m.finding.remediation.kind == "version_bump"
+                    and not m.finding.remediation.lockfile_managed
+                ]
+
+                pr_state = PipelineState(
+                    findings_before=len(merged),
+                    fixed=list(mechanical),
+                    manual_remaining=manual_findings,
+                    unscannable_remaining=unscannable_findings,
+                    dependency_update_boundary=dependency_update_boundary,
+                    major_version_guard=major_version_guard,
+                    llm_used=llm_used,
+                    llm_fixed=llm_fixed,
+                    rescan_before_count=len(merged),
+                    rescan_after_count=len(after_merged),
+                )
+                pr_body = build_pr_body(pr_state)
+                base_branch = payload.get("base_branch") or "main"
+                pr_result = open_pr_if_needed(workspace, token_ctx.token, base_branch, pr_body)
+                if pr_result.url:
+                    # req 43 -- recorded regardless of new vs. existing.
+                    run.artifact(
+                        "pull_request",
+                        url=pr_result.url,
+                        title="fix(security): automated mechanical security fixes",
+                        existed=pr_result.existed,
+                        branch=pr_result.branch,
+                    )
+                log.info(
+                    "open_pr: url=%s created=%s existed=%s",
+                    pr_result.url,
+                    pr_result.created,
+                    pr_result.existed,
+                )
+
+            status, outcome, error_code = determine_outcome(
+                mode="fix",
+                findings=merged,
+                min_severity=params["min_severity"],
+                fail_on_findings=params["fail_on_findings"],
+                mechanical_findings=mechanical,
+                manual_or_unscannable_findings=remainder,
+                rescan_clean=True,
+                pr_existed=pr_result.existed,
+            )
+            result = build_return_payload(
+                status=status,
+                outcome=outcome,
+                error_code=error_code,
+                pr_url=pr_result.url,
+                findings_before=findings_before,
+                findings_after=findings_after,
+                findings_fixed=len(mechanical),
+                scanners_run=scanners_run,
+                scanners_skipped=scanners_skipped,
+                scanners_failed=scanners_failed,
+                fix_attempts_deterministic=fix_attempts_deterministic,
+                fix_attempts_llm=fix_attempts_llm,
+                llm_used=llm_used,
+            )
+            # This branch's `determine_outcome()` calls are always
+            # `succeeded` (spec §8.10's `fix` branch has no `status="failed"`
+            # outcome once the gate is clean -- D23's whole point is that a
+            # not-clean gate is caught upstream, above, before `open_pr` is
+            # ever entered).
+            run.succeed(outcome, metrics=build_metrics(result))
+            yield terminal_chunk(json.dumps(result))
 
     except AllScannersFailedError as exc:
         # req 18 / AC-24 -- every requested scanner failed; the whole audit
@@ -575,6 +916,16 @@ async def invoke(payload: dict, context):
     except CredentialError as exc:
         log.error("Credential error: %s", exc)
         result = build_return_payload("failed", "not_applicable", exc.code)
+        yield terminal_chunk(json.dumps(result))
+
+    except PullRequestError as exc:
+        # A push/PR-create failure after the workspace changes are staged
+        # and the re-scan gate already confirmed clean -- the fix itself
+        # succeeded, only the PR handoff failed, so this maps to
+        # needs_review (mirrors the sibling agent's identical PullRequestError
+        # handling) rather than UNHANDLED_ERROR.
+        log.error("Pull request error: %s", scrub(str(exc), secrets))
+        result = build_return_payload("failed", "needs_review", exc.code)
         yield terminal_chunk(json.dumps(result))
 
     except Exception:

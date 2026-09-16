@@ -248,24 +248,24 @@
   - [x] 15.7 Run Tests: `tests/unit/test_pr_body.py` (synthetic `PipelineState` fixtures: no-LLM, LLM-used, D24-boundary present, major-version-guard present, zero-remaining, all-sections-simultaneously) — `make test-unit`
   - [x] 15.8 Run Tests: `tests/component/test_pr_creation.py` (idempotency via mocked `gh pr list`, branch/push mocked) — `make test-component`
 
-- [ ] 16.0 Implement Story S-140: `fix` mode end-to-end wiring — [Issue #200](https://github.com/llipe/dev-tasks-agent-fleet/issues/200)
+- [x] 16.0 Implement Story S-140: `fix` mode end-to-end wiring — [Issue #200](https://github.com/llipe/dev-tasks-agent-fleet/issues/200)
 
   > Note: Capstone integration — wires S-136 through S-139 into the full `scan → classify → fix → rescan → open_pr` loop. Depends on S-136, S-137, S-138, S-139 (every piece of the write path).
 
-  - [ ] 16.1 Wire `fix`/`rescan`/`open_pr` steps into `main.py`, completing the state machine begun in S-135
-  - [ ] 16.2 Wrap `scan`/`rescan` in `heartbeat.run_with_heartbeat(...)`
-  - [ ] 16.3 Implement full `run_steps` emission (7 keys: `resolve_credentials`/`checkout`/`scan`/`classify`/`fix`/`rescan`/`open_pr`) and `build_metrics()`
-  - [ ] 16.4 Verify Acceptance Criterion: full state machine matches spec §8.8's diagram exactly
-  - [ ] 16.5 Verify Acceptance Criterion: happy path zero-LLM — exactly one PR, `succeeded`/`fixed` or `partial`, `metrics.llm_used=false` (PRD AC13)
-  - [ ] 16.6 Verify Acceptance Criterion: re-scan gate blocks an unverified fix even after LLM budget exhausted — `failed`/`RESCAN_NOT_CLEAN`, **no PR**, despite a local working-tree change (PRD AC14, full end-to-end)
-  - [ ] 16.7 Verify Acceptance Criterion: re-scan gate blocks a regression-introducing fix the same way, unless allow-listed (PRD AC15, full end-to-end)
-  - [ ] 16.8 Verify Acceptance Criterion: no mechanical findings at all → `no_findings`/`needs_review` per remaining findings, no branch/PR (PRD AC21)
-  - [ ] 16.9 Verify Acceptance Criterion: a deliberately slow fixture (simulated CodeQL delay) proves the stream stays alive past `IDLE_SESSION_TIMEOUT` under heartbeat wrapping
-  - [ ] 16.10 Verify Acceptance Criterion: all 7 `run_steps` present, in order, each terminal (PRD AC29)
-  - [ ] 16.11 Verify Acceptance Criterion: `runs.metrics` includes `fix_attempts_deterministic`, `fix_attempts_llm`, finding counts, `scanners_run/skipped/failed` (PRD requirement 47)
-  - [ ] 16.12 Run Tests: `tests/unit/test_determine_outcome.py` extended for `fix` mode, parametrized over every PRD §8.1 `fix`-mode row — `make test-unit`
-  - [ ] 16.13 Run Tests: `tests/component/test_fix_mode_pipeline.py` (happy path; LLM-escape-hatch success; `RESCAN_NOT_CLEAN`; no-mechanical-findings no-op; idempotency; multi-tool-simultaneous-findings) — `make test-component`
-  - [ ] 16.14 Run Tests: full coverage gate — `make test-cov`, `make validate`
+  - [x] 16.1 Wire `fix`/`rescan`/`open_pr` steps into `main.py`, completing the state machine begun in S-135
+  - [x] 16.2 Wrap `scan`/`rescan` in `heartbeat.run_with_heartbeat(...)`
+  - [x] 16.3 Implement full `run_steps` emission (7 keys: `resolve_credentials`/`checkout`/`scan`/`classify`/`fix`/`rescan`/`open_pr`) and `build_metrics()`
+  - [x] 16.4 Verify Acceptance Criterion: full state machine matches spec §8.8's diagram exactly
+  - [x] 16.5 Verify Acceptance Criterion: happy path zero-LLM — exactly one PR, `succeeded`/`fixed` or `partial`, `metrics.llm_used=false` (PRD AC13)
+  - [x] 16.6 Verify Acceptance Criterion: re-scan gate blocks an unverified fix even after LLM budget exhausted — `failed`/`RESCAN_NOT_CLEAN`, **no PR**, despite a local working-tree change (PRD AC14, full end-to-end)
+  - [x] 16.7 Verify Acceptance Criterion: re-scan gate blocks a regression-introducing fix the same way, unless allow-listed (PRD AC15, full end-to-end)
+  - [x] 16.8 Verify Acceptance Criterion: no mechanical findings at all → `no_findings`/`needs_review` per remaining findings, no branch/PR (PRD AC21)
+  - [x] 16.9 Verify Acceptance Criterion: a deliberately slow fixture (simulated CodeQL delay) proves the stream stays alive past `IDLE_SESSION_TIMEOUT` under heartbeat wrapping
+  - [x] 16.10 Verify Acceptance Criterion: all 7 `run_steps` present, in order, each terminal (PRD AC29)
+  - [x] 16.11 Verify Acceptance Criterion: `runs.metrics` includes `fix_attempts_deterministic`, `fix_attempts_llm`, finding counts, `scanners_run/skipped/failed` (PRD requirement 47)
+  - [x] 16.12 Run Tests: `tests/unit/test_determine_outcome.py` extended for `fix` mode, parametrized over every PRD §8.1 `fix`-mode row — `make test-unit`
+  - [x] 16.13 Run Tests: `tests/component/test_fix_mode_pipeline.py` (happy path; LLM-escape-hatch success; `RESCAN_NOT_CLEAN`; no-mechanical-findings no-op; idempotency; multi-tool-simultaneous-findings) — `make test-component`
+  - [x] 16.14 Run Tests: full coverage gate — `make test-cov`, `make validate`
 
 - [ ] 17.0 Implement Story S-141: Seed configuration, deployment, and real-repo verification — [Issue #201](https://github.com/llipe/dev-tasks-agent-fleet/issues/201)
 

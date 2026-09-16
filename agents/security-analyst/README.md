@@ -3,7 +3,7 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-139):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-140):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -27,45 +27,61 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > finding set, and calls the new `determine_outcome()` (`_at_or_above_floor()` applies
 > `min_severity` to the terminal status only, never to the artifact — PRD requirement 62/AC-12b)
 > to reach `succeeded`/`no_findings`, `succeeded`/`needs_review`, or `failed`/`AUDIT_FINDINGS`.
-> **`mode=audit_only` is the first fully working mode of this agent.** `mode=fix` is still the
-> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-140 still
-> needs to wire `fix`/`rescan`/`open_pr` and the orchestration loop into it. S-136 (`#229`) added the
-> first two of `fix` mode's building blocks — `fixers/semgrep_autofix.py` (Semgrep native-patch
-> application) and `fixers/trivy_bump.py` (Trivy version-bump application, plus a retroactive,
-> additive `Remediation.package_name` field so the fixer can locate which manifest line to edit —
-> see `normalize.py`'s `Remediation` docstring) — but **neither fixer is called from `main.py`
-> yet**: they are standalone, independently unit/component-tested modules, not yet part of the
-> live `fix` pipeline. S-137 (`#230`) added the third building block, `rescan.py`'s
+> S-136 (`#229`) built the two deterministic fixers — `fixers/semgrep_autofix.py` (Semgrep
+> native-patch application) and `fixers/trivy_bump.py` (Trivy version-bump application, plus a
+> retroactive, additive `Remediation.package_name` field so the fixer can locate which manifest
+> line to edit — see `normalize.py`'s `Remediation` docstring). S-137 (`#230`) built `rescan.py`'s
 > `rescan_gate()` — the agent's defining trust mechanism (D23/D25): it compares a pre-fix and
 > post-fix finding set by `fingerprint()` and only reports `clean=True` when every targeted
 > finding is gone and no unexplained new finding appeared, checked only against a fixed,
 > enumerated allow-list table (`_ALLOWED_NEW_FINDING_EXCEPTIONS`), never inferred (requirement
-> 34). Like the two fixers, **`rescan.py` is standalone and not yet called from `main.py`** —
-> wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop is S-140's job, not this
-> story's. This is distinct from `audit_only`'s S-135 status above, which *is* fully
-> wired end-to-end. S-138 (`#231`) added the third building block, `fix_agent.py`'s
-> `run_fix_loop_for_finding()` — the LLM escape hatch invoked, per finding, only when the
-> deterministic fixers (S-136) left a `mechanical` finding `unresolved`. It is ported
-> near-verbatim from the sibling agent's own `fix_agent.py` (5-tool surface, `_safe_path`
-> workspace confinement) with one architectural departure — per-finding invocation and
-> per-finding `max_fix_attempts` budgeting rather than per-run (D22/D26, PRD AC17) — plus its
-> own post-fix mandate check, `_assert_diff_confined_to()`, this agent's equivalent of the
-> sibling's package.json check, narrowed to the single targeted finding's own `file_path`.
-> Like the two fixers and `rescan.py`, **`fix_agent.py` is standalone and not yet called from
-> `main.py`** — wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop remains S-140's
-> job. S-139 (`#232`) added the fourth and final building block, `pull_request.py`'s
-> `build_pr_body()` plus its branch/idempotency/push mechanics (`branch_name()`, `existing_pr()`,
-> `create_pr()`) — ported near-verbatim from the sibling agent's own `pull_request.py` (same
-> credential-helper push, same `gh pr list` idempotency pattern, same "body always via
-> `--body-file`, never inline `--body`" rule). **Forward-reference gap for whoever picks up
-> S-140:** since no orchestrator-level `PipelineState` exists yet in this agent, `pull_request.py`
-> defines its own local, minimal `PipelineState` dataclass purely so `build_pr_body()` has a
-> concrete input shape to build and test against — it is a placeholder shape, not a finished
-> cross-story contract. S-140 must either construct this exact shape or a superset of it at the
-> `open_pr` call site; that call-site decision is not made here (see `pull_request.py`'s own
-> module docstring). Like the other three building blocks, **`pull_request.py` is standalone and
-> not yet called from `main.py`** — wiring `fix`/`rescan`/`open_pr` into one live orchestrator
-> loop remains S-140's job.
+> 34). S-138 (`#231`) built `fix_agent.py`'s `run_fix_loop_for_finding()` — the LLM escape hatch
+> invoked, per finding, only when the deterministic fixers (S-136) left a `mechanical` finding
+> `unresolved`. It is ported near-verbatim from the sibling agent's own `fix_agent.py` (5-tool
+> surface, `_safe_path` workspace confinement) with one architectural departure — per-finding
+> invocation and per-finding `max_fix_attempts` budgeting rather than per-run (D22/D26, PRD
+> AC17) — plus its own post-fix mandate check, `_assert_diff_confined_to()`, this agent's
+> equivalent of the sibling's package.json check, narrowed to the single targeted finding's own
+> `file_path`. S-139 (`#232`) built `pull_request.py`'s `build_pr_body()` plus its
+> branch/idempotency/push mechanics (`branch_name()`, `existing_pr()`, `create_pr()`) — ported
+> near-verbatim from the sibling agent's own `pull_request.py` (same credential-helper push,
+> same `gh pr list` idempotency pattern, same "body always via `--body-file`, never inline
+> `--body`" rule). S-136 through S-139 each built their piece standalone, independently
+> unit/component-tested, but not yet called from `main.py`.
+>
+> **`mode=fix` end-to-end (S-140, `#233`): the capstone integration story.** `main.py` now wires
+> all four S-136-S-139 building blocks into one live orchestrator loop, completing the full
+> `resolve_credentials -> checkout -> scan -> classify -> fix -> rescan -> open_pr ->
+> determine_outcome()` state machine for `mode=fix` (spec §8.8) — the same shape `mode=audit_only`
+> reached at S-135, now mirrored for the write path. **Both modes of this agent are now fully
+> wired end-to-end; no placeholder pipeline remains.** The `fix` step calls the two deterministic
+> fixers first, then `fix_agent.py`'s LLM escape hatch only for findings they left `unresolved`
+> (and only when `max_fix_attempts > 0`); the `rescan` step re-runs the full scanner set and
+> gates on `rescan.py`'s `rescan_gate()`; the `open_pr` step is reached only on a clean gate and
+> calls `pull_request.py`'s `open_pr_if_needed()`/`build_pr_body()`. See "Pipeline" below for the
+> full per-step description.
+>
+> This story also resolved the two forward-reference gaps S-135 and S-139 left open. **S-135's
+> `determine_outcome()` 3-tuple:** the function keeps its `(status, outcome, error_code)` shape
+> for `fix` mode too — `main.invoke()` computes `pr_opened` at the call site
+> (`status=="succeeded" and outcome in ("fixed","partial")`) rather than widening the tuple,
+> mirroring the sibling `dependency-update` agent's own `determine_outcome()`, which likewise
+> takes `pr_existed`/`has_pr` as caller-supplied flags rather than deriving them internally (see
+> `agents/dependency-update/app/dependencyUpdate/main.py`'s `determine_outcome()` signature).
+> **S-139's local `PipelineState`:** `main.py`'s `open_pr` step constructs the exact
+> `PipelineState` shape `pull_request.py` defined — no superset was needed, and no type moved.
+> See `pull_request.py`'s own module docstring, now rewritten to describe this resolution instead
+> of the open gap it originally flagged for S-140.
+>
+> **Design note — idempotency location (PRD AC22):** the `open_pr` step's idempotency check
+> (`existing_pr()`, via `open_pr_if_needed()`) is only ever reached after a clean re-scan gate —
+> spec §8.8's diagram has exactly one edge into `open_pr`, `rescan --> open_pr: gate clean`, and
+> `main.py` implements no other path into that step. This differs from a naive reading of spec
+> §8.10's pseudocode, which checks `state.existing_pr_url` as its very first statement before any
+> mode branching; this agent instead resolves idempotency only inside `open_pr`, meaning an
+> already-open PR still costs a full fix+rescan cycle before the run short-circuits to
+> `succeeded`/`not_applicable` — it is not a cheap pre-`scan` check. See `determine_outcome()`'s
+> own docstring for the full rationale.
 >
 > `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
 > `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`,
@@ -81,7 +97,10 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > deploy/credential/reporting pipe end-to-end first (mirroring how `agents/dependency-update/`
 > proved its own pipe first), S-126-S-134 built and unit/component-tested each scanner, dedupe,
 > and classification piece in isolation, and S-135 is the first story to converge all of them
-> into one live pipeline. `fix`/`rescan`/`open_pr` remain unwired (S-136-S-140).
+> into one live pipeline for `audit_only`. S-136-S-139 built and independently tested each `fix`
+> piece (fixers, rescan gate, LLM escape hatch, PR builder) in isolation, and S-140 is the second
+> — and final — story to converge a full mode into one live pipeline, completing the agent's
+> state machine for both `audit_only` and `fix`.
 
 ## Layout
 
@@ -92,11 +111,12 @@ agents/security-analyst/
 │   ├── aws-targets.json   # Deployment target (us-east-1)
 │   └── cdk/                # CDK infrastructure (managed by agentcore CLI)
 ├── app/securityAnalyst/
-│   ├── main.py              # Pipeline orchestrator entrypoint. `mode=audit_only`: real
-│   │                        # scan -> classify -> determine_outcome pipeline (S-135). `mode=fix`
-│   │                        # still on the S-125 placeholder — the `fixers/` modules (S-136),
+│   ├── main.py              # Pipeline orchestrator entrypoint. Both modes fully wired:
+│   │                        # `mode=audit_only` is scan -> classify -> determine_outcome (S-135);
+│   │                        # `mode=fix` is scan -> classify -> fix -> rescan -> open_pr ->
+│   │                        # determine_outcome (S-140), calling the `fixers/` modules (S-136),
 │   │                        # `rescan.py` (S-137), `fix_agent.py` (S-138), and `pull_request.py`
-│   │                        # (S-139) exist but are not yet called from here (S-140 wires it).
+│   │                        # (S-139) from the `fix`/`rescan`/`open_pr` steps.
 │   ├── severity.py          # Per-tool severity normalization, pure functions (S-126)
 │   ├── normalize.py         # Finding/Remediation frozen dataclasses (S-127)
 │   ├── fingerprint.py       # fingerprint(), banded-line dedup key (S-127)
@@ -106,8 +126,9 @@ agents/security-analyst/
 │   ├── classifier.py        # classify(), _is_major_bump(), _is_semver() — D22 three-bucket
 │   │                        # mechanical/manual/unscannable model, D24/req-54 lockfile
 │   │                        # boundary, requirement 27 major-version guard (S-134)
-│   ├── fixers/               # Mechanical fix application (S-136) — NOT yet called from main.py
-│   │   ├── __init__.py        # Package docstring: both fixers are standalone, unwired until S-140
+│   ├── fixers/               # Mechanical fix application (S-136) — called from main.py's `fix`
+│   │   │                      # step (S-140), first in the deterministic-before-LLM order
+│   │   ├── __init__.py        # Package docstring
 │   │   ├── types.py           # FixOutcome shared result shape, reused by both fixers
 │   │   ├── semgrep_autofix.py # apply_semgrep_autofix() — one blanket `semgrep --autofix
 │   │   │                      # --config <RULESET>` call (RULESET imported verbatim from
@@ -125,7 +146,7 @@ agents/security-analyst/
 │   │                        # S-137): compares pre-fix/post-fix finding sets by fingerprint(),
 │   │                        # clean=True only when every targeted finding is gone and no
 │   │                        # unexplained new finding appeared (never inferred — requirement 34).
-│   │                        # Standalone and unit-tested; NOT yet called from main.py (S-140 wires it).
+│   │                        # Called from main.py's `rescan` step (S-140) to gate entry to `open_pr`.
 │   ├── fix_agent.py         # run_fix_loop_for_finding() — LLM escape hatch invoked once per
 │   │                        # LLM-eligible finding, own fresh max_fix_attempts budget per call
 │   │                        # (per-finding, not per-run — D22/D26, PRD AC17, this story's one
@@ -139,21 +160,20 @@ agents/security-analyst/
 │   │                        # diff being trusted. _changed_files() deliberately uses `git status
 │   │                        # --porcelain` (catches untracked new files from write_file), not the
 │   │                        # sibling's `git diff --name-only` — see the function's own docstring
-│   │                        # (S-138). Standalone and unit/component-tested; NOT yet called from
-│   │                        # main.py (S-140 wires it).
+│   │                        # (S-138). Called from main.py's `fix` step (S-140), only for
+│   │                        # mechanical findings the deterministic fixers left `unresolved`.
 │   ├── pull_request.py      # branch_name(), existing_pr(), create_pr(), build_pr_body() (req
 │   │                        # 38-43, S-139) — branch/idempotency/push mechanics ported near-
 │   │                        # verbatim from the sibling agent's own `pull_request.py`; body
 │   │                        # section builders (summary, fixed-findings, always-present
 │   │                        # remaining-manual, conditional D24-boundary/major-version-guard/
 │   │                        # AI-modification-warning, always-present re-scan confirmation line)
-│   │                        # are new. Defines its own local, minimal `PipelineState` dataclass
-│   │                        # — a placeholder input shape for `build_pr_body()`, NOT a finished
-│   │                        # cross-story contract, since no orchestrator-level `PipelineState`
-│   │                        # exists yet; S-140 must construct this exact shape or a superset of
-│   │                        # it at the `open_pr` call site (see the module's own docstring).
-│   │                        # Standalone and unit/component-tested; NOT yet called from main.py
-│   │                        # (S-140 wires it).
+│   │                        # are new. Defines its own local, minimal `PipelineState` dataclass —
+│   │                        # `build_pr_body()`'s own input contract. `main.py`'s `open_pr` step
+│   │                        # (S-140) constructs this exact shape directly at the call site (no
+│   │                        # superset needed — see the module's own docstring for the resolution).
+│   │                        # Called from main.py's `open_pr` step, reached only on a clean
+│   │                        # re-scan gate.
 │   ├── scanners/
 │   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
 │   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
@@ -208,7 +228,10 @@ agents/security-analyst/
 │       │                    # per-tool dispatch order + AllScannersFailedError all-failed vs.
 │       │                    # partial-failure boundary), test_determine_outcome.py (S-135,
 │       │                    # parametrized over PRD §8.1 audit_only rows + min_severity
-│       │                    # crossing, incl. AC-12b's gate-outcome-not-artifact case),
+│       │                    # crossing, incl. AC-12b's gate-outcome-not-artifact case; extended
+│       │                    # S-140 with `TestFixOutcomeTable`/`test_fix_mode_matrix`,
+│       │                    # parametrized over every PRD §8.1 `fix`-mode row, confirming the
+│       │                    # `audit_only` rows above stay byte-for-byte unchanged),
 │       │                    # test_trivy_bump.py (S-136, `_bump_manifest_text()`/`_bump_line()`/
 │       │                    # `_name_pattern()` pure-function target-version selection, no I/O),
 │       │                    # test_rescan_gate.py (S-137, 13 tests: all four still-present/
@@ -256,7 +279,16 @@ agents/security-analyst/
 │       │                    # (AC-22), happy-path branch/commit/push/create order,
 │       │                    # `--body-file`-never-inline (AC-17 groundwork), fixed commit
 │       │                    # message/branch-name format, never pushes to default branch (req
-│       │                    # 40), push-failure token scrubbing — all `subprocess.run` mocked)
+│       │                    # 40), push-failure token scrubbing — all `subprocess.run` mocked),
+│       │                    # test_fix_mode_pipeline.py (S-140, full `main.invoke()` `fix` path
+│       │                    # driven exactly like a real AgentCore invocation, every external
+│       │                    # boundary mocked — mirrors test_audit_only_pipeline.py's pattern:
+│       │                    # AC13 happy path/zero-LLM, AC14/AC15 re-scan gate blocks (unverified
+│       │                    # fix, regression), AC21 no-mechanical-findings no-op, AC22
+│       │                    # idempotency short-circuit, AC29 all-7-run_steps-present, requirement
+│       │                    # 47 metrics contract, heartbeat keep-alive under a slow-scan fixture,
+│       │                    # multi-tool-simultaneous findings — no real subprocess/network/LLM
+│       │                    # call is ever made)
 │       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
 │                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130),
 │                            # checkov_{clean,findings,no_severity}.json (S-131),
@@ -301,28 +333,80 @@ agents/security-analyst/
 
 `audit_only` never opens a branch or PR — it is a read-only scan/report mode (PRD §8.1).
 
-### `mode=fix` (still the S-125 placeholder)
+### `mode=fix` (S-140 — fully wired)
 
-`mode=fix` has not been wired yet: after `checkout`, it goes straight to `succeeded`/`no_findings`
-with every scanner reported `scanners_skipped` — no scanner runs. S-140 replaces this placeholder
-with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline (spec
-`workstream/specification-prd-security-analyst-agent.md` S8.8); this is explicitly out of S-135's
-scope. S-136 (`#229`) already built the two deterministic fixers (`fixers/semgrep_autofix.py`,
-`fixers/trivy_bump.py`), S-137 (`#230`) already built the re-scan gate (`rescan.py`'s
-`rescan_gate()`), S-138 (`#231`) already built the LLM escape hatch (`fix_agent.py`'s
-`run_fix_loop_for_finding()`), and S-139 (`#232`) already built the PR builder (`pull_request.py`'s
-`build_pr_body()` plus branch/idempotency/push mechanics) this pipeline will call, but none of
-the four are invoked yet — see Layout above. Wiring `fix`/`rescan`/`open_pr` into one live
-orchestrator loop remains S-140's job.
+Shares `resolve_credentials` / `checkout` / `scan` / `classify` with `audit_only` above (steps
+1-6, including the same `heartbeat.run_with_heartbeat()` wrapping for `scan`), then continues
+into the write path — `fix -> rescan -> open_pr -> determine_outcome()` — instead of building the
+`audit_report` artifact:
+
+7. **`fix`** — the classified findings are split by bucket (`classifier.py`'s
+   `mechanical`/`manual`/`unscannable`, D22). If there are no `mechanical` findings, the step is a
+   no-op (AC21): `rescan` and `open_pr` are never entered — there is nothing to fix and D23
+   permits no PR without a fix to verify. Otherwise:
+   - `fixers/semgrep_autofix.py`'s `apply_semgrep_autofix()` and `fixers/trivy_bump.py`'s
+     `apply_trivy_bump()` run first, against every `mechanical` finding.
+   - For each finding either fixer left `unresolved`, `fix_agent.py`'s
+     `run_fix_loop_for_finding()` (the LLM escape hatch) is invoked once, with its own fresh
+     `max_fix_attempts` budget — only when `max_fix_attempts > 0` (PRD AC17, D22/D26). A finding
+     the deterministic fixers fully resolved never reaches the LLM loop at all — zero Bedrock
+     calls for it, not merely a call that immediately succeeds.
+   - `metrics.fix_attempts_deterministic` counts every `mechanical` finding attempted;
+     `metrics.fix_attempts_llm`/`metrics.llm_used` count only LLM invocations, which stay at their
+     falsy defaults whenever the deterministic path resolved everything (AC13).
+8. **`rescan`** — only entered when `mechanical` was non-empty. Re-runs the full scanner set
+   (`_scan_with_heartbeat()`, the same heartbeated helper `scan` uses) against the working tree,
+   then gates the result through `rescan.py`'s `rescan_gate()`: `clean=True` only when every
+   fingerprint targeted by the `fix` step is gone and no unexplained new finding appeared
+   (D23/D25, requirement 34). A not-clean gate terminates the run
+   `failed`/`needs_review`/`RESCAN_NOT_CLEAN` (AC14/AC15) — `open_pr` is never entered, even if
+   the working tree carries a genuine local change from an unresolved fix attempt or the LLM's
+   mandate-confined edits.
+9. **`open_pr`** — reached only on a clean re-scan gate (spec §8.8's diagram has exactly one edge
+   into this step: `rescan --> open_pr: gate clean`). Constructs `pull_request.py`'s
+   `PipelineState` from the run's own bookkeeping (fixed findings, remaining manual/unscannable
+   findings, the D24-boundary and major-version-guard subsets, LLM usage, pre-/post-fix finding
+   counts) and calls `build_pr_body()` then `open_pr_if_needed()`. `open_pr_if_needed()` performs
+   the PRD AC22 idempotency check (`existing_pr()` via `gh pr list`) — an already-open
+   `security/fix-*` PR short-circuits to `succeeded`/`not_applicable` with no second branch/push/
+   PR, but a new branch is only ever avoided here, not before `rescan` — see the design note
+   below. Any push/PR-create failure after this point is a `PullRequestError`, mapped to
+   `failed`/`needs_review` (the fix itself succeeded; only the PR handoff failed).
+10. **`determine_outcome()`** — same pure function as `audit_only`, `mode="fix"` branch (spec
+    §8.10's second pseudocode block): `no_findings`/`needs_review` when there was nothing
+    mechanical to fix (AC21); `failed`/`RESCAN_NOT_CLEAN` on a not-clean gate; `not_applicable` on
+    the idempotency short-circuit; otherwise `succeeded`/`fixed` (nothing left in
+    `manual`/`unscannable` after gating) or `succeeded`/`partial` (AC13).
+
+All 7 `run_steps` keys (`resolve_credentials`/`checkout`/`scan`/`classify`/`fix`/`rescan`/
+`open_pr`) appear, in order, each terminal, on the full happy/blocked-at-rescan path (AC29) — the
+AC21 no-mechanical-findings short-circuit is the one branch that enters `fix` and then terminates
+without `rescan`/`open_pr`, the same precedent `audit_only`'s 4-step-only happy path already set
+for never needing a 5th step for `audit_report`.
 
 > **Design note — `determine_outcome()`'s 3-tuple return:** spec §8.10's pseudocode describes a
-> 4-tuple `(status, outcome, error_code, pr_opened)`. `audit_only` never opens a PR, so
-> `pr_opened` would always be `False` here and carries no information; `determine_outcome()`
-> therefore returns a 3-tuple, documented in its own docstring as a deliberate, scope-appropriate
-> choice (mirroring the sibling agent's own 3-tuple `determine_outcome()`), not a spec
-> non-compliance. The docstring also notes S-140 (which adds the `fix`/PR-opening branch, where
-> `pr_opened` becomes meaningful) is expected to either widen the signature back to 4 elements or
-> compute `pr_opened` separately at the call site — a decision deferred to that story.
+> 4-tuple `(status, outcome, error_code, pr_opened)`. `determine_outcome()` keeps its 3-tuple
+> shape `(status, outcome, error_code)` for both modes — `audit_only` never opens a PR, so
+> `pr_opened` would always be `False` there and carries no information, and for `fix` mode it is
+> fully recoverable at the call site as `status == "succeeded" and outcome in ("fixed",
+> "partial")` (deliberately excluding `not_applicable`, the idempotency case, since no *new* PR is
+> opened there). `main.invoke()` computes `pr_opened` this way rather than widening the tuple,
+> mirroring the sibling `dependency-update` agent's own `determine_outcome()`, which likewise
+> takes `pr_existed`/`has_pr` as plain caller-supplied booleans rather than deriving them
+> internally from a URL (see `agents/dependency-update/app/dependencyUpdate/main.py`). Keeping the
+> 3-tuple required zero changes to any already-merged `audit_only` call site or test — the
+> explicit mandate for this story.
+>
+> **Design note — idempotency location (PRD AC22):** spec §8.10's pseudocode checks
+> `state.existing_pr_url` as its very first statement, before any mode branching — implying
+> idempotency could short-circuit before `scan` even runs. This agent instead only ever calls
+> `pull_request.existing_pr()` (via `open_pr_if_needed()`) from inside the `open_pr` step, which
+> is reached only after a clean `rescan` gate — spec §8.8's diagram has no other edge into
+> `open_pr`. Practically, this means an already-open PR does not skip the run early: the fix
+> attempt, the full re-scan, and the gate check all still run (and are paid for) before the
+> idempotency short-circuit can fire and avoid only the branch/push/PR-create step itself. This
+> was a deliberate choice, not an oversight — checking idempotency any earlier is not supported by
+> the state diagram.
 
 ## Invocation payload (spec S6.1)
 
@@ -351,12 +435,14 @@ identical mechanism to the sibling agent), and requires an existing `queued` `ru
 invoking — see the sibling agent's README for the full prerequisite/troubleshooting flow (shared
 `RunReporter` contract).
 
-The example above uses `mode=audit_only` (the default), which as of S-135 runs the real five-tool
-scan/classify/report pipeline described under Pipeline above. `mode=fix` is also accepted by
-`validate_payload()` (it is in `_VALID_MODES`), but is still unimplemented — it falls straight
-through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-140 lands.
-S-136-S-139 built the fixer, rescan-gate, LLM-escape-hatch, and PR-builder modules `mode=fix` will
-eventually call, but they are not wired in yet.
+The example above uses `mode=audit_only` (the default), which runs the real five-tool
+scan/classify/report pipeline described under Pipeline above. `mode=fix` (`_VALID_MODES`) is
+fully implemented as of S-140: it runs the same scan/classify steps, then the real
+fix/rescan/open_pr pipeline described under Pipeline above — `succeeded`/`fixed` or `partial`
+with an opened PR on the happy path, `failed`/`RESCAN_NOT_CLEAN` if the re-scan gate is not clean,
+or `succeeded`/`no_findings`/`needs_review` when there was nothing mechanical to fix (AC21). Both
+modes accepted by `validate_payload()` now run their real pipeline end-to-end — neither is a
+placeholder any longer.
 
 ## Deployment
 
@@ -408,7 +494,7 @@ agent's row in `supabase/seed.sql` (S-141). See `docs/technical-guidelines.md` S
 | `RUN_ID` | Yes | Execution ID (passed by control plane at invocation) |
 | `RUN_PARAMS` | Yes | JSON payload with invocation parameters |
 | `AGENT_LOG_LEVEL` | No | Minimum log level captured (default: INFO) |
-| `MODEL_ID` | No | Bedrock model for the LLM fix loop, wired in a later story (default: `us.anthropic.claude-sonnet-4-6`) |
+| `MODEL_ID` | No | Bedrock model for the LLM fix loop (`fix_agent.py`, invoked from `mode=fix`'s `fix` step, S-140) (default: `us.anthropic.claude-sonnet-4-6`) |
 | `SCANNER_TIMEOUT` | No | Per-scanner subprocess timeout, in seconds (default: 600) |
 | `FIX_COMMAND_TIMEOUT` | No | Per-LLM-shell-call timeout in the fix agent, in seconds (default: 180) |
 | `IDLE_SESSION_TIMEOUT` | No | Mirror of `agentcore.json` `idleRuntimeSessionTimeout` (default: 900) |
