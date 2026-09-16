@@ -3,7 +3,10 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-140):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-141, build complete):** all 17 stories of the agent build are done; the code
+> path is fully wired for both modes. Applying the seed migration, redeploying, and running real
+> repo invocations remain pending explicit user confirmation (see the S-141 paragraph below).
+> Story-by-story: project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
