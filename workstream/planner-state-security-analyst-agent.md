@@ -20,7 +20,7 @@
 | 6        | S-130    | #190    | ✅ Merged  | #223 | issue/190-trivy-scanner-integration               |
 | 7        | S-131    | #191    | ✅ Merged  | #224 | issue/191-checkov-scanner-integration             |
 | 8        | S-132    | #192    | ✅ Merged  | #225 | issue/192-codeql-scanner-integration              |
-| 9        | S-133    | #193    | ⏳ Pending | —    | —                                                  |
+| 9        | S-133    | #193    | ✅ Merged  | #226 | issue/193-dedupe                                  |
 | 10       | S-134    | #194    | ⏳ Pending | —    | —                                                  |
 | 11       | S-135    | #195    | ⏳ Pending | —    | —                                                  |
 | 12       | S-136    | #196    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-133
-- Last merged PR: #225
-- Integration branch HEAD: 8277bf8
+- Next story: S-134
+- Last merged PR: #226
+- Integration branch HEAD: da9bb9b
 
 ## Decisions Log
 
@@ -53,3 +53,4 @@
 - S-130 (Trivy scanner, `lockfile_managed` boundary): the plan's own "single most consequential normalizer." Fidelity audit High/None — exhaustively verified the `_JS_LOCKFILES` boundary across every Trivy `fs`-mode target-file type. One real, load-bearing deviation confirmed correct: `remediation.kind` is set by Trivy's own `Class` field (config vs vulnerability), not by which of the three subcommands (fs/config/image) produced it — a literal reading of issue #190's own AC bullet 4 would have made PRD AC10 (base-image vuln → mechanical) permanently unreachable. Both technical-writer and verifier independently confirmed this by reading PRD AC10's actual text, not just trusting the developer's framing. Dockerfile still installs no scanner toolchain (semgrep/gitleaks/trivy all pending, flagged again each story since S-126).
 - S-131 (Checkov scanner): `ScanStatus.SKIPPED` (added in S-130 for Trivy's image-mode skip) reused verbatim for the "no IaC files present" case — no new status value needed. Fidelity High/Minor: `has_iac_files()`'s vendored-dir exclusion list omitted `.terraform` (Terraform's own local module/provider cache) unlike `node_modules`/`.venv` which it did exclude — fixed with a regression test before merge, commit 207552b.
 - S-132 (CodeQL scanner, final of 5): blocking pre-check (ARM64 CLI availability) passed — CodeQL CLI v2.27.0 confirmed to ship native `codeql-linux-arm64.zip`, independently re-verified live against GitHub's release API by both developer and verifier (not just trusted). Fidelity High/None — cleanest audit result of the run. This is the first story to actually install a real scanner binary into the Dockerfile; semgrep/gitleaks/trivy/checkov toolchains remain uninstalled (flagged, not fixed — likely blocks on whichever story wires `run_scanners()`, probably S-135). Dev also cleaned up ~52 stray `" 2"`-suffixed gitignored local sync-artifact files (iCloud Drive conflict copies in this working directory) — verified none were git-tracked, no data loss.
+- S-133 (dedupe.py): grouping-then-interval-merge algorithm correctly resolves chained 3-way+ overlaps (A-B overlap, B-C overlap, A-C don't directly overlap — all three still merge), verified independently by the auditor re-implementing and adversarially testing it (reversed input order, shuffled severity ties, same-tool double-report). Fidelity High/None. One flagged, non-blocking item: a pre-existing D19/D21 requirement-labeling mismatch inherited faithfully from the spec/PRD itself (not introduced by this story) — routed to `product-engineer` for a future PRD reconciliation pass, no code action needed.
