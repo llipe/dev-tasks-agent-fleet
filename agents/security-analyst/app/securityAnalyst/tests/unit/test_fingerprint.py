@@ -98,8 +98,23 @@ class TestRemediationSchema:
             remediation.kind = "structural"  # type: ignore[misc]
 
     def test_remediation_field_names_and_order_match_spec_exactly(self):
+        # `current_version` was added by S-134 (see `normalize.py`'s
+        # `Remediation` docstring) as an additive, defaulted-`None` trailing
+        # field so `classifier.py`'s `_is_major_bump()` has a pre-fix
+        # version to compare `target_version` against -- spec §8.4's own
+        # pseudocode calls `_is_major_bump(f)` expecting exactly this, but
+        # no prior story's schema carried it. Appending it after
+        # `lockfile_managed` (rather than inserting it earlier) keeps every
+        # existing keyword-argument `Remediation(...)` call site across the
+        # four already-merged scanner normalizers valid unchanged.
         field_names = [f.name for f in dataclasses.fields(Remediation)]
-        assert field_names == ["kind", "patch", "target_version", "lockfile_managed"]
+        assert field_names == [
+            "kind",
+            "patch",
+            "target_version",
+            "lockfile_managed",
+            "current_version",
+        ]
 
     def test_remediation_optional_fields_accept_none(self):
         remediation = Remediation(

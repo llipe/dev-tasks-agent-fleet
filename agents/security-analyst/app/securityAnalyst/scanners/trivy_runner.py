@@ -201,6 +201,13 @@ def _normalize_vulnerability(vuln: dict[str, Any], target: str, mode: str, index
             # npm/pnpm and Python findings; the split is enforced later, at
             # classification (`classifier.py`, S-134), never here.
             lockfile_managed=_is_js_lockfile(target),
+            # S-134 addition -- Trivy's own `InstalledVersion` field, passed
+            # through verbatim (not the `_parse_version_tuple()`-normalized
+            # form used above only to rank `FixedVersion` candidates) so
+            # `classifier.py`'s `_is_major_bump()` can compare it against
+            # `target_version` itself. See `normalize.py`'s `Remediation`
+            # docstring for why this field exists.
+            current_version=vuln.get("InstalledVersion") or None,
         )
         if fixed_version is not None
         else None

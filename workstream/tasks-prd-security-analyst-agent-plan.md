@@ -164,20 +164,20 @@
   - [x] 9.4 Verify Acceptance Criterion: two distinct findings (same file, different line, different category) stay separate (PRD AC8)
   - [x] 9.5 Run Tests: `tests/unit/test_dedupe.py` (merge case, no-merge case, three-way overlap, overlapping-lines-different-category) against synthetic `Finding` records — `make test-unit`
 
-- [ ] 10.0 Implement Story S-134: Classifier — mechanical/manual/unscannable — [Issue #194](https://github.com/llipe/dev-tasks-agent-fleet/issues/194)
+- [x] 10.0 Implement Story S-134: Classifier — mechanical/manual/unscannable — [Issue #194](https://github.com/llipe/dev-tasks-agent-fleet/issues/194)
 
   > Note: The single most product-defining logic in the agent — where D22/D24/requirement 54's boundary and requirement 27's major-version guard take effect. Depends on S-130 (`lockfile_managed`), S-133 (`MergedFinding`).
 
-  - [ ] 10.1 Implement `classify()` per spec §8.4 (four branches: `semgrep_autofix`→mechanical; `version_bump`+`lockfile_managed`→manual; `version_bump`+major-bump-on-non-lockfile→manual; else eligible `version_bump`→mechanical; everything else→manual; `remediation is None`→unscannable)
-  - [ ] 10.2 Implement `_is_major_bump()`/`_is_semver()` helpers
-  - [ ] 10.3 Verify Acceptance Criterion: Semgrep finding with native autofix patch → `mechanical` (PRD AC9)
-  - [ ] 10.4 Verify Acceptance Criterion: Trivy finding on a container base image (non-lockfile) with clean version-bump → `mechanical` (PRD AC10)
-  - [ ] 10.5 Verify Acceptance Criterion: Trivy finding on `package-lock.json`/`pnpm-lock.yaml` → `manual`, annotated naming `dependency-update` as owner (PRD AC11, requirement 24)
-  - [ ] 10.6 Verify Acceptance Criterion: Trivy finding on `requirements.txt`/`poetry.lock`/`Pipfile.lock` → `mechanical` when otherwise eligible — **not** excluded (PRD requirement 54)
-  - [ ] 10.7 Verify Acceptance Criterion: major-version bump on a non-lockfile semver artifact → `manual` with reason recorded (PRD requirement 27)
-  - [ ] 10.8 Verify Acceptance Criterion: unparseable remediation shape → `unscannable`, never guessed (PRD AC12)
-  - [ ] 10.9 Verify Acceptance Criterion: classification is deterministic parsing only, no LLM call (PRD requirement 25)
-  - [ ] 10.10 Run Tests: `tests/unit/test_classifier.py` — every branch, including the JS/TS-excluded vs. Python-not-excluded boundary side by side, and the `lockfile_managed=True` + major-bump simultaneous case — `make test-unit`
+  - [x] 10.1 Implement `classify()` per spec §8.4 (four branches: `semgrep_autofix`→mechanical; `version_bump`+`lockfile_managed`→manual; `version_bump`+major-bump-on-non-lockfile→manual; else eligible `version_bump`→mechanical; everything else→manual; `remediation is None`→unscannable)
+  - [x] 10.2 Implement `_is_major_bump()`/`_is_semver()` helpers
+  - [x] 10.3 Verify Acceptance Criterion: Semgrep finding with native autofix patch → `mechanical` (PRD AC9)
+  - [x] 10.4 Verify Acceptance Criterion: Trivy finding on a container base image (non-lockfile) with clean version-bump → `mechanical` (PRD AC10)
+  - [x] 10.5 Verify Acceptance Criterion: Trivy finding on `package-lock.json`/`pnpm-lock.yaml` → `manual`, annotated naming `dependency-update` as owner (PRD AC11, requirement 24)
+  - [x] 10.6 Verify Acceptance Criterion: Trivy finding on `requirements.txt`/`poetry.lock`/`Pipfile.lock` → `mechanical` when otherwise eligible — **not** excluded (PRD requirement 54)
+  - [x] 10.7 Verify Acceptance Criterion: major-version bump on a non-lockfile semver artifact → `manual` with reason recorded (PRD requirement 27)
+  - [x] 10.8 Verify Acceptance Criterion: unparseable remediation shape → `unscannable`, never guessed (PRD AC12)
+  - [x] 10.9 Verify Acceptance Criterion: classification is deterministic parsing only, no LLM call (PRD requirement 25)
+  - [x] 10.10 Run Tests: `tests/unit/test_classifier.py` — every branch, including the JS/TS-excluded vs. Python-not-excluded boundary side by side, and the `lockfile_managed=True` + major-bump simultaneous case — `make test-unit`
 
 - [ ] 11.0 Implement Story S-135: `audit_only` mode end-to-end, including `min_severity` gating — [Issue #195](https://github.com/llipe/dev-tasks-agent-fleet/issues/195)
 
