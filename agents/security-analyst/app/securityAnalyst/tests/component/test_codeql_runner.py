@@ -126,6 +126,12 @@ class TestRunCodeqlSingleLanguageDispatch:
         assert create_cmd[0] == "codeql"
         assert "--language=javascript-typescript" in create_cmd
         assert f"--source-root={workspace_js_ts}" in create_cmd
+        # S-141 real-repo finding: without this flag, `database create`
+        # defaults to running the language's autobuild script (JS/TS: npm
+        # install + build), which fails against a real repo with no npm
+        # registry access from the sandboxed runtime -- neither language
+        # this module supports needs a build step to extract from.
+        assert "--build-mode=none" in create_cmd
 
     @patch("scanners.codeql_runner.subprocess.run")
     def test_analyze_command_shape_references_the_js_ts_query_pack(self, mock_run, workspace_js_ts):

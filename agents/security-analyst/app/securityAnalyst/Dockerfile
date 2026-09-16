@@ -26,8 +26,17 @@ RUN if [ -s /usr/local/share/ca-certificates/extra-ca.crt ]; then \
 # System deps
 # unzip -- added for the CodeQL CLI install below (task 8.1); the CLI ships
 # as a .zip archive, not a .tar.gz like Gitleaks/Trivy's install scripts.
+# rustc/cargo -- S-141 fidelity-audit finding: checkov (pip install below)
+# depends on rustworkx, which as of this writing publishes no Python 3.13
+# wheel for any platform -- pip falls back to building it from source,
+# which needs a real Rust toolchain. Confirmed via a clean-container test
+# against this exact base image: with rustc/cargo present, `pip install .`
+# (including checkov) builds and installs cleanly; without them, the build
+# fails with "can't find Rust compiler". Debian's own rustc/cargo packages
+# (not rustup) are used deliberately -- they install over plain apt like
+# every other system dep here, with no extra HTTPS-to-github.com step.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl ca-certificates gnupg unzip && \
+    git curl ca-certificates gnupg unzip rustc cargo && \
     rm -rf /var/lib/apt/lists/*
 
 # gh CLI (from Debian repos as fallback when GitHub apt has SSL issues)
