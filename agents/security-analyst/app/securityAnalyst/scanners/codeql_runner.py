@@ -16,11 +16,18 @@ bundle release (`github/codeql-action` tag `codeql-bundle-v2.27.0`) carries a
 matching `codeql-bundle-linux-arm64.tar.gz` asset -- confirmed via the public
 GitHub Releases API before any code in this module was written (PRD OQ5,
 spec S15.2/S18 OQ1). The two query packs this module downloads
-(`codeql/javascript-typescript-queries`, `codeql/python-queries`) are pure QL
+(`codeql/javascript-queries`, `codeql/python-queries`) are pure QL
 source packs (`.ql`/`.qll` files + `qlpack.yml`), not platform-specific
 binaries -- they carry no architecture restriction of their own; only the
 CLI that compiles/runs them needs a native build, which v2.27.0 has. CodeQL
 CLI is pinned at **v2.27.0** in the Dockerfile (S8.1/S15.2).
+
+**S-141 redeploy finding, corrected here:** the JS/TS pack's actual
+published name is `codeql/javascript-queries` -- `codeql/javascript-typescript-
+queries` was never a real package (confirmed via `gh api
+orgs/codeql/packages`; JS and TS share one combined pack). The internal
+`"javascript-typescript"` dict key below is this module's own language
+identifier and is unaffected -- only the GHCR package name value was wrong.
 
 Per PRD S7.4a / spec S8.5's own prose (not its two-line `run_codeql(...) ->
 ScanResult` stub, which is silent on internal shape): CodeQL is scoped to
@@ -145,7 +152,7 @@ TOOL_NAME = "codeql"
 # Python), so `raw_ref` numbering and subprocess-call order are deterministic
 # across runs, not dependent on filesystem walk ordering.
 _QUERY_PACKS: dict[str, str] = {
-    "javascript-typescript": "codeql/javascript-typescript-queries",
+    "javascript-typescript": "codeql/javascript-queries",
     "python": "codeql/python-queries",
 }
 

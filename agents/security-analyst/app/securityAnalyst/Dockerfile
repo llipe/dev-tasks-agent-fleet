@@ -59,7 +59,17 @@ RUN curl -sSfL \
     unzip -q /tmp/codeql.zip -d /opt && \
     rm /tmp/codeql.zip && \
     ln -s /opt/codeql/codeql /usr/local/bin/codeql
-RUN codeql pack download codeql/javascript-typescript-queries codeql/python-queries
+# S-141 redeploy finding: `codeql/javascript-typescript-queries` does not
+# exist as a published package -- GitHub's actual published container
+# package (confirmed via `gh api orgs/codeql/packages`) is
+# `codeql/javascript-queries` (JS and TS share one query pack; there never
+# was a separate "javascript-typescript" package name). This was the sole
+# root cause of every `codeql pack download` failure this story hit,
+# including in CI (anonymous requests to a nonexistent package return 403,
+# not 404, so this looked like an auth/rate-limit problem and wasn't).
+# Confirmed the corrected name downloads successfully fully anonymously,
+# both locally and matching this exact command.
+RUN codeql pack download codeql/javascript-queries codeql/python-queries
 
 # Python deps
 WORKDIR /app
