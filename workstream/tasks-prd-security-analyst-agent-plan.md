@@ -209,16 +209,16 @@
   - [x] 12.7 Run Tests: `tests/unit` — Trivy bump target-version selection as a pure function — `make test-unit`
   - [x] 12.8 Run Tests: `tests/component/test_mechanical_fixers.py` (mocked subprocess; zero-mechanical-findings no-op; autofix-fails-to-apply-cleanly handoff case) — `make test-component`
 
-- [ ] 13.0 Implement Story S-137: The re-scan gate (`rescan.py`) — [Issue #197](https://github.com/llipe/dev-tasks-agent-fleet/issues/197)
+- [x] 13.0 Implement Story S-137: The re-scan gate (`rescan.py`) — [Issue #197](https://github.com/llipe/dev-tasks-agent-fleet/issues/197)
 
   > Note: The agent's defining trust mechanism (D23/D25) — no analog in the sibling agent. Built and proven standalone before S-140 wires it into the full orchestrator loop. Depends on S-136, S-135.
 
-  - [ ] 13.1 Implement `rescan_gate()` and the `_ALLOWED_NEW_FINDING_EXCEPTIONS` enumerated table per spec §8.7
-  - [ ] 13.2 Verify Acceptance Criterion: deterministic-fix-applies-but-finding-still-present → `clean=False`, `still_present` names it (PRD AC14 groundwork)
-  - [ ] 13.3 Verify Acceptance Criterion: fix-removes-target-but-introduces-new-finding → `clean=False`, `unexplained_new` names it, unless allow-listed (PRD AC15 groundwork)
-  - [ ] 13.4 Verify Acceptance Criterion: an enumerated allow-list exception does not fail the gate
-  - [ ] 13.5 Verify Acceptance Criterion: the gate never infers an exception — only the fixed table (PRD requirement 34)
-  - [ ] 13.6 Run Tests: `tests/unit/test_rescan_gate.py` — all four still-present/new-finding combinations, plus the allow-list path, plus a near-miss (partially matching but not exact) allow-list pattern — `make test-unit`
+  - [x] 13.1 Implement `rescan_gate()` and the `_ALLOWED_NEW_FINDING_EXCEPTIONS` enumerated table per spec §8.7
+  - [x] 13.2 Verify Acceptance Criterion: deterministic-fix-applies-but-finding-still-present → `clean=False`, `still_present` names it (PRD AC14 groundwork)
+  - [x] 13.3 Verify Acceptance Criterion: fix-removes-target-but-introduces-new-finding → `clean=False`, `unexplained_new` names it, unless allow-listed (PRD AC15 groundwork)
+  - [x] 13.4 Verify Acceptance Criterion: an enumerated allow-list exception does not fail the gate
+  - [x] 13.5 Verify Acceptance Criterion: the gate never infers an exception — only the fixed table (PRD requirement 34)
+  - [x] 13.6 Run Tests: `tests/unit/test_rescan_gate.py` — all four still-present/new-finding combinations, plus the allow-list path, plus a near-miss (partially matching but not exact) allow-list pattern — `make test-unit`
 
 - [ ] 14.0 Implement Story S-138: LLM fix agent — per-finding escape hatch — [Issue #198](https://github.com/llipe/dev-tasks-agent-fleet/issues/198)
 
