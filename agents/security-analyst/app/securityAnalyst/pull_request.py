@@ -28,18 +28,32 @@ Requirements:
       `pull_request` with its URL and title (caller's responsibility, not
       this module's — mirrors the sibling agent's split).
 
-This story (S-139) builds `pull_request.py` standalone and does not wire it
-into `main.py`'s orchestrator loop — that is S-140's scope. `build_pr_body()`
-therefore takes a `PipelineState` slice defined *in this module*: no
-orchestrator-level `PipelineState` exists anywhere in this agent yet (S-140
-has not run), and spec §8.9's own pseudocode signature
-(`build_pr_body(state: PipelineState)`) presumes one. The class below is
-the minimal, additive shape `build_pr_body()` actually needs — S-140 is
-expected to either construct this exact shape or a superset of it at the
-`open_pr` call site, a call-site decision not re-litigated here. This
-mirrors `main.py`'s own precedent for the same class of forward-reference
-gap (see `main.py`'s `determine_outcome()` docstring on the 3-vs-4-tuple
-split against spec §8.10's `PipelineState`-driven signature).
+S-139 built `pull_request.py` standalone, without wiring it into `main.py`'s
+orchestrator loop — `build_pr_body()`'s `PipelineState` slice, defined *in
+this module* rather than imported from an orchestrator-level type (since no
+such type existed yet), was that story's own explicit forward-reference gap
+for S-140 to resolve. **Resolved by S-140:** `main.py`'s `open_pr` step
+constructs this exact `PipelineState` shape directly at its
+`open_pr_if_needed()`/`build_pr_body()` call site — no superset was needed.
+`fixed` is populated from the full `mechanical` findings list (a clean
+re-scan gate, D23, is the orchestrator's proof that every targeted
+fingerprint is gone, so all of `mechanical` counts as fixed by
+construction); `manual_remaining`/`unscannable_remaining` come straight from
+`classifier.py`'s own bucket split; `dependency_update_boundary`/
+`major_version_guard` are derived at the call site as the two disjoint
+`Bucket.MANUAL` subsets whose `remediation.kind == "version_bump"`
+(`lockfile_managed` True vs. False respectively — `classifier.py`'s own
+branch order already guarantees mutual exclusivity, see that module's
+docstring); `llm_used`/`llm_fixed` come from the `fix` step's own
+per-finding LLM invocation bookkeeping; `rescan_before_count`/
+`rescan_after_count` are the orchestrator's pre-fix and post-fix merged
+finding-set sizes. This class remains defined here (not moved to `main.py`)
+since it is `build_pr_body()`'s own input contract, not a general
+pipeline-wide state type — `main.py` has no need for a shared
+`PipelineState` type beyond this one call site. This mirrors `main.py`'s
+own precedent for the same class of forward-reference gap (see `main.py`'s
+`determine_outcome()` docstring on the 3-tuple return shape, also resolved
+by S-140).
 """
 
 from __future__ import annotations
