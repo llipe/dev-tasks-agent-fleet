@@ -3,7 +3,7 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-134):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-135):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -14,30 +14,38 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > languages are detected) (S-132), cross-tool deduplication (`dedupe()`,
 > `_merge_overlapping_by_line()`, `MergedFinding` — conservative file+category+line-overlap
 > merge across tools within one scan pass, distinct from `fingerprint()`'s across-scan
-> tolerance) (S-133), and the finding classifier (`classify()`, `_is_major_bump()`,
+> tolerance) (S-133), the finding classifier (`classify()`, `_is_major_bump()`,
 > `_is_semver()` — the D22 three-bucket `mechanical`/`manual`/`unscannable` model, the D24/
 > req-54 `dependency-update` lockfile boundary, and requirement 27's major-version guard;
 > retroactively added `Remediation.current_version`, populated only by
 > `trivy_runner.py`'s `version_bump` branch, so the major-bump guard has a pre-fix version to
-> compare against `target_version` — see `normalize.py`'s `Remediation` docstring) (S-134). The
-> entrypoint still validates the invocation payload and runs the S-125 placeholder pipeline
-> (`resolve_credentials` -> `checkout` -> `succeeded`/`no_findings`) — **`main.py` does not call
-> any scanner yet**.
+> compare against `target_version` — see `normalize.py`'s `Remediation` docstring) (S-134), and
+> **`mode=audit_only` end-to-end** (S-135, `#228`): `main.py` now calls the new
+> `scanners.run_scanners()` dispatcher (all five tools, sequential, `AllScannersFailedError` on
+> total failure) inside a heartbeated `scan` step, then a `classify` step (`dedupe()` →
+> `classify()` per merged finding), builds the `audit_report` artifact from the full, unfiltered
+> finding set, and calls the new `determine_outcome()` (`_at_or_above_floor()` applies
+> `min_severity` to the terminal status only, never to the artifact — PRD requirement 62/AC-12b)
+> to reach `succeeded`/`no_findings`, `succeeded`/`needs_review`, or `failed`/`AUDIT_FINDINGS`.
+> **`mode=audit_only` is the first fully working mode of this agent.** `mode=fix` is still the
+> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-136-S-140 wire
+> `fix`/`rescan`/`open_pr` into it, per this story's explicit scope.
+>
+> `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
+> `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`,
 > `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
 > `scanners/gitleaks_runner.py`'s `run_gitleaks()`/`normalize_gitleaks()`,
 > `scanners/trivy_runner.py`'s `run_trivy()`/`normalize_trivy()`,
 > `scanners/checkov_runner.py`'s `run_checkov()`/`normalize_checkov()`/`has_iac_files()`,
 > `scanners/codeql_runner.py`'s `run_codeql()`/`normalize_codeql()`/`detect_languages()`,
-> `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
-> `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`, `dedupe.py`'s
-> `dedupe()`, and `classifier.py`'s `classify()` are all pure/subprocess-mocked,
-> unit-and-component-tested, and not yet wired into the pipeline (no `run_scanners()`
-> dispatcher, dedupe/classify step, or `main.py` caller exists until **S-135**, `audit_only`
-> mode end-to-end). This is a deliberate bring-up milestone, not a shortcut: it proves the
-> deploy/credential/reporting pipe end-to-end (mirroring how `agents/dependency-update/` proved
-> its own pipe first) before all five scanner integrations (S-128-S-132), cross-tool dedupe
-> (S-133), and classification (S-134, now complete) are wired together and invoked
-> (S-135-S-141).
+> `dedupe.py`'s `dedupe()`, and `classifier.py`'s `classify()` are all now wired into the live
+> `audit_only` pipeline via `scanners/__init__.py`'s `run_scanners()` dispatcher and `main.py`'s
+> `scan`/`classify` steps — none of these are "not yet wired" placeholders any longer for
+> `audit_only`. This is a deliberate, staged bring-up, not a shortcut: S-125 proved the
+> deploy/credential/reporting pipe end-to-end first (mirroring how `agents/dependency-update/`
+> proved its own pipe first), S-126-S-134 built and unit/component-tested each scanner, dedupe,
+> and classification piece in isolation, and S-135 is the first story to converge all of them
+> into one live pipeline. `fix`/`rescan`/`open_pr` remain unwired (S-136-S-140).
 
 ## Layout
 
@@ -48,7 +56,9 @@ agents/security-analyst/
 │   ├── aws-targets.json   # Deployment target (us-east-1)
 │   └── cdk/                # CDK infrastructure (managed by agentcore CLI)
 ├── app/securityAnalyst/
-│   ├── main.py              # Pipeline orchestrator entrypoint (placeholder pipeline, S-125)
+│   ├── main.py              # Pipeline orchestrator entrypoint. `mode=audit_only`: real
+│   │                        # scan -> classify -> determine_outcome pipeline (S-135). `mode=fix`
+│   │                        # still on the S-125 placeholder (S-136-S-140 wire it).
 │   ├── severity.py          # Per-tool severity normalization, pure functions (S-126)
 │   ├── normalize.py         # Finding/Remediation frozen dataclasses (S-127)
 │   ├── fingerprint.py       # fingerprint(), banded-line dedup key (S-127)
@@ -59,19 +69,25 @@ agents/security-analyst/
 │   │                        # mechanical/manual/unscannable model, D24/req-54 lockfile
 │   │                        # boundary, requirement 27 major-version guard (S-134)
 │   ├── scanners/
-│   │   ├── __init__.py        # Subpackage docstring: one module per tool, shared ScanStatus/ScanResult
+│   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
+│   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
+│   │   │                      # not parallelized (PRD §11/OQ6)
 │   │   ├── types.py           # ScanStatus/ScanResult shared shape, reused verbatim by S-129-S-132 (S-127-adjacent, landed S-128)
-│   │   ├── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — not yet called by main.py
-│   │   ├── gitleaks_runner.py # run_gitleaks(), normalize_gitleaks() (S-129) — not yet called by main.py
+│   │   ├── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — called by
+│   │   │                      # run_scanners() for audit_only mode (S-135)
+│   │   ├── gitleaks_runner.py # run_gitleaks(), normalize_gitleaks() (S-129) — called by
+│   │   │                      # run_scanners() for audit_only mode (S-135)
 │   │   ├── trivy_runner.py    # run_trivy() fs/config/conditional-image dispatch, normalize_trivy(),
-│   │   │                      # _JS_LOCKFILES D24/req-54 boundary (S-130) — not yet called by main.py
+│   │   │                      # _JS_LOCKFILES D24/req-54 boundary (S-130) — called by
+│   │   │                      # run_scanners() for audit_only mode (S-135)
 │   │   ├── checkov_runner.py  # run_checkov(), normalize_checkov(), has_iac_files() pre-flight
 │   │   │                      # skip detector (Terraform/Dockerfile/CloudFormation/Kubernetes),
-│   │   │                      # unconditional structural remediation (S-131) — not yet called by main.py
+│   │   │                      # unconditional structural remediation (S-131) — called by
+│   │   │                      # run_scanners() for audit_only mode (S-135)
 │   │   └── codeql_runner.py   # run_codeql(), normalize_codeql(), detect_languages() JS/TS +
 │   │                          # Python-only two-phase (database create/analyze) dispatch, merged
 │   │                          # findings across languages, unconditional structural remediation
-│   │                          # (S-132) — not yet called by main.py
+│   │                          # (S-132) — called by run_scanners() for audit_only mode (S-135)
 │   ├── agent_reporter.py    # Reporting SDK (byte-identical copy, docs/reference/)
 │   ├── config.py            # Environment variable reads, this agent's own clock constants
 │   ├── credentials.py       # Supabase key + GitHub App token resolution (unmodified copy)
@@ -102,7 +118,11 @@ agents/security-analyst/
 │       │                    # severity tie-break), test_classifier.py (S-134, every classify()
 │       │                    # branch, the JS/TS-excluded vs. Python-not-excluded boundary side
 │       │                    # by side, and the lockfile_managed=True + major-bump-simultaneous
-│       │                    # case, EC-38)
+│       │                    # case, EC-38), test_scanner_dispatch.py (S-135, run_scanners()
+│       │                    # per-tool dispatch order + AllScannersFailedError all-failed vs.
+│       │                    # partial-failure boundary), test_determine_outcome.py (S-135,
+│       │                    # parametrized over PRD §8.1 audit_only rows + min_severity
+│       │                    # crossing, incl. AC-12b's gate-outcome-not-artifact case)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
 │       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
@@ -110,7 +130,11 @@ agents/security-analyst/
 │       │                    # test_checkov_runner.py (S-131, run_checkov() subprocess dispatch
 │       │                    # mocked, incl. test_skip_no_iac AC-23),
 │       │                    # test_codeql_runner.py (S-132, two-phase per-language subprocess
-│       │                    # dispatch mocked, incl. skip path and both-languages merge)
+│       │                    # dispatch mocked, incl. skip path and both-languages merge),
+│       │                    # test_audit_only_pipeline.py (S-135, full main.py `invoke()`
+│       │                    # audit_only path, all five scanners mocked — clean repo, findings
+│       │                    # +/- fail_on_findings, min_severity gating incl. AC-12b, all- and
+│       │                    # one-of-five-scanner-failure)
 │       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
 │                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130),
 │                            # checkov_{clean,findings,no_severity}.json (S-131),
@@ -122,43 +146,55 @@ agents/security-analyst/
 └── README.md                 # This file
 ```
 
-## Pipeline (this story's subset)
+## Pipeline
+
+### `mode=audit_only` (S-135 — first fully working mode)
 
 1. Validate payload (reject with `INVALID_PARAMS` on bad input — no clone attempted)
 2. Resolve credentials (Supabase service role key, GitHub App token — reuses the sibling agent's
    `credentials.py` unmodified against the shared `github_installations` row)
 3. Clone repository (depth 1)
-4. Report `succeeded` / `no_findings` (placeholder — no scanner ran)
+4. **`scan`** — `scanners.run_scanners()` dispatches every requested tool (default: all five)
+   sequentially against the checked-out workspace, each isolating its own crash/timeout/
+   unparseable-output handling into a non-fatal `ScanStatus.FAILED` (PRD requirement 18). The step
+   is wrapped in `heartbeat.run_with_heartbeat()` (spec §8.8) since it is the single longest step —
+   CodeQL's `database create`/`database analyze` phase in particular. If every requested scanner
+   fails, `run_scanners()` raises `AllScannersFailedError` and the run terminates
+   `failed`/`not_applicable`/`ALL_SCANNERS_FAILED` (PRD AC24); a partial failure (one, or even four,
+   of five) is non-fatal — the run continues with whatever `PASSED` results exist.
+5. **`classify`** — the combined `Finding` list from every `PASSED`/`SKIPPED` scan result is deduped
+   (`dedupe.dedupe()`, cross-tool file+category+line-overlap merge into `MergedFinding`) and each
+   merged finding is classified (`classifier.classify()` — `mechanical`/`manual`/`unscannable`).
+6. **`audit_report` artifact** — `main.build_audit_report()` groups every classified finding by
+   bucket/tool/severity and is attached via `run.artifact(...)`. It is always built from the full,
+   unfiltered finding set — `min_severity` never narrows this artifact (PRD requirement 62 /
+   AC-12b; see `_at_or_above_floor()`'s docstring).
+7. **`determine_outcome()`** — pure function, `(status, outcome, error_code)`. Applies
+   `min_severity` (via `_at_or_above_floor()`) to the finding set to decide the terminal status
+   only:
+   - no findings at/above the floor → `succeeded` / `no_findings` (PRD AC3, AC12b)
+   - findings at/above the floor, `fail_on_findings=false` → `succeeded` / `needs_review` (PRD AC5)
+   - findings at/above the floor, `fail_on_findings=true` (default) → `failed` / `AUDIT_FINDINGS`
+     (PRD AC4, AC9)
 
-Later stories replace step 4 with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline
-(spec `workstream/specification-prd-security-analyst-agent.md` S8.8).
+`audit_only` never opens a branch or PR — it is a read-only scan/report mode (PRD §8.1).
 
-There are two related but distinct "not yet wired" categories below: the five **scanner
-runners** (no `run_scanners()` dispatcher exists yet to call them) and the **dedupe + classify**
-post-scan steps (no caller exists yet because they consume `run_scanners()`'s output, which does
-not exist yet either). Both land together in **S-135**, but they are separate gaps for separate
-reasons — a scanner runner producing zero findings is not the same condition as dedupe/classify
-having no input to run against.
+### `mode=fix` (still the S-125 placeholder)
 
-> **Note (S-128/S-129/S-130/S-131/S-132) — scanner runners not yet wired:**
-> `scanners/semgrep_runner.py`'s `run_semgrep()`, `scanners/gitleaks_runner.py`'s
-> `run_gitleaks()`, `scanners/trivy_runner.py`'s `run_trivy()`, `scanners/checkov_runner.py`'s
-> `run_checkov()`, and `scanners/codeql_runner.py`'s `run_codeql()` are all fully implemented and
-> covered by unit and component tests (with `subprocess.run` mocked — no real Semgrep, Gitleaks,
-> Trivy, Checkov, or CodeQL binary invocation is exercised in tests, though CodeQL's real CLI is
-> now installed in the Dockerfile, see Layout above), but **step 4 above still runs unmodified**:
-> `main.py` does not import or call any runner. The scan step's real wiring (`run_scanners()`
-> dispatching across all requested tools) lands in **S-135** (`audit_only` mode end-to-end).
->
-> **Note (S-133/S-134) — dedupe + classify not yet wired:** `dedupe.py`'s `dedupe()` and
-> `classifier.py`'s `classify()` are not scanners — they are pure, unit-tested post-scan steps
-> that consume a scanner run's combined `Finding` list (`dedupe()`) and a deduped
-> `MergedFinding` (`classify()`) respectively. Both are fully implemented and covered by unit
-> tests, but neither is wired into the pipeline: no caller invokes either yet, since
-> `run_scanners()` — the step that would produce their input — does not exist until S-135. Their
-> real wiring (`run_scanners()`'s output -> `dedupe()` -> `classify()` per finding) lands
-> alongside the rest of the `scan -> classify -> fix -> rescan -> open_pr` pipeline in **S-135**
-> and following.
+`mode=fix` has not been wired yet: after `checkout`, it goes straight to `succeeded`/`no_findings`
+with every scanner reported `scanners_skipped` — no scanner runs. S-136-S-140 replace this
+placeholder with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline (spec
+`workstream/specification-prd-security-analyst-agent.md` S8.8); this is explicitly out of S-135's
+scope.
+
+> **Design note — `determine_outcome()`'s 3-tuple return:** spec §8.10's pseudocode describes a
+> 4-tuple `(status, outcome, error_code, pr_opened)`. `audit_only` never opens a PR, so
+> `pr_opened` would always be `False` here and carries no information; `determine_outcome()`
+> therefore returns a 3-tuple, documented in its own docstring as a deliberate, scope-appropriate
+> choice (mirroring the sibling agent's own 3-tuple `determine_outcome()`), not a spec
+> non-compliance. The docstring also notes S-140 (which adds the `fix`/PR-opening branch, where
+> `pr_opened` becomes meaningful) is expected to either widen the signature back to 4 elements or
+> compute `pr_opened` separately at the call site — a decision deferred to that story.
 
 ## Invocation payload (spec S6.1)
 
@@ -186,6 +222,12 @@ invalid payload terminates `failed` / `not_applicable` / `INVALID_PARAMS` before
 identical mechanism to the sibling agent), and requires an existing `queued` `runs` row before
 invoking — see the sibling agent's README for the full prerequisite/troubleshooting flow (shared
 `RunReporter` contract).
+
+The example above uses `mode=audit_only` (the default), which as of S-135 runs the real five-tool
+scan/classify/report pipeline described under Pipeline above. `mode=fix` is also accepted by
+`validate_payload()` (it is in `_VALID_MODES`), but is still unimplemented — it falls straight
+through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-136-S-140
+land.
 
 ## Deployment
 
