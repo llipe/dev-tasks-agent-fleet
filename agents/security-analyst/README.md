@@ -3,26 +3,30 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-131):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-132):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
-> three-mode dispatch, D24/req-54 `lockfile_managed` boundary) (S-130), and the Checkov scanner
+> three-mode dispatch, D24/req-54 `lockfile_managed` boundary) (S-130), the Checkov scanner
 > integration (own IaC-file pre-flight skip detector, unconditional `structural` remediation)
-> (S-131). The entrypoint still validates the invocation payload and runs the S-125 placeholder
-> pipeline (`resolve_credentials` -> `checkout` -> `succeeded`/`no_findings`) — **`main.py` does
-> not call any scanner yet**. `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
+> (S-131), and the CodeQL scanner integration (JS/TS + Python-only language dispatch, two-phase
+> `database create`/`database analyze` CLI call per language, merged findings when both
+> languages are detected) (S-132). The entrypoint still validates the invocation payload and
+> runs the S-125 placeholder pipeline (`resolve_credentials` -> `checkout` ->
+> `succeeded`/`no_findings`) — **`main.py` does not call any scanner yet**.
+> `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
 > `scanners/gitleaks_runner.py`'s `run_gitleaks()`/`normalize_gitleaks()`,
 > `scanners/trivy_runner.py`'s `run_trivy()`/`normalize_trivy()`,
 > `scanners/checkov_runner.py`'s `run_checkov()`/`normalize_checkov()`/`has_iac_files()`,
+> `scanners/codeql_runner.py`'s `run_codeql()`/`normalize_codeql()`/`detect_languages()`,
 > `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
 > `Finding`/`Remediation` dataclasses, and `fingerprint.py`'s `fingerprint()` are all
 > pure/subprocess-mocked, unit-and-component-tested, and not yet wired into the pipeline (no
 > `run_scanners()` dispatcher or `main.py` caller exists until **S-135**, `audit_only` mode
 > end-to-end). This is a deliberate bring-up milestone, not a shortcut: it proves the
 > deploy/credential/reporting pipe end-to-end (mirroring how `agents/dependency-update/` proved
-> its own pipe first) before the scanner integrations (S-128-S-132) are wired together and
-> invoked (S-135-S-141).
+> its own pipe first) before all five scanner integrations (S-128-S-132, now complete) are wired
+> together and invoked (S-135-S-141).
 
 ## Layout
 
@@ -44,19 +48,27 @@ agents/security-analyst/
 │   │   ├── gitleaks_runner.py # run_gitleaks(), normalize_gitleaks() (S-129) — not yet called by main.py
 │   │   ├── trivy_runner.py    # run_trivy() fs/config/conditional-image dispatch, normalize_trivy(),
 │   │   │                      # _JS_LOCKFILES D24/req-54 boundary (S-130) — not yet called by main.py
-│   │   └── checkov_runner.py  # run_checkov(), normalize_checkov(), has_iac_files() pre-flight
-│   │                          # skip detector (Terraform/Dockerfile/CloudFormation/Kubernetes),
-│   │                          # unconditional structural remediation (S-131) — not yet called by main.py
+│   │   ├── checkov_runner.py  # run_checkov(), normalize_checkov(), has_iac_files() pre-flight
+│   │   │                      # skip detector (Terraform/Dockerfile/CloudFormation/Kubernetes),
+│   │   │                      # unconditional structural remediation (S-131) — not yet called by main.py
+│   │   └── codeql_runner.py   # run_codeql(), normalize_codeql(), detect_languages() JS/TS +
+│   │                          # Python-only two-phase (database create/analyze) dispatch, merged
+│   │                          # findings across languages, unconditional structural remediation
+│   │                          # (S-132) — not yet called by main.py
 │   ├── agent_reporter.py    # Reporting SDK (byte-identical copy, docs/reference/)
 │   ├── config.py            # Environment variable reads, this agent's own clock constants
 │   ├── credentials.py       # Supabase key + GitHub App token resolution (unmodified copy)
 │   ├── scrubber.py          # Token scrubbing for output/errors (unmodified copy)
 │   ├── heartbeat.py         # Long-step keep-alive: live-yield heartbeat chunks (unmodified copy)
 │   ├── signal_backstop.py   # Best-effort SIGTERM terminal-report backstop (unmodified copy)
-│   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh — does NOT yet install the
-│   │                        # semgrep/gitleaks/trivy/checkov binaries or any other scanner toolchain
-│   │                        # (S-128/S-129/S-130/S-131's tests all mock subprocess.run; real binary
-│   │                        # install/wiring lands in a later story, S-132+)
+│   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh + the CodeQL CLI (pinned
+│   │                        # v2.27.0, S-132 — the first story to install a real scanner
+│   │                        # toolchain into this image, per its own blocking ARM64-availability
+│   │                        # pre-check) plus its two query packs — does NOT yet install the
+│   │                        # semgrep/gitleaks/trivy/checkov binaries (S-128/S-129/S-130/S-131's
+│   │                        # tests all mock subprocess.run; those four tools' own real-binary
+│   │                        # install/wiring is a separate, still-open gap, tracked outside this
+│   │                        # story's scope per issue #192)
 │   ├── pyproject.toml       # Python dependencies (pinned)
 │   ├── Makefile              # install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate
 │   └── tests/
@@ -65,16 +77,22 @@ agents/security-analyst/
 │       │                    # test_gitleaks_runner.py + test_gitleaks_redaction.py (S-129),
 │       │                    # test_trivy_runner.py (S-130, normalize_trivy() + lockfile boundary),
 │       │                    # test_checkov_runner.py (S-131, normalize_checkov() dual-shape
-│       │                    # parsing + has_iac_files() detection incl. vendored-dir exclusion)
+│       │                    # parsing + has_iac_files() detection incl. vendored-dir exclusion),
+│       │                    # test_codeql_runner.py (S-132, normalize_codeql() rule-level
+│       │                    # security-severity/CWE-tag lookup + detect_languages() 4-way
+│       │                    # trigger-condition matrix)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
 │       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
 │       │                    # test_trivy_runner.py (S-130, three-mode subprocess dispatch mocked),
 │       │                    # test_checkov_runner.py (S-131, run_checkov() subprocess dispatch
-│       │                    # mocked, incl. test_skip_no_iac AC-23)
+│       │                    # mocked, incl. test_skip_no_iac AC-23),
+│       │                    # test_codeql_runner.py (S-132, two-phase per-language subprocess
+│       │                    # dispatch mocked, incl. skip path and both-languages merge)
 │       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
 │                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130),
-│                            # checkov_{clean,findings,no_severity}.json (S-131))
+│                            # checkov_{clean,findings,no_severity}.json (S-131),
+│                            # codeql_{clean,js_ts,python}.json (S-132))
 │                            # plus gitleaks_fixture_repo/ + gitleaks_fixture_repo.bundle (S-129):
 │                            # a tiny repo containing one clearly-labeled dummy secret
 │                            # (FIXTURE_DUMMY_SECRET_DO_NOT_USE_...) used to exercise
@@ -93,13 +111,15 @@ agents/security-analyst/
 Later stories replace step 4 with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline
 (spec `workstream/specification-prd-security-analyst-agent.md` S8.8).
 
-> **Note (S-128/S-129/S-130/S-131):** `scanners/semgrep_runner.py`'s `run_semgrep()`,
+> **Note (S-128/S-129/S-130/S-131/S-132):** `scanners/semgrep_runner.py`'s `run_semgrep()`,
 > `scanners/gitleaks_runner.py`'s `run_gitleaks()`, `scanners/trivy_runner.py`'s `run_trivy()`,
-> and `scanners/checkov_runner.py`'s `run_checkov()` are all fully implemented and covered by unit
-> and component tests (with `subprocess.run` mocked — no real Semgrep, Gitleaks, Trivy, or Checkov
-> binary invocation is exercised yet), but **step 4 above still runs unmodified**: `main.py` does
-> not import or call any runner. The scan step's real wiring (`run_scanners()` dispatching across
-> all requested tools) lands in **S-135** (`audit_only` mode end-to-end).
+> `scanners/checkov_runner.py`'s `run_checkov()`, and `scanners/codeql_runner.py`'s `run_codeql()`
+> are all fully implemented and covered by unit and component tests (with `subprocess.run` mocked
+> — no real Semgrep, Gitleaks, Trivy, Checkov, or CodeQL binary invocation is exercised in tests,
+> though CodeQL's real CLI is now installed in the Dockerfile, see Layout above), but **step 4
+> above still runs unmodified**: `main.py` does not import or call any runner. The scan step's
+> real wiring (`run_scanners()` dispatching across all requested tools) lands in **S-135**
+> (`audit_only` mode end-to-end).
 
 ## Invocation payload (spec S6.1)
 
