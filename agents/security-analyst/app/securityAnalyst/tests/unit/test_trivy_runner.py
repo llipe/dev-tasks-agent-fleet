@@ -342,6 +342,13 @@ class TestNormalizeTrivyCleanFixture:
         findings = normalize_trivy(raw_output, mode="fs")
         assert findings == []
 
+    def test_missing_results_key_normalizes_to_no_findings(self):
+        # S-141 real-invocation finding: the real trivy v0.74.0 binary omits
+        # the "Results" key entirely (not null) when zero config files are
+        # detected -- confirmed against the real binary, not a fixture.
+        findings = normalize_trivy(json.dumps({"SchemaVersion": 2}), mode="fs")
+        assert findings == []
+
 
 # ---------------------------------------------------------------------------
 # normalize_trivy() -- unparseable input (PRD requirement 18)
@@ -352,10 +359,6 @@ class TestNormalizeTrivyUnparseableInput:
     def test_invalid_json_raises_json_decode_error(self):
         with pytest.raises(json.JSONDecodeError):
             normalize_trivy("not valid json{{{", mode="fs")
-
-    def test_missing_results_key_raises_key_error(self):
-        with pytest.raises(KeyError):
-            normalize_trivy(json.dumps({"SchemaVersion": 2}), mode="fs")
 
     def test_results_entry_missing_target_raises_key_error(self):
         with pytest.raises(KeyError):

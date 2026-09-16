@@ -63,6 +63,15 @@ class TestNormalizeGitleaksCleanFixture:
         findings = normalize_gitleaks("null")
         assert findings == []
 
+    def test_empty_stdout_normalizes_to_no_findings(self):
+        # S-141 real-invocation finding: the real gitleaks v8.30.1 binary
+        # writes zero bytes to --report-path /dev/stdout on a clean scan --
+        # confirmed against the real binary, not a fixture.
+        findings = normalize_gitleaks("")
+        assert findings == []
+        findings = normalize_gitleaks("   \n")
+        assert findings == []
+
 
 # ---------------------------------------------------------------------------
 # normalize_gitleaks() -- findings fixture

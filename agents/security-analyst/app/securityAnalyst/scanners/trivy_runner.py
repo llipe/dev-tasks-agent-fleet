@@ -285,15 +285,22 @@ def normalize_trivy(raw_output: str, mode: str) -> list[Finding]:
 
     Pure function over the raw JSON text. Trivy writes a top-level
     ``"Results": null`` (not ``[]``) when nothing was found for that
-    invocation -- both are treated identically as "no results", mirroring
-    `gitleaks_runner.py`'s identical `null`-vs-empty-list handling. Raises
+    invocation on some code paths -- and, per S-141 real-invocation
+    testing against the real v0.74.0 binary, **omits the ``Results`` key
+    from the payload entirely** (confirmed for `config` mode against a
+    repo with zero detected config files: ``Detected config files num=0``
+    and no ``Results`` key anywhere in the JSON at all) on others. All
+    three (``null``, ``[]``, and the key being entirely absent) are
+    treated identically as "no results" -- the original S-130 design only
+    anticipated the first two and treated a missing key as a structural
+    error, which real Trivy output does not support; this was never
+    exercised against the real binary until now. Raises
     `json.JSONDecodeError` on invalid JSON and `KeyError`/`TypeError` on a
-    structurally-unexpected payload (missing ``Results`` key entirely, or a
-    result/entry missing a required field) -- `run_trivy()` below catches
-    both and maps them to the non-fatal `ScanStatus.FAILED` path (PRD
-    requirement 18); this function itself stays a strict,
-    total-over-its-documented-input-shape parser rather than silently
-    swallowing structural errors.
+    genuinely structurally-unexpected payload (a result/entry missing a
+    required field) -- `run_trivy()` below catches both and maps them to
+    the non-fatal `ScanStatus.FAILED` path (PRD requirement 18); this
+    function itself stays a strict, total-over-its-documented-input-shape
+    parser rather than silently swallowing structural errors.
 
     Only ``Status == "FAIL"`` (or absent -- Trivy omits `Status` entirely on
     some always-failing check types) misconfiguration rows become findings;
@@ -301,7 +308,7 @@ def normalize_trivy(raw_output: str, mode: str) -> list[Finding]:
     passing checks) are not findings and are excluded.
     """
     data = json.loads(raw_output)
-    results = data["Results"] or []
+    results = data.get("Results") or []
 
     findings: list[Finding] = []
     index = 0
