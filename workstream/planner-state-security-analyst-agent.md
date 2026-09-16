@@ -27,14 +27,14 @@
 | 13       | S-137    | #197    | ✅ Merged  | #230 | issue/197-rescan-gate                              |
 | 14       | S-138    | #198    | ✅ Merged  | #231 | issue/198-llm-fix-agent-per-finding-escape-hatch   |
 | 15       | S-139    | #199    | ✅ Merged  | #232 | issue/199-pr-builder-body-sections                 |
-| 16       | S-140    | #200    | ⏳ Pending | —    | —                                                  |
+| 16       | S-140    | #200    | ✅ Merged  | #233 | issue/200-s140-fix-mode-wiring                     |
 | 17       | S-141    | #201    | ⏳ Pending | —    | —                                                  |
 
 ## Current Position
 
-- Next story: S-140
-- Last merged PR: #232
-- Integration branch HEAD: c2e5800
+- Next story: S-141
+- Last merged PR: #233
+- Integration branch HEAD: 41d668a
 
 ## Decisions Log
 
@@ -60,3 +60,4 @@
 - S-137 (rescan.py, "the agent's defining trust mechanism"): the most rigorous audit of the run — verifier constructed 10 of its own adversarial near-miss cases (case variants, whitespace, cross-tool leakage, swapped fields, Unicode suffixes) beyond the developer's own tests, found zero paths to a false `clean=True`. Fidelity High/Minor: two cosmetic, non-blocking notes (a closure-vs-parameter signature simplification vs spec's literal pseudocode; one untested defensive fallback branch). Requirement 34's "never infer an exception, only the fixed table" guarantee held up under direct adversarial pressure. 408/408 tests.
 - S-138 (fix_agent.py, LLM escape hatch — the one genuinely new design point vs sibling agent): most adversarial security audit yet — 16 independently-constructed `_safe_path` escape attempts (traversal, symlinks, absolute paths, null bytes) all rejected; real non-mocked git scenario testing against `_assert_diff_confined_to()` including rename and permission-only-change edge cases, zero confinement gaps. Fidelity High/Minor: one coverage gap (rename-arrow parsing branch, functionally correct but untested) — fixed with two regression tests before merge (commit 99c78ef). Per-finding budget isolation and AC18 (max_attempts=0 → zero Bedrock calls) verified structurally, not just by test trust. 573/573 tests.
 - S-139 (pull_request.py, PR builder): branch/idempotency/push mechanics port confirmed genuinely faithful to the sibling agent (same structural pattern, same credential-helper snippet, same check-then-act idempotency tradeoff — not a superficial reimplementation). AC15's always-present-even-empty remaining-manual table verified by tracing the actual code path, not just a test name. Introduced a local `PipelineState` forward-reference stub since S-140 hasn't landed yet — assessed as low-risk, mirrors S-135's already-accepted `determine_outcome()` 3-tuple precedent, well-documented, now surfaced in the README for whoever does S-140 (me, next). Fidelity High/Minor: one cosmetic task-list AC-citation mislabeling (AC15/AC17 cited where requirement 42 is correct), functionality unaffected, flagged for a future product-engineer doc pass — not fixed. 611/611 tests. All 4 pieces of fix mode's write path (mechanical fixers, rescan gate, LLM fix agent, PR builder) now complete; S-140 wires them together.
+- S-140 (fix mode end-to-end wiring, capstone integration): both forward-reference gaps resolved — `determine_outcome()` kept its 3-tuple, `pr_opened` computed at the main.py call site (independently confirmed to mirror the sibling agent's `pr_existed`-as-caller-supplied-flag pattern, not just claimed); `PipelineState` constructed exactly (no superset) at the `open_pr` call site. Fidelity High/Minor. The critical AC14/15 trust guarantee (no PR without a clean re-scan, even with real local file changes present) verified by direct code tracing — no path to `open_pr_if_needed()` exists when the gate isn't clean. Two non-blocking notes routed to product-engineer: AC29's "all 7 steps" scope is an interpretation (steps after an early exit are simply omitted, not marked skipped — reasonable but not literal PRD text); idempotency check lives inside `open_pr`, so an already-open-PR run still pays for a full fix+rescan cycle before short-circuiting (wasteful, not incorrect). 641/641 tests. Both modes (audit_only, fix) now fully wired — only S-141 (seed/deploy/real-repo verification) remains.
