@@ -110,19 +110,19 @@
   - [x] 5.7 Run Tests: `tests/unit/test_gitleaks_runner.py`, `tests/unit/test_gitleaks_redaction.py` (asserting the dummy secret's literal value is absent from every output surface, including multiple-occurrence redaction) — `make test-unit`
   - [x] 5.8 Run Tests: `tests/component/test_gitleaks_runner.py` (mocked subprocess) — `make test-component`
 
-- [ ] 6.0 Implement Story S-130: Trivy scanner integration (fs/config/image + D24/req 54 boundary) — [Issue #190](https://github.com/llipe/dev-tasks-agent-fleet/issues/190)
+- [x] 6.0 Implement Story S-130: Trivy scanner integration (fs/config/image + D24/req 54 boundary) — [Issue #190](https://github.com/llipe/dev-tasks-agent-fleet/issues/190)
 
   > Note: The single most consequential normalizer — decides `lockfile_managed`, which drives the entire classifier split in S-134. Depends on S-127, S-126.
 
-  - [ ] 6.1 Implement `run_trivy()` three-mode dispatch: `fs` (npm/pnpm **and** Python manifests), `config`, conditional `image` (when a Dockerfile is present, against a representative base image)
-  - [ ] 6.2 Implement `normalize_trivy()`, including the `lockfile_managed` decision — `True` **only** for `package-lock.json`/`pnpm-lock.yaml` targets (`_JS_LOCKFILES`), `False` for Python manifest targets
-  - [ ] 6.3 Set `remediation.kind = "version_bump"` with `target_version` for both npm/pnpm and Python findings alike (boundary applied later, at classification — not here)
-  - [ ] 6.4 Build fixture JSON for all four target-file cases: `fs`(npm), `fs`(Python), `config`, `image`
-  - [ ] 6.5 Verify Acceptance Criterion: `fs` mode covers both npm/pnpm and Python manifests (PRD requirement 53)
-  - [ ] 6.6 Verify Acceptance Criterion: `lockfile_managed` correctly `True`/`False` per target-file case (PRD requirement 54)
-  - [ ] 6.7 Verify Acceptance Criterion: `image` mode skipped (not failed) when no Dockerfile present (PRD requirement 17)
-  - [ ] 6.8 Run Tests: `tests/unit/test_trivy_runner.py::test_lockfile_managed_boundary` and general normalize tests — `make test-unit`
-  - [ ] 6.9 Run Tests: `tests/component/test_trivy_runner.py` (three-mode dispatch mocked) — `make test-component`
+  - [x] 6.1 Implement `run_trivy()` three-mode dispatch: `fs` (npm/pnpm **and** Python manifests), `config`, conditional `image` (when a Dockerfile is present, against a representative base image)
+  - [x] 6.2 Implement `normalize_trivy()`, including the `lockfile_managed` decision — `True` **only** for `package-lock.json`/`pnpm-lock.yaml` targets (`_JS_LOCKFILES`), `False` for Python manifest targets
+  - [x] 6.3 Set `remediation.kind = "version_bump"` with `target_version` for both npm/pnpm and Python findings alike (boundary applied later, at classification — not here)
+  - [x] 6.4 Build fixture JSON for all four target-file cases: `fs`(npm), `fs`(Python), `config`, `image`
+  - [x] 6.5 Verify Acceptance Criterion: `fs` mode covers both npm/pnpm and Python manifests (PRD requirement 53)
+  - [x] 6.6 Verify Acceptance Criterion: `lockfile_managed` correctly `True`/`False` per target-file case (PRD requirement 54)
+  - [x] 6.7 Verify Acceptance Criterion: `image` mode skipped (not failed) when no Dockerfile present (PRD requirement 17)
+  - [x] 6.8 Run Tests: `tests/unit/test_trivy_runner.py::test_lockfile_managed_boundary` and general normalize tests — `make test-unit`
+  - [x] 6.9 Run Tests: `tests/component/test_trivy_runner.py` (three-mode dispatch mocked) — `make test-component`
 
 - [ ] 7.0 Implement Story S-131: Checkov scanner integration — [Issue #191](https://github.com/llipe/dev-tasks-agent-fleet/issues/191)
 
