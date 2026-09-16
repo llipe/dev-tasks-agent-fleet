@@ -21,7 +21,7 @@
 | 7        | S-131    | #191    | ✅ Merged  | #224 | issue/191-checkov-scanner-integration             |
 | 8        | S-132    | #192    | ✅ Merged  | #225 | issue/192-codeql-scanner-integration              |
 | 9        | S-133    | #193    | ✅ Merged  | #226 | issue/193-dedupe                                  |
-| 10       | S-134    | #194    | ⏳ Pending | —    | —                                                  |
+| 10       | S-134    | #194    | ✅ Merged  | #227 | issue/194-classifier-mechanical-manual-unscannable |
 | 11       | S-135    | #195    | ⏳ Pending | —    | —                                                  |
 | 12       | S-136    | #196    | ⏳ Pending | —    | —                                                  |
 | 13       | S-137    | #197    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-134
-- Last merged PR: #226
-- Integration branch HEAD: da9bb9b
+- Next story: S-135
+- Last merged PR: #227
+- Integration branch HEAD: a731181
 
 ## Decisions Log
 
@@ -54,3 +54,4 @@
 - S-131 (Checkov scanner): `ScanStatus.SKIPPED` (added in S-130 for Trivy's image-mode skip) reused verbatim for the "no IaC files present" case — no new status value needed. Fidelity High/Minor: `has_iac_files()`'s vendored-dir exclusion list omitted `.terraform` (Terraform's own local module/provider cache) unlike `node_modules`/`.venv` which it did exclude — fixed with a regression test before merge, commit 207552b.
 - S-132 (CodeQL scanner, final of 5): blocking pre-check (ARM64 CLI availability) passed — CodeQL CLI v2.27.0 confirmed to ship native `codeql-linux-arm64.zip`, independently re-verified live against GitHub's release API by both developer and verifier (not just trusted). Fidelity High/None — cleanest audit result of the run. This is the first story to actually install a real scanner binary into the Dockerfile; semgrep/gitleaks/trivy/checkov toolchains remain uninstalled (flagged, not fixed — likely blocks on whichever story wires `run_scanners()`, probably S-135). Dev also cleaned up ~52 stray `" 2"`-suffixed gitignored local sync-artifact files (iCloud Drive conflict copies in this working directory) — verified none were git-tracked, no data loss.
 - S-133 (dedupe.py): grouping-then-interval-merge algorithm correctly resolves chained 3-way+ overlaps (A-B overlap, B-C overlap, A-C don't directly overlap — all three still merge), verified independently by the auditor re-implementing and adversarially testing it (reversed input order, shuffled severity ties, same-tool double-report). Fidelity High/None. One flagged, non-blocking item: a pre-existing D19/D21 requirement-labeling mismatch inherited faithfully from the spec/PRD itself (not introduced by this story) — routed to `product-engineer` for a future PRD reconciliation pass, no code action needed.
+- S-134 (classifier.py, "single most product-defining logic"): required a retroactive, additive schema change — `Remediation.current_version` added to already-merged `normalize.py`, populated by already-merged `trivy_runner.py`, since no prior story carried a pre-fix version for the major-bump guard (requirement 27). Independently verified safe: all `Remediation(...)` call sites use keyword args, field appended last, 387/387 full suite passing with zero regressions elsewhere. Fidelity High/Minor. All classify() branches (semgrep_autofix→mechanical, lockfile_managed→manual with dependency-update ownership annotation, major-bump guard, JS/TS-vs-Python req-54 boundary, EC-38 both-guards-simultaneously precedence) verified against spec line-by-line. Stray local sync-artifact file (`test_dedupe 2.py`, untracked) noted again, left alone as usual.
