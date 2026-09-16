@@ -64,9 +64,16 @@ class TestNormalizeGitleaksCleanFixture:
         assert findings == []
 
     def test_empty_stdout_normalizes_to_no_findings(self):
-        # S-141 real-invocation finding: the real gitleaks v8.30.1 binary
-        # writes zero bytes to --report-path /dev/stdout on a clean scan --
-        # confirmed against the real binary, not a fixture.
+        # Kept as a defensive fallback (normalize_gitleaks is a pure
+        # function -- this is not about real gitleaks output shape). The
+        # original S-141 finding attributed a zero-byte report to a clean
+        # scan, but that was later found (same S-141 pass, see
+        # gitleaks_runner.py's module docstring REVERTED section) to be an
+        # artifact of the since-removed --report-path /dev/stdout trick
+        # silently losing data -- not real gitleaks behavior. A real file
+        # report-path (now used unconditionally) writes `[]` on a clean
+        # scan, exercised by test_empty_array_normalizes_to_no_findings
+        # above.
         findings = normalize_gitleaks("")
         assert findings == []
         findings = normalize_gitleaks("   \n")

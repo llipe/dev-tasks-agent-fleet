@@ -105,18 +105,31 @@ class TestMultipleOccurrenceRedaction:
         assert DUMMY_SECRET not in adversarial.message
 
 
-def _completed_process(stdout: str, returncode: int = 0):
+def _completed_process(returncode: int = 0):
     import subprocess
 
     return subprocess.CompletedProcess(
-        args=["gitleaks"], returncode=returncode, stdout=stdout, stderr=""
+        args=["gitleaks"], returncode=returncode, stdout="", stderr=""
     )
+
+
+def _mock_run_writing_report(fixture_content: str, returncode: int = 0):
+    # S-141 finding: --report-path is now a real temp file (see
+    # gitleaks_runner.py module docstring REVERTED section), not
+    # /dev/stdout -- tests simulate the real binary's effect by writing
+    # fixture content to that path themselves before returning.
+    def _side_effect(cmd, **kwargs):
+        report_path = Path(cmd[cmd.index("--report-path") + 1])
+        report_path.write_text(fixture_content)
+        return _completed_process(returncode=returncode)
+
+    return _side_effect
 
 
 class TestScanResultSurfaceOnPassedPath:
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_scan_result_findings_and_repr_exclude_the_secret(self, mock_run):
-        mock_run.return_value = _completed_process(_load_fixture("gitleaks_findings.json"))
+        mock_run.side_effect = _mock_run_writing_report(_load_fixture("gitleaks_findings.json"))
 
         result = run_gitleaks(Path("/workspace"), timeout=600)
 
@@ -140,7 +153,7 @@ class TestScanResultReasonSurfaceOnFailurePaths:
         # text (e.g. a truncated/garbled Gitleaks write) -- the JSON parse
         # failure path must not echo raw stdout content into `reason`.
         corrupted = f"not valid json {{{{ {DUMMY_SECRET}"
-        mock_run.return_value = _completed_process(corrupted)
+        mock_run.side_effect = _mock_run_writing_report(corrupted)
 
         result = run_gitleaks(Path("/workspace"), timeout=600)
 

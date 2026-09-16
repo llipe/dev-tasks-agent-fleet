@@ -15,10 +15,11 @@ Covers:
   - Binary-missing / crash-to-start (``OSError``) -> non-fatal
     ``ScanStatus.FAILED``.
   - The exact command shape: ``--report-format json``, ``--report-path
-    /dev/stdout`` (this module's documented stdout-capture deviation --
-    see ``gitleaks_runner.py``'s module docstring), ``--no-git``,
-    ``--exit-code 0`` (a findings-bearing exit is not a crash, same
-    reasoning as Semgrep's ignored exit code).
+    <real temp file>`` (S-141 finding: ``/dev/stdout`` silently lost real
+    findings under pipe-captured stdout -- see ``gitleaks_runner.py``'s
+    module docstring REVERTED section), ``--no-git``, ``--exit-code 0`` (a
+    findings-bearing exit is not a crash, same reasoning as Semgrep's
+    ignored exit code).
   - ``SCANNER_TIMEOUT`` passed through as ``timeout=`` on the subprocess
     call, independent of any other scanner's timeout.
 """
@@ -42,16 +43,33 @@ def _load_fixture(name: str) -> str:
     return (_FIXTURES / name).read_text()
 
 
-def _completed_process(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess:
+def _completed_process(returncode: int = 0) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(
-        args=["gitleaks"], returncode=returncode, stdout=stdout, stderr=""
+        args=["gitleaks"], returncode=returncode, stdout="", stderr=""
     )
+
+
+def _report_path_from_cmd(cmd: list[str]) -> Path:
+    """S-141 finding: ``--report-path`` is now a real temp file (see
+    gitleaks_runner.py module docstring REVERTED section), not
+    ``/dev/stdout`` -- tests simulate the real binary's effect by writing
+    fixture content to that path themselves before returning.
+    """
+    return Path(cmd[cmd.index("--report-path") + 1])
+
+
+def _mock_run_writing_report(fixture_content: str, returncode: int = 0):
+    def _side_effect(cmd, **kwargs):
+        _report_path_from_cmd(cmd).write_text(fixture_content)
+        return _completed_process(returncode=returncode)
+
+    return _side_effect
 
 
 class TestRunGitleaksZeroFindings:
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_clean_repo_returns_passed_with_no_findings(self, mock_run):
-        mock_run.return_value = _completed_process(_load_fixture("gitleaks_clean.json"))
+        mock_run.side_effect = _mock_run_writing_report(_load_fixture("gitleaks_clean.json"))
 
         result = run_gitleaks(Path("/workspace"), timeout=600)
 
@@ -68,7 +86,7 @@ class TestRunGitleaksFindingsBearing:
         # findings-bearing run still exits 0 -- but this must hold even if a
         # non-zero code leaks through some other path, mirroring Semgrep's
         # "non-zero exit alone is not a failure" contract.
-        mock_run.return_value = _completed_process(
+        mock_run.side_effect = _mock_run_writing_report(
             _load_fixture("gitleaks_findings.json"), returncode=1
         )
 
@@ -84,7 +102,7 @@ class TestRunGitleaksFindingsBearing:
 class TestRunGitleaksUnparseableOutput:
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_invalid_json_stdout_is_non_fatal_failed(self, mock_run):
-        mock_run.return_value = _completed_process("not valid json{{{")
+        mock_run.side_effect = _mock_run_writing_report("not valid json{{{")
 
         result = run_gitleaks(Path("/workspace"), timeout=600)
 
@@ -95,7 +113,7 @@ class TestRunGitleaksUnparseableOutput:
 
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_structurally_unexpected_payload_is_non_fatal_failed(self, mock_run):
-        mock_run.return_value = _completed_process(json.dumps({"unexpected": "shape"}))
+        mock_run.side_effect = _mock_run_writing_report(json.dumps({"unexpected": "shape"}))
 
         result = run_gitleaks(Path("/workspace"), timeout=600)
 
@@ -105,7 +123,7 @@ class TestRunGitleaksUnparseableOutput:
 
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_leak_missing_required_field_is_non_fatal_failed(self, mock_run):
-        mock_run.return_value = _completed_process(json.dumps([{"RuleID": "x"}]))
+        mock_run.side_effect = _mock_run_writing_report(json.dumps([{"RuleID": "x"}]))
 
         result = run_gitleaks(Path("/workspace"), timeout=600)
 
@@ -127,6 +145,21 @@ class TestRunGitleaksTimeout:
         assert "600" in result.reason
 
 
+class TestRunGitleaksMissingReportFile:
+    @patch("scanners.gitleaks_runner.subprocess.run")
+    def test_returncode_zero_but_no_report_file_written_is_non_fatal_failed(self, mock_run):
+        # S-141 finding's new failure surface: a returncode-0 call that (for
+        # whatever real-world reason) never wrote the --report-path file at
+        # all -- distinct from unparseable *content*.
+        mock_run.return_value = _completed_process()
+
+        result = run_gitleaks(Path("/workspace"), timeout=600)
+
+        assert result.status is ScanStatus.FAILED
+        assert result.findings == []
+        assert "report file missing" in result.reason
+
+
 class TestRunGitleaksCrash:
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_binary_missing_is_non_fatal_failed(self, mock_run):
@@ -142,7 +175,7 @@ class TestRunGitleaksCrash:
 class TestRunGitleaksCommandShape:
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_command_shape_matches_documented_invocation(self, mock_run):
-        mock_run.return_value = _completed_process(_load_fixture("gitleaks_clean.json"))
+        mock_run.side_effect = _mock_run_writing_report(_load_fixture("gitleaks_clean.json"))
 
         run_gitleaks(Path("/workspace/repo"), timeout=600)
 
@@ -153,7 +186,11 @@ class TestRunGitleaksCommandShape:
         assert "--report-format" in cmd
         assert cmd[cmd.index("--report-format") + 1] == "json"
         assert "--report-path" in cmd
-        assert cmd[cmd.index("--report-path") + 1] == "/dev/stdout"
+        # S-141 finding: --report-path is a real temp file, not /dev/stdout
+        # (see gitleaks_runner.py module docstring REVERTED section).
+        report_path_arg = cmd[cmd.index("--report-path") + 1]
+        assert report_path_arg != "/dev/stdout"
+        assert report_path_arg.endswith(".json")
         assert "--no-git" in cmd
         assert "--exit-code" in cmd
         assert cmd[cmd.index("--exit-code") + 1] == "0"
@@ -162,7 +199,7 @@ class TestRunGitleaksCommandShape:
 
     @patch("scanners.gitleaks_runner.subprocess.run")
     def test_scanner_timeout_is_passed_through_independently(self, mock_run):
-        mock_run.return_value = _completed_process(_load_fixture("gitleaks_clean.json"))
+        mock_run.side_effect = _mock_run_writing_report(_load_fixture("gitleaks_clean.json"))
 
         run_gitleaks(Path("/workspace"), timeout=42)
 

@@ -47,6 +47,35 @@ def _completed_process(
     )
 
 
+def _sarif_path_from_cmd(cmd: list[str]) -> Path:
+    """S-141 real-invocation finding: `--output` is now a real temp file
+    path (see codeql_runner.py module docstring Deviation 1), not
+    `/dev/stdout` -- tests simulate the real binary's effect by writing
+    fixture content to that path themselves before returning, mirroring
+    what a real `codeql database analyze` call does on disk.
+    """
+    for arg in cmd:
+        if arg.startswith("--output="):
+            return Path(arg.split("=", 1)[1])
+    raise AssertionError(f"no --output= flag in analyze command: {cmd}")
+
+
+def _mock_run_writing_sarif(fixture_content: str):
+    """`subprocess.run` side_effect: for any `database analyze` call, write
+    `fixture_content` to the command's real `--output` file path (simulating
+    what the real CodeQL binary would have written there) before returning a
+    successful, empty-stdout `CompletedProcess` -- `database create` calls
+    are left untouched.
+    """
+
+    def _side_effect(cmd, **kwargs):
+        if cmd[1:3] == ["database", "analyze"]:
+            _sarif_path_from_cmd(cmd).write_text(fixture_content)
+        return _completed_process()
+
+    return _side_effect
+
+
 @pytest.fixture
 def workspace_js_ts(tmp_path: Path) -> Path:
     (tmp_path / "index.ts").write_text("export {};")
@@ -107,7 +136,7 @@ class TestRunCodeqlSkipPath:
 class TestRunCodeqlSingleLanguageDispatch:
     @patch("scanners.codeql_runner.subprocess.run")
     def test_js_ts_only_runs_exactly_two_subprocess_calls(self, mock_run, workspace_js_ts):
-        mock_run.return_value = _completed_process(_load_fixture("codeql_clean.json"))
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_clean.json"))
 
         result = run_codeql(workspace_js_ts, timeout=600)
 
@@ -118,7 +147,7 @@ class TestRunCodeqlSingleLanguageDispatch:
 
     @patch("scanners.codeql_runner.subprocess.run")
     def test_create_command_shape(self, mock_run, workspace_js_ts):
-        mock_run.return_value = _completed_process(_load_fixture("codeql_clean.json"))
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_clean.json"))
 
         run_codeql(workspace_js_ts, timeout=600)
 
@@ -135,18 +164,24 @@ class TestRunCodeqlSingleLanguageDispatch:
 
     @patch("scanners.codeql_runner.subprocess.run")
     def test_analyze_command_shape_references_the_js_ts_query_pack(self, mock_run, workspace_js_ts):
-        mock_run.return_value = _completed_process(_load_fixture("codeql_clean.json"))
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_clean.json"))
 
         run_codeql(workspace_js_ts, timeout=600)
 
         analyze_cmd = mock_run.call_args_list[1].args[0]
         assert "codeql/javascript-queries" in analyze_cmd
         assert "--format=sarif-latest" in analyze_cmd
-        assert "--output=/dev/stdout" in analyze_cmd
+        # S-141 real-invocation finding: --output=/dev/stdout let a real
+        # CodeQL binary's human-readable summary line land ahead of the
+        # SARIF JSON on the same captured pipe, breaking json.loads() at
+        # position 0. --output now points at a real temp file instead.
+        output_arg = next(arg for arg in analyze_cmd if arg.startswith("--output="))
+        assert output_arg != "--output=/dev/stdout"
+        assert output_arg.endswith(".json")
 
     @patch("scanners.codeql_runner.subprocess.run")
     def test_python_only_uses_the_python_query_pack(self, mock_run, workspace_python):
-        mock_run.return_value = _completed_process(_load_fixture("codeql_clean.json"))
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_clean.json"))
 
         run_codeql(workspace_python, timeout=600)
 
@@ -157,7 +192,7 @@ class TestRunCodeqlSingleLanguageDispatch:
 
     @patch("scanners.codeql_runner.subprocess.run")
     def test_timeout_passed_through_independently_to_both_phases(self, mock_run, workspace_js_ts):
-        mock_run.return_value = _completed_process(_load_fixture("codeql_clean.json"))
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_clean.json"))
 
         run_codeql(workspace_js_ts, timeout=42)
 
@@ -166,13 +201,8 @@ class TestRunCodeqlSingleLanguageDispatch:
             assert call.kwargs["timeout"] == 42
 
     @patch("scanners.codeql_runner.subprocess.run")
-    def test_findings_from_analyze_stdout_are_normalized(self, mock_run, workspace_js_ts):
-        def _side_effect(cmd, **kwargs):
-            if cmd[1:3] == ["database", "create"]:
-                return _completed_process()
-            return _completed_process(_load_fixture("codeql_js_ts.json"))
-
-        mock_run.side_effect = _side_effect
+    def test_findings_from_analyze_sarif_file_are_normalized(self, mock_run, workspace_js_ts):
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_js_ts.json"))
 
         result = run_codeql(workspace_js_ts, timeout=600)
 
@@ -189,7 +219,7 @@ class TestRunCodeqlSingleLanguageDispatch:
 class TestRunCodeqlBothLanguagesDispatch:
     @patch("scanners.codeql_runner.subprocess.run")
     def test_both_languages_run_codeql_twice(self, mock_run, workspace_both):
-        mock_run.return_value = _completed_process(_load_fixture("codeql_clean.json"))
+        mock_run.side_effect = _mock_run_writing_sarif(_load_fixture("codeql_clean.json"))
 
         result = run_codeql(workspace_both, timeout=600)
 
@@ -216,13 +246,15 @@ class TestRunCodeqlBothLanguagesDispatch:
             if cmd[1:3] == ["database", "create"]:
                 return _completed_process()
             # The analyze command references the language's query pack --
-            # use that to decide which fixture to return.
+            # use that to decide which fixture to write to the real
+            # --output file path (S-141: no longer /dev/stdout).
             for language, pack in {
                 "javascript-typescript": "codeql/javascript-queries",
                 "python": "codeql/python-queries",
             }.items():
                 if pack in cmd:
-                    return _completed_process(fixtures_by_language[language])
+                    _sarif_path_from_cmd(cmd).write_text(fixtures_by_language[language])
+                    return _completed_process()
             raise AssertionError(f"unexpected analyze command: {cmd}")
 
         mock_run.side_effect = _side_effect
@@ -332,13 +364,21 @@ class TestRunCodeqlFailurePaths:
         assert "database analyze" in result.reason
 
     @patch("scanners.codeql_runner.subprocess.run")
-    def test_unparseable_sarif_is_non_fatal_failed(self, mock_run, workspace_js_ts):
-        def _side_effect(cmd, **kwargs):
-            if cmd[1:3] == ["database", "create"]:
-                return _completed_process()
-            return _completed_process("not valid json{{{")
+    def test_missing_sarif_output_file_is_non_fatal_failed(self, mock_run, workspace_js_ts):
+        # S-141 real-invocation finding's new failure surface: a returncode-0
+        # analyze call that (for whatever real-world reason) never wrote the
+        # --output file at all -- distinct from unparseable *content*.
+        mock_run.return_value = _completed_process()
 
-        mock_run.side_effect = _side_effect
+        result = run_codeql(workspace_js_ts, timeout=600)
+
+        assert result.status is ScanStatus.FAILED
+        assert result.findings == []
+        assert "SARIF output file missing" in result.reason
+
+    @patch("scanners.codeql_runner.subprocess.run")
+    def test_unparseable_sarif_is_non_fatal_failed(self, mock_run, workspace_js_ts):
+        mock_run.side_effect = _mock_run_writing_sarif("not valid json{{{")
 
         result = run_codeql(workspace_js_ts, timeout=600)
 
@@ -365,7 +405,8 @@ class TestRunCodeqlFailurePaths:
                 if "--language=python" in cmd:
                     return _completed_process(returncode=1, stderr="python extraction crashed")
                 return _completed_process()
-            return _completed_process(_load_fixture("codeql_js_ts.json"))
+            _sarif_path_from_cmd(cmd).write_text(_load_fixture("codeql_js_ts.json"))
+            return _completed_process()
 
         mock_run.side_effect = _side_effect
 
