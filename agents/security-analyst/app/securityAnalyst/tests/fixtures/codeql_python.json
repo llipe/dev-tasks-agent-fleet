@@ -1,0 +1,58 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "rules": [
+            {
+              "id": "py/command-line-injection",
+              "name": "CommandLineInjection",
+              "properties": {
+                "security-severity": "8.8",
+                "tags": ["security", "external/cwe/cwe-078"]
+              },
+              "defaultConfiguration": {"level": "error"}
+            },
+            {
+              "id": "py/clear-text-logging-sensitive-data",
+              "name": "ClearTextLogging",
+              "properties": {
+                "tags": ["security", "external/cwe/cwe-312"]
+              },
+              "defaultConfiguration": {"level": "warning"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "py/command-line-injection",
+          "level": "error",
+          "message": {"text": "This command line depends on a user-provided value."},
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {"uri": "app/tasks/runner.py"},
+                "region": {"startLine": 88, "endLine": 91}
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "py/clear-text-logging-sensitive-data",
+          "message": {"text": "This expression logs sensitive data as clear text."},
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {"uri": "app/logging/setup.py"},
+                "region": {"startLine": 15}
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
