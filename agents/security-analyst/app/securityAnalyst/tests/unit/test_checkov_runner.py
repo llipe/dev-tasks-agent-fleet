@@ -256,3 +256,13 @@ class TestHasIacFiles:
         git_dir.mkdir()
         (git_dir / "config.tf").write_text('resource "x" "y" {}\n')
         assert has_iac_files(tmp_path) is False
+
+    def test_skips_terraform_local_cache_directory(self, tmp_path):
+        # .terraform/ is Terraform's own local module/provider cache
+        # (populated by `terraform init`) -- real downloaded .tf module
+        # sources under .terraform/modules/** must not trip detection,
+        # exactly like node_modules/.git above (S-131 fidelity audit).
+        tf_cache = tmp_path / ".terraform" / "modules" / "some-module"
+        tf_cache.mkdir(parents=True)
+        (tf_cache / "main.tf").write_text('resource "x" "y" {}\n')
+        assert has_iac_files(tmp_path) is False

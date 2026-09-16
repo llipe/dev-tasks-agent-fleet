@@ -70,9 +70,10 @@ are plain YAML/JSON), so those two are detected by a bounded content sniff
 `pyproject.toml` for a single pre-flight check) and matches the same
 "good enough, not a full parser" tradeoff `trivy_runner.py`'s
 `_parse_version_tuple()` makes for its own narrower purpose. Vendored/VCS
-directories (`.git`, `node_modules`, `.venv`, cache dirs) are skipped so a
-dependency's own bundled Terraform fixtures (if any) or the agent's own
-virtualenv content never produce a false positive.
+directories (`.git`, `node_modules`, `.venv`, `.terraform`, cache dirs) are
+skipped so a dependency's own bundled Terraform fixtures (if any), a
+`terraform init`-populated local module cache, or the agent's own
+virtualenv content never produce a false positive (S-131 fidelity audit).
 """
 
 from __future__ import annotations
@@ -100,6 +101,7 @@ _SKIP_DIRS = {
     ".mypy_cache",
     ".ruff_cache",
     ".pytest_cache",
+    ".terraform",
 }
 _CLOUDFORMATION_MARKER = "AWSTemplateFormatVersion"
 _CONTENT_SNIFF_MAX_BYTES = 65_536  # bounded read -- pre-flight check, not a full parse
