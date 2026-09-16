@@ -25,16 +25,16 @@
 | 11       | S-135    | #195    | ✅ Merged  | #228 | issue/195-audit-only-mode-min-severity-gating      |
 | 12       | S-136    | #196    | ✅ Merged  | #229 | issue/196-mechanical-fix-application               |
 | 13       | S-137    | #197    | ✅ Merged  | #230 | issue/197-rescan-gate                              |
-| 14       | S-138    | #198    | ⏳ Pending | —    | —                                                  |
+| 14       | S-138    | #198    | ✅ Merged  | #231 | issue/198-llm-fix-agent-per-finding-escape-hatch   |
 | 15       | S-139    | #199    | ⏳ Pending | —    | —                                                  |
 | 16       | S-140    | #200    | ⏳ Pending | —    | —                                                  |
 | 17       | S-141    | #201    | ⏳ Pending | —    | —                                                  |
 
 ## Current Position
 
-- Next story: S-138
-- Last merged PR: #230
-- Integration branch HEAD: 9ed1013
+- Next story: S-139
+- Last merged PR: #231
+- Integration branch HEAD: c7046e3
 
 ## Decisions Log
 
@@ -58,3 +58,4 @@
 - S-135 (audit_only mode end-to-end): agent's first fully working mode — biggest integration test of the run so far. Added `run_scanners()` dispatcher + `AllScannersFailedError`, wired scan(heartbeated)→dedupe→classify→determine_outcome→audit_report in main.py. Fidelity High/None, zero defects: wiring order, heartbeat call signature, AC12b (min_severity gates outcome only, never filters the artifact), and AC24 (all-fail vs one-of-five-fail) all independently verified against actual code. `determine_outcome()`'s 3-tuple (vs spec's literal 4-tuple, dropping meaningless-for-this-mode `pr_opened`) confirmed to follow the sibling `dependency-update` agent's own established precedent exactly — genuinely additive, S-140 can widen without rewriting call sites. Docs-drift pass was the largest yet: removed "not yet wired" caveats from all 8 prior stories' README entries.
 - S-136 (mechanical fixers, Semgrep autofix + Trivy bump): first half of fix mode's write path, not yet wired into main.py (that's S-140). Third retroactive additive schema field this run (`Remediation.package_name`, same safe pattern as S-134's `current_version`). AC28 (manual/unscannable never touched) verified structurally, not just by test trust: `classify()` guarantees every autofix-carrying Semgrep finding is mechanical, so the blanket workspace-wide `semgrep --autofix` call can't reach manual/unscannable territory even without per-file scoping — Trivy bump, by contrast, IS per-finding-scoped. Fidelity High/None. One design note flagged for S-140's orchestrator (non-blocking): the blanket autofix call fixes everything ruleset-eligible in the workspace, not just the specific mechanical-findings subset passed in — worth a sanity check when S-140 wires this up. `reconcile_lockfile()` sibling-agent-precedent claim independently verified true (`agents/dependency-update/.../updater.py:105`).
 - S-137 (rescan.py, "the agent's defining trust mechanism"): the most rigorous audit of the run — verifier constructed 10 of its own adversarial near-miss cases (case variants, whitespace, cross-tool leakage, swapped fields, Unicode suffixes) beyond the developer's own tests, found zero paths to a false `clean=True`. Fidelity High/Minor: two cosmetic, non-blocking notes (a closure-vs-parameter signature simplification vs spec's literal pseudocode; one untested defensive fallback branch). Requirement 34's "never infer an exception, only the fixed table" guarantee held up under direct adversarial pressure. 408/408 tests.
+- S-138 (fix_agent.py, LLM escape hatch — the one genuinely new design point vs sibling agent): most adversarial security audit yet — 16 independently-constructed `_safe_path` escape attempts (traversal, symlinks, absolute paths, null bytes) all rejected; real non-mocked git scenario testing against `_assert_diff_confined_to()` including rename and permission-only-change edge cases, zero confinement gaps. Fidelity High/Minor: one coverage gap (rename-arrow parsing branch, functionally correct but untested) — fixed with two regression tests before merge (commit 99c78ef). Per-finding budget isolation and AC18 (max_attempts=0 → zero Bedrock calls) verified structurally, not just by test trust. 573/573 tests.
