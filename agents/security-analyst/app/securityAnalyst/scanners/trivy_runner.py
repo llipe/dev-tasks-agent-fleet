@@ -208,6 +208,14 @@ def _normalize_vulnerability(vuln: dict[str, Any], target: str, mode: str, index
             # `target_version` itself. See `normalize.py`'s `Remediation`
             # docstring for why this field exists.
             current_version=vuln.get("InstalledVersion") or None,
+            # S-136 addition -- Trivy's own `PkgName` field, passed through
+            # verbatim. `fixers/trivy_bump.py` (this same story) needs the
+            # package identifier to locate which manifest line to edit;
+            # neither `rule_id` (the CVE/advisory id) nor `message` (free
+            # text) reliably carries it. See `normalize.py`'s `Remediation`
+            # docstring for the full rationale -- same additive-field
+            # pattern as `current_version` (S-134).
+            package_name=vuln.get("PkgName") or None,
         )
         if fixed_version is not None
         else None
