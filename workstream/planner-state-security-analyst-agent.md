@@ -17,7 +17,7 @@
 | 3        | S-127    | #187    | ✅ Merged  | #220 | issue/187-finding-schema-fingerprint              |
 | 4        | S-128    | #188    | ✅ Merged  | #221 | issue/188-semgrep-scanner-integration             |
 | 5        | S-129    | #189    | ✅ Merged  | #222 | issue/189-gitleaks-scanner-secret-redaction       |
-| 6        | S-130    | #190    | ⏳ Pending | —    | —                                                  |
+| 6        | S-130    | #190    | ✅ Merged  | #223 | issue/190-trivy-scanner-integration               |
 | 7        | S-131    | #191    | ⏳ Pending | —    | —                                                  |
 | 8        | S-132    | #192    | ⏳ Pending | —    | —                                                  |
 | 9        | S-133    | #193    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-130
-- Last merged PR: #222
-- Integration branch HEAD: 1be8059
+- Next story: S-131
+- Last merged PR: #223
+- Integration branch HEAD: 84233ab
 
 ## Decisions Log
 
@@ -50,3 +50,4 @@
 - S-127 (`normalize.py`/`fingerprint.py`): no spec deviation needed this time (developer proactively checked for the S-126-class KeyError-prone-pseudocode issue and confirmed none exists). Fidelity audit High/Minor: flagged that RT-1's build-vs-skip decision (fingerprint line-tolerance property test, declined) was never recorded in the test plan's own changelog per its explicit instruction. Recorded (test-plan v1.1 changelog entry, commit 65e48e0) before merge.
 - S-128 (Semgrep scanner): introduced `scanners/types.py` (shared `ScanStatus`/`ScanResult`) for reuse by S-129-S-132. Fixed a real spec bug: §8.6's literal pseudocode passes RULESET as one space-joined string to `--config`, which is invalid Semgrep CLI syntax (Semgrep requires one `--config <id>` flag per ruleset) — verifier independently confirmed this would have silently run zero/wrong rulesets. Fidelity High/Minor (one forward-looking note re: PRD req 52's RULESET-location wording once S-136/fixers lands, non-blocking). Dockerfile still doesn't install the semgrep binary or any scanner toolchain (pre-existing gap, flagged again, not yet fixed — will matter once a story needs a real scanner binary, likely S-135 or wherever Docker image build is next touched).
 - S-129 (Gitleaks + AC27 secret redaction): the automated verifier fidelity-audit subagent stalled twice (10-min watchdog timeout) on this story — planner did the AC27 redaction verification directly instead of a third retry: read `gitleaks_runner.py`/`scrubber.py` line-by-line, confirmed the two-layer redaction (construction discipline + unconditional `scrub()` at Finding-construction time) cannot be bypassed, independently re-ran all 35 Gitleaks tests (pass). `--report-path /dev/stdout` workaround used since Gitleaks has no native stdout-JSON flag (documented, verified plausible). Minor non-blocking hygiene note: an unused, tiny (627B) fixture-repo `.bundle` file committed alongside a redundant plain directory — neither is read by any current test; likely intended for a future real-binary smoke test (S-141). Not fixed, flagged for later cleanup.
+- S-130 (Trivy scanner, `lockfile_managed` boundary): the plan's own "single most consequential normalizer." Fidelity audit High/None — exhaustively verified the `_JS_LOCKFILES` boundary across every Trivy `fs`-mode target-file type. One real, load-bearing deviation confirmed correct: `remediation.kind` is set by Trivy's own `Class` field (config vs vulnerability), not by which of the three subcommands (fs/config/image) produced it — a literal reading of issue #190's own AC bullet 4 would have made PRD AC10 (base-image vuln → mechanical) permanently unreachable. Both technical-writer and verifier independently confirmed this by reading PRD AC10's actual text, not just trusting the developer's framing. Dockerfile still installs no scanner toolchain (semgrep/gitleaks/trivy all pending, flagged again each story since S-126).
