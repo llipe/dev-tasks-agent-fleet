@@ -220,20 +220,20 @@
   - [x] 13.5 Verify Acceptance Criterion: the gate never infers an exception — only the fixed table (PRD requirement 34)
   - [x] 13.6 Run Tests: `tests/unit/test_rescan_gate.py` — all four still-present/new-finding combinations, plus the allow-list path, plus a near-miss (partially matching but not exact) allow-list pattern — `make test-unit`
 
-- [ ] 14.0 Implement Story S-138: LLM fix agent — per-finding escape hatch — [Issue #198](https://github.com/llipe/dev-tasks-agent-fleet/issues/198)
+- [x] 14.0 Implement Story S-138: LLM fix agent — per-finding escape hatch — [Issue #198](https://github.com/llipe/dev-tasks-agent-fleet/issues/198)
 
   > Note: The one genuinely new design point vs. the sibling agent — per-finding invocation and per-finding budgeting (D22/D26), not per-run. Depends on S-137 (re-invokes the gate per attempt), S-136 (invoked only when the deterministic fixer is insufficient).
 
-  - [ ] 14.1 Port `_safe_path` workspace-confinement resolver and the 5-tool surface (shell/read/write/find/grep) from `dependency-update`'s `fix_agent.py`
-  - [ ] 14.2 Implement `run_fix_loop_for_finding()` — single-finding prompt construction, never the full findings list
-  - [ ] 14.3 Implement `_assert_diff_confined_to()` post-fix check (mandate-violation-equivalent enforcement)
-  - [ ] 14.4 Verify Acceptance Criterion: fix agent receives only the single targeted finding's record (PRD AC19, requirement 31) — assert via tool-call argument inspection
-  - [ ] 14.5 Verify Acceptance Criterion: `_safe_path` refuses a path escaping the workspace, tested directly (PRD AC20)
-  - [ ] 14.6 Verify Acceptance Criterion: `max_fix_attempts` budget applies per finding, not per run (PRD AC17)
-  - [ ] 14.7 Verify Acceptance Criterion: `max_fix_attempts=0` disables the LLM entirely, zero Bedrock calls (PRD AC18)
-  - [ ] 14.8 Verify Acceptance Criterion: a diff touching a file outside the finding's own path is caught and the finding reported unresolved, not trusted (spec §12)
-  - [ ] 14.9 Run Tests: `tests/unit/test_safe_path.py`, `tests/unit/test_diff_confinement.py` — `make test-unit`
-  - [ ] 14.10 Run Tests: `tests/component/test_fix_agent.py` with `patch("fix_agent.Agent")` — zero-Bedrock-call, per-finding-budget, tool-call-argument-scoping cases (PRD AC16, AC17, AC18) — `make test-component`
+  - [x] 14.1 Port `_safe_path` workspace-confinement resolver and the 5-tool surface (shell/read/write/find/grep) from `dependency-update`'s `fix_agent.py`
+  - [x] 14.2 Implement `run_fix_loop_for_finding()` — single-finding prompt construction, never the full findings list
+  - [x] 14.3 Implement `_assert_diff_confined_to()` post-fix check (mandate-violation-equivalent enforcement)
+  - [x] 14.4 Verify Acceptance Criterion: fix agent receives only the single targeted finding's record (PRD AC19, requirement 31) — assert via tool-call argument inspection
+  - [x] 14.5 Verify Acceptance Criterion: `_safe_path` refuses a path escaping the workspace, tested directly (PRD AC20)
+  - [x] 14.6 Verify Acceptance Criterion: `max_fix_attempts` budget applies per finding, not per run (PRD AC17)
+  - [x] 14.7 Verify Acceptance Criterion: `max_fix_attempts=0` disables the LLM entirely, zero Bedrock calls (PRD AC18)
+  - [x] 14.8 Verify Acceptance Criterion: a diff touching a file outside the finding's own path is caught and the finding reported unresolved, not trusted (spec §12)
+  - [x] 14.9 Run Tests: `tests/unit/test_safe_path.py`, `tests/unit/test_diff_confinement.py` — `make test-unit`
+  - [x] 14.10 Run Tests: `tests/component/test_fix_agent.py` with `patch("fix_agent.Agent")` — zero-Bedrock-call, per-finding-budget, tool-call-argument-scoping cases (PRD AC16, AC17, AC18) — `make test-component`
 
 - [ ] 15.0 Implement Story S-139: Pull request builder — branch, idempotency, body sections — [Issue #199](https://github.com/llipe/dev-tasks-agent-fleet/issues/199)
 
