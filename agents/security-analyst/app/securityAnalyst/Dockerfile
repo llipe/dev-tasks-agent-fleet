@@ -59,7 +59,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Only 2 query packs, per PRD S7.4a -- no compiled-language packs (Java, Go,
 # C/C++, etc.) ship in v1, and neither `javascript-typescript` nor `python`
 # needs a compiled build step (PRD requirement 14), so no JDK/Go toolchain/
-# C-C++ compiler is installed in this image at all.
+# C-C++ compiler is installed in this image at all. This does NOT mean the
+# JS/TS extractor is dependency-free, though -- see the Node.js install
+# below, a real (non-compiler) runtime requirement discovered only once a
+# real TypeScript repo was scanned.
 ARG CODEQL_CLI_VERSION=2.27.0
 RUN curl -sSfL \
     "https://github.com/github/codeql-cli-binaries/releases/download/v${CODEQL_CLI_VERSION}/codeql-linux-arm64.zip" \
@@ -78,6 +81,23 @@ RUN curl -sSfL \
 # Confirmed the corrected name downloads successfully fully anonymously,
 # both locally and matching this exact command.
 RUN codeql pack download codeql/javascript-queries codeql/python-queries
+
+# Node.js -- S-141 real-invocation finding: CodeQL's JS/TS extractor
+# (invoked by `database create` as `autobuild.sh`, even with
+# --build-mode=none -- that flag only skips a *custom* build command like
+# `npm run build`, it does not remove the extractor's own parsing
+# dependency) shells out to a real Node.js binary to parse `.ts`/`.tsx`
+# files via the TypeScript compiler API. Confirmed against a real
+# TypeScript repo (llipe/memo-cli): without Node.js on PATH, `database
+# create` fails with "Could not start Node.js. It is required for
+# TypeScript extraction." No `npm install` runs here (--build-mode=none
+# means no dependency install), so this is a Node *runtime* requirement
+# only -- not a reversal of the "no build step" claim above, which is still
+# true for anything --build-mode=none itself controls.
+ARG NODE_MAJOR=22
+RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # S-141: Gitleaks and Trivy toolchains (S-129/S-130's own tracked gap,
 # closed out here alongside the CodeQL package-name fix above). Both ship
