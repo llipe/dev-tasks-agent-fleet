@@ -12,18 +12,34 @@ this module the way S8.5 gives Semgrep's `_build_command()`): Gitleaks'
 real CLI has no ``--json``-to-stdout flag the way Semgrep does -- its
 ``--report-format`` only controls the *shape* of the file written to
 ``--report-path``; there is no native "print the report to stdout" mode.
-Rather than introduce a temp-file lifecycle unique to this one scanner
-module (every other `run_<tool>()` reads `proc.stdout` directly), this
-module points ``--report-path`` at ``/dev/stdout`` -- a Linux device file
-that makes writing "to that report path" equivalent to writing to stdout.
-This is safe here because the AgentCore Runtime container target is Linux
-(PRD S12.3/`agentcore.json`), and it keeps `run_gitleaks()`'s shape
-byte-for-byte structurally identical to `run_semgrep()`'s
-subprocess-capture-then-normalize pattern, which is what S-135's
-`run_scanners()` dispatcher (S8.5) relies on being uniform across all five
-scanner modules. Flagged per this story's pre-authorized "apply
-proactively" instruction (same class of decision as `semgrep_runner.py`'s
-`RULESET` fix).
+
+**REVERTED -- S-141 real-invocation finding (PR #239's CodeQL SARIF fix
+prompted re-checking this module's identical trick).** This module
+originally pointed ``--report-path`` at ``/dev/stdout``, reasoning that a
+Linux device file makes writing "to that report path" equivalent to writing
+to stdout, keeping `run_gitleaks()`'s shape byte-for-byte identical to
+`run_semgrep()`'s subprocess-capture-then-normalize pattern. Confirmed
+against the real gitleaks v8.30.1 binary that this loses data silently:
+run against a real repo containing two genuine, verified leaks (confirmed
+by pointing ``--report-path`` at a real file instead), the exact same
+invocation with ``--report-path /dev/stdout`` under Python's
+``subprocess.run(..., capture_output=True)`` -- the shape every
+`run_<tool>()` in this codebase uses, where the process's own stdout is a
+pipe -- produced **zero captured bytes**, not the two real leaks and not
+even the ``[]``/``null`` "no leaks" shape a real clean scan produces. This
+is a distinct and more severe failure mode than CodeQL's SARIF-corruption
+bug (PR #239): CodeQL's data was still present, merely preceded by an
+unexpected line; here the data vanished outright, which -- before this
+fix -- silently downgraded a findings-bearing run to `ScanStatus.PASSED`
+with zero findings (the PR #237 "empty output means no leaks" fix,
+written without realizing genuine leaks could also produce empty output
+this way, made this silent-loss risk *worse*, not better -- it must not be
+reintroduced). `--report-path` now points at a real file inside a
+per-call `tempfile.TemporaryDirectory`, read via `Path.read_text()` before
+normalization, the same pattern `codeql_runner.py` uses for its own SARIF
+output. Flagged per this story's pre-authorized "apply proactively"
+instruction (same class of decision as `semgrep_runner.py`'s `RULESET`
+fix).
 
 ``--no-git`` scans the workspace's current file content only, not commit
 history -- the orchestrator's shallow clone (spec S4.3 "clone shallow")
@@ -55,6 +71,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -66,9 +83,11 @@ from severity import severity_from_gitleaks
 TOOL_NAME = "gitleaks"
 
 
-def _build_command(workspace: Path) -> list[str]:
-    """Build the ``gitleaks detect`` invocation (see module docstring for
-    why ``--report-path /dev/stdout`` stands in for native stdout output).
+def _build_command(workspace: Path, report_path: Path) -> list[str]:
+    """Build the ``gitleaks detect`` invocation. See module docstring --
+    ``--report-path`` is a real temp file (S-141 finding: ``/dev/stdout``
+    silently lost real findings under pipe-captured stdout), not a device
+    file.
     """
     return [
         "gitleaks",
@@ -79,7 +98,7 @@ def _build_command(workspace: Path) -> list[str]:
         "--report-format",
         "json",
         "--report-path",
-        "/dev/stdout",
+        str(report_path),
         "--exit-code",
         "0",
     ]
@@ -107,13 +126,18 @@ def normalize_gitleaks(raw_output: str) -> list[Finding]:
     (spec S8.1, PRD requirement 58 row 2 / D29).
 
     Pure function over the raw JSON text. Gitleaks writes a bare ``null``
-    (not ``[]``) on some versions when zero leaks are found, and -- S-141
-    real-invocation finding, confirmed against the real v8.30.1 binary --
-    writes literally **nothing** to ``--report-path`` at all (zero bytes)
-    on a clean scan via the ``/dev/stdout`` redirect this module uses (see
-    `run_gitleaks()`'s own docstring for why that redirect exists); all
-    three (``null``, ``[]``, empty string) are treated identically as "no
-    leaks" rather than a parse failure. Raises `json.JSONDecodeError` on
+    (not ``[]``) on some older versions when zero leaks are found; the real
+    v8.30.1 binary, confirmed against a real **file** ``--report-path``
+    (module docstring's REVERTED section -- the earlier belief that a clean
+    scan produces zero bytes was an artifact of the since-removed
+    ``/dev/stdout`` trick silently losing data, not real gitleaks output
+    shape), writes ``[]`` on a clean scan. The empty-string case is kept as
+    a defensive fallback (harmless, matches `codeql_runner.py`'s equally
+    defensive missing-file handling) rather than removed outright, since a
+    zero-byte report file is still plausible from a future gitleaks version
+    or an unusual filesystem interaction. All three (``null``, ``[]``, empty
+    string) are treated identically as "no leaks" rather than a parse
+    failure. Raises `json.JSONDecodeError` on
     invalid JSON, `TypeError` on a structurally-unexpected top-level shape
     (anything other than a list or `null`), and `KeyError` on a leak record
     missing a required field -- `run_gitleaks()` below catches all three and
@@ -175,15 +199,16 @@ def run_gitleaks(workspace: Path, timeout: int) -> ScanResult:
     19 -- callers pass `config.SCANNER_TIMEOUT`, no shared timeout budget is
     read from here). A crash-to-start (`OSError` -- e.g. the `gitleaks`
     binary missing from the image), a timeout (`subprocess.TimeoutExpired`),
-    or unparseable/structurally-unexpected stdout are all non-fatal to the
-    overall run (PRD requirement 18): each maps to `ScanStatus.FAILED` with
-    `findings=[]` and a `reason` describing what happened, never an
-    exception raised out of this function. Every `reason` string here is
-    built only from exception metadata (timeout duration, `OSError`/
-    `json.JSONDecodeError`/`TypeError` messages) -- never from the raw
-    subprocess stdout/stderr text itself, so a malformed report containing
-    partial secret content cannot leak through this failure-reporting
-    surface either (AC-27's failure-path corollary).
+    a missing/unreadable report file, or unparseable/structurally-unexpected
+    report content are all non-fatal to the overall run (PRD requirement
+    18): each maps to `ScanStatus.FAILED` with `findings=[]` and a `reason`
+    describing what happened, never an exception raised out of this
+    function. Every `reason` string here is built only from exception
+    metadata (timeout duration, `OSError`/`json.JSONDecodeError`/`TypeError`
+    messages) -- never from the raw subprocess stdout/stderr or report-file
+    text itself, so a malformed report containing partial secret content
+    cannot leak through this failure-reporting surface either (AC-27's
+    failure-path corollary).
 
     Deliberately does NOT treat a non-zero exit code alone as a failure,
     mirroring `run_semgrep()`: `--exit-code 0` is passed explicitly (see
@@ -202,37 +227,52 @@ def run_gitleaks(workspace: Path, timeout: int) -> ScanResult:
     per-run secrets list is available, before any per-tool `reason` string
     reaches a log, artifact, or PR body.
     """
-    cmd = _build_command(workspace)
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return ScanResult(
-            tool=TOOL_NAME,
-            status=ScanStatus.FAILED,
-            findings=[],
-            reason=f"gitleaks timed out after {timeout}s",
-        )
-    except OSError as exc:
-        return ScanResult(
-            tool=TOOL_NAME,
-            status=ScanStatus.FAILED,
-            findings=[],
-            reason=f"gitleaks failed to start: {exc}",
-        )
+    with tempfile.TemporaryDirectory(prefix="gitleaks-report-") as tmp:
+        report_path = Path(tmp) / "report.json"
+        cmd = _build_command(workspace, report_path)
+        try:
+            # returncode/stdout intentionally unused -- see docstring above:
+            # --exit-code 0 neutralizes gitleaks' own findings-bearing exit
+            # code, and findings now come from `report_path`, not stdout.
+            subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return ScanResult(
+                tool=TOOL_NAME,
+                status=ScanStatus.FAILED,
+                findings=[],
+                reason=f"gitleaks timed out after {timeout}s",
+            )
+        except OSError as exc:
+            return ScanResult(
+                tool=TOOL_NAME,
+                status=ScanStatus.FAILED,
+                findings=[],
+                reason=f"gitleaks failed to start: {exc}",
+            )
 
-    try:
-        findings = normalize_gitleaks(proc.stdout)
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
-        return ScanResult(
-            tool=TOOL_NAME,
-            status=ScanStatus.FAILED,
-            findings=[],
-            reason=f"unparseable gitleaks output: {exc}",
-        )
+        try:
+            raw_output = report_path.read_text()
+        except OSError as exc:
+            return ScanResult(
+                tool=TOOL_NAME,
+                status=ScanStatus.FAILED,
+                findings=[],
+                reason=f"gitleaks report file missing/unreadable: {exc}",
+            )
+
+        try:
+            findings = normalize_gitleaks(raw_output)
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            return ScanResult(
+                tool=TOOL_NAME,
+                status=ScanStatus.FAILED,
+                findings=[],
+                reason=f"unparseable gitleaks output: {exc}",
+            )
 
     return ScanResult(tool=TOOL_NAME, status=ScanStatus.PASSED, findings=findings, reason=None)

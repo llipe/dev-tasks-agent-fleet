@@ -39,7 +39,8 @@ or produces unparseable output, the aggregate status is `ScanStatus.FAILED`
 that is never attempted (image mode with no Dockerfile) is not counted as a
 failure. This is the same class of pre-authorized "apply proactively"
 correctness fix as `semgrep_runner.py`'s `RULESET` tuple-vs-joined-string fix
-and `gitleaks_runner.py`'s `/dev/stdout` report-path fix.
+and `gitleaks_runner.py`'s original (later reverted -- S-141, see that
+module's docstring) `/dev/stdout` report-path fix.
 
 **Deviation 2 -- `image` mode targets a representative base image, not the
 built image.** PRD requirement 16 says `image` mode runs "when a Dockerfile
