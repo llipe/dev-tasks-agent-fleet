@@ -214,6 +214,18 @@ def detect_languages(workspace: Path) -> list[str]:
 
 
 def _build_create_command(workspace: Path, db_path: Path, language: str) -> list[str]:
+    # S-141 real-repo verification finding: without --build-mode=none,
+    # `database create` defaults to running each language's autobuild
+    # script (for JS/TS: npm install + any detected build script) even
+    # though neither language this module supports needs a build step to
+    # extract from -- they're both interpreted (requirement 14's "no
+    # compiled build step" claim was about the query packs, not this
+    # command's default behavior, which is a separate thing that was never
+    # exercised against a real repo until now). A repo with no npm network
+    # access, no lockfile, or a failing build script made autobuild exit
+    # non-zero and fail the whole scan. --build-mode=none (a standard
+    # CodeQL CLI flag, present well before v2.27.0) skips the build
+    # entirely and extracts directly from --source-root.
     return [
         "codeql",
         "database",
@@ -221,6 +233,7 @@ def _build_create_command(workspace: Path, db_path: Path, language: str) -> list
         str(db_path),
         f"--language={language}",
         f"--source-root={workspace}",
+        "--build-mode=none",
         "--overwrite",
     ]
 
