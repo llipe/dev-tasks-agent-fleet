@@ -3,7 +3,7 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-135):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-136):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -28,8 +28,15 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > `min_severity` to the terminal status only, never to the artifact — PRD requirement 62/AC-12b)
 > to reach `succeeded`/`no_findings`, `succeeded`/`needs_review`, or `failed`/`AUDIT_FINDINGS`.
 > **`mode=audit_only` is the first fully working mode of this agent.** `mode=fix` is still the
-> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-136-S-140 wire
-> `fix`/`rescan`/`open_pr` into it, per this story's explicit scope.
+> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-137-S-140 still
+> need to wire `rescan`/`open_pr` and the orchestration loop into it. S-136 (`#229`) added the
+> first two of `fix` mode's building blocks — `fixers/semgrep_autofix.py` (Semgrep native-patch
+> application) and `fixers/trivy_bump.py` (Trivy version-bump application, plus a retroactive,
+> additive `Remediation.package_name` field so the fixer can locate which manifest line to edit —
+> see `normalize.py`'s `Remediation` docstring) — but **neither fixer is called from `main.py`
+> yet**: they are standalone, independently unit/component-tested modules, not yet part of the
+> live `fix` pipeline. This is distinct from `audit_only`'s S-135 status above, which *is* fully
+> wired end-to-end.
 >
 > `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
 > `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`,
@@ -58,7 +65,8 @@ agents/security-analyst/
 ├── app/securityAnalyst/
 │   ├── main.py              # Pipeline orchestrator entrypoint. `mode=audit_only`: real
 │   │                        # scan -> classify -> determine_outcome pipeline (S-135). `mode=fix`
-│   │                        # still on the S-125 placeholder (S-136-S-140 wire it).
+│   │                        # still on the S-125 placeholder — the `fixers/` modules (S-136)
+│   │                        # exist but are not yet called from here (S-137-S-140 wire it).
 │   ├── severity.py          # Per-tool severity normalization, pure functions (S-126)
 │   ├── normalize.py         # Finding/Remediation frozen dataclasses (S-127)
 │   ├── fingerprint.py       # fingerprint(), banded-line dedup key (S-127)
@@ -68,6 +76,20 @@ agents/security-analyst/
 │   ├── classifier.py        # classify(), _is_major_bump(), _is_semver() — D22 three-bucket
 │   │                        # mechanical/manual/unscannable model, D24/req-54 lockfile
 │   │                        # boundary, requirement 27 major-version guard (S-134)
+│   ├── fixers/               # Mechanical fix application (S-136) — NOT yet called from main.py
+│   │   ├── __init__.py        # Package docstring: both fixers are standalone, unwired until S-140
+│   │   ├── types.py           # FixOutcome shared result shape, reused by both fixers
+│   │   ├── semgrep_autofix.py # apply_semgrep_autofix() — one blanket `semgrep --autofix
+│   │   │                      # --config <RULESET>` call (RULESET imported verbatim from
+│   │   │                      # scanners/semgrep_runner.py), applied-fingerprint tracking via
+│   │   │                      # `git diff --name-only`
+│   │   └── trivy_bump.py      # apply_trivy_bump() — applies Remediation.target_version (never
+│   │                          # re-derives it); poetry.lock/Pipfile.lock targets bump the
+│   │                          # companion manifest then reconcile via `poetry lock`/`pipenv
+│   │                          # lock` (mirrors agents/dependency-update's reconcile_lockfile()
+│   │                          # precedent); requirements.txt is edited in place, no
+│   │                          # reconciliation step; anything needing more than a version-string
+│   │                          # edit falls through to FixOutcome.unresolved (PRD requirement 29)
 │   ├── scanners/
 │   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
 │   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
@@ -122,7 +144,9 @@ agents/security-analyst/
 │       │                    # per-tool dispatch order + AllScannersFailedError all-failed vs.
 │       │                    # partial-failure boundary), test_determine_outcome.py (S-135,
 │       │                    # parametrized over PRD §8.1 audit_only rows + min_severity
-│       │                    # crossing, incl. AC-12b's gate-outcome-not-artifact case)
+│       │                    # crossing, incl. AC-12b's gate-outcome-not-artifact case),
+│       │                    # test_trivy_bump.py (S-136, `_bump_manifest_text()`/`_bump_line()`/
+│       │                    # `_name_pattern()` pure-function target-version selection, no I/O)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
 │       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
@@ -134,7 +158,11 @@ agents/security-analyst/
 │       │                    # test_audit_only_pipeline.py (S-135, full main.py `invoke()`
 │       │                    # audit_only path, all five scanners mocked — clean repo, findings
 │       │                    # +/- fail_on_findings, min_severity gating incl. AC-12b, all- and
-│       │                    # one-of-five-scanner-failure)
+│       │                    # one-of-five-scanner-failure), test_mechanical_fixers.py (S-136,
+│       │                    # `subprocess.run` mocked for semgrep/git/poetry/pipenv; real
+│       │                    # filesystem I/O via `tmp_path` for applied-vs-untouched
+│       │                    # assertions; AC28's mixed mechanical/manual/unscannable batch —
+│       │                    # only mechanical-bucket files change)
 │       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
 │                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130),
 │                            # checkov_{clean,findings,no_severity}.json (S-131),
@@ -182,10 +210,11 @@ agents/security-analyst/
 ### `mode=fix` (still the S-125 placeholder)
 
 `mode=fix` has not been wired yet: after `checkout`, it goes straight to `succeeded`/`no_findings`
-with every scanner reported `scanners_skipped` — no scanner runs. S-136-S-140 replace this
+with every scanner reported `scanners_skipped` — no scanner runs. S-137-S-140 replace this
 placeholder with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline (spec
 `workstream/specification-prd-security-analyst-agent.md` S8.8); this is explicitly out of S-135's
-scope.
+scope. S-136 (`#229`) already built the two deterministic fixers (`fixers/semgrep_autofix.py`,
+`fixers/trivy_bump.py`) this pipeline will call, but they are not invoked yet — see Layout above.
 
 > **Design note — `determine_outcome()`'s 3-tuple return:** spec §8.10's pseudocode describes a
 > 4-tuple `(status, outcome, error_code, pr_opened)`. `audit_only` never opens a PR, so
@@ -226,8 +255,8 @@ invoking — see the sibling agent's README for the full prerequisite/troublesho
 The example above uses `mode=audit_only` (the default), which as of S-135 runs the real five-tool
 scan/classify/report pipeline described under Pipeline above. `mode=fix` is also accepted by
 `validate_payload()` (it is in `_VALID_MODES`), but is still unimplemented — it falls straight
-through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-136-S-140
-land.
+through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-137-S-140
+land. S-136 built the fixer modules `mode=fix` will eventually call, but they are not wired in yet.
 
 ## Deployment
 
