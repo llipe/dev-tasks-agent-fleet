@@ -883,6 +883,8 @@ RUN codeql pack download codeql/javascript-typescript-queries codeql/python-quer
 
 **Blocking verification, per PRD §18 OQ5 and research risk 2:** confirm the CodeQL CLI ships an ARM64 Linux build at the version pinned here before this Dockerfile is finalized — AgentCore Runtime is ARM64-only (no x86_64 fallback), and this has historically lagged the x86_64 release.
 
+**CORRECTED in S-141 (implementation-time finding, not a spec authoring error caught before build):** `codeql/javascript-typescript-queries` in the snippet above is not a real published package — confirmed via `gh api orgs/codeql/packages`. The actual GHCR package name is `codeql/javascript-queries` (JS and TS share one combined query pack; there was never a separate "javascript-typescript" package). This snippet is left as originally written for historical accuracy of the spec's design intent at v1.2; the shipped `Dockerfile` and `scanners/codeql_runner.py`'s `_QUERY_PACKS` dict use the corrected name.
+
 ### 15.3 Deploy
 
 ```bash

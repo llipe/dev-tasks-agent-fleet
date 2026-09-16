@@ -134,7 +134,7 @@ class TestRunCodeqlSingleLanguageDispatch:
         run_codeql(workspace_js_ts, timeout=600)
 
         analyze_cmd = mock_run.call_args_list[1].args[0]
-        assert "codeql/javascript-typescript-queries" in analyze_cmd
+        assert "codeql/javascript-queries" in analyze_cmd
         assert "--format=sarif-latest" in analyze_cmd
         assert "--output=/dev/stdout" in analyze_cmd
 
@@ -212,7 +212,7 @@ class TestRunCodeqlBothLanguagesDispatch:
             # The analyze command references the language's query pack --
             # use that to decide which fixture to return.
             for language, pack in {
-                "javascript-typescript": "codeql/javascript-typescript-queries",
+                "javascript-typescript": "codeql/javascript-queries",
                 "python": "codeql/python-queries",
             }.items():
                 if pack in cmd:

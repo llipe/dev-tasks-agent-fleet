@@ -51,7 +51,7 @@ class TestQueryPacksTable:
 
     def test_entries_match_the_pinned_pack_names(self):
         assert _QUERY_PACKS == {
-            "javascript-typescript": "codeql/javascript-typescript-queries",
+            "javascript-typescript": "codeql/javascript-queries",
             "python": "codeql/python-queries",
         }
 
