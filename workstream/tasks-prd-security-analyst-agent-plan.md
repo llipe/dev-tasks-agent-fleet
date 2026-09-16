@@ -124,18 +124,18 @@
   - [x] 6.8 Run Tests: `tests/unit/test_trivy_runner.py::test_lockfile_managed_boundary` and general normalize tests — `make test-unit`
   - [x] 6.9 Run Tests: `tests/component/test_trivy_runner.py` (three-mode dispatch mocked) — `make test-component`
 
-- [ ] 7.0 Implement Story S-131: Checkov scanner integration — [Issue #191](https://github.com/llipe/dev-tasks-agent-fleet/issues/191)
+- [x] 7.0 Implement Story S-131: Checkov scanner integration — [Issue #191](https://github.com/llipe/dev-tasks-agent-fleet/issues/191)
 
   > Note: Where the `medium` unknown-severity floor (S-126) first gets exercised against real tool output — Checkov's OSS checks commonly carry no native severity. Depends on S-127, S-126.
 
-  - [ ] 7.1 Implement IaC-file detection (skip condition when no Terraform/CloudFormation/K8s/Dockerfile present)
-  - [ ] 7.2 Implement `run_checkov()` (`--output json`, own `SCANNER_TIMEOUT`)
-  - [ ] 7.3 Implement `normalize_checkov()` (severity via `severity_from_checkov()`; `remediation.kind = "structural"` always — never mechanical)
-  - [ ] 7.4 Build fixture JSON with and without a native `severity` field
-  - [ ] 7.5 Verify Acceptance Criterion: skipped with a named `run_event` when no IaC files present, not a failure (PRD AC23)
-  - [ ] 7.6 Verify Acceptance Criterion: `medium` fallback correctly applied on the common no-severity case
-  - [ ] 7.7 Run Tests: `tests/unit/test_checkov_runner.py` — `make test-unit`
-  - [ ] 7.8 Run Tests: `tests/component/test_checkov_runner.py::test_skip_no_iac` and mocked-subprocess cases — `make test-component`
+  - [x] 7.1 Implement IaC-file detection (skip condition when no Terraform/CloudFormation/K8s/Dockerfile present)
+  - [x] 7.2 Implement `run_checkov()` (`--output json`, own `SCANNER_TIMEOUT`)
+  - [x] 7.3 Implement `normalize_checkov()` (severity via `severity_from_checkov()`; `remediation.kind = "structural"` always — never mechanical)
+  - [x] 7.4 Build fixture JSON with and without a native `severity` field
+  - [x] 7.5 Verify Acceptance Criterion: skipped with a named `run_event` when no IaC files present, not a failure (PRD AC23)
+  - [x] 7.6 Verify Acceptance Criterion: `medium` fallback correctly applied on the common no-severity case
+  - [x] 7.7 Run Tests: `tests/unit/test_checkov_runner.py` — `make test-unit`
+  - [x] 7.8 Run Tests: `tests/component/test_checkov_runner.py::test_skip_no_iac` and mocked-subprocess cases — `make test-component`
 
 - [ ] 8.0 Implement Story S-132: CodeQL scanner integration (JS/TS + Python only) — [Issue #192](https://github.com/llipe/dev-tasks-agent-fleet/issues/192)
 
