@@ -23,7 +23,7 @@
 | 9        | S-133    | #193    | ✅ Merged  | #226 | issue/193-dedupe                                  |
 | 10       | S-134    | #194    | ✅ Merged  | #227 | issue/194-classifier-mechanical-manual-unscannable |
 | 11       | S-135    | #195    | ✅ Merged  | #228 | issue/195-audit-only-mode-min-severity-gating      |
-| 12       | S-136    | #196    | ⏳ Pending | —    | —                                                  |
+| 12       | S-136    | #196    | ✅ Merged  | #229 | issue/196-mechanical-fix-application               |
 | 13       | S-137    | #197    | ⏳ Pending | —    | —                                                  |
 | 14       | S-138    | #198    | ⏳ Pending | —    | —                                                  |
 | 15       | S-139    | #199    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-136
-- Last merged PR: #228
-- Integration branch HEAD: 976dabc
+- Next story: S-137
+- Last merged PR: #229
+- Integration branch HEAD: 75046a5
 
 ## Decisions Log
 
@@ -56,3 +56,4 @@
 - S-133 (dedupe.py): grouping-then-interval-merge algorithm correctly resolves chained 3-way+ overlaps (A-B overlap, B-C overlap, A-C don't directly overlap — all three still merge), verified independently by the auditor re-implementing and adversarially testing it (reversed input order, shuffled severity ties, same-tool double-report). Fidelity High/None. One flagged, non-blocking item: a pre-existing D19/D21 requirement-labeling mismatch inherited faithfully from the spec/PRD itself (not introduced by this story) — routed to `product-engineer` for a future PRD reconciliation pass, no code action needed.
 - S-134 (classifier.py, "single most product-defining logic"): required a retroactive, additive schema change — `Remediation.current_version` added to already-merged `normalize.py`, populated by already-merged `trivy_runner.py`, since no prior story carried a pre-fix version for the major-bump guard (requirement 27). Independently verified safe: all `Remediation(...)` call sites use keyword args, field appended last, 387/387 full suite passing with zero regressions elsewhere. Fidelity High/Minor. All classify() branches (semgrep_autofix→mechanical, lockfile_managed→manual with dependency-update ownership annotation, major-bump guard, JS/TS-vs-Python req-54 boundary, EC-38 both-guards-simultaneously precedence) verified against spec line-by-line. Stray local sync-artifact file (`test_dedupe 2.py`, untracked) noted again, left alone as usual.
 - S-135 (audit_only mode end-to-end): agent's first fully working mode — biggest integration test of the run so far. Added `run_scanners()` dispatcher + `AllScannersFailedError`, wired scan(heartbeated)→dedupe→classify→determine_outcome→audit_report in main.py. Fidelity High/None, zero defects: wiring order, heartbeat call signature, AC12b (min_severity gates outcome only, never filters the artifact), and AC24 (all-fail vs one-of-five-fail) all independently verified against actual code. `determine_outcome()`'s 3-tuple (vs spec's literal 4-tuple, dropping meaningless-for-this-mode `pr_opened`) confirmed to follow the sibling `dependency-update` agent's own established precedent exactly — genuinely additive, S-140 can widen without rewriting call sites. Docs-drift pass was the largest yet: removed "not yet wired" caveats from all 8 prior stories' README entries.
+- S-136 (mechanical fixers, Semgrep autofix + Trivy bump): first half of fix mode's write path, not yet wired into main.py (that's S-140). Third retroactive additive schema field this run (`Remediation.package_name`, same safe pattern as S-134's `current_version`). AC28 (manual/unscannable never touched) verified structurally, not just by test trust: `classify()` guarantees every autofix-carrying Semgrep finding is mechanical, so the blanket workspace-wide `semgrep --autofix` call can't reach manual/unscannable territory even without per-file scoping — Trivy bump, by contrast, IS per-finding-scoped. Fidelity High/None. One design note flagged for S-140's orchestrator (non-blocking): the blanket autofix call fixes everything ruleset-eligible in the workspace, not just the specific mechanical-findings subset passed in — worth a sanity check when S-140 wires this up. `reconcile_lockfile()` sibling-agent-precedent claim independently verified true (`agents/dependency-update/.../updater.py:105`).
