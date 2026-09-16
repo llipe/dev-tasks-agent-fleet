@@ -33,8 +33,8 @@
 ## Current Position
 
 - Next story: S-141 (still in progress — real audit_only/fix invocation verification, tasks 17.10/17.11)
-- Last merged PR: #237
-- Integration branch HEAD: e61c8fb
+- Last merged PR: #238
+- Integration branch HEAD: a7edbaa
 
 ## S-141 Real-Invocation Hardening (post-merge, pre-17.10/17.11-closeout)
 
@@ -43,8 +43,10 @@ S-141's own story PR merged the seed/deploy scaffolding, but tasks 17.10 (real a
 - PR #235 (merged): CodeQL query pack name fix (`codeql/javascript-queries`, not the nonexistent `codeql/javascript-typescript-queries`).
 - PR #236 (merged): installed missing scanner toolchains (Gitleaks, Trivy ARM64 binaries, Rust/Cargo for checkov's `rustworkx` dep) + CodeQL `--build-mode=none`.
 - PR #237 (merged): fixed three more real-binary parse bugs — CodeQL `--language=javascript-typescript` was invalid (added `_CLI_LANGUAGE_NAMES` translation, real value is `javascript`); Gitleaks writes zero bytes (not `null`) on a clean scan; Trivy omits the `Results` key entirely (not `null`) on a clean scan. Fidelity audit (High/Minor) flagged `semgrep_runner.py`/`checkov_runner.py` have the same strict-key-indexing shape but haven't yet been proven to crash against a real binary — watch for this when checkov/semgrep are actually exercised live.
+- PR #238 (merged): CodeQL's JS/TS extractor needs a real Node.js runtime on PATH to parse `.ts`/`.tsx` via the TypeScript compiler API — independent of `--build-mode=none` (that flag only skips a *custom* build command, not the extractor's own dependency). Dockerfile never installed Node.js at all; fixed via NodeSource install. Verified end-to-end locally (pulled the real deployed ECR image, reproduced the exact "Could not start Node.js" failure against a real cloned TypeScript repo in a matching linux/arm64 container, then confirmed a local rebuild with the fix succeeds). Fidelity audit High/Minor: two optional, non-blocking notes (a self-contradictory comment, fixed before merge; a curl|bash-vs-keyring supply-chain hardening suggestion for the Node install step, left as a flagged follow-up, not fixed).
 - IAM: attached `agent-fleet-secrets-and-bedrock` inline policy to the security-analyst runtime role (`AgentCore-securityanalyst-ApplicationAgentSecurityA-GsDyfHWdZS1X`) — was present on the sibling `dependency-update` role but never replicated.
-- Outstanding, NOT yet applied: `supabase/migrations/20260916194500_add_no_findings_run_outcome.sql` — `run_outcome` enum is missing `no_findings`, which `main.py`'s `determine_outcome()` genuinely emits for a clean audit_only scan; every such run currently fails its terminal PATCH (Postgres 22P02) and gets stuck "running" in the panel. Drafted, awaiting explicit user apply confirmation, then a redeploy, then a clean retry of the real audit_only invocation.
+- `run_outcome` enum: applied `supabase/migrations/20260916194500_add_no_findings_run_outcome.sql` to production via `supabase db query --linked --file ...` (user confirmed), verified the enum now includes `no_findings`, committed to the integration branch. `main.py`'s `determine_outcome()` genuinely emits `no_findings` for a clean audit_only scan; before this fix every such run's terminal PATCH failed (Postgres 22P02) and the run got stuck "running" in the panel forever.
+- Redeployed AgentCore runtime twice more in this hardening pass (after PR #237's merge, and again after PR #238's merge) — same runtime_arn each time (`arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`).
 
 ## Decisions Log
 
