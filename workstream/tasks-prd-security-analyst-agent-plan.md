@@ -235,18 +235,18 @@
   - [x] 14.9 Run Tests: `tests/unit/test_safe_path.py`, `tests/unit/test_diff_confinement.py` — `make test-unit`
   - [x] 14.10 Run Tests: `tests/component/test_fix_agent.py` with `patch("fix_agent.Agent")` — zero-Bedrock-call, per-finding-budget, tool-call-argument-scoping cases (PRD AC16, AC17, AC18) — `make test-component`
 
-- [ ] 15.0 Implement Story S-139: Pull request builder — branch, idempotency, body sections — [Issue #199](https://github.com/llipe/dev-tasks-agent-fleet/issues/199)
+- [x] 15.0 Implement Story S-139: Pull request builder — branch, idempotency, body sections — [Issue #199](https://github.com/llipe/dev-tasks-agent-fleet/issues/199)
 
   > Note: Reuses the sibling agent's branch/idempotency/push mechanics near-verbatim; the new work is entirely the body's content structure. Depends on S-134 (classifier output feeds the body), S-137 (re-scan confirmation line).
 
-  - [ ] 15.1 Port branch/idempotency/push mechanics from `dependency-update`'s `pull_request.py`
-  - [ ] 15.2 Implement `build_pr_body()` section builders: summary table, fixed-findings table, remaining-manual table (always present, even empty), D24-boundary section, major-version-guard section, AI-modification warning, re-scan confirmation line
-  - [ ] 15.3 Verify Acceptance Criterion: branch `security/fix-<UTC timestamp>`, commit `fix(security): automated mechanical security fixes` (PRD requirements 38-39)
-  - [ ] 15.4 Verify Acceptance Criterion: already-open `security/fix-*` PR short-circuits to `succeeded`/`not_applicable`, no second branch/PR (PRD AC22)
-  - [ ] 15.5 Verify Acceptance Criterion: body contains every required section per requirement 42, including the always-present-even-if-empty remaining-manual table (PRD AC15)
-  - [ ] 15.6 Verify Acceptance Criterion: body passed via `--body-file`, never inline (PRD AC17 groundwork)
-  - [ ] 15.7 Run Tests: `tests/unit/test_pr_body.py` (synthetic `PipelineState` fixtures: no-LLM, LLM-used, D24-boundary present, major-version-guard present, zero-remaining, all-sections-simultaneously) — `make test-unit`
-  - [ ] 15.8 Run Tests: `tests/component/test_pr_creation.py` (idempotency via mocked `gh pr list`, branch/push mocked) — `make test-component`
+  - [x] 15.1 Port branch/idempotency/push mechanics from `dependency-update`'s `pull_request.py`
+  - [x] 15.2 Implement `build_pr_body()` section builders: summary table, fixed-findings table, remaining-manual table (always present, even empty), D24-boundary section, major-version-guard section, AI-modification warning, re-scan confirmation line
+  - [x] 15.3 Verify Acceptance Criterion: branch `security/fix-<UTC timestamp>`, commit `fix(security): automated mechanical security fixes` (PRD requirements 38-39)
+  - [x] 15.4 Verify Acceptance Criterion: already-open `security/fix-*` PR short-circuits to `succeeded`/`not_applicable`, no second branch/PR (PRD AC22)
+  - [x] 15.5 Verify Acceptance Criterion: body contains every required section per requirement 42, including the always-present-even-if-empty remaining-manual table (PRD AC15)
+  - [x] 15.6 Verify Acceptance Criterion: body passed via `--body-file`, never inline (PRD AC17 groundwork)
+  - [x] 15.7 Run Tests: `tests/unit/test_pr_body.py` (synthetic `PipelineState` fixtures: no-LLM, LLM-used, D24-boundary present, major-version-guard present, zero-remaining, all-sections-simultaneously) — `make test-unit`
+  - [x] 15.8 Run Tests: `tests/component/test_pr_creation.py` (idempotency via mocked `gh pr list`, branch/push mocked) — `make test-component`
 
 - [ ] 16.0 Implement Story S-140: `fix` mode end-to-end wiring — [Issue #200](https://github.com/llipe/dev-tasks-agent-fleet/issues/200)
 

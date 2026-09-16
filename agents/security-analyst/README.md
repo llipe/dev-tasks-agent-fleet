@@ -3,7 +3,7 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-138):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-139):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -28,8 +28,8 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > `min_severity` to the terminal status only, never to the artifact — PRD requirement 62/AC-12b)
 > to reach `succeeded`/`no_findings`, `succeeded`/`needs_review`, or `failed`/`AUDIT_FINDINGS`.
 > **`mode=audit_only` is the first fully working mode of this agent.** `mode=fix` is still the
-> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-139-S-140 still
-> need to wire `fix`/`rescan`/`open_pr` and the orchestration loop into it. S-136 (`#229`) added the
+> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-140 still
+> needs to wire `fix`/`rescan`/`open_pr` and the orchestration loop into it. S-136 (`#229`) added the
 > first two of `fix` mode's building blocks — `fixers/semgrep_autofix.py` (Semgrep native-patch
 > application) and `fixers/trivy_bump.py` (Trivy version-bump application, plus a retroactive,
 > additive `Remediation.package_name` field so the fixer can locate which manifest line to edit —
@@ -53,7 +53,19 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > sibling's package.json check, narrowed to the single targeted finding's own `file_path`.
 > Like the two fixers and `rescan.py`, **`fix_agent.py` is standalone and not yet called from
 > `main.py`** — wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop remains S-140's
-> job.
+> job. S-139 (`#232`) added the fourth and final building block, `pull_request.py`'s
+> `build_pr_body()` plus its branch/idempotency/push mechanics (`branch_name()`, `existing_pr()`,
+> `create_pr()`) — ported near-verbatim from the sibling agent's own `pull_request.py` (same
+> credential-helper push, same `gh pr list` idempotency pattern, same "body always via
+> `--body-file`, never inline `--body`" rule). **Forward-reference gap for whoever picks up
+> S-140:** since no orchestrator-level `PipelineState` exists yet in this agent, `pull_request.py`
+> defines its own local, minimal `PipelineState` dataclass purely so `build_pr_body()` has a
+> concrete input shape to build and test against — it is a placeholder shape, not a finished
+> cross-story contract. S-140 must either construct this exact shape or a superset of it at the
+> `open_pr` call site; that call-site decision is not made here (see `pull_request.py`'s own
+> module docstring). Like the other three building blocks, **`pull_request.py` is standalone and
+> not yet called from `main.py`** — wiring `fix`/`rescan`/`open_pr` into one live orchestrator
+> loop remains S-140's job.
 >
 > `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
 > `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`,
@@ -83,8 +95,8 @@ agents/security-analyst/
 │   ├── main.py              # Pipeline orchestrator entrypoint. `mode=audit_only`: real
 │   │                        # scan -> classify -> determine_outcome pipeline (S-135). `mode=fix`
 │   │                        # still on the S-125 placeholder — the `fixers/` modules (S-136),
-│   │                        # `rescan.py` (S-137), and `fix_agent.py` (S-138) exist but are not
-│   │                        # yet called from here (S-139-S-140 wire it).
+│   │                        # `rescan.py` (S-137), `fix_agent.py` (S-138), and `pull_request.py`
+│   │                        # (S-139) exist but are not yet called from here (S-140 wires it).
 │   ├── severity.py          # Per-tool severity normalization, pure functions (S-126)
 │   ├── normalize.py         # Finding/Remediation frozen dataclasses (S-127)
 │   ├── fingerprint.py       # fingerprint(), banded-line dedup key (S-127)
@@ -129,6 +141,19 @@ agents/security-analyst/
 │   │                        # sibling's `git diff --name-only` — see the function's own docstring
 │   │                        # (S-138). Standalone and unit/component-tested; NOT yet called from
 │   │                        # main.py (S-140 wires it).
+│   ├── pull_request.py      # branch_name(), existing_pr(), create_pr(), build_pr_body() (req
+│   │                        # 38-43, S-139) — branch/idempotency/push mechanics ported near-
+│   │                        # verbatim from the sibling agent's own `pull_request.py`; body
+│   │                        # section builders (summary, fixed-findings, always-present
+│   │                        # remaining-manual, conditional D24-boundary/major-version-guard/
+│   │                        # AI-modification-warning, always-present re-scan confirmation line)
+│   │                        # are new. Defines its own local, minimal `PipelineState` dataclass
+│   │                        # — a placeholder input shape for `build_pr_body()`, NOT a finished
+│   │                        # cross-story contract, since no orchestrator-level `PipelineState`
+│   │                        # exists yet; S-140 must construct this exact shape or a superset of
+│   │                        # it at the `open_pr` call site (see the module's own docstring).
+│   │                        # Standalone and unit/component-tested; NOT yet called from main.py
+│   │                        # (S-140 wires it).
 │   ├── scanners/
 │   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
 │   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
@@ -198,7 +223,12 @@ agents/security-analyst/
 │       │                    # test_fix_tools.py (S-138, 23 tests, ported near-verbatim from the
 │       │                    # sibling agent's own test_fix_tools.py, added proactively per this
 │       │                    # story's completion instructions: the 5 tool bodies exercised
-│       │                    # directly via __wrapped__, not just _safe_path's own unit tests)
+│       │                    # directly via __wrapped__, not just _safe_path's own unit tests),
+│       │                    # test_pr_body.py (S-139, 22 tests: synthetic local `PipelineState`
+│       │                    # fixtures — no-LLM, LLM-used, D24-boundary present, major-version-
+│       │                    # guard present, zero-remaining, all-sections-simultaneously —
+│       │                    # always-present-even-empty remaining-manual table, conditional
+│       │                    # section gating, branch-name format, markdown-cell escaping)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
 │       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
@@ -220,7 +250,13 @@ agents/security-analyst/
 │       │                    # exhaustion/early-stop/fresh-budget-per-finding, single-finding
 │       │                    # prompt scoping, _assert_diff_confined_to() enforcement,
 │       │                    # Agent-exception and all-scanners-failed-during-rescan handling,
-│       │                    # five-tool construction, system-prompt content)
+│       │                    # five-tool construction, system-prompt content),
+│       │                    # test_pr_creation.py (S-139, 16 tests: idempotency via mocked
+│       │                    # `gh pr list`, `open_pr_if_needed` short-circuit on existing PR
+│       │                    # (AC-22), happy-path branch/commit/push/create order,
+│       │                    # `--body-file`-never-inline (AC-17 groundwork), fixed commit
+│       │                    # message/branch-name format, never pushes to default branch (req
+│       │                    # 40), push-failure token scrubbing — all `subprocess.run` mocked)
 │       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
 │                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130),
 │                            # checkov_{clean,findings,no_severity}.json (S-131),
@@ -268,14 +304,16 @@ agents/security-analyst/
 ### `mode=fix` (still the S-125 placeholder)
 
 `mode=fix` has not been wired yet: after `checkout`, it goes straight to `succeeded`/`no_findings`
-with every scanner reported `scanners_skipped` — no scanner runs. S-139-S-140 replace this
-placeholder with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline (spec
+with every scanner reported `scanners_skipped` — no scanner runs. S-140 replaces this placeholder
+with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline (spec
 `workstream/specification-prd-security-analyst-agent.md` S8.8); this is explicitly out of S-135's
 scope. S-136 (`#229`) already built the two deterministic fixers (`fixers/semgrep_autofix.py`,
 `fixers/trivy_bump.py`), S-137 (`#230`) already built the re-scan gate (`rescan.py`'s
-`rescan_gate()`), and S-138 (`#231`) already built the LLM escape hatch (`fix_agent.py`'s
-`run_fix_loop_for_finding()`) this pipeline will call, but none of the four are invoked yet — see
-Layout above. Wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop remains S-140's job.
+`rescan_gate()`), S-138 (`#231`) already built the LLM escape hatch (`fix_agent.py`'s
+`run_fix_loop_for_finding()`), and S-139 (`#232`) already built the PR builder (`pull_request.py`'s
+`build_pr_body()` plus branch/idempotency/push mechanics) this pipeline will call, but none of
+the four are invoked yet — see Layout above. Wiring `fix`/`rescan`/`open_pr` into one live
+orchestrator loop remains S-140's job.
 
 > **Design note — `determine_outcome()`'s 3-tuple return:** spec §8.10's pseudocode describes a
 > 4-tuple `(status, outcome, error_code, pr_opened)`. `audit_only` never opens a PR, so
@@ -316,8 +354,8 @@ invoking — see the sibling agent's README for the full prerequisite/troublesho
 The example above uses `mode=audit_only` (the default), which as of S-135 runs the real five-tool
 scan/classify/report pipeline described under Pipeline above. `mode=fix` is also accepted by
 `validate_payload()` (it is in `_VALID_MODES`), but is still unimplemented — it falls straight
-through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-139-S-140
-land. S-136-S-138 built the fixer, rescan-gate, and LLM-escape-hatch modules `mode=fix` will
+through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-140 lands.
+S-136-S-139 built the fixer, rescan-gate, LLM-escape-hatch, and PR-builder modules `mode=fix` will
 eventually call, but they are not wired in yet.
 
 ## Deployment
