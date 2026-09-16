@@ -3,7 +3,10 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-140):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-141, build complete):** all 17 stories of the agent build are done; the code
+> path is fully wired for both modes. Applying the seed migration, redeploying, and running real
+> repo invocations remain pending explicit user confirmation (see the S-141 paragraph below).
+> Story-by-story: project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -101,6 +104,16 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > piece (fixers, rescan gate, LLM escape hatch, PR builder) in isolation, and S-140 is the second
 > — and final — story to converge a full mode into one live pipeline, completing the agent's
 > state machine for both `audit_only` and `fix`.
+>
+> **S-141 (final story — seed configuration, deployment, and real-repo verification):** appended
+> the `security-analyst` `agents` seed block to `supabase/seed.sql` (Block 4), documented the
+> `max_runtime_seconds`/`maxLifetime` manual-sync coupling and confirmed the two values already
+> agree (5400s, PRD AC31), and confirmed by reading `reap_stale_runs()` that the existing
+> `pg_cron` reaper needs no change for this agent (PRD AC31, generic per-run threshold snapshot,
+> D8). Applying the seed migration, redeploying to pick up S-126-S-140's real pipeline, and the
+> real `audit_only`/`fix` invocations against live/fixture repos (tasks 17.4-17.6, 17.10-17.11)
+> remain **pending explicit user confirmation** — see "Deployment" and "Seed migration — rollback
+> and impact" below.
 
 ## Layout
 
@@ -453,8 +466,36 @@ agentcore status         # confirm runtime ready; copy the runtime ARN
 ```
 
 After a successful deploy, the `runtime_arn` is recorded in `supabase/seed.sql` as part of
-**S-141** (this story does not touch the seed file — no `security-analyst` `agents` row exists
-until then).
+**S-141**, which appended the `security-analyst` block (Block 4) to the shared seed file,
+following the exact idempotent `on conflict (slug) do update` shape of the sibling
+`dependency-update` block (Block 3) — see spec §5.2. The seed row's `runtime_arn` reflects the
+runtime already deployed under S-125
+(`arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`).
+**Applying** that seed migration against anything other than a local/dev Supabase stack is a
+separate, confirmation-gated step (S-141 tasks 17.4-17.6) — this repo only carries the artifact
+until that confirmation happens; a redeploy is also expected before real invocations, since S-125
+only shipped the placeholder scan pipeline and S-126-S-140 have since replaced it end-to-end.
+
+### Seed migration — rollback and impact (S-141)
+
+The `security-analyst` seed block is a single `insert ... on conflict (slug) do update` against
+the `agents` table, following the same idempotent shape as `dependency-update`'s existing Block 3
+row. Rollback, if ever needed, is:
+
+```sql
+update agents set is_enabled = false where slug = 'security-analyst';
+-- or, if the row must be removed outright and no run has referenced it yet:
+delete from agents where slug = 'security-analyst';
+```
+
+**No data-loss risk.** The `agents` row carries only static configuration (name, description,
+version, runtime pointer, timeout thresholds, default params, params schema) — the agent has no
+other persisted state of its own. The one caveat is referential: once any `runs` row exists with
+`agent_id` pointing at this row, `agents` cannot be hard-deleted (`runs.agent_id references
+agents(id) on delete restrict`); disabling via `is_enabled = false` is the correct rollback path
+at that point, matching how `dependency-update` would be rolled back. Re-applying the seed after a
+disable is idempotent and restores the row exactly, since every column the block sets is covered
+by the `on conflict ... do update` clause.
 
 ## Local Development
 
@@ -473,6 +514,9 @@ curl http://localhost:8080/ping
 |---------|-------|----------|
 | `maxLifetime` | 5400s | `agentcore/agentcore.json` |
 | `idleRuntimeSessionTimeout` | 900s | `agentcore/agentcore.json` |
+| `max_runtime_seconds` | 5400 | `supabase/seed.sql` (Block 4, `agents` table) |
+| `grace_seconds` | 150 | `supabase/seed.sql` (Block 4, `agents` table) |
+| `start_timeout_seconds` | 300 | `supabase/seed.sql` (Block 4, `agents` table) |
 
 This agent recomputes ADR-006's clock-invariant chain for its own, higher bounds — a five-scanner
 step (CodeQL's database-build phase especially) can legitimately run far longer than the sibling
@@ -482,7 +526,29 @@ agent's `pnpm test`. At entrypoint start `config.assert_clock_invariant()` fails
 and `HEARTBEAT_INTERVAL <= IDLE_SESSION_TIMEOUT / 2`. `IDLE_SESSION_TIMEOUT` / `MAX_LIFETIME` MUST
 mirror `agentcore.json` `lifecycleConfiguration`, and `REAPER_THRESHOLD_SECONDS` (default
 `MAX_LIFETIME + 120`) MUST equal the database `max_runtime_seconds` + `grace_seconds` set for this
-agent's row in `supabase/seed.sql` (S-141). See `docs/technical-guidelines.md` S7/S8 and
+agent's row in `supabase/seed.sql` (S-141).
+
+**This coupling is a manual-sync obligation, not an enforced invariant** — nothing in the repo
+verifies at runtime or in CI that `agentcore.json`'s `maxLifetime` and `supabase/seed.sql`'s
+`max_runtime_seconds` agree; a future edit to either file can silently drift the other. As of
+S-141, the two values are confirmed equal in the committed artifacts: `agentcore.json`
+`lifecycleConfiguration.maxLifetime = 5400` and `seed.sql` Block 4's `max_runtime_seconds = 5400`
+(PRD AC31, first half). Whoever changes one value in the future MUST update the other by hand and
+re-verify this table. The database side of the pair (`runs.max_runtime_seconds` /
+`runs.grace_seconds`) is a per-run snapshot (D8) taken from this agent's `agents` row at run
+creation, so an edit to `seed.sql` after the row already exists only takes effect for runs created
+after the seed is re-applied.
+
+**The reaper needs no change for this agent (PRD AC31, second half).** `reap_stale_runs()`
+(`supabase/migrations/20260902200101_initial_schema.sql`, see also
+[ADR-004](../../docs/adr/ADR-004-schedule-pg-cron-reaper.md)) reads `runs.max_runtime_seconds` and
+`runs.grace_seconds` off the run row it is currently examining — those columns are generic,
+per-run snapshots (D8) populated from whichever `agents` row the run belongs to, and the function
+contains no `agent_id`/`slug` branch or any hardcoded threshold. A security-analyst run that hangs
+past `5400 + 150 = 5550` seconds is reaped by the exact same code path, with the exact same
+`timed_out` status and `RUNTIME_TIMEOUT` `run_events` row, that already covers `dependency-update`
+— confirmed by reading the function; no synthetic-row or live-hang exercise is required to
+establish this (S-141 task 17.9). See `docs/technical-guidelines.md` §7/§8 and
 [ADR-006](../../docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md).
 
 ### Environment Variables (set by AgentCore / Secrets Manager)

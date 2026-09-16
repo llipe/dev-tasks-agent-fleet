@@ -272,16 +272,16 @@
   > Note: Closes out the build. Corrects the one thing the codebase research surfaced: the seed row goes in `supabase/seed.sql`, **not** `docs/reference/002_seed.sql` (a stub). Depends on S-140, S-135 (both modes complete).
 
   - [x] 17.1 `agentcore deploy -y`; capture `runtime_arn` — already done during S-125 (deployed `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`; re-run only if the runtime needs redeploying by this point). S-125 tasks 1.8/1.12/1.14 (real `audit_only` invocation, live AC25/AC26/AC30 verification) were deferred here — fold that evidence into 17.10.
-  - [ ] 17.2 **[MIGRATION — create artifact]** Append the `security-analyst` block to `supabase/seed.sql` (idempotent `on conflict (slug) do update`), per spec §5.2 exactly — never `docs/reference/002_seed.sql`
-  - [ ] 17.3 **[MIGRATION — document rollback/impact]** Record that rollback is deleting/disabling the seed row; no data-loss risk (agent has no other persisted state)
-  - [ ] 17.4 **[MIGRATION — confirmation gate]** Request explicit user confirmation before applying the seed against anything other than a local/dev Supabase stack
-  - [ ] 17.5 **[MIGRATION — apply]** Apply `supabase/seed.sql` after confirmation
-  - [ ] 17.6 **[MIGRATION — verify]** Run the seed's own Block 4 `count(*)` verification query
-  - [ ] 17.7 Document the `max_runtime_seconds`/`maxLifetime` manual-sync coupling in `agents/security-analyst/README.md`
-  - [ ] 17.8 Verify Acceptance Criterion: `max_runtime_seconds=5400` in the seed row equals `maxLifetime` in `agentcore.json` (PRD AC31)
-  - [ ] 17.9 Verify Acceptance Criterion: a deliberately hung run is marked `timed_out` by the existing `pg_cron` reaper, no reaper-side change needed (PRD AC31)
-  - [ ] 17.10 Run manual verification: one real `audit_only` invocation against a real (small, known-content) target repo — attach evidence to the closing PR
-  - [ ] 17.11 Run manual verification: one real `fix` invocation against a fixture repo seeded with a Semgrep-autofixable finding — confirm a real, reviewable PR opens — attach evidence to the closing PR
+  - [x] 17.2 **[MIGRATION — create artifact]** Append the `security-analyst` block to `supabase/seed.sql` (idempotent `on conflict (slug) do update`), per spec §5.2 exactly — never `docs/reference/002_seed.sql` — **artifact drafted, NOT applied** (see 17.4-17.6)
+  - [x] 17.3 **[MIGRATION — document rollback/impact]** Record that rollback is deleting/disabling the seed row; no data-loss risk (agent has no other persisted state) — documented in `agents/security-analyst/README.md` ("Seed migration — rollback and impact (S-141)")
+  - [ ] 17.4 **[MIGRATION — confirmation gate]** Request explicit user confirmation before applying the seed against anything other than a local/dev Supabase stack — **BLOCKED: awaiting planner/user confirmation, not requested by this agent invocation per this run's established policy (S-125 precedent). Migration artifact ready, NOT applied.**
+  - [ ] 17.5 **[MIGRATION — apply]** Apply `supabase/seed.sql` after confirmation — **BLOCKED: pending 17.4**
+  - [ ] 17.6 **[MIGRATION — verify]** Run the seed's own Block 4 `count(*)` verification query — **BLOCKED: pending 17.5**
+  - [x] 17.7 Document the `max_runtime_seconds`/`maxLifetime` manual-sync coupling in `agents/security-analyst/README.md`
+  - [x] 17.8 Verify Acceptance Criterion: `max_runtime_seconds=5400` in the seed row equals `maxLifetime` in `agentcore.json` (PRD AC31) — statically confirmed: `agentcore.json` `lifecycleConfiguration.maxLifetime = 5400`, `seed.sql` Block 4 `max_runtime_seconds = 5400` (values not yet applied to a live DB, but the committed artifacts agree)
+  - [x] 17.9 Verify Acceptance Criterion: a deliberately hung run is marked `timed_out` by the existing `pg_cron` reaper, no reaper-side change needed (PRD AC31) — confirmed by reading `reap_stale_runs()` (`supabase/migrations/20260902200101_initial_schema.sql`): it is generic, keyed on the per-run snapshot columns `runs.max_runtime_seconds`/`runs.grace_seconds` (D8), no `agent_id`/slug branch or hardcoded threshold; see ADR-004
+  - [ ] 17.10 Run manual verification: one real `audit_only` invocation against a real (small, known-content) target repo — attach evidence to the closing PR — **BLOCKED: requires a live `agents` row from 17.5, and a real external invocation; deferred to planner/user-confirmed follow-up**
+  - [ ] 17.11 Run manual verification: one real `fix` invocation against a fixture repo seeded with a Semgrep-autofixable finding — confirm a real, reviewable PR opens — attach evidence to the closing PR — **BLOCKED: requires a live `agents` row from 17.5, and a real external invocation (repo clone, PR creation); deferred to planner/user-confirmed follow-up**
 
 ## Coverage Cross-Check
 
