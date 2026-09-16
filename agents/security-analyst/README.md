@@ -3,7 +3,7 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-133):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-134):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -11,25 +11,32 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > integration (own IaC-file pre-flight skip detector, unconditional `structural` remediation)
 > (S-131), the CodeQL scanner integration (JS/TS + Python-only language dispatch, two-phase
 > `database create`/`database analyze` CLI call per language, merged findings when both
-> languages are detected) (S-132), and cross-tool deduplication (`dedupe()`,
+> languages are detected) (S-132), cross-tool deduplication (`dedupe()`,
 > `_merge_overlapping_by_line()`, `MergedFinding` — conservative file+category+line-overlap
 > merge across tools within one scan pass, distinct from `fingerprint()`'s across-scan
-> tolerance) (S-133). The entrypoint still validates the invocation payload and
-> runs the S-125 placeholder pipeline (`resolve_credentials` -> `checkout` ->
-> `succeeded`/`no_findings`) — **`main.py` does not call any scanner yet**.
+> tolerance) (S-133), and the finding classifier (`classify()`, `_is_major_bump()`,
+> `_is_semver()` — the D22 three-bucket `mechanical`/`manual`/`unscannable` model, the D24/
+> req-54 `dependency-update` lockfile boundary, and requirement 27's major-version guard;
+> retroactively added `Remediation.current_version`, populated only by
+> `trivy_runner.py`'s `version_bump` branch, so the major-bump guard has a pre-fix version to
+> compare against `target_version` — see `normalize.py`'s `Remediation` docstring) (S-134). The
+> entrypoint still validates the invocation payload and runs the S-125 placeholder pipeline
+> (`resolve_credentials` -> `checkout` -> `succeeded`/`no_findings`) — **`main.py` does not call
+> any scanner yet**.
 > `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
 > `scanners/gitleaks_runner.py`'s `run_gitleaks()`/`normalize_gitleaks()`,
 > `scanners/trivy_runner.py`'s `run_trivy()`/`normalize_trivy()`,
 > `scanners/checkov_runner.py`'s `run_checkov()`/`normalize_checkov()`/`has_iac_files()`,
 > `scanners/codeql_runner.py`'s `run_codeql()`/`normalize_codeql()`/`detect_languages()`,
 > `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
-> `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`, and `dedupe.py`'s
-> `dedupe()` are all pure/subprocess-mocked, unit-and-component-tested, and not yet wired into
-> the pipeline (no `run_scanners()` dispatcher, dedupe/classify step, or `main.py` caller exists
-> until **S-135**, `audit_only` mode end-to-end). This is a deliberate bring-up milestone, not a
-> shortcut: it proves the deploy/credential/reporting pipe end-to-end (mirroring how
-> `agents/dependency-update/` proved its own pipe first) before all five scanner integrations
-> (S-128-S-132) and cross-tool dedupe (S-133, now complete) are wired together and invoked
+> `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`, `dedupe.py`'s
+> `dedupe()`, and `classifier.py`'s `classify()` are all pure/subprocess-mocked,
+> unit-and-component-tested, and not yet wired into the pipeline (no `run_scanners()`
+> dispatcher, dedupe/classify step, or `main.py` caller exists until **S-135**, `audit_only`
+> mode end-to-end). This is a deliberate bring-up milestone, not a shortcut: it proves the
+> deploy/credential/reporting pipe end-to-end (mirroring how `agents/dependency-update/` proved
+> its own pipe first) before all five scanner integrations (S-128-S-132), cross-tool dedupe
+> (S-133), and classification (S-134, now complete) are wired together and invoked
 > (S-135-S-141).
 
 ## Layout
@@ -48,6 +55,9 @@ agents/security-analyst/
 │   ├── dedupe.py            # dedupe(), _merge_overlapping_by_line(), MergedFinding — cross-tool
 │   │                        # merge within one scan pass (file+category+line-overlap), distinct
 │   │                        # from fingerprint.py's across-scan tolerance (S-133)
+│   ├── classifier.py        # classify(), _is_major_bump(), _is_semver() — D22 three-bucket
+│   │                        # mechanical/manual/unscannable model, D24/req-54 lockfile
+│   │                        # boundary, requirement 27 major-version guard (S-134)
 │   ├── scanners/
 │   │   ├── __init__.py        # Subpackage docstring: one module per tool, shared ScanStatus/ScanResult
 │   │   ├── types.py           # ScanStatus/ScanResult shared shape, reused verbatim by S-129-S-132 (S-127-adjacent, landed S-128)
@@ -89,7 +99,10 @@ agents/security-analyst/
 │       │                    # security-severity/CWE-tag lookup + detect_languages() 4-way
 │       │                    # trigger-condition matrix), test_dedupe.py (S-133, merge/no-merge
 │       │                    # cases, three-way chained overlap, reported_by dedup/order,
-│       │                    # severity tie-break)
+│       │                    # severity tie-break), test_classifier.py (S-134, every classify()
+│       │                    # branch, the JS/TS-excluded vs. Python-not-excluded boundary side
+│       │                    # by side, and the lockfile_managed=True + major-bump-simultaneous
+│       │                    # case, EC-38)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
 │       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
@@ -120,22 +133,32 @@ agents/security-analyst/
 Later stories replace step 4 with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline
 (spec `workstream/specification-prd-security-analyst-agent.md` S8.8).
 
-> **Note (S-128/S-129/S-130/S-131/S-132):** `scanners/semgrep_runner.py`'s `run_semgrep()`,
-> `scanners/gitleaks_runner.py`'s `run_gitleaks()`, `scanners/trivy_runner.py`'s `run_trivy()`,
-> `scanners/checkov_runner.py`'s `run_checkov()`, and `scanners/codeql_runner.py`'s `run_codeql()`
-> are all fully implemented and covered by unit and component tests (with `subprocess.run` mocked
-> — no real Semgrep, Gitleaks, Trivy, Checkov, or CodeQL binary invocation is exercised in tests,
-> though CodeQL's real CLI is now installed in the Dockerfile, see Layout above), but **step 4
-> above still runs unmodified**: `main.py` does not import or call any runner. The scan step's
-> real wiring (`run_scanners()` dispatching across all requested tools) lands in **S-135**
-> (`audit_only` mode end-to-end).
+There are two related but distinct "not yet wired" categories below: the five **scanner
+runners** (no `run_scanners()` dispatcher exists yet to call them) and the **dedupe + classify**
+post-scan steps (no caller exists yet because they consume `run_scanners()`'s output, which does
+not exist yet either). Both land together in **S-135**, but they are separate gaps for separate
+reasons — a scanner runner producing zero findings is not the same condition as dedupe/classify
+having no input to run against.
+
+> **Note (S-128/S-129/S-130/S-131/S-132) — scanner runners not yet wired:**
+> `scanners/semgrep_runner.py`'s `run_semgrep()`, `scanners/gitleaks_runner.py`'s
+> `run_gitleaks()`, `scanners/trivy_runner.py`'s `run_trivy()`, `scanners/checkov_runner.py`'s
+> `run_checkov()`, and `scanners/codeql_runner.py`'s `run_codeql()` are all fully implemented and
+> covered by unit and component tests (with `subprocess.run` mocked — no real Semgrep, Gitleaks,
+> Trivy, Checkov, or CodeQL binary invocation is exercised in tests, though CodeQL's real CLI is
+> now installed in the Dockerfile, see Layout above), but **step 4 above still runs unmodified**:
+> `main.py` does not import or call any runner. The scan step's real wiring (`run_scanners()`
+> dispatching across all requested tools) lands in **S-135** (`audit_only` mode end-to-end).
 >
-> **Note (S-133):** `dedupe.py`'s `dedupe()` is not a scanner — it is a pure, unit-tested
-> post-scan merge step that consumes a scanner run's combined `Finding` list. It is fully
-> implemented and covered by unit tests, but not yet wired into the pipeline: no caller invokes
-> it yet, since the classify step it feeds does not exist until a later story. Its real wiring
-> (between `run_scanners()`'s output and the classify step) lands alongside the rest of the
-> `scan -> classify -> fix -> rescan -> open_pr` pipeline in **S-135** and following.
+> **Note (S-133/S-134) — dedupe + classify not yet wired:** `dedupe.py`'s `dedupe()` and
+> `classifier.py`'s `classify()` are not scanners — they are pure, unit-tested post-scan steps
+> that consume a scanner run's combined `Finding` list (`dedupe()`) and a deduped
+> `MergedFinding` (`classify()`) respectively. Both are fully implemented and covered by unit
+> tests, but neither is wired into the pipeline: no caller invokes either yet, since
+> `run_scanners()` — the step that would produce their input — does not exist until S-135. Their
+> real wiring (`run_scanners()`'s output -> `dedupe()` -> `classify()` per finding) lands
+> alongside the rest of the `scan -> classify -> fix -> rescan -> open_pr` pipeline in **S-135**
+> and following.
 
 ## Invocation payload (spec S6.1)
 
