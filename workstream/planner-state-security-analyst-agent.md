@@ -22,7 +22,7 @@
 | 8        | S-132    | #192    | ✅ Merged  | #225 | issue/192-codeql-scanner-integration              |
 | 9        | S-133    | #193    | ✅ Merged  | #226 | issue/193-dedupe                                  |
 | 10       | S-134    | #194    | ✅ Merged  | #227 | issue/194-classifier-mechanical-manual-unscannable |
-| 11       | S-135    | #195    | ⏳ Pending | —    | —                                                  |
+| 11       | S-135    | #195    | ✅ Merged  | #228 | issue/195-audit-only-mode-min-severity-gating      |
 | 12       | S-136    | #196    | ⏳ Pending | —    | —                                                  |
 | 13       | S-137    | #197    | ⏳ Pending | —    | —                                                  |
 | 14       | S-138    | #198    | ⏳ Pending | —    | —                                                  |
@@ -32,9 +32,9 @@
 
 ## Current Position
 
-- Next story: S-135
-- Last merged PR: #227
-- Integration branch HEAD: a731181
+- Next story: S-136
+- Last merged PR: #228
+- Integration branch HEAD: 976dabc
 
 ## Decisions Log
 
@@ -55,3 +55,4 @@
 - S-132 (CodeQL scanner, final of 5): blocking pre-check (ARM64 CLI availability) passed — CodeQL CLI v2.27.0 confirmed to ship native `codeql-linux-arm64.zip`, independently re-verified live against GitHub's release API by both developer and verifier (not just trusted). Fidelity High/None — cleanest audit result of the run. This is the first story to actually install a real scanner binary into the Dockerfile; semgrep/gitleaks/trivy/checkov toolchains remain uninstalled (flagged, not fixed — likely blocks on whichever story wires `run_scanners()`, probably S-135). Dev also cleaned up ~52 stray `" 2"`-suffixed gitignored local sync-artifact files (iCloud Drive conflict copies in this working directory) — verified none were git-tracked, no data loss.
 - S-133 (dedupe.py): grouping-then-interval-merge algorithm correctly resolves chained 3-way+ overlaps (A-B overlap, B-C overlap, A-C don't directly overlap — all three still merge), verified independently by the auditor re-implementing and adversarially testing it (reversed input order, shuffled severity ties, same-tool double-report). Fidelity High/None. One flagged, non-blocking item: a pre-existing D19/D21 requirement-labeling mismatch inherited faithfully from the spec/PRD itself (not introduced by this story) — routed to `product-engineer` for a future PRD reconciliation pass, no code action needed.
 - S-134 (classifier.py, "single most product-defining logic"): required a retroactive, additive schema change — `Remediation.current_version` added to already-merged `normalize.py`, populated by already-merged `trivy_runner.py`, since no prior story carried a pre-fix version for the major-bump guard (requirement 27). Independently verified safe: all `Remediation(...)` call sites use keyword args, field appended last, 387/387 full suite passing with zero regressions elsewhere. Fidelity High/Minor. All classify() branches (semgrep_autofix→mechanical, lockfile_managed→manual with dependency-update ownership annotation, major-bump guard, JS/TS-vs-Python req-54 boundary, EC-38 both-guards-simultaneously precedence) verified against spec line-by-line. Stray local sync-artifact file (`test_dedupe 2.py`, untracked) noted again, left alone as usual.
+- S-135 (audit_only mode end-to-end): agent's first fully working mode — biggest integration test of the run so far. Added `run_scanners()` dispatcher + `AllScannersFailedError`, wired scan(heartbeated)→dedupe→classify→determine_outcome→audit_report in main.py. Fidelity High/None, zero defects: wiring order, heartbeat call signature, AC12b (min_severity gates outcome only, never filters the artifact), and AC24 (all-fail vs one-of-five-fail) all independently verified against actual code. `determine_outcome()`'s 3-tuple (vs spec's literal 4-tuple, dropping meaningless-for-this-mode `pr_opened`) confirmed to follow the sibling `dependency-update` agent's own established precedent exactly — genuinely additive, S-140 can widen without rewriting call sites. Docs-drift pass was the largest yet: removed "not yet wired" caveats from all 8 prior stories' README entries.
