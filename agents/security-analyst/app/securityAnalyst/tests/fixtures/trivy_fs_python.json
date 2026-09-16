@@ -1,0 +1,56 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "/workspace/repo",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-44444",
+          "PkgName": "requests",
+          "InstalledVersion": "2.25.0",
+          "FixedVersion": "2.31.0",
+          "Severity": "HIGH",
+          "Title": "requests: unintended leak of Proxy-Authorization header",
+          "Description": "requests before 2.31.0 leaks the Proxy-Authorization header on redirect.",
+          "CweIDs": ["CWE-200"]
+        }
+      ]
+    },
+    {
+      "Target": "poetry.lock",
+      "Class": "lang-pkgs",
+      "Type": "poetry",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-55555",
+          "PkgName": "jinja2",
+          "InstalledVersion": "2.11.2",
+          "FixedVersion": "2.11.3",
+          "Severity": "MEDIUM",
+          "Title": "jinja2: sandbox escape",
+          "Description": "A sandbox escape vulnerability in Jinja2 before 2.11.3."
+        }
+      ]
+    },
+    {
+      "Target": "Pipfile.lock",
+      "Class": "lang-pkgs",
+      "Type": "pipenv",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-66666",
+          "PkgName": "pyyaml",
+          "InstalledVersion": "5.3",
+          "FixedVersion": "5.4",
+          "Severity": "CRITICAL",
+          "Title": "pyyaml: arbitrary code execution via full_load",
+          "Description": "Arbitrary code execution in PyYAML before 5.4."
+        }
+      ]
+    }
+  ]
+}

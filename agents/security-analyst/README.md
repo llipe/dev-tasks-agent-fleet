@@ -3,14 +3,16 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-129):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-130):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
-> `fingerprint()` (S-127), the Semgrep scanner integration (S-128), and the Gitleaks scanner
-> integration + secret redaction (S-129). The entrypoint still validates the invocation payload
-> and runs the S-125 placeholder pipeline (`resolve_credentials` -> `checkout` ->
-> `succeeded`/`no_findings`) — **`main.py` does not call any scanner yet**.
-> `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
-> `scanners/gitleaks_runner.py`'s `run_gitleaks()`/`normalize_gitleaks()`, `severity.py`'s five
+> `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
+> integration + secret redaction (S-129), and the Trivy scanner integration (`fs`/`config`/`image`
+> three-mode dispatch, D24/req-54 `lockfile_managed` boundary) (S-130). The entrypoint still
+> validates the invocation payload and runs the S-125 placeholder pipeline
+> (`resolve_credentials` -> `checkout` -> `succeeded`/`no_findings`) — **`main.py` does not call
+> any scanner yet**. `scanners/semgrep_runner.py`'s `run_semgrep()`/`normalize_semgrep()`,
+> `scanners/gitleaks_runner.py`'s `run_gitleaks()`/`normalize_gitleaks()`,
+> `scanners/trivy_runner.py`'s `run_trivy()`/`normalize_trivy()`, `severity.py`'s five
 > `severity_from_<tool>()` functions, `normalize.py`'s `Finding`/`Remediation` dataclasses, and
 > `fingerprint.py`'s `fingerprint()` are all pure/subprocess-mocked, unit-and-component-tested, and
 > not yet wired into the pipeline (no `run_scanners()` dispatcher or `main.py` caller exists until
@@ -36,7 +38,9 @@ agents/security-analyst/
 │   │   ├── __init__.py        # Subpackage docstring: one module per tool, shared ScanStatus/ScanResult
 │   │   ├── types.py           # ScanStatus/ScanResult shared shape, reused verbatim by S-129-S-132 (S-127-adjacent, landed S-128)
 │   │   ├── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — not yet called by main.py
-│   │   └── gitleaks_runner.py # run_gitleaks(), normalize_gitleaks() (S-129) — not yet called by main.py
+│   │   ├── gitleaks_runner.py # run_gitleaks(), normalize_gitleaks() (S-129) — not yet called by main.py
+│   │   └── trivy_runner.py    # run_trivy() fs/config/conditional-image dispatch, normalize_trivy(),
+│   │                          # _JS_LOCKFILES D24/req-54 boundary (S-130) — not yet called by main.py
 │   ├── agent_reporter.py    # Reporting SDK (byte-identical copy, docs/reference/)
 │   ├── config.py            # Environment variable reads, this agent's own clock constants
 │   ├── credentials.py       # Supabase key + GitHub App token resolution (unmodified copy)
@@ -44,19 +48,22 @@ agents/security-analyst/
 │   ├── heartbeat.py         # Long-step keep-alive: live-yield heartbeat chunks (unmodified copy)
 │   ├── signal_backstop.py   # Best-effort SIGTERM terminal-report backstop (unmodified copy)
 │   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh — does NOT yet install the
-│   │                        # semgrep/gitleaks binaries or any other scanner toolchain (S-128/
-│   │                        # S-129's tests mock subprocess.run; real binary install/wiring
-│   │                        # lands in a later story)
+│   │                        # semgrep/gitleaks/trivy binaries or any other scanner toolchain
+│   │                        # (S-128/S-129/S-130's tests all mock subprocess.run; real binary
+│   │                        # install/wiring lands in a later story, S-131+)
 │   ├── pyproject.toml       # Python dependencies (pinned)
 │   ├── Makefile              # install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate
 │   └── tests/
 │       ├── unit/            # Pure unit tests (no I/O), incl. test_severity.py (S-126),
 │       │                    # test_fingerprint.py (S-127), test_semgrep_runner.py (S-128),
-│       │                    # test_gitleaks_runner.py + test_gitleaks_redaction.py (S-129)
+│       │                    # test_gitleaks_runner.py + test_gitleaks_redaction.py (S-129),
+│       │                    # test_trivy_runner.py (S-130, normalize_trivy() + lockfile boundary)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
-│       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked)
-│       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json)
+│       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
+│       │                    # test_trivy_runner.py (S-130, three-mode subprocess dispatch mocked)
+│       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
+│                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130))
 │                            # plus gitleaks_fixture_repo/ + gitleaks_fixture_repo.bundle (S-129):
 │                            # a tiny repo containing one clearly-labeled dummy secret
 │                            # (FIXTURE_DUMMY_SECRET_DO_NOT_USE_...) used to exercise
@@ -75,12 +82,13 @@ agents/security-analyst/
 Later stories replace step 4 with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline
 (spec `workstream/specification-prd-security-analyst-agent.md` S8.8).
 
-> **Note (S-128/S-129):** `scanners/semgrep_runner.py`'s `run_semgrep()` and
-> `scanners/gitleaks_runner.py`'s `run_gitleaks()` are both fully implemented and covered by unit
-> and component tests (with `subprocess.run` mocked — no real Semgrep or Gitleaks binary
-> invocation is exercised yet), but **step 4 above still runs unmodified**: `main.py` does not
-> import or call either runner. The scan step's real wiring (`run_scanners()` dispatching across
-> all requested tools) lands in **S-135** (`audit_only` mode end-to-end).
+> **Note (S-128/S-129/S-130):** `scanners/semgrep_runner.py`'s `run_semgrep()`,
+> `scanners/gitleaks_runner.py`'s `run_gitleaks()`, and `scanners/trivy_runner.py`'s
+> `run_trivy()` are all fully implemented and covered by unit and component tests (with
+> `subprocess.run` mocked — no real Semgrep, Gitleaks, or Trivy binary invocation is exercised
+> yet), but **step 4 above still runs unmodified**: `main.py` does not import or call any runner.
+> The scan step's real wiring (`run_scanners()` dispatching across all requested tools) lands in
+> **S-135** (`audit_only` mode end-to-end).
 
 ## Invocation payload (spec S6.1)
 
