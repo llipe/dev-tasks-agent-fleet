@@ -137,22 +137,22 @@
   - [x] 7.7 Run Tests: `tests/unit/test_checkov_runner.py` — `make test-unit`
   - [x] 7.8 Run Tests: `tests/component/test_checkov_runner.py::test_skip_no_iac` and mocked-subprocess cases — `make test-component`
 
-- [ ] 8.0 Implement Story S-132: CodeQL scanner integration (JS/TS + Python only) — [Issue #192](https://github.com/llipe/dev-tasks-agent-fleet/issues/192)
+- [x] 8.0 Implement Story S-132: CodeQL scanner integration (JS/TS + Python only) — [Issue #192](https://github.com/llipe/dev-tasks-agent-fleet/issues/192)
 
   > Note: **Blocking pre-check before any code:** confirm CodeQL CLI ARM64 availability for the `javascript-typescript` and `python` query packs at the pinned version (PRD OQ5, spec §15.2) — AgentCore Runtime has no x86_64 fallback. Depends on S-127, S-126.
 
-  - [ ] 8.0.1 **[BLOCKING]** Confirm CodeQL CLI ships ARM64 Linux builds for both `javascript-typescript` and `python` query packs at the version to be pinned; record the confirmed version before proceeding
-  - [ ] 8.1 Add the two query packs to the Dockerfile (`codeql pack download codeql/javascript-typescript-queries codeql/python-queries`) — no compiled-language toolchain (no JDK/Go/C++ compiler)
-  - [ ] 8.2 Implement language-detection trigger logic (JS/TS: `.js`/`.ts`/`.jsx`/`.tsx`/`package.json`; Python: `.py`/`pyproject.toml`/`requirements.txt`; both; neither)
-  - [ ] 8.3 Implement `run_codeql()` two-phase call (`codeql database create --language=<lang>` → `codeql database analyze --format sarif-latest`), per-language dispatch, merged findings when both languages present
-  - [ ] 8.4 Implement `normalize_codeql()` (severity via `severity_from_codeql()`)
-  - [ ] 8.5 Build SARIF fixtures for JS/TS and Python separately, including a result with neither `security-severity` nor a usable `level`
-  - [ ] 8.6 Verify Acceptance Criterion: container ships exactly two query packs, no compiled-language pack (PRD requirement 51)
-  - [ ] 8.7 Verify Acceptance Criterion: neither pack triggers a compiled build step (PRD requirement 14)
-  - [ ] 8.8 Verify Acceptance Criterion: a repo matching neither language is `SKIPPED`, not failed (PRD requirement 17, AC24 groundwork)
-  - [ ] 8.9 Verify Acceptance Criterion: a repo matching both languages runs CodeQL twice, findings merged
-  - [ ] 8.10 Run Tests: `tests/unit/test_codeql_runner.py` (normalize, 4-way trigger-condition matrix) — `make test-unit`
-  - [ ] 8.11 Run Tests: `tests/component/test_codeql_runner.py` (two-phase call mocked, skip path) — `make test-component`
+  - [x] 8.0.1 **[BLOCKING]** Confirm CodeQL CLI ships ARM64 Linux builds for both `javascript-typescript` and `python` query packs at the version to be pinned; record the confirmed version before proceeding — **Confirmed via the public GitHub Releases API**: `github/codeql-cli-binaries` release `v2.27.0` ships `codeql-linux-arm64.zip` (393,167,447 bytes) alongside `codeql-linux64.zip`; `github/codeql-action`'s matching `codeql-bundle-v2.27.0` tag ships `codeql-bundle-linux-arm64.tar.gz`/`.tar.zst` alongside the linux64/osx64/win64 variants. Both query packs (`codeql/javascript-typescript-queries`, `codeql/python-queries`) are pure QL source packs with no platform-specific binaries. **Pinned version: CodeQL CLI v2.27.0.**
+  - [x] 8.1 Add the two query packs to the Dockerfile (`codeql pack download codeql/javascript-typescript-queries codeql/python-queries`) — no compiled-language toolchain (no JDK/Go/C++ compiler)
+  - [x] 8.2 Implement language-detection trigger logic (JS/TS: `.js`/`.ts`/`.jsx`/`.tsx`/`package.json`; Python: `.py`/`pyproject.toml`/`requirements.txt`; both; neither)
+  - [x] 8.3 Implement `run_codeql()` two-phase call (`codeql database create --language=<lang>` → `codeql database analyze --format sarif-latest`), per-language dispatch, merged findings when both languages present
+  - [x] 8.4 Implement `normalize_codeql()` (severity via `severity_from_codeql()`)
+  - [x] 8.5 Build SARIF fixtures for JS/TS and Python separately, including a result with neither `security-severity` nor a usable `level`
+  - [x] 8.6 Verify Acceptance Criterion: container ships exactly two query packs, no compiled-language pack (PRD requirement 51)
+  - [x] 8.7 Verify Acceptance Criterion: neither pack triggers a compiled build step (PRD requirement 14)
+  - [x] 8.8 Verify Acceptance Criterion: a repo matching neither language is `SKIPPED`, not failed (PRD requirement 17, AC24 groundwork)
+  - [x] 8.9 Verify Acceptance Criterion: a repo matching both languages runs CodeQL twice, findings merged
+  - [x] 8.10 Run Tests: `tests/unit/test_codeql_runner.py` (normalize, 4-way trigger-condition matrix) — `make test-unit`
+  - [x] 8.11 Run Tests: `tests/component/test_codeql_runner.py` (two-phase call mocked, skip path) — `make test-component`
 
 - [ ] 9.0 Implement Story S-133: Cross-tool deduplication (`dedupe.py`) — [Issue #193](https://github.com/llipe/dev-tasks-agent-fleet/issues/193)
 
