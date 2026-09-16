@@ -221,7 +221,12 @@ agents/security-analyst/
 │   │                        # pinned pip packages via pyproject.toml (S-141 — closed the
 │   │                        # S-128/S-129/S-130/S-131 toolchain-install gap that each of those
 │   │                        # stories tracked and deferred; all five scanner binaries now ship
-│   │                        # in the image)
+│   │                        # in the image). Also installs a Node.js runtime (NodeSource,
+│   │                        # ARG NODE_MAJOR=22) right after the query-pack download step --
+│   │                        # a real-invocation S-141 finding: CodeQL's JS/TS extractor shells
+│   │                        # out to Node.js to parse .ts/.tsx via the TypeScript compiler API
+│   │                        # regardless of --build-mode=none, which only skips a *custom*
+│   │                        # build command, not the extractor's own parsing step
 │   ├── pyproject.toml       # Python dependencies (pinned)
 │   ├── Makefile              # install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate
 │   └── tests/

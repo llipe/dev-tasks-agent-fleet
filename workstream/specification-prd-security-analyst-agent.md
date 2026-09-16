@@ -540,6 +540,8 @@ CodeQL specifically (`codeql_runner.py`) is a two-phase call: `codeql database c
 
 **CORRECTED in S-141 (second implementation-time finding, from the same first live invocation):** the command line above and the "resolved from a fixed two-entry table" wording imply `<lang>` — the internal bucket name `javascript-typescript`/`python` used throughout this spec, `detect_languages()`'s return values, and the `_QUERY_PACKS` dict key — is passed straight through as `--language=<lang>`'s literal value. It is not: `codeql resolve languages` (real CLI, confirmed against the shipped toolchain) has no `javascript-typescript` language, only `javascript` (which extracts both `.js` and `.ts` content; there is no separate `typescript` extractor). Passing the internal name directly was silently accepted by the CLI without error but resolved to no valid language, so `database create` fell back to running the JS autobuild script even with `--build-mode=none` set — the same class of internal-name-vs-external-CLI-identifier bug already found once for the query pack name (see the S-141 correction below). The shipped `codeql_runner.py` now has a `_CLI_LANGUAGE_NAMES` translation dict (`javascript-typescript` -> `javascript`, `python` -> `python`, i.e. a no-op for Python) that `_build_create_command()` looks up before building `--language=`; the internal bucket name itself is unchanged everywhere else (`detect_languages()`, `_QUERY_PACKS`, this spec's two-entry table).
 
+**CLARIFIED in S-141 (third implementation-time finding, from a subsequent live invocation against a real TypeScript repo, `llipe/memo-cli`):** `--build-mode=none` skips a *custom* build command (e.g. `npm run build`/`npm install`), but the JS/TS extractor's own parsing step is unaffected by that flag — it shells out to a real Node.js binary to parse `.ts`/`.tsx` files via the TypeScript compiler API, and fails with "Could not start Node.js. It is required for TypeScript extraction." if none is on `PATH`. This is a container-image dependency (installed at image build time via `apt`, not fetched during a scan run), not a compiled build step and not scan-time network egress, so it does **not** reopen requirement 14 (§7.4a/§8.5's "no compiled build step" claim, scoped to compiled-language toolchains and to requirement 14's own network-egress condition) or requirement 51's "no compiled build step" language — both remain accurate as written. The Dockerfile (§15.2) now installs a Node.js runtime (via NodeSource, pinned major version) immediately after the `codeql pack download` step to satisfy this.
+
 ### 8.6 Fix application
 
 **Semgrep autofix (`fixers/semgrep_autofix.py`):**
@@ -861,7 +863,7 @@ Generated layout mirrors `agents/dependency-update/` exactly (`agentcore/`, `app
 
 ### 15.2 Dockerfile
 
-Extends the sibling agent's ARM64/ECR-Public-mirror pattern (research item 16 — Docker Hub 429 workaround, CA-cert build arg) with the five scanner toolchains. Per PRD §7.4a, the image ships **only two CodeQL query packs** — no JDK, Go toolchain, or C/C++ compiler is installed, since neither `javascript-typescript` nor `python` requires a compiled build step:
+Extends the sibling agent's ARM64/ECR-Public-mirror pattern (research item 16 — Docker Hub 429 workaround, CA-cert build arg) with the five scanner toolchains. Per PRD §7.4a, the image ships **only two CodeQL query packs** — no JDK, Go toolchain, or C/C++ compiler is installed, since neither `javascript-typescript` nor `python` requires a compiled build step. This does not mean the image is dependency-free, though: the `javascript-typescript` extractor still needs a real Node.js runtime on `PATH` to parse `.ts`/`.tsx` content (see the third S-141 correction in §8.5), so a Node.js install step ships alongside the CodeQL CLI below — a runtime dependency, not a compiled build step, so requirement 14 is unaffected:
 
 ```dockerfile
 # Stage 1: Python base (same ECR Public mirror pattern as dependency-update)
@@ -879,6 +881,11 @@ RUN curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib
 # CodeQL install would be.
 RUN curl -sSfL <codeql-cli-arm64-url> -o codeql.tar.gz && tar xzf codeql.tar.gz
 RUN codeql pack download codeql/javascript-typescript-queries codeql/python-queries
+
+# Node.js runtime -- required by the JS/TS extractor to parse .ts/.tsx
+# content via the TypeScript compiler API; --build-mode=none only skips a
+# *custom* build command, not this extraction-time dependency (S-141).
+RUN curl -fsSL <nodesource-setup-script-url> | bash - && apt-get install -y nodejs
 
 # git + gh CLI (same as sibling)
 # Python deps (agent's own pyproject.toml, includes semgrep/checkov rulesets pinned per req 52)
