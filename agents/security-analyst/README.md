@@ -3,7 +3,7 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-137):** project scaffold, deploy, and reporting pipe (S-125), per-tool
+> **Status (S-125-S-138):** project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
 > integration + secret redaction (S-129), the Trivy scanner integration (`fs`/`config`/`image`
@@ -28,7 +28,7 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > `min_severity` to the terminal status only, never to the artifact — PRD requirement 62/AC-12b)
 > to reach `succeeded`/`no_findings`, `succeeded`/`needs_review`, or `failed`/`AUDIT_FINDINGS`.
 > **`mode=audit_only` is the first fully working mode of this agent.** `mode=fix` is still the
-> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-138-S-140 still
+> S-125 placeholder (straight to `succeeded`/`no_findings`, no scanners run) — S-139-S-140 still
 > need to wire `fix`/`rescan`/`open_pr` and the orchestration loop into it. S-136 (`#229`) added the
 > first two of `fix` mode's building blocks — `fixers/semgrep_autofix.py` (Semgrep native-patch
 > application) and `fixers/trivy_bump.py` (Trivy version-bump application, plus a retroactive,
@@ -43,7 +43,17 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > 34). Like the two fixers, **`rescan.py` is standalone and not yet called from `main.py`** —
 > wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop is S-140's job, not this
 > story's. This is distinct from `audit_only`'s S-135 status above, which *is* fully
-> wired end-to-end.
+> wired end-to-end. S-138 (`#231`) added the third building block, `fix_agent.py`'s
+> `run_fix_loop_for_finding()` — the LLM escape hatch invoked, per finding, only when the
+> deterministic fixers (S-136) left a `mechanical` finding `unresolved`. It is ported
+> near-verbatim from the sibling agent's own `fix_agent.py` (5-tool surface, `_safe_path`
+> workspace confinement) with one architectural departure — per-finding invocation and
+> per-finding `max_fix_attempts` budgeting rather than per-run (D22/D26, PRD AC17) — plus its
+> own post-fix mandate check, `_assert_diff_confined_to()`, this agent's equivalent of the
+> sibling's package.json check, narrowed to the single targeted finding's own `file_path`.
+> Like the two fixers and `rescan.py`, **`fix_agent.py` is standalone and not yet called from
+> `main.py`** — wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop remains S-140's
+> job.
 >
 > `severity.py`'s five `severity_from_<tool>()` functions, `normalize.py`'s
 > `Finding`/`Remediation` dataclasses, `fingerprint.py`'s `fingerprint()`,
@@ -72,9 +82,9 @@ agents/security-analyst/
 ├── app/securityAnalyst/
 │   ├── main.py              # Pipeline orchestrator entrypoint. `mode=audit_only`: real
 │   │                        # scan -> classify -> determine_outcome pipeline (S-135). `mode=fix`
-│   │                        # still on the S-125 placeholder — the `fixers/` modules (S-136) and
-│   │                        # `rescan.py` (S-137) exist but are not yet called from here
-│   │                        # (S-138-S-140 wire it).
+│   │                        # still on the S-125 placeholder — the `fixers/` modules (S-136),
+│   │                        # `rescan.py` (S-137), and `fix_agent.py` (S-138) exist but are not
+│   │                        # yet called from here (S-139-S-140 wire it).
 │   ├── severity.py          # Per-tool severity normalization, pure functions (S-126)
 │   ├── normalize.py         # Finding/Remediation frozen dataclasses (S-127)
 │   ├── fingerprint.py       # fingerprint(), banded-line dedup key (S-127)
@@ -104,6 +114,21 @@ agents/security-analyst/
 │   │                        # clean=True only when every targeted finding is gone and no
 │   │                        # unexplained new finding appeared (never inferred — requirement 34).
 │   │                        # Standalone and unit-tested; NOT yet called from main.py (S-140 wires it).
+│   ├── fix_agent.py         # run_fix_loop_for_finding() — LLM escape hatch invoked once per
+│   │                        # LLM-eligible finding, own fresh max_fix_attempts budget per call
+│   │                        # (per-finding, not per-run — D22/D26, PRD AC17, this story's one
+│   │                        # genuine architectural departure from the sibling agent's own
+│   │                        # fix_agent.py). Ported near-verbatim: the 5-tool surface
+│   │                        # (shell/read_file/write_file/find_files/grep_code) and _safe_path
+│   │                        # workspace-confinement resolver. _assert_diff_confined_to() is this
+│   │                        # agent's post-fix mandate check (equivalent of the sibling's
+│   │                        # package.json check), narrowed to the single targeted finding's own
+│   │                        # file_path; a violation raises MandateViolationError rather than the
+│   │                        # diff being trusted. _changed_files() deliberately uses `git status
+│   │                        # --porcelain` (catches untracked new files from write_file), not the
+│   │                        # sibling's `git diff --name-only` — see the function's own docstring
+│   │                        # (S-138). Standalone and unit/component-tested; NOT yet called from
+│   │                        # main.py (S-140 wires it).
 │   ├── scanners/
 │   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
 │   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
@@ -165,7 +190,15 @@ agents/security-analyst/
 │       │                    # new-finding combinations, the allow-list exception path incl. a
 │       │                    # still-present target alongside an allow-listed new finding, and
 │       │                    # two near-miss cases proving no fuzzy inference — pluralized rule
-│       │                    # id, right pattern under the wrong tool)
+│       │                    # id, right pattern under the wrong tool),
+│       │                    # test_safe_path.py (S-138, 22 tests: traversal/absolute-path/symlink
+│       │                    # escape refusal across every path-taking tool call shape),
+│       │                    # test_diff_confinement.py (S-138, 12 tests:
+│       │                    # _assert_diff_confined_to() confined-vs-out-of-scope cases),
+│       │                    # test_fix_tools.py (S-138, 23 tests, ported near-verbatim from the
+│       │                    # sibling agent's own test_fix_tools.py, added proactively per this
+│       │                    # story's completion instructions: the 5 tool bodies exercised
+│       │                    # directly via __wrapped__, not just _safe_path's own unit tests)
 │       ├── component/       # Component tests (mocked externals), incl.
 │       │                    # test_semgrep_runner_subprocess.py (S-128, subprocess.run mocked),
 │       │                    # test_gitleaks_runner.py (S-129, subprocess.run mocked),
@@ -181,7 +214,13 @@ agents/security-analyst/
 │       │                    # `subprocess.run` mocked for semgrep/git/poetry/pipenv; real
 │       │                    # filesystem I/O via `tmp_path` for applied-vs-untouched
 │       │                    # assertions; AC28's mixed mechanical/manual/unscannable batch —
-│       │                    # only mechanical-bucket files change)
+│       │                    # only mechanical-bucket files change),
+│       │                    # test_fix_agent.py (S-138, 15 tests, `patch("fix_agent.Agent")` —
+│       │                    # zero-Bedrock-call at max_fix_attempts=0, per-finding budget
+│       │                    # exhaustion/early-stop/fresh-budget-per-finding, single-finding
+│       │                    # prompt scoping, _assert_diff_confined_to() enforcement,
+│       │                    # Agent-exception and all-scanners-failed-during-rescan handling,
+│       │                    # five-tool construction, system-prompt content)
 │       └── fixtures/        # Static scanner-output fixtures (semgrep_*.json, gitleaks_*.json,
 │                            # trivy_{clean,config,fs_npm,fs_python,image}.json (S-130),
 │                            # checkov_{clean,findings,no_severity}.json (S-131),
@@ -229,13 +268,14 @@ agents/security-analyst/
 ### `mode=fix` (still the S-125 placeholder)
 
 `mode=fix` has not been wired yet: after `checkout`, it goes straight to `succeeded`/`no_findings`
-with every scanner reported `scanners_skipped` — no scanner runs. S-138-S-140 replace this
+with every scanner reported `scanners_skipped` — no scanner runs. S-139-S-140 replace this
 placeholder with the real `scan -> classify -> fix -> rescan -> open_pr` pipeline (spec
 `workstream/specification-prd-security-analyst-agent.md` S8.8); this is explicitly out of S-135's
 scope. S-136 (`#229`) already built the two deterministic fixers (`fixers/semgrep_autofix.py`,
-`fixers/trivy_bump.py`), and S-137 (`#230`) already built the re-scan gate (`rescan.py`'s
-`rescan_gate()`) this pipeline will call, but none of the three are invoked yet — see Layout
-above. Wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop remains S-140's job.
+`fixers/trivy_bump.py`), S-137 (`#230`) already built the re-scan gate (`rescan.py`'s
+`rescan_gate()`), and S-138 (`#231`) already built the LLM escape hatch (`fix_agent.py`'s
+`run_fix_loop_for_finding()`) this pipeline will call, but none of the four are invoked yet — see
+Layout above. Wiring `fix`/`rescan`/`open_pr` into one live orchestrator loop remains S-140's job.
 
 > **Design note — `determine_outcome()`'s 3-tuple return:** spec §8.10's pseudocode describes a
 > 4-tuple `(status, outcome, error_code, pr_opened)`. `audit_only` never opens a PR, so
@@ -276,8 +316,9 @@ invoking — see the sibling agent's README for the full prerequisite/troublesho
 The example above uses `mode=audit_only` (the default), which as of S-135 runs the real five-tool
 scan/classify/report pipeline described under Pipeline above. `mode=fix` is also accepted by
 `validate_payload()` (it is in `_VALID_MODES`), but is still unimplemented — it falls straight
-through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-137-S-140
-land. S-136 built the fixer modules `mode=fix` will eventually call, but they are not wired in yet.
+through to the S-125 placeholder (`succeeded`/`no_findings`, no scanner run) until S-139-S-140
+land. S-136-S-138 built the fixer, rescan-gate, and LLM-escape-hatch modules `mode=fix` will
+eventually call, but they are not wired in yet.
 
 ## Deployment
 
