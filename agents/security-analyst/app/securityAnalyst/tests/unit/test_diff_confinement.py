@@ -77,6 +77,20 @@ class TestChangedFiles:
         """A workspace path that does not exist degrades to an empty set."""
         assert _changed_files(str(tmp_path / "does-not-exist")) == set()
 
+    def test_renamed_tracked_file_reports_both_old_and_new_path(self, git_workspace):
+        """Porcelain v1 reports a rename as `XY ORIG -> PATH` on one line;
+        both the old and new path must land in the changed set (S-138
+        fidelity audit finding -- this branch was previously unexercised
+        by any test, though verified correct by manual git-scenario
+        testing)."""
+        subprocess.run(
+            ["git", "mv", "src/app.py", "src/renamed_app.py"],
+            cwd=git_workspace,
+            check=True,
+            capture_output=True,
+        )
+        assert _changed_files(str(git_workspace)) == {"src/app.py", "src/renamed_app.py"}
+
 
 @pytest.mark.unit
 class TestAssertDiffConfinedTo:
@@ -112,6 +126,21 @@ class TestAssertDiffConfinedTo:
         scenario spec §12 and task 14.8 explicitly call out."""
         (git_workspace / "src" / "unexpected_new_file.py").write_text("q = 1\n")
         with pytest.raises(MandateViolationError, match="unexpected_new_file.py"):
+            _assert_diff_confined_to(str(git_workspace), "src/app.py")
+
+    def test_rename_of_target_file_raises(self, git_workspace):
+        """A rename of the finding's own target file still produces an
+        out-of-scope path (the new name) under the rename-arrow parsing
+        branch -- a rename is not a same-path edit, so this correctly
+        raises per spec §12's literal "touches only the file path named in
+        the finding record" wording (S-138 fidelity audit finding)."""
+        subprocess.run(
+            ["git", "mv", "src/app.py", "src/renamed_app.py"],
+            cwd=git_workspace,
+            check=True,
+            capture_output=True,
+        )
+        with pytest.raises(MandateViolationError, match="renamed_app.py"):
             _assert_diff_confined_to(str(git_workspace), "src/app.py")
 
     def test_error_message_names_every_out_of_scope_path(self, git_workspace):
