@@ -82,13 +82,12 @@ RUN curl -sSfL \
 # both locally and matching this exact command.
 RUN codeql pack download codeql/javascript-queries codeql/python-queries
 
-# Node.js -- S-141 real-invocation finding: CodeQL's JS/TS extractor
-# (invoked by `database create` as `autobuild.sh`, even with
-# --build-mode=none -- that flag only skips a *custom* build command like
-# `npm run build`, it does not remove the extractor's own parsing
-# dependency) shells out to a real Node.js binary to parse `.ts`/`.tsx`
-# files via the TypeScript compiler API. Confirmed against a real
-# TypeScript repo (llipe/memo-cli): without Node.js on PATH, `database
+# Node.js -- S-141 real-invocation finding: CodeQL's JS/TS extractor itself
+# (a JavaScript program) needs a real Node.js binary on PATH to parse
+# `.ts`/`.tsx` files via the TypeScript compiler API -- this is true even
+# with --build-mode=none, which only skips a *custom* build command like
+# `npm run build`, not the extractor's own runtime. Confirmed against a
+# real TypeScript repo (llipe/memo-cli): without Node.js on PATH, `database
 # create` fails with "Could not start Node.js. It is required for
 # TypeScript extraction." No `npm install` runs here (--build-mode=none
 # means no dependency install), so this is a Node *runtime* requirement
