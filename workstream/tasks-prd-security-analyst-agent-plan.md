@@ -154,15 +154,15 @@
   - [x] 8.10 Run Tests: `tests/unit/test_codeql_runner.py` (normalize, 4-way trigger-condition matrix) — `make test-unit`
   - [x] 8.11 Run Tests: `tests/component/test_codeql_runner.py` (two-phase call mocked, skip path) — `make test-component`
 
-- [ ] 9.0 Implement Story S-133: Cross-tool deduplication (`dedupe.py`) — [Issue #193](https://github.com/llipe/dev-tasks-agent-fleet/issues/193)
+- [x] 9.0 Implement Story S-133: Cross-tool deduplication (`dedupe.py`) — [Issue #193](https://github.com/llipe/dev-tasks-agent-fleet/issues/193)
 
   > Note: Conservative merge (file+line overlap AND category match) so a real second issue is never hidden under an over-eager merge. Formally depends only on S-127's schema.
 
-  - [ ] 9.1 Implement `dedupe()`/`_merge_overlapping_by_line()`/`MergedFinding` per spec §8.3
-  - [ ] 9.2 Representative record in a merge uses the highest-severity contributor; both tool identifiers retained
-  - [ ] 9.3 Verify Acceptance Criterion: same-resource finding from two tools merges into one record naming both tools (PRD AC7)
-  - [ ] 9.4 Verify Acceptance Criterion: two distinct findings (same file, different line, different category) stay separate (PRD AC8)
-  - [ ] 9.5 Run Tests: `tests/unit/test_dedupe.py` (merge case, no-merge case, three-way overlap, overlapping-lines-different-category) against synthetic `Finding` records — `make test-unit`
+  - [x] 9.1 Implement `dedupe()`/`_merge_overlapping_by_line()`/`MergedFinding` per spec §8.3
+  - [x] 9.2 Representative record in a merge uses the highest-severity contributor; both tool identifiers retained
+  - [x] 9.3 Verify Acceptance Criterion: same-resource finding from two tools merges into one record naming both tools (PRD AC7)
+  - [x] 9.4 Verify Acceptance Criterion: two distinct findings (same file, different line, different category) stay separate (PRD AC8)
+  - [x] 9.5 Run Tests: `tests/unit/test_dedupe.py` (merge case, no-merge case, three-way overlap, overlapping-lines-different-category) against synthetic `Finding` records — `make test-unit`
 
 - [ ] 10.0 Implement Story S-134: Classifier — mechanical/manual/unscannable — [Issue #194](https://github.com/llipe/dev-tasks-agent-fleet/issues/194)
 
