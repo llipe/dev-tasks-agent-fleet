@@ -216,11 +216,12 @@ agents/security-analyst/
 │   ├── Dockerfile           # ARM64 container: Python 3.13 + git + gh + the CodeQL CLI (pinned
 │   │                        # v2.27.0, S-132 — the first story to install a real scanner
 │   │                        # toolchain into this image, per its own blocking ARM64-availability
-│   │                        # pre-check) plus its two query packs — does NOT yet install the
-│   │                        # semgrep/gitleaks/trivy/checkov binaries (S-128/S-129/S-130/S-131's
-│   │                        # tests all mock subprocess.run; those four tools' own real-binary
-│   │                        # install/wiring is a separate, still-open gap, tracked outside this
-│   │                        # story's scope per issue #192)
+│   │                        # pre-check) plus its two query packs, gitleaks + trivy as pinned
+│   │                        # ARM64 binaries from GitHub Releases, and semgrep + checkov as
+│   │                        # pinned pip packages via pyproject.toml (S-141 — closed the
+│   │                        # S-128/S-129/S-130/S-131 toolchain-install gap that each of those
+│   │                        # stories tracked and deferred; all five scanner binaries now ship
+│   │                        # in the image)
 │   ├── pyproject.toml       # Python dependencies (pinned)
 │   ├── Makefile              # install/lint/format-check/typecheck/test-unit/test-component/test-cov/audit/validate
 │   └── tests/
