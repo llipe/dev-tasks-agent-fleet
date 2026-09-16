@@ -107,6 +107,11 @@ class TestRemediationSchema:
         # `lockfile_managed` (rather than inserting it earlier) keeps every
         # existing keyword-argument `Remediation(...)` call site across the
         # four already-merged scanner normalizers valid unchanged.
+        #
+        # `package_name` was added by S-136 (`fixers/trivy_bump.py`), same
+        # additive-trailing-field pattern, so it can locate which manifest
+        # line to edit for a `version_bump` remediation -- see
+        # `normalize.py`'s `Remediation` docstring for the full rationale.
         field_names = [f.name for f in dataclasses.fields(Remediation)]
         assert field_names == [
             "kind",
@@ -114,6 +119,7 @@ class TestRemediationSchema:
             "target_version",
             "lockfile_managed",
             "current_version",
+            "package_name",
         ]
 
     def test_remediation_optional_fields_accept_none(self):

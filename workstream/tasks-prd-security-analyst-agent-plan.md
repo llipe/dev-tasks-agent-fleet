@@ -196,18 +196,18 @@
   - [x] 11.11 Run Tests: `tests/unit/test_determine_outcome.py` (parametrized over PRD §8.1 `audit_only` rows + `min_severity` crossing) — `make test-unit`
   - [x] 11.12 Run Tests: `tests/component/test_audit_only_pipeline.py` (all five scanners mocked; full-failure and one-of-five-failure cases) — `make test-component`
 
-- [ ] 12.0 Implement Story S-136: Mechanical fix application (Semgrep autofix, Trivy version bump) — [Issue #196](https://github.com/llipe/dev-tasks-agent-fleet/issues/196)
+- [x] 12.0 Implement Story S-136: Mechanical fix application (Semgrep autofix, Trivy version bump) — [Issue #196](https://github.com/llipe/dev-tasks-agent-fleet/issues/196)
 
   > Note: First half of `fix` mode's write path, built and tested before the re-scan gate so "does the fixer apply the right patch to the right finding" is provable in isolation. Depends on S-135, S-134.
 
-  - [ ] 12.1 Implement `fixers/semgrep_autofix.py` (`semgrep --autofix --config <RULESET>`, applied-fingerprints tracking)
-  - [ ] 12.2 Implement `fixers/trivy_bump.py` (targets lowest closing version; lockfile reconciliation after a Python manifest bump)
-  - [ ] 12.3 Verify Acceptance Criterion: Semgrep autofix applied for every `mechanical` Semgrep finding (PRD requirement 27)
-  - [ ] 12.4 Verify Acceptance Criterion: Trivy version bump applied for every `mechanical` Trivy finding (PRD requirement 27)
-  - [ ] 12.5 Verify Acceptance Criterion: `manual`/`unscannable` findings never touched by any code path (PRD requirement 28) — assert via diff inspection, not just by absence of a call
-  - [ ] 12.6 Verify Acceptance Criterion: lockfile reconciliation runs after a Python manifest bump
-  - [ ] 12.7 Run Tests: `tests/unit` — Trivy bump target-version selection as a pure function — `make test-unit`
-  - [ ] 12.8 Run Tests: `tests/component/test_mechanical_fixers.py` (mocked subprocess; zero-mechanical-findings no-op; autofix-fails-to-apply-cleanly handoff case) — `make test-component`
+  - [x] 12.1 Implement `fixers/semgrep_autofix.py` (`semgrep --autofix --config <RULESET>`, applied-fingerprints tracking)
+  - [x] 12.2 Implement `fixers/trivy_bump.py` (targets lowest closing version; lockfile reconciliation after a Python manifest bump)
+  - [x] 12.3 Verify Acceptance Criterion: Semgrep autofix applied for every `mechanical` Semgrep finding (PRD requirement 27)
+  - [x] 12.4 Verify Acceptance Criterion: Trivy version bump applied for every `mechanical` Trivy finding (PRD requirement 27)
+  - [x] 12.5 Verify Acceptance Criterion: `manual`/`unscannable` findings never touched by any code path (PRD requirement 28) — assert via diff inspection, not just by absence of a call
+  - [x] 12.6 Verify Acceptance Criterion: lockfile reconciliation runs after a Python manifest bump
+  - [x] 12.7 Run Tests: `tests/unit` — Trivy bump target-version selection as a pure function — `make test-unit`
+  - [x] 12.8 Run Tests: `tests/component/test_mechanical_fixers.py` (mocked subprocess; zero-mechanical-findings no-op; autofix-fails-to-apply-cleanly handoff case) — `make test-component`
 
 - [ ] 13.0 Implement Story S-137: The re-scan gate (`rescan.py`) — [Issue #197](https://github.com/llipe/dev-tasks-agent-fleet/issues/197)
 

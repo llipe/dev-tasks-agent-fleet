@@ -783,10 +783,10 @@ First half of `fix` mode's write path. Deliberately built and tested before the 
 
 #### Acceptance Criteria
 
-- [ ] `semgrep --autofix --config <RULESET>` applied for every `mechanical` Semgrep finding; applied fingerprints tracked (PRD requirement 27).
-- [ ] Trivy version bump applied for every `mechanical` Trivy finding, targeting the lowest closing version (PRD requirement 27).
-- [ ] `manual`/`unscannable` findings are never touched by any code path in this story (PRD requirement 28).
-- [ ] Lockfile reconciliation runs after a Python manifest bump (mirrors the sibling agent's post-update install step) so a frozen/CI install does not fail on a lockfile mismatch.
+- [x] `semgrep --autofix --config <RULESET>` applied for every `mechanical` Semgrep finding; applied fingerprints tracked (PRD requirement 27).
+- [x] Trivy version bump applied for every `mechanical` Trivy finding, targeting the lowest closing version (PRD requirement 27).
+- [x] `manual`/`unscannable` findings are never touched by any code path in this story (PRD requirement 28).
+- [x] Lockfile reconciliation runs after a Python manifest bump (mirrors the sibling agent's post-update install step) so a frozen/CI install does not fail on a lockfile mismatch.
 
 #### Business Rules
 

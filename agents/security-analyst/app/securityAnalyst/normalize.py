@@ -50,6 +50,23 @@ class Remediation:
     the same class of pre-authorized "apply proactively" correctness fix as
     prior stories' scanner-runner deviations (flagged in this story's
     completion report for `verifier`'s audit).
+
+    ``package_name`` (added by S-136, defaulted for the same backward-
+    compatibility reason as ``current_version`` above) is the ecosystem
+    package identifier a ``version_bump`` remediation applies to -- e.g.
+    Trivy's own ``PkgName`` field. Neither spec §8.1's `Remediation` shape
+    nor any existing field on `Finding` carries this: `rule_id` is the
+    advisory/CVE identifier (not the package), and `message` is free text
+    with no reliably-parseable package name in it. Without it,
+    `fixers/trivy_bump.py` (this same story) would have no deterministic
+    way to locate *which* line of a manifest file to edit -- it cannot
+    safely infer the package from `file_path` (a manifest lists many
+    packages) or from `current_version` alone (two packages can coincide
+    on the same pinned version). This is the same class of minimal,
+    additive schema fix as `current_version` (S-134) -- populated only by
+    `trivy_runner.py`'s `version_bump` branch (this story), `None` for
+    every other remediation kind and for the four other scanner
+    normalizers, which stay unchanged.
     """
 
     kind: str
@@ -57,6 +74,7 @@ class Remediation:
     target_version: str | None
     lockfile_managed: bool
     current_version: str | None = None
+    package_name: str | None = None
 
 
 @dataclass(frozen=True)
