@@ -6,7 +6,7 @@
 - Integration branch: integration/security-analyst-agent
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-09-15
-- Last updated: 2026-09-15
+- Last updated: 2026-09-16
 
 ## Story Status
 
@@ -28,13 +28,23 @@
 | 14       | S-138    | #198    | ✅ Merged  | #231 | issue/198-llm-fix-agent-per-finding-escape-hatch   |
 | 15       | S-139    | #199    | ✅ Merged  | #232 | issue/199-pr-builder-body-sections                 |
 | 16       | S-140    | #200    | ✅ Merged  | #233 | issue/200-s140-fix-mode-wiring                     |
-| 17       | S-141    | #201    | ⏳ Pending | —    | —                                                  |
+| 17       | S-141    | #201    | 🔄 In Progress (real-invocation hardening) | #235, #236, #237 | (real-invocation fix branches) |
 
 ## Current Position
 
-- Next story: S-141
-- Last merged PR: #233
-- Integration branch HEAD: 41d668a
+- Next story: S-141 (still in progress — real audit_only/fix invocation verification, tasks 17.10/17.11)
+- Last merged PR: #237
+- Integration branch HEAD: e61c8fb
+
+## S-141 Real-Invocation Hardening (post-merge, pre-17.10/17.11-closeout)
+
+S-141's own story PR merged the seed/deploy scaffolding, but tasks 17.10 (real audit_only invocation) and 17.11 (real fix invocation) surfaced live bugs during actual AgentCore invocation against `llipe/memo-cli` that no mocked-subprocess test caught. These are being fixed as their own PRs against `integration/security-analyst-agent`, following the full docs-drift + fidelity-audit gate, same as every story above:
+
+- PR #235 (merged): CodeQL query pack name fix (`codeql/javascript-queries`, not the nonexistent `codeql/javascript-typescript-queries`).
+- PR #236 (merged): installed missing scanner toolchains (Gitleaks, Trivy ARM64 binaries, Rust/Cargo for checkov's `rustworkx` dep) + CodeQL `--build-mode=none`.
+- PR #237 (merged): fixed three more real-binary parse bugs — CodeQL `--language=javascript-typescript` was invalid (added `_CLI_LANGUAGE_NAMES` translation, real value is `javascript`); Gitleaks writes zero bytes (not `null`) on a clean scan; Trivy omits the `Results` key entirely (not `null`) on a clean scan. Fidelity audit (High/Minor) flagged `semgrep_runner.py`/`checkov_runner.py` have the same strict-key-indexing shape but haven't yet been proven to crash against a real binary — watch for this when checkov/semgrep are actually exercised live.
+- IAM: attached `agent-fleet-secrets-and-bedrock` inline policy to the security-analyst runtime role (`AgentCore-securityanalyst-ApplicationAgentSecurityA-GsDyfHWdZS1X`) — was present on the sibling `dependency-update` role but never replicated.
+- Outstanding, NOT yet applied: `supabase/migrations/20260916194500_add_no_findings_run_outcome.sql` — `run_outcome` enum is missing `no_findings`, which `main.py`'s `determine_outcome()` genuinely emits for a clean audit_only scan; every such run currently fails its terminal PATCH (Postgres 22P02) and gets stuck "running" in the panel. Drafted, awaiting explicit user apply confirmation, then a redeploy, then a clean retry of the real audit_only invocation.
 
 ## Decisions Log
 
@@ -60,4 +70,5 @@
 - S-137 (rescan.py, "the agent's defining trust mechanism"): the most rigorous audit of the run — verifier constructed 10 of its own adversarial near-miss cases (case variants, whitespace, cross-tool leakage, swapped fields, Unicode suffixes) beyond the developer's own tests, found zero paths to a false `clean=True`. Fidelity High/Minor: two cosmetic, non-blocking notes (a closure-vs-parameter signature simplification vs spec's literal pseudocode; one untested defensive fallback branch). Requirement 34's "never infer an exception, only the fixed table" guarantee held up under direct adversarial pressure. 408/408 tests.
 - S-138 (fix_agent.py, LLM escape hatch — the one genuinely new design point vs sibling agent): most adversarial security audit yet — 16 independently-constructed `_safe_path` escape attempts (traversal, symlinks, absolute paths, null bytes) all rejected; real non-mocked git scenario testing against `_assert_diff_confined_to()` including rename and permission-only-change edge cases, zero confinement gaps. Fidelity High/Minor: one coverage gap (rename-arrow parsing branch, functionally correct but untested) — fixed with two regression tests before merge (commit 99c78ef). Per-finding budget isolation and AC18 (max_attempts=0 → zero Bedrock calls) verified structurally, not just by test trust. 573/573 tests.
 - S-139 (pull_request.py, PR builder): branch/idempotency/push mechanics port confirmed genuinely faithful to the sibling agent (same structural pattern, same credential-helper snippet, same check-then-act idempotency tradeoff — not a superficial reimplementation). AC15's always-present-even-empty remaining-manual table verified by tracing the actual code path, not just a test name. Introduced a local `PipelineState` forward-reference stub since S-140 hasn't landed yet — assessed as low-risk, mirrors S-135's already-accepted `determine_outcome()` 3-tuple precedent, well-documented, now surfaced in the README for whoever does S-140 (me, next). Fidelity High/Minor: one cosmetic task-list AC-citation mislabeling (AC15/AC17 cited where requirement 42 is correct), functionality unaffected, flagged for a future product-engineer doc pass — not fixed. 611/611 tests. All 4 pieces of fix mode's write path (mechanical fixers, rescan gate, LLM fix agent, PR builder) now complete; S-140 wires them together.
+- S-141 real-invocation hardening (post-story-merge, see section above): three fix PRs so far (#235, #236, #237), all merged. Root cause pattern across most bugs: an internal module identifier (dict key, bucket name) leaking directly into an external CLI/API call without translation — third occurrence of this exact bug class in this codebase (CodeQL package name, then CodeQL `--language=` value, echoing the same root cause as `semgrep_runner.py`'s RULESET space-joining bug back in S-128). Second/third occurrence of "mocked subprocess tests pass while the real binary's actual output shape differs" (Gitleaks empty-stdout, Trivy missing-Results-key) — flagged as a standing gap in this project's test strategy, not something S-141 alone can close.
 - S-140 (fix mode end-to-end wiring, capstone integration): both forward-reference gaps resolved — `determine_outcome()` kept its 3-tuple, `pr_opened` computed at the main.py call site (independently confirmed to mirror the sibling agent's `pr_existed`-as-caller-supplied-flag pattern, not just claimed); `PipelineState` constructed exactly (no superset) at the `open_pr` call site. Fidelity High/Minor. The critical AC14/15 trust guarantee (no PR without a clean re-scan, even with real local file changes present) verified by direct code tracing — no path to `open_pr_if_needed()` exists when the gate isn't clean. Two non-blocking notes routed to product-engineer: AC29's "all 7 steps" scope is an interpretation (steps after an early exit are simply omitted, not marked skipped — reasonable but not literal PRD text); idempotency check lives inside `open_pr`, so an already-open-PR run still pays for a full fix+rescan cycle before short-circuiting (wasteful, not incorrect). 641/641 tests. Both modes (audit_only, fix) now fully wired — only S-141 (seed/deploy/real-repo verification) remains.
