@@ -61,8 +61,10 @@ def _extract_cwe_or_category(metadata: dict[str, Any], rule_id: str) -> str:
 
     Preference order: `metadata.cwe` (list or bare string; the leading
     `CWE-<n>` token is extracted from Semgrep's `"CWE-95: <description>"`
-    convention so it matches the bare `CWE-<n>` form the other four
-    scanners' normalizers emit) -> `metadata.owasp` (first entry, used
+    convention -- a bare id, which `run_scanners()` then canonicalizes to
+    `CWE-<int>` alongside every other tool's value; S-141 found CodeQL emits
+    a zero-padded `CWE-079` at the normalizer level, so per-normalizer
+    uniformity is NOT assumed anymore) -> `metadata.owasp` (first entry, used
     verbatim -- there is no equivalent bare-id convention to extract) ->
     `rule_id` (Semgrep's own `check_id`) as the last-resort fallback, so
     `cwe_or_category` is never empty (this module never returns `""`, which
