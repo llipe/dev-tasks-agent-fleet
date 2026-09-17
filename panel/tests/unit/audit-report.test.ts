@@ -129,6 +129,28 @@ describe("parseAuditReport — security-analyst shape", () => {
     expect(parseAuditReport(securityAnalystReport())!.beforeAfter).toBeNull();
   });
 
+  it("leaves beforeAfter null when only one side is present or a bucket count is malformed", () => {
+    const onlyBefore = securityAnalystReport({
+      findings_before: { mechanical: 1, manual: 1, unscannable: 1 },
+    });
+    expect(parseAuditReport(onlyBefore)!.beforeAfter).toBeNull();
+
+    const malformedAfter = securityAnalystReport({
+      findings_before: { mechanical: 1, manual: 1, unscannable: 1 },
+      findings_after: { mechanical: "0", manual: 1, unscannable: 1 },
+    });
+    expect(parseAuditReport(malformedAfter)!.beforeAfter).toBeNull();
+  });
+
+  it("tolerates a missing bucket key and derives total_findings from the rows when absent", () => {
+    const view = parseAuditReport({
+      by_bucket: { mechanical: [finding(), finding()] },
+    });
+    expect(view).not.toBeNull();
+    expect(view!.rows).toHaveLength(2);
+    expect(view!.totalFindings).toBe(2);
+  });
+
   it("returns an empty view (not null) for total_findings: 0", () => {
     const view = parseAuditReport({
       total_findings: 0,

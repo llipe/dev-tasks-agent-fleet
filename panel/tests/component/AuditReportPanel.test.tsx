@@ -123,6 +123,27 @@ describe("AuditReportPanel — security-analyst shape (AC1)", () => {
     expect(screen.getByText("README.md")).toBeInTheDocument();
   });
 
+  it("renders an unknown severity as plain text without a tint token", () => {
+    render(
+      <AuditReportPanel
+        title={null}
+        metadata={{
+          total_findings: 1,
+          by_bucket: {
+            mechanical: [finding({ severity: "informational" })],
+            manual: [],
+            unscannable: [],
+          },
+          by_tool: {},
+          by_severity: {},
+        }}
+      />,
+    );
+    const sev = screen.getByText("informational");
+    expect(sev).not.toHaveAttribute("style");
+    expect(sev).not.toHaveAttribute("class");
+  });
+
   it("falls back to a generic caption when the artifact has no title", () => {
     render(<AuditReportPanel title={null} metadata={securityAnalystReport} />);
     expect(screen.getByText("Audit report")).toBeInTheDocument();
