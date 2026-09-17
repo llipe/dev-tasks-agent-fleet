@@ -164,6 +164,8 @@ No schema migration. Reuses `runs`, `run_steps`, `run_events`, `run_artifacts`, 
 
 `run_artifacts.type` values this agent produces: `audit_report` (metadata: findings grouped by `mechanical`/`manual`/`unscannable`, by tool, by severity, plus before/after counts in `fix` mode), `pull_request` (URL, title), `file` (raw per-tool scanner output, for debugging a classification dispute — PRD §9.1).
 
+> **Panel rendering (issue #241 / PR #243).** The panel's Run Detail page renders the `audit_report` metadata described above as a findings block (summary line + per-finding table; unknown shapes fall back to key/value). This section remains the authority on the artifact shape; see `DESIGN.md` §5.3 and `docs/technical-guidelines.md` §9 for the panel side.
+
 ### 5.2 Seed update (`supabase/seed.sql`)
 
 Appended as a new block after the existing `dependency-update` block (Block 3), following its exact structure and idempotent `on conflict` pattern:
