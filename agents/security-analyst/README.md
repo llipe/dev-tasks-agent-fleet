@@ -365,13 +365,17 @@ agents/security-analyst/
 
 Shares `resolve_credentials` / `checkout` / `scan` / `classify` with `audit_only` above (steps
 1-6, including the same `heartbeat.run_with_heartbeat()` wrapping for `scan`), then continues
-into the write path — `fix -> rescan -> open_pr -> determine_outcome()` — instead of building the
-`audit_report` artifact:
+into the write path — `fix -> rescan -> open_pr -> determine_outcome()`. Fix mode builds its own
+`audit_report` artifact (`build_fix_audit_report()` — `build_audit_report()`'s grouping plus
+`findings_before`/`findings_after` bucket counts) and records it on every terminal path listed
+below (AC21 no-op, `RESCAN_NOT_CLEAN`, and before `open_pr`), per PRD requirements 36/37 and user
+story 4 (S-141 real-invocation finding):
 
 7. **`fix`** — the classified findings are split by bucket (`classifier.py`'s
    `mechanical`/`manual`/`unscannable`, D22). If there are no `mechanical` findings, the step is a
    no-op (AC21): `rescan` and `open_pr` are never entered — there is nothing to fix and D23
-   permits no PR without a fix to verify. Otherwise:
+   permits no PR without a fix to verify — but an `audit_report` artifact (before == after counts)
+   is still recorded so the remaining `manual`/`unscannable` findings are visible. Otherwise:
    - `fixers/semgrep_autofix.py`'s `apply_semgrep_autofix()` and `fixers/trivy_bump.py`'s
      `apply_trivy_bump()` run first, against every `mechanical` finding.
    - For each finding either fixer left `unresolved`, `fix_agent.py`'s
@@ -387,11 +391,13 @@ into the write path — `fix -> rescan -> open_pr -> determine_outcome()` — in
    then gates the result through `rescan.py`'s `rescan_gate()`: `clean=True` only when every
    fingerprint targeted by the `fix` step is gone and no unexplained new finding appeared
    (D23/D25, requirement 34). A not-clean gate terminates the run
-   `failed`/`needs_review`/`RESCAN_NOT_CLEAN` (AC14/AC15) — `open_pr` is never entered, even if
+   `failed`/`needs_review`/`RESCAN_NOT_CLEAN` (AC14/AC15) after recording the after-scan as an
+   `audit_report` artifact (PRD requirement 36) — `open_pr` is never entered, even if
    the working tree carries a genuine local change from an unresolved fix attempt or the LLM's
    mandate-confined edits.
 9. **`open_pr`** — reached only on a clean re-scan gate (spec §8.8's diagram has exactly one edge
-   into this step: `rescan --> open_pr: gate clean`). Constructs `pull_request.py`'s
+   into this step: `rescan --> open_pr: gate clean`). The `audit_report` artifact is recorded
+   immediately before this step, so it exists even if PR creation fails. Constructs `pull_request.py`'s
    `PipelineState` from the run's own bookkeeping (fixed findings, remaining manual/unscannable
    findings, the D24-boundary and major-version-guard subsets, LLM usage, pre-/post-fix finding
    counts) and calls `build_pr_body()` then `open_pr_if_needed()`. `open_pr_if_needed()` performs
