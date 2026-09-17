@@ -153,6 +153,11 @@ jobs:
       - name: Shellcheck the auth-gate script (S-122)
         run: shellcheck scripts/verify-panel-auth.sh
 
+      # Static-check the release deploy script (deploy-panel.yml calls it).
+      # `fly deploy` itself is NOT run in CI here — only the shell is linted.
+      - name: Shellcheck the deploy script
+        run: shellcheck scripts/deploy-panel.sh
+
       # Warm up Supabase Realtime before the Layer 2.5 + E2E branch: right after
       # `db reset` a cold Realtime can flake the first subscription (stream-e2e,
       # live-tail) under retries:0. Explicit readiness wait, not a sleep.

@@ -551,6 +551,45 @@ the read path from inferred to live-asserted.
 
 ---
 
+## Routine releases (post-launch) — PR → Release → deploy
+
+Once Phase A/B above have run once, an ordinary code change no longer needs the
+full runbook. The release flow is:
+
+1. PRs merge to `main` as usual, gated by `ci.yml`.
+2. A human cuts a **GitHub Release** on an annotated tag named `panel-vX.Y.Z`
+   (tag policy: annotated, cut on `main` only, immutable). The `panel-` prefix
+   keeps this scoped to the panel in a monorepo that also ships agent images.
+3. Publishing the release fires `.github/workflows/deploy-panel.yml`, which
+   runs `scripts/deploy-panel.sh` inside the `production` GitHub Environment —
+   configured with a **required reviewer**, so the job pauses for a manual
+   approval click even though the tag/release already exists.
+4. `scripts/deploy-panel.sh` deploys (`fly deploy --config panel/fly.toml
+   --local-only`) and then re-runs `scripts/verify-panel-auth.sh` against the
+   public host as part of the same run — a deploy that ships but leaves the
+   auth boundary unverified is treated as a failed release (exit 3), with the
+   containment (`fly ips release`) and rollback commands printed on failure.
+
+Locally, the same script can be run by hand (from the repo root, with `fly
+auth login` done and the auth-gate env exported):
+
+```bash
+export NEXT_PUBLIC_SUPABASE_URL='https://hegxeycmbmjfgzqpdiik.supabase.co'
+export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_…'
+export SUPABASE_SERVICE_ROLE_KEY='<service role key>'   # optional, lets the gate clean up its probe account
+
+scripts/deploy-panel.sh            # or --dry-run to print the commands without deploying
+```
+
+**One-time setup for the GitHub Actions path** (operator, in repo settings —
+not code):
+
+- Create a `production` Environment (Settings → Environments) with at least
+  one required reviewer.
+- Add environment secrets: `FLY_API_TOKEN`, `PANEL_SUPABASE_URL`,
+  `PANEL_SUPABASE_PUBLISHABLE_KEY`, `PANEL_SUPABASE_SERVICE_ROLE_KEY` (names
+  only recorded here, per this runbook's no-secrets-in-file rule).
+
 ## Rollback
 
 The panel is **stateless** — rollback is redeploying the prior image:
