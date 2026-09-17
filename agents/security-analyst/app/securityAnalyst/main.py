@@ -418,6 +418,32 @@ def build_audit_report(classified: list[tuple[MergedFinding, Bucket]]) -> dict:
     }
 
 
+def build_fix_audit_report(
+    after_classified: list[tuple[MergedFinding, Bucket]],
+    findings_before: dict,
+    findings_after: dict,
+) -> dict:
+    """The fix-mode `audit_report` artifact (spec §6 "plus before/after counts
+    in `fix` mode", PRD requirement 36 / user story 4).
+
+    S-141 real-invocation finding: every fix-mode terminal path originally
+    wrote no `audit_report` at all -- only the PR body (when a PR opened)
+    carried the remaining findings. Two paths therefore left the operator
+    blind to what "needs review": the nothing-mechanical no-op (requirement
+    37 -- a real `fix` run against a repo whose only findings were Gitleaks
+    `unscannable` ones terminated `succeeded`/`needs_review` with the two
+    findings visible nowhere but a `metrics` count), and `RESCAN_NOT_CLEAN`,
+    where requirement 36 says the after-scan's full result MUST be recorded
+    as a `run_artifacts` row. Same grouping as `build_audit_report()` over
+    the post-fix finding set, plus the before/after bucket counts.
+    """
+    return {
+        **build_audit_report(after_classified),
+        "findings_before": findings_before,
+        "findings_after": findings_after,
+    }
+
+
 def _bucket_counts(classified: list[tuple[MergedFinding, Bucket]]) -> dict:
     """The `{"mechanical": n, "manual": n, "unscannable": n}` shape used for
     both `findings_before` and `findings_after` (requirement 47, story
@@ -741,6 +767,14 @@ async def invoke(payload: dict, context):
                     scanners_skipped=scanners_skipped,
                     scanners_failed=scanners_failed,
                 )
+                # Nothing was fixed, so before == after; the remaining
+                # manual/unscannable findings must still be visible somewhere
+                # (user story 4) and there is no PR body to carry them.
+                run.artifact(
+                    "audit_report",
+                    title="Security scan findings",
+                    **build_fix_audit_report(classified, findings_before, findings_before),
+                )
                 # AC21's branch is always `succeeded` (spec §8.10) -- there is
                 # no failure path when there was nothing mechanical to fix.
                 run.succeed(outcome, metrics=build_metrics(result))
@@ -806,6 +840,13 @@ async def invoke(payload: dict, context):
                     fix_attempts_llm=fix_attempts_llm,
                     llm_used=llm_used,
                 )
+                # Requirement 36: the after-scan's full result MUST be
+                # recorded so the operator can see exactly what remained.
+                run.artifact(
+                    "audit_report",
+                    title="Security scan findings (after fix attempt, re-scan not clean)",
+                    **build_fix_audit_report(after_classified, findings_before, findings_after),
+                )
                 assert error_code is not None
                 run.fail(
                     error_code,
@@ -821,6 +862,14 @@ async def invoke(payload: dict, context):
                 return
 
             # --- Step: open_pr — only reached on a clean re-scan gate (D23) ---
+            # Spec §6: fix-mode audit_report carries before/after counts.
+            # Written before open_pr so it exists even if PR creation fails.
+            run.artifact(
+                "audit_report",
+                title="Security scan findings (after fix)",
+                **build_fix_audit_report(after_classified, findings_before, findings_after),
+            )
+
             with run.step("open_pr"):
                 dependency_update_boundary = [
                     m
