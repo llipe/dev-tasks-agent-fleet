@@ -54,7 +54,7 @@ export function AuditReportPanel({ title, metadata }: AuditReportPanelProps) {
         <Fallback caption={caption} metadata={metadata} />
       ) : view.totalFindings === 0 && view.rows.length === 0 ? (
         <>
-          <h3 className={styles.caption}>{caption}</h3>
+          <p className={styles.caption}>{caption}</p>
           <p className={styles.empty}>No findings.</p>
         </>
       ) : (
@@ -129,7 +129,10 @@ function Findings({ caption, view }: { caption: string; view: AuditReportView })
 
 function FindingTr({ row }: { row: FindingRow }) {
   const location = row.lineStart === null ? row.filePath : `${row.filePath}:${row.lineStart}`;
-  const tint = SEVERITY_TOKEN[row.severity.toLowerCase()];
+  const key = row.severity.toLowerCase();
+  // Own-property check: `severity` is agent-authored, so "constructor" or
+  // "__proto__" must not resolve through Object.prototype into a tint.
+  const tint = Object.hasOwn(SEVERITY_TOKEN, key) ? SEVERITY_TOKEN[key] : undefined;
   const severityStyle = tint ? ({ "--sev-color": tint } as CSSProperties) : undefined;
   return (
     <tr className={styles.row}>
@@ -151,7 +154,7 @@ function Fallback({ caption, metadata }: { caption: string; metadata: Json | nul
   const entries = flattenForFallback(metadata);
   return (
     <>
-      <h3 className={styles.caption}>{caption}</h3>
+      <p className={styles.caption}>{caption}</p>
       {entries.length === 0 ? (
         <p className={styles.empty}>No report data.</p>
       ) : (

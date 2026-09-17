@@ -123,7 +123,8 @@ export function parseAuditReport(metadata: Json | null | undefined): AuditReport
   const total = integer(metadata.total_findings);
 
   return {
-    totalFindings: total ?? all.length,
+    // Agent-controlled; never trust it below what we actually parsed.
+    totalFindings: Math.max(total ?? 0, all.length),
     rows,
     truncated: all.length - rows.length,
     byTool: counts(metadata.by_tool),

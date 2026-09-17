@@ -239,6 +239,12 @@ describe("parseAuditReport — hostile content is data, never interpreted", () =
     expect(view!.truncated).toBe(25);
   });
 
+  it("never reports a total below the parsed row count", () => {
+    const view = parseAuditReport(securityAnalystReport({ total_findings: -5 }));
+    expect(view!.totalFindings).toBe(3);
+    expect(parseAuditReport(securityAnalystReport({ total_findings: 0 }))!.totalFindings).toBe(3);
+  });
+
   it("reports truncated: 0 when under the cap", () => {
     expect(parseAuditReport(securityAnalystReport())!.truncated).toBe(0);
   });

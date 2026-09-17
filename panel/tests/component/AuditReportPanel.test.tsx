@@ -144,6 +144,31 @@ describe("AuditReportPanel — security-analyst shape (AC1)", () => {
     expect(sev).not.toHaveAttribute("class");
   });
 
+  it.each(["constructor", "__proto__", "toString"])(
+    "does not resolve a prototype-key severity (%s) into a tint",
+    (severity) => {
+      render(
+        <AuditReportPanel
+          title={null}
+          metadata={{
+            total_findings: 1,
+            by_bucket: { mechanical: [finding({ severity })], manual: [], unscannable: [] },
+            by_tool: {},
+            by_severity: {},
+          }}
+        />,
+      );
+      const sev = screen.getByText(severity);
+      expect(sev).not.toHaveAttribute("style");
+      expect(sev).not.toHaveAttribute("class");
+    },
+  );
+
+  it("renders no heading element (the page owns the outline)", () => {
+    const { container } = render(<AuditReportPanel title="x" metadata={{ note: "n" }} />);
+    expect(container.querySelector("h1, h2, h3, h4, h5, h6")).toBeNull();
+  });
+
   it("falls back to a generic caption when the artifact has no title", () => {
     render(<AuditReportPanel title={null} metadata={securityAnalystReport} />);
     expect(screen.getByText("Audit report")).toBeInTheDocument();
