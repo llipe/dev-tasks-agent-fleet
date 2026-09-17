@@ -16,12 +16,34 @@ from pathlib import Path
 import pytest
 
 import scanners
-from scanners import AllScannersFailedError, run_scanners
+from normalize import Finding
+from scanners import AllScannersFailedError, relativize_path, run_scanners
 from scanners.types import ScanResult, ScanStatus
+from severity import Severity
 
 
-def _result(tool: str, status: ScanStatus, reason: str | None = None) -> ScanResult:
-    return ScanResult(tool=tool, status=status, findings=[], reason=reason)
+def _result(
+    tool: str,
+    status: ScanStatus,
+    reason: str | None = None,
+    findings: list[Finding] | None = None,
+) -> ScanResult:
+    return ScanResult(tool=tool, status=status, findings=findings or [], reason=reason)
+
+
+def _finding(tool: str, file_path: str) -> Finding:
+    return Finding(
+        tool=tool,
+        rule_id="r1",
+        severity=Severity.HIGH,
+        file_path=file_path,
+        line_start=1,
+        line_end=1,
+        message="m",
+        cwe_or_category="CWE-1",
+        remediation=None,
+        raw_ref=f"{tool}#0",
+    )
 
 
 def _patch_all(monkeypatch, statuses: dict[str, ScanStatus]) -> None:
@@ -86,6 +108,104 @@ class TestRunScannersDispatch:
         run_scanners(Path("/tmp/ws"), ["checkov"], 600)
 
         assert called == ["checkov"]
+
+
+class TestRelativizePath:
+    """S-141 real-invocation finding: spec §8.1's `file_path` is repo-relative,
+    but real Semgrep/Gitleaks echo the absolute workspace path they were
+    invoked with, while Trivy/Checkov/CodeQL report relative paths."""
+
+    def test_absolute_path_under_workspace_becomes_relative(self, tmp_path):
+        ws = tmp_path / "security-analyst-memo-cli-abc123"
+        ws.mkdir()
+        assert relativize_path(str(ws / "src" / "index.ts"), ws) == "src/index.ts"
+
+    def test_absolute_path_under_symlinked_workspace_root_still_matches(self, tmp_path):
+        # macOS-style /tmp -> /private/tmp: the tool may report the resolved
+        # real path while the pipeline holds the unresolved one (or vice versa).
+        real = tmp_path / "real-ws"
+        real.mkdir()
+        (real / "a.py").write_text("x = 1")
+        link = tmp_path / "link-ws"
+        link.symlink_to(real)
+        assert relativize_path(str(real / "a.py"), link) == "a.py"
+        assert relativize_path(str(link / "a.py"), real) == "a.py"
+
+    def test_relative_path_is_returned_posix_normalized(self, tmp_path):
+        assert relativize_path("src/index.ts", tmp_path) == "src/index.ts"
+
+    def test_absolute_path_outside_workspace_is_left_untouched(self, tmp_path):
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        other = tmp_path / "elsewhere" / "file.py"
+        assert relativize_path(str(other), ws) == str(other)
+
+    def test_empty_path_is_left_untouched(self, tmp_path):
+        # CodeQL whole-file-scope results can carry an empty file_path.
+        assert relativize_path("", tmp_path) == ""
+
+    def test_workspace_root_itself_relativizes_to_dot(self, tmp_path):
+        assert relativize_path(str(tmp_path), tmp_path) == "."
+
+
+class TestRunScannersRelativizesFindings:
+    def test_absolute_workspace_paths_from_a_runner_are_relativized(self, monkeypatch, tmp_path):
+        ws = tmp_path / "security-analyst-repo-xyz"
+        ws.mkdir()
+        absolute = str(ws / "workstream" / "spec.md")
+
+        monkeypatch.setitem(
+            scanners._SCANNER_DISPATCH,
+            "gitleaks",
+            lambda workspace, timeout: _result(
+                "gitleaks", ScanStatus.PASSED, findings=[_finding("gitleaks", absolute)]
+            ),
+        )
+        monkeypatch.setitem(
+            scanners._SCANNER_DISPATCH,
+            "codeql",
+            lambda workspace, timeout: _result(
+                "codeql", ScanStatus.PASSED, findings=[_finding("codeql", "workstream/spec.md")]
+            ),
+        )
+
+        results = run_scanners(ws, ["gitleaks", "codeql"], 600)
+
+        by_tool = {r.tool: r for r in results}
+        assert by_tool["gitleaks"].findings[0].file_path == "workstream/spec.md"
+        assert by_tool["codeql"].findings[0].file_path == "workstream/spec.md"
+        # The whole point: the two tools now agree on the dedup key's path.
+        assert by_tool["gitleaks"].findings[0].file_path == by_tool["codeql"].findings[0].file_path
+        # And the ephemeral workspace prefix never survives into downstream surfaces.
+        assert str(ws) not in by_tool["gitleaks"].findings[0].file_path
+
+    def test_other_finding_fields_are_preserved(self, monkeypatch, tmp_path):
+        original = _finding("semgrep", str(tmp_path / "app" / "x.py"))
+        monkeypatch.setitem(
+            scanners._SCANNER_DISPATCH,
+            "semgrep",
+            lambda workspace, timeout: _result("semgrep", ScanStatus.PASSED, findings=[original]),
+        )
+
+        (result,) = run_scanners(tmp_path, ["semgrep"], 600)
+
+        relativized = result.findings[0]
+        assert relativized.file_path == "app/x.py"
+        assert relativized.rule_id == original.rule_id
+        assert relativized.severity == original.severity
+        assert relativized.line_start == original.line_start
+        assert relativized.message == original.message
+        assert relativized.raw_ref == original.raw_ref
+
+    def test_failed_and_skipped_results_pass_through_unchanged(self, monkeypatch, tmp_path):
+        failed = _result("trivy", ScanStatus.FAILED, reason="boom")
+        skipped = _result("checkov", ScanStatus.SKIPPED, reason="no IaC")
+        monkeypatch.setitem(scanners._SCANNER_DISPATCH, "trivy", lambda w, t: failed)
+        monkeypatch.setitem(scanners._SCANNER_DISPATCH, "checkov", lambda w, t: skipped)
+
+        results = run_scanners(tmp_path, ["trivy", "checkov"], 600)
+
+        assert results == [failed, skipped]
 
 
 class TestAllScannersFailedGating:
