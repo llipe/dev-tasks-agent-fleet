@@ -679,6 +679,10 @@ class TestIdempotency:
         pr_artifacts = [a for a in fake_run.artifacts if a["type"] == "pull_request"]
         assert len(pr_artifacts) == 1
         assert pr_artifacts[0]["metadata"]["existed"] is True
+        # The audit_report is written before open_pr, so the short-circuit
+        # path gets one too (verifier F-1 on PR #242: guard against a future
+        # refactor moving the write after open_pr_if_needed()).
+        assert sum(a["type"] == "audit_report" for a in fake_run.artifacts) == 1
 
 
 # ---------------------------------------------------------------------------
