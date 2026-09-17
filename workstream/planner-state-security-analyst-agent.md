@@ -32,7 +32,7 @@
 
 ## Current Position
 
-- Next story: none — all 17 stories complete; Phase 5 (consolidated PR) in progress
+- Next story: none — all 17 stories complete; Phase 5 rollup gates all passed, opening consolidated PR
 - Last merged PR: #246
 - Integration branch HEAD: 6e87d48
 
@@ -54,6 +54,13 @@ S-141's own story PR merged the seed/deploy scaffolding, but tasks 17.10 (real a
 - IAM: attached `agent-fleet-secrets-and-bedrock` inline policy to the security-analyst runtime role (`AgentCore-securityanalyst-ApplicationAgentSecurityA-GsDyfHWdZS1X`) — was present on the sibling `dependency-update` role but never replicated.
 - `run_outcome` enum: applied `supabase/migrations/20260916194500_add_no_findings_run_outcome.sql` to production via `supabase db query --linked --file ...` (user confirmed), verified the enum now includes `no_findings`, committed to the integration branch. `main.py`'s `determine_outcome()` genuinely emits `no_findings` for a clean audit_only scan; before this fix every such run's terminal PATCH failed (Postgres 22P02) and the run got stuck "running" in the panel forever.
 - Redeployed AgentCore runtime twice more in this hardening pass (after PR #237's merge, and again after PR #238's merge) — same runtime_arn each time (`arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`).
+
+## Phase 5 — Consolidated PR Prep
+
+- QA rollup (PRD scope): `coverage_gate: FAIL` as measured (package unreachable from CI/root aggregate since S-125, no floor enforced, credentials.py/signal_backstop.py/scrubber.py under 30-90%) — all fixed same-day (commit `fb8ded9`): ported the sibling agent's tests for those 3 byte-identical modules (42 tests, no modification needed), set `fail_under = 90`, added an `agent` matrix axis to `.github/workflows/ci.yml`'s `python-quality` job, converted the root `Makefile`'s `AGENT_DIR` to a loop over `AGENT_DIRS`. Coverage 92% → 97% (712 tests). Recommended but not implemented: a real-binary `tests/smoke/` layer (would have caught 7 of the 8 S-141 defects) — tracked in `TESTING.md`.
+- PRD-level verifier rollup: **Fidelity High, highest drift Minor, zero blocking gaps.** Confirmed all 31 ACs satisfied (AC16/AC17 — the LLM escape hatch — carry a residual-risk annotation: never exercised live, every real run resolved deterministically). Confirmed no D1–D31 decision contradicted. Independently re-verified the fb8ded9 CI/coverage work rather than trusting the commit message (4 valid CI matrix combinations; no `fail_under`/`--cov-fail-under` conflict; ported test files and their targets genuinely byte-identical between agents). One new finding: if `AllScannersFailedError` fires during the *re-scan* specifically (not the initial scan), no artifact is recorded and the before-scan findings are lost — routed to product-engineer as open question #3 below, not fixed (Minor/Undetermined, non-blocking).
+- Full summary posted to plan issue #201. Consolidated list of 9 open product questions for `product-engineer`'s `activity-drift-reconciliation` (dedupe tie-break undocumented in spec §8.3; PR body drops `reported_by` for merged findings; re-scan-failure artifact gap (new); D19/D21 PRD/spec label mismatch; AC29 "all 7 steps" interpretation; idempotency-check cost; S-139 task-list AC citation mislabel; Node install curl\|bash hardening; semgrep/checkov strict-key-indexing watch item) — see issue #201 comment for full text, not duplicated here.
+- Technical-writer planner-level drift pass (mandatory, blocking if unresolved): `drift-fixed`. README verified-live status + 8-fix-PR summary + runtime ARN; spec §8.5 index of the seven S-141 annotations + v1.3 changelog; PRD status notes on "no schema migration required" (now false — the run_outcome migration) + v1.3 changelog; `docs/technical-guidelines.md` new security-analyst row. No ADR required. Archive candidates flagged (workstream/archive/ candidates), not moved — planner's call, deferred (low priority, not blocking Phase 5).
 
 ## Decisions Log
 
