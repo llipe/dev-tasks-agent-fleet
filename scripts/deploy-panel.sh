@@ -48,12 +48,19 @@ cd "$REPO_ROOT"
 
 echo "== deploy-panel: preflight =="
 
-if ! command -v fly >/dev/null 2>&1; then
+# The official installer symlinks both `fly` and `flyctl`, but
+# superfly/flyctl-actions/setup-flyctl (used in CI) only puts `flyctl` on
+# PATH — resolve whichever is present, preferring `flyctl`.
+if command -v flyctl >/dev/null 2>&1; then
+  FLY_BIN="flyctl"
+elif command -v fly >/dev/null 2>&1; then
+  FLY_BIN="fly"
+else
   echo "BLOCKED: flyctl not found on PATH." >&2
   exit 2
 fi
 
-if ! fly auth whoami >/dev/null 2>&1; then
+if ! "$FLY_BIN" auth whoami >/dev/null 2>&1; then
   echo "BLOCKED: not authenticated with flyctl (fly auth login / FLY_API_TOKEN)." >&2
   exit 2
 fi
@@ -79,7 +86,7 @@ echo "== deploy-panel: deploying $FLY_APP from repo root =="
 # --local-only: this app's remote (Fly-hosted) builder has been unreliable in
 # practice; building on the runner's local Docker daemon and pushing the
 # finished image is the reliable path (see the panel-deployment runbook).
-fly deploy -a "$FLY_APP" --config panel/fly.toml --local-only
+"$FLY_BIN" deploy -a "$FLY_APP" --config panel/fly.toml --local-only
 
 echo "== deploy-panel: verifying the auth boundary against the deployed host =="
 HOST="https://${FLY_APP}.fly.dev"
