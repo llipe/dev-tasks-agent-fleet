@@ -437,7 +437,7 @@ Two human-facing surfaces exist, mirroring the sibling agent's §11:
 
 **The step and event stream** makes a run legible: a run stuck in `scan` names which of the five tools is slow or hung; a run stuck in `rescan` is the re-scan gate doing its job, not a stall.
 
-**One consequence for the Phase 2 panel,** worth recording for the same reason the sibling PRD records its own: this agent's `audit_report` artifact carries a five-way tool breakdown and a three-bucket classification that the panel's existing rendering (built against the sibling agent's simpler advisory shape) does not yet anticipate. The panel work to render this agent's artifacts usefully is out of scope here and belongs to the parent PRD's Phase 2 backlog.
+**One consequence for the Phase 2 panel,** worth recording for the same reason the sibling PRD records its own: this agent's `audit_report` artifact carries a five-way tool breakdown and a three-bucket classification that the panel's existing rendering (built against the sibling agent's simpler advisory shape) does not yet anticipate. The panel work to render this agent's artifacts usefully is out of scope here and belongs to the parent PRD's Phase 2 backlog. *(Status note, 2026-09-17: shipped as issue #241 / PR #243 — the Run Detail page now renders `audit_report` metadata as a findings block; see `DESIGN.md` §5.3.)*
 
 ---
 

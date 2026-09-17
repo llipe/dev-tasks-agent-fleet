@@ -1,0 +1,141 @@
+/* Audit-report findings block. /DESIGN.md §5.3; table tokens §2 (header 500/10px/uppercase/.08em). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.caption {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 12.5px;
+  color: var(--color-text);
+  text-align: left;
+  caption-side: top;
+  padding-bottom: var(--space-2);
+}
+
+.summaryLine,
+.beforeAfter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.total {
+  color: var(--color-text);
+}
+
+.beforeAfterLabel {
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.counts {
+  white-space: nowrap;
+}
+
+/* Semantic <table> on a CSS grid — same pattern as RunHistoryTable. */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+}
+
+.table thead,
+.table tbody {
+  display: block;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 80px 78px 96px minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 2fr);
+  align-items: start;
+  gap: var(--space-4);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.headRow {
+  padding-bottom: var(--space-2);
+}
+
+.headCell {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  text-align: left;
+}
+
+.row:not(.headRow):hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.cell {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--color-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.message {
+  color: var(--muted);
+}
+
+/* Severity tint via a per-row custom property, mirroring StatusPill's --st-color. */
+.severity {
+  color: var(--sev-color);
+}
+
+.empty,
+.truncated {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* Generic key/value fallback for unrecognized shapes. */
+.fallback {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fallbackRow {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.fallbackKey {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.fallbackValue {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}

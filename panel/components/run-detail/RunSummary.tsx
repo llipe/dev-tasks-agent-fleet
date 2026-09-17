@@ -4,6 +4,7 @@ import { Tag } from "@/components/Tag";
 import { KLabel } from "@/components/KLabel";
 
 import { ArtifactLinks, type ArtifactView } from "./ArtifactLinks";
+import { AuditReportPanel } from "./AuditReportPanel";
 import styles from "./RunSummary.module.css";
 
 /**
@@ -13,7 +14,9 @@ import styles from "./RunSummary.module.css";
  * started / finished / duration / branch), plus the artifact pill links.
  *
  * Artifacts render here on EVERY status, including `failed` (AC14) — the pills
- * come from `ArtifactLinks`, which is given artifacts, not status.
+ * come from `ArtifactLinks`, which is given artifacts, not status. Each
+ * `audit_report` artifact additionally renders its findings inline via
+ * `AuditReportPanel` (issue 241), under the same status-blind rule.
  *
  * Presentational and server-safe. The status comes pre-derived from
  * `buildSummary`; this component never re-derives it.
@@ -53,6 +56,11 @@ export function RunSummary({ summary, artifacts }: RunSummaryProps) {
         <div className={styles.artifacts}>
           <KLabel>Artifacts</KLabel>
           <ArtifactLinks artifacts={artifacts} />
+          {artifacts
+            .filter((a) => a.type === "audit_report")
+            .map((a) => (
+              <AuditReportPanel key={a.id} title={a.title} metadata={a.metadata ?? null} />
+            ))}
         </div>
       )}
     </section>
