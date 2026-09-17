@@ -89,8 +89,9 @@ function toArtifactView(a: {
   type: ArtifactView["type"];
   title: string | null;
   url: string | null;
+  metadata: ArtifactView["metadata"];
 }): ArtifactView {
-  return { id: a.id, type: a.type, title: a.title, url: a.url };
+  return { id: a.id, type: a.type, title: a.title, url: a.url, metadata: a.metadata };
 }
 
 /** The branch a run ran against, read from `params` (the repo model is separate, §7). */
