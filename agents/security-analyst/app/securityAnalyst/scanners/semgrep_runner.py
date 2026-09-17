@@ -77,7 +77,7 @@ def _extract_cwe_or_category(metadata: dict[str, Any], rule_id: str) -> str:
     if cwe:
         raw = cwe[0] if isinstance(cwe, list) else cwe
         head = raw.split(":", 1)[0].strip()
-        return head if head.startswith("CWE-") else raw
+        return head if head.upper().startswith("CWE-") else raw
     owasp = metadata.get("owasp")
     if owasp:
         return owasp[0] if isinstance(owasp, list) else owasp
