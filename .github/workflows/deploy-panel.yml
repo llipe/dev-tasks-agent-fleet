@@ -1,0 +1,60 @@
+name: Deploy panel
+
+# PR-into-release flow for the panel:
+#   1. PRs merge to main as usual (gated by ci.yml).
+#   2. A human cuts a GitHub Release on an annotated tag named `panel-vX.Y.Z`
+#      (tag policy: annotated, created on main only, immutable — see
+#      docs/runbooks/panel-deployment.md).
+#   3. Publishing that release fires this workflow, scoped by the `panel-v`
+#      prefix so it never fires for other tags in this monorepo (e.g. agent
+#      releases).
+#   4. The `production` GitHub Environment requires a reviewer, so the job
+#      pauses for a manual approval click even though the release already
+#      exists — the tag alone is not sufficient authorization to deploy.
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: deploy-panel
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy dt-agent-fleet-panel
+    if: startsWith(github.event.release.tag_name, 'panel-v')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Confirm the tag is reachable from main
+        # Belt-and-suspenders: the tag policy says panel-v* tags are only ever
+        # cut on main, but a bad manual tag should block here, not mid-deploy.
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=200
+          if ! git merge-base --is-ancestor "${{ github.sha }}" origin/main; then
+            echo "BLOCKED: ${{ github.event.release.tag_name }} is not an ancestor of main." >&2
+            exit 2
+          fi
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy + verify auth gate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PANEL_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PANEL_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.PANEL_SUPABASE_SERVICE_ROLE_KEY }}
+        run: scripts/deploy-panel.sh
+
+      - name: Summarize
+        if: always()
+        run: |
+          echo "Release: ${{ github.event.release.tag_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "App: dt-agent-fleet-panel" >> "$GITHUB_STEP_SUMMARY"
+          echo "Host: https://dt-agent-fleet-panel.fly.dev" >> "$GITHUB_STEP_SUMMARY"
