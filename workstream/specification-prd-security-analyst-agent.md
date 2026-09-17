@@ -7,6 +7,7 @@
 | 1.0     | 2026-09-14 | Initial specification, translating [`prd-security-analyst-agent.md`](../docs/requirements/prd-security-analyst-agent.md) into an implementable design, grounded in the actual `agents/dependency-update/` codebase rather than only its PRD. | product-engineer |
 | 1.1     | 2026-09-14 | Reflects PRD v1.1's supported-stack decision (§7.4a): CodeQL scoped to `javascript-typescript`/`python` query packs only (§8.5, §15.2 — no compiled-language toolchain in the image), classifier's `_JS_LOCKFILES` set explicitly excludes Python manifests so Python version-bump findings stay mechanical (§8.4). | product-engineer |
 | 1.2     | 2026-09-14 | Reflects PRD v1.2's severity normalization (§7.4b/D28-D30) and `min_severity` gate (D31): adds §8.1a implementing the fixed per-tool severity table as pure functions, threads `min_severity` through the invocation contract (§6.1) and seed `params_schema` (§5.2), and rewrites `determine_outcome()` (§8.10) to apply the floor to the status/outcome decision only — scan, fix, and re-scan operate on the full unfiltered finding set throughout, per requirement 63. | product-engineer |
+| 1.3     | 2026-09-17 | S-141 implementation-time corrections from real invocations (PRs #235–#240, #242, #246): seven CORRECTED/CLARIFIED annotations in §8.5 (indexed at the top of that section) and one in §15.2. Design text is preserved as written; only the annotations and the §4.3/§8.8 `audit_report`-in-`fix`-mode diagrams changed. Agent verified live in both modes on runtime v9. | technical-writer |
 
 ---
 
@@ -501,6 +502,20 @@ def classify(merged: MergedFinding) -> Bucket:
 `lockfile_managed` is set by `trivy_runner.py`'s normalizer, not inferred here — it inspects Trivy's own target-file field against `_JS_LOCKFILES` only (`requirements.txt`/`poetry.lock`/`Pipfile.lock` targets are `lockfile_managed = False`, so Python findings flow through the `version_bump` branch above unaffected by D24) at parse time, keeping the classifier itself free of scanner-specific parsing (mirrors the sibling agent's `classifier.py` importing `eligibility.parse_semver` rather than re-deriving it — research S7).
 
 ### 8.5 Scanner dispatch (`scanners/*.py`, generalizing `validator.py`'s pattern)
+
+**S-141 implementation-time corrections — index.** The first real invocations (tasks 17.10/17.11) surfaced behaviors of the real scanner binaries that the mocked-subprocess suite could not see. Each is recorded in place as a **CORRECTED/CLARIFIED in S-141** paragraph at the end of this section (the v1.2 design text above them is left as written); this index exists so a reader can find them:
+
+| # | One-line summary | PR |
+| --- | --- | --- |
+| 1 | CodeQL `database create` runs the autobuild script by default; `--build-mode=none` is now passed explicitly. | #236 |
+| 2 | Internal bucket name `javascript-typescript` is not a CodeQL CLI language; `_CLI_LANGUAGE_NAMES` translates it to `javascript` for `--language=`. | #237 |
+| 3 | CodeQL's JS/TS extractor needs a Node.js runtime on `PATH` regardless of `--build-mode=none`; the image now installs one (does not reopen req 14/51). | #238 |
+| 4 | CodeQL `--output=/dev/stdout` and Gitleaks `--report-path /dev/stdout` break under piped stdout (corrupted SARIF; zero bytes = silent false PASS); both now write a real temp file. | #239 |
+| 5 | Real Semgrep/Gitleaks echo absolute workspace paths; `run_scanners()` now relativizes every `file_path` at the dispatcher choke point (`relativize_path()`). | #240 |
+| 6 | `fix` mode recorded no `audit_report` on no-op/`RESCAN_NOT_CLEAN` paths; `build_fix_audit_report()` now records one on all three `fix` terminal paths (§4.3/§8.8 corrected). | #242 |
+| 7 | CodeQL zero-pads CWE ids (`CWE-079`) vs Semgrep's `CWE-79`, defeating `dedupe()`; `canonicalize_category()` at the dispatcher (`_normalize_findings()`) canonicalizes to `CWE-<int>`. | #246 |
+
+A related eighth correction lives in §15.2 (the CodeQL query pack is `codeql/javascript-queries`, not `codeql/javascript-typescript-queries` — PR #235). Cross-cutting lesson: mocked-subprocess tests validate the parser against a hand-authored fixture, not against the real binary's output shape; see `workstream/planner-state-security-analyst-agent.md` for the standing test-strategy gap.
 
 Per requirements 15-19. Each scanner module exposes one function with an identical signature shape, following `validator.py`'s `CheckStatus`/multi-check-runner pattern (research finding 9, S1 item 11) rather than `audit.py`'s single-command pattern:
 

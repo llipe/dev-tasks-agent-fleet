@@ -3,9 +3,13 @@
 Five-tool security scanner agent (semgrep, gitleaks, trivy, checkov, CodeQL) for the Agent Fleet
 Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 
-> **Status (S-125-S-141, build complete):** all 17 stories of the agent build are done; the code
-> path is fully wired for both modes. Applying the seed migration, redeploying, and running real
-> repo invocations remain pending explicit user confirmation (see the S-141 paragraph below).
+> **Status (S-125-S-141, build complete and verified live):** all 17 stories of the agent build
+> are done, the seed migration is applied, and the agent is **verified live in both modes** on the
+> deployed runtime
+> `arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`
+> (runtime v9): a real `audit_only` run against `llipe/memo-cli` (task 17.10) and a real `fix` run
+> against `llipe/security-analyst-fixture` that opened a real PR (task 17.11). See the S-141
+> paragraph below for the eight real-invocation fixes those runs required.
 > Story-by-story: project scaffold, deploy, and reporting pipe (S-125), per-tool
 > severity normalization (S-126), the normalized `Finding`/`Remediation` schema plus
 > `fingerprint()` (S-127), the Semgrep scanner integration (S-128), the Gitleaks scanner
@@ -110,10 +114,24 @@ Control Plane. Runs as an AWS Bedrock AgentCore Container runtime.
 > `max_runtime_seconds`/`maxLifetime` manual-sync coupling and confirmed the two values already
 > agree (5400s, PRD AC31), and confirmed by reading `reap_stale_runs()` that the existing
 > `pg_cron` reaper needs no change for this agent (PRD AC31, generic per-run threshold snapshot,
-> D8). Applying the seed migration, redeploying to pick up S-126-S-140's real pipeline, and the
-> real `audit_only`/`fix` invocations against live/fixture repos (tasks 17.4-17.6, 17.10-17.11)
-> remain **pending explicit user confirmation** — see "Deployment" and "Seed migration — rollback
-> and impact" below.
+> D8). The seed migration was applied, the runtime redeployed (now v9), and both modes were
+> **verified live** (tasks 17.4-17.6, 17.10-17.11 complete): `audit_only` against `llipe/memo-cli`
+> reached `succeeded`/`needs_review` with repo-relative paths in the persisted `audit_report`; `fix`
+> against `llipe/security-analyst-fixture` fixed 2 of 4 findings deterministically (no LLM), passed
+> the re-scan gate, opened a real PR (`llipe/security-analyst-fixture#2`), and reached `partial`.
+> Those live runs surfaced eight bugs that the mocked-subprocess test suite could not see, each
+> fixed in its own PR — **the lesson: mocked-subprocess tests cannot see real binary output shapes**:
+> `#235` CodeQL query pack name (`codeql/javascript-queries`, not `javascript-typescript-queries`);
+> `#236` Gitleaks/Trivy binaries and Rust toolchain missing from the image, CodeQL `--build-mode=none`;
+> `#237` CodeQL `--language=javascript` translation, Gitleaks zero-byte and Trivy missing-`Results`
+> clean-scan shapes; `#238` Node.js runtime for CodeQL's TypeScript extractor; `#239` CodeQL/Gitleaks
+> `/dev/stdout` output lost or corrupted under a piped stdout (silent false PASS) — write to a temp file;
+> `#240` real Semgrep/Gitleaks emit absolute paths — `relativize_path()` at the `run_scanners()` choke
+> point; `#242` fix mode recorded no `audit_report` on no-op/`RESCAN_NOT_CLEAN` paths (req 36);
+> `#246` CodeQL zero-pads CWE ids (`CWE-079`) — `canonicalize_category()` so dedupe keys match.
+> Also added `supabase/migrations/20260916194500_add_no_findings_run_outcome.sql` (`no_findings`
+> was missing from the `run_outcome` enum). See "Deployment" and "Seed migration — rollback and
+> impact" below.
 
 ## Layout
 
@@ -495,13 +513,13 @@ agentcore status         # confirm runtime ready; copy the runtime ARN
 After a successful deploy, the `runtime_arn` is recorded in `supabase/seed.sql` as part of
 **S-141**, which appended the `security-analyst` block (Block 4) to the shared seed file,
 following the exact idempotent `on conflict (slug) do update` shape of the sibling
-`dependency-update` block (Block 3) — see spec §5.2. The seed row's `runtime_arn` reflects the
-runtime already deployed under S-125
-(`arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`).
-**Applying** that seed migration against anything other than a local/dev Supabase stack is a
-separate, confirmation-gated step (S-141 tasks 17.4-17.6) — this repo only carries the artifact
-until that confirmation happens; a redeploy is also expected before real invocations, since S-125
-only shipped the placeholder scan pipeline and S-126-S-140 have since replaced it end-to-end.
+`dependency-update` block (Block 3) — see spec §5.2. The seed row's `runtime_arn` is the runtime
+first deployed under S-125 and redeployed in place through the S-141 hardening pass (now v9):
+`arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/securityanalyst_security_analyst-w6CpbYHRE0`.
+The seed migration has been applied and both modes verified live (S-141 tasks 17.4-17.6,
+17.10-17.11). Redeploy note learned in S-141: confirm the runtime's `lastUpdatedAt`/version has
+flipped (`aws bedrock-agentcore-control get-agent-runtime`) before treating a redeploy as testable —
+a run created seconds before the flip executes on the previous image.
 
 ### Seed migration — rollback and impact (S-141)
 
