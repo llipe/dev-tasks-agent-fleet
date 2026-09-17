@@ -28,7 +28,7 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Issue #241 - https://github.com/llipe/dev-tasks-agent-fleet/issues/241: render `audit_report` artifact metadata on the run detail page
+- [x] 1.0 Implement Issue #241 - https://github.com/llipe/dev-tasks-agent-fleet/issues/241: render `audit_report` artifact metadata on the run detail page
 
   - [x] 1.1 Branch `issue/241-audit-report-artifact-viewer` off `main`; first commit = the parser test file (test-first) so the Draft PR (`Closes #241`) can open immediately.
   - [x] 1.2 Test-first: write `panel/tests/unit/audit-report.test.ts` covering — security-analyst shape → rows in bucket order (mechanical, manual, unscannable) with all columns; `findings_before`/`findings_after` surfaced when present and absent otherwise; `total_findings: 0` → empty view (not `null`); dependency-update-style / arbitrary object → `null`; non-object (`null`, string, array) → `null`; finding with missing optional fields → row with `—` placeholders, no throw; hostile strings (`<script>`, `javascript:` URLs, very long message) pass through untouched as strings; more than 500 findings → rows capped at 500 with `truncated: n`. Run `pnpm run test:unit` — confirm they fail for the right reason (module missing).
@@ -43,4 +43,4 @@
   - [x] 1.11 Verify Acceptance Criterion: `pull_request` artifacts are unchanged (existing `ArtifactLinks`/`run-detail` tests unmodified and passing; wiring test asserts the PR pill still renders).
   - [x] 1.12 Verify Acceptance Criterion: component test covers ACs 1–3 and the existing `run-detail` tests still pass — AC→test mapping: AC1 → 1.4 "rows" + 1.6 wiring; AC2 → 1.4 hostile string; AC3 → 1.2 unknown-shape + 1.4 fallback; AC4 → 1.11; AC5 → `pnpm run test` green.
   - [x] 1.13 Run Tests: `pnpm run validate` in `panel/` (`lint`, `format:check`, `typecheck`, `test`, `audit`) — all green. Optional: extend `tests/e2e/stale-and-artifact.spec.ts` with a seeded `audit_report` if the harness supports it; otherwise record `SKIPPED(<reason>)`. — Result: `pnpm run validate` green (1175 tests); e2e extension SKIPPED(harness seeds runs/artifacts only via the integration Supabase project; the page-wiring component test already covers the artifact→page path). Manual: verified on the live dev server — `/runs/3cb5f3b6…` (security-analyst, 2 Gitleaks rows) and `/runs/aa61ba0f…` (dependency-update, key/value fallback + PR pill intact).
-  - [ ] 1.14 Completion gate: `qa-engineer` coverage/gap report (`coverage_gate`), `verifier` audit (post summary to the PR), `technical-writer` docs pass (delta + drift), memo outcome entry if `memo` is configured, then convert the Draft PR to Ready for Review.
+  - [x] 1.14 Completion gate: `qa-engineer` coverage/gap report (`coverage_gate`), `verifier` audit (post summary to the PR), `technical-writer` docs pass (delta + drift), memo outcome entry if `memo` is configured, then convert the Draft PR to Ready for Review.
