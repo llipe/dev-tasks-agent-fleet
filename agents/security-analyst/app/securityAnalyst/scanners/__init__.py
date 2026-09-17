@@ -30,14 +30,27 @@ CodeQL finding on the same line of the same file would never dedupe across
 tools; and the temp-directory path would leak into PR bodies (S-139).
 Rather than fix five runners five ways, `run_scanners()` relativizes every
 returned finding's `file_path` against `workspace` at this single choke
-point (`_relativize_findings()`), so the contract holds regardless of how
+point (`_normalize_findings()`), so the contract holds regardless of how
 any individual tool formats its output. Paths that are absolute but *not*
 under the workspace (Trivy `image` mode's target is an image reference, for
 example) are left untouched.
+
+**S-141 real-invocation finding (task 17.11) -- `cwe_or_category` is
+canonicalized here too.** `dedupe()` groups on the exact
+`(file_path, cwe_or_category)` string, and the real binaries spell the same
+CWE differently: CodeQL's SARIF tags are zero-padded (`external/cwe/cwe-079`
+-> `CWE-079`) while Semgrep's `metadata.cwe` and Trivy's `CweIDs` are not
+(`CWE-79`). On the first real `fix` run, CodeQL's `js/reflected-xss` and
+Semgrep's `raw-html-format` flagged the same line of the same file and were
+reported twice -- exactly the cross-tool merge PRD requirement 22 exists
+for. `canonicalize_category()` rewrites any `CWE-<n>` (case-insensitive,
+leading zeros stripped) to `CWE-<int>`; anything that is not a CWE id (an
+OWASP category, a rule id fallback) is left untouched.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
@@ -51,6 +64,7 @@ from scanners.types import ScanResult, ScanStatus
 
 __all__ = [
     "AllScannersFailedError",
+    "canonicalize_category",
     "relativize_path",
     "run_scanners",
     "run_semgrep",
@@ -110,11 +124,25 @@ def relativize_path(file_path: str, workspace: Path) -> str:
         return file_path
 
 
-def _relativize_findings(result: ScanResult, workspace: Path) -> ScanResult:
+_CWE_ID = re.compile(r"^cwe-0*(\d+)$", re.IGNORECASE)
+
+
+def canonicalize_category(value: str) -> str:
+    """`CWE-079` / `cwe-79` / `CWE-0079` -> `CWE-79`; anything else unchanged."""
+    match = _CWE_ID.match(value.strip())
+    return f"CWE-{int(match.group(1))}" if match else value
+
+
+def _normalize_findings(result: ScanResult, workspace: Path) -> ScanResult:
     if not result.findings:
         return result
     findings: list[Finding] = [
-        replace(f, file_path=relativize_path(f.file_path, workspace)) for f in result.findings
+        replace(
+            f,
+            file_path=relativize_path(f.file_path, workspace),
+            cwe_or_category=canonicalize_category(f.cwe_or_category),
+        )
+        for f in result.findings
     ]
     return replace(result, findings=findings)
 
@@ -134,13 +162,14 @@ def run_scanners(workspace: Path, requested: list[str], timeout: int) -> list[Sc
     raised here — the caller aggregates whatever ``PASSED`` findings exist
     from the rest (PRD acceptance criterion 24).
 
-    Every returned finding's ``file_path`` is relativized against
-    ``workspace`` here (module docstring, S-141) so spec §8.1's repo-relative
-    contract holds uniformly across all five tools before anything downstream
-    (`dedupe()`, the audit artifact, the PR body) sees them.
+    Every returned finding is normalized here (module docstring, S-141):
+    ``file_path`` relativized against ``workspace`` (spec §8.1's repo-relative
+    contract) and ``cwe_or_category`` canonicalized to ``CWE-<int>`` -- so the
+    cross-tool dedup key agrees across all five tools before anything
+    downstream (`dedupe()`, the audit artifact, the PR body) sees them.
     """
     results = [
-        _relativize_findings(_SCANNER_DISPATCH[name](workspace, timeout), workspace)
+        _normalize_findings(_SCANNER_DISPATCH[name](workspace, timeout), workspace)
         for name in requested
     ]
     if all(r.status == ScanStatus.FAILED for r in results):
