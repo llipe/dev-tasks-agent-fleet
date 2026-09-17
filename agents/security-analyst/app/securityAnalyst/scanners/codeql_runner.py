@@ -345,7 +345,9 @@ def _resolve_level(result: dict[str, Any], rule: dict[str, Any]) -> str | None:
 def _cwe_or_category(rule_id: str | None, rule: dict[str, Any]) -> str:
     """First `external/cwe/cwe-<n>` tag from the rule's `properties.tags`
     (CodeQL's own documented convention for surfacing CWE metadata in
-    SARIF), rendered as `CWE-<n>`. Falls back to `rule_id`, mirroring every
+    SARIF), rendered as `CWE-<n>` -- NOTE: CodeQL zero-pads these
+    (`cwe-079` -> `CWE-079`); `run_scanners()` canonicalizes to `CWE-79` so
+    it dedupes against Semgrep/Trivy (S-141). Falls back to `rule_id`, mirroring every
     other scanner module's identical last-resort fallback (so the
     cross-tool dedup key, `fingerprint()`'s `rule_id or cwe_or_category`, is
     never empty) -- and finally to a fixed placeholder in the pathological

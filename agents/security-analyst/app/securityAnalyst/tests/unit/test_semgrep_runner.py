@@ -32,7 +32,7 @@ from pathlib import Path
 import pytest
 
 from normalize import Finding, Remediation
-from scanners.semgrep_runner import RULESET, TOOL_NAME, normalize_semgrep
+from scanners.semgrep_runner import RULESET, TOOL_NAME, _extract_cwe_or_category, normalize_semgrep
 from severity import Severity
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -173,3 +173,16 @@ class TestNormalizeSemgrepUnparseableInput:
     def test_missing_results_key_raises_key_error(self):
         with pytest.raises(KeyError):
             normalize_semgrep(json.dumps({"errors": [], "paths": {}}))
+
+
+class TestExtractCweOrCategoryCase:
+    """S-141 (PR #246 audit, finding 4): a lowercase `cwe-79: ...` must still
+    yield the bare id, or it would escape the dispatcher's canonicalization."""
+
+    def test_lowercase_cwe_prefix_still_extracts_the_bare_id(self):
+        assert (
+            _extract_cwe_or_category({"cwe": ["cwe-79: Improper Neutralization"]}, "r") == "cwe-79"
+        )
+
+    def test_uppercase_unchanged(self):
+        assert _extract_cwe_or_category({"cwe": "CWE-95: Eval Injection"}, "r") == "CWE-95"

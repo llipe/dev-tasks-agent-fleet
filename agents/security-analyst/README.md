@@ -191,10 +191,12 @@ agents/security-analyst/
 │   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
 │   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
 │   │   │                      # not parallelized (PRD §11/OQ6). Also relativize_path() +
-│   │   │                      # _relativize_findings() (S-141 real-invocation fix): every returned
-│   │   │                      # finding's file_path is made workspace-relative here, because the
-│   │   │                      # real Semgrep/Gitleaks binaries echo the absolute workspace path
-│   │   │                      # while Trivy/Checkov/CodeQL report scan-root-relative paths
+│   │   │                      # canonicalize_category() + _normalize_findings() (S-141
+│   │   │                      # real-invocation fixes): every returned finding's file_path is made
+│   │   │                      # workspace-relative here (real Semgrep/Gitleaks echo the absolute
+│   │   │                      # workspace path while Trivy/Checkov/CodeQL report scan-root-relative
+│   │   │                      # paths) and its cwe_or_category is canonicalized to CWE-<int>
+│   │   │                      # (CodeQL emits zero-padded CWE-079, Semgrep CWE-79) so dedupe() keys match
 │   │   ├── types.py           # ScanStatus/ScanResult shared shape, reused verbatim by S-129-S-132 (S-127-adjacent, landed S-128)
 │   │   ├── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — called by
 │   │   │                      # run_scanners() for audit_only mode (S-135)
@@ -343,7 +345,11 @@ agents/security-analyst/
    (`relativize_path()`, spec §8.1's "repo-relative, normalized separators" contract) so cross-tool
    dedup keys line up and the ephemeral `/tmp` workspace path never reaches the `audit_report`
    artifact or a PR body — the real Semgrep and Gitleaks binaries echo the absolute workspace path
-   they were invoked with, unlike Trivy/Checkov/CodeQL (S-141 real-invocation finding).
+   they were invoked with, unlike Trivy/Checkov/CodeQL (S-141 real-invocation finding). In the same
+   pass (`_normalize_findings()`) it canonicalizes every finding's `cwe_or_category` via
+   `canonicalize_category()` — bare `CWE-<n>` becomes `CWE-<int>` with leading zeros stripped, other
+   values untouched — because CodeQL's SARIF tags yield zero-padded `CWE-079` while Semgrep yields
+   `CWE-79`, which made `dedupe()` report the same line twice (PRD requirement 22; S-141 finding).
 5. **`classify`** — the combined `Finding` list from every `PASSED`/`SKIPPED` scan result is deduped
    (`dedupe.dedupe()`, cross-tool file+category+line-overlap merge into `MergedFinding`) and each
    merged finding is classified (`classifier.classify()` — `mechanical`/`manual`/`unscannable`).

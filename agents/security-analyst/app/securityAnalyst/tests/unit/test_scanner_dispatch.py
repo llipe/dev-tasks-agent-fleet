@@ -17,7 +17,7 @@ import pytest
 
 import scanners
 from normalize import Finding
-from scanners import AllScannersFailedError, relativize_path, run_scanners
+from scanners import AllScannersFailedError, canonicalize_category, relativize_path, run_scanners
 from scanners.types import ScanResult, ScanStatus
 from severity import Severity
 
@@ -31,7 +31,7 @@ def _result(
     return ScanResult(tool=tool, status=status, findings=findings or [], reason=reason)
 
 
-def _finding(tool: str, file_path: str) -> Finding:
+def _finding(tool: str, file_path: str, category: str = "CWE-1") -> Finding:
     return Finding(
         tool=tool,
         rule_id="r1",
@@ -40,7 +40,7 @@ def _finding(tool: str, file_path: str) -> Finding:
         line_start=1,
         line_end=1,
         message="m",
-        cwe_or_category="CWE-1",
+        cwe_or_category=category,
         remediation=None,
         raw_ref=f"{tool}#0",
     )
@@ -146,6 +146,83 @@ class TestRelativizePath:
 
     def test_workspace_root_itself_relativizes_to_dot(self, tmp_path):
         assert relativize_path(str(tmp_path), tmp_path) == "."
+
+
+class TestCanonicalizeCategory:
+    """S-141 task 17.11 finding: CodeQL zero-pads CWE ids (`CWE-079`), Semgrep
+    and Trivy do not (`CWE-79`); `dedupe()` keys on the exact string."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("CWE-079", "CWE-79"),
+            ("CWE-79", "CWE-79"),
+            ("cwe-79", "CWE-79"),
+            ("CWE-0079", "CWE-79"),
+            ("  CWE-079  ", "CWE-79"),
+            ("CWE-1333", "CWE-1333"),
+            ("CWE-0", "CWE-0"),
+        ],
+    )
+    def test_cwe_ids_collapse_to_one_spelling(self, raw, expected):
+        assert canonicalize_category(raw) == expected
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "A03:2021 - Injection",  # OWASP category (Semgrep fallback)
+            "generic-api-key",  # Gitleaks rule id fallback
+            "CKV_AWS_20",  # Checkov rule id fallback
+            "CWE-79: Improper Neutralization",  # not a bare id -- left alone
+            "CWE-",
+            "",
+        ],
+    )
+    def test_non_cwe_values_are_untouched(self, raw):
+        assert canonicalize_category(raw) == raw
+
+
+class TestRunScannersCanonicalizesCategories:
+    def test_codeql_and_semgrep_cwe_spellings_yield_the_same_dedupe_key(
+        self, monkeypatch, tmp_path
+    ):
+        # The real llipe/security-analyst-fixture run: CodeQL js/reflected-xss
+        # (CWE-079) and Semgrep raw-html-format (CWE-79) on src/hash.js:15
+        # were reported twice because dedupe() saw two different strings.
+        monkeypatch.setitem(
+            scanners._SCANNER_DISPATCH,
+            "codeql",
+            lambda w, t: _result(
+                "codeql", ScanStatus.PASSED, findings=[_finding("codeql", "src/hash.js", "CWE-079")]
+            ),
+        )
+        monkeypatch.setitem(
+            scanners._SCANNER_DISPATCH,
+            "semgrep",
+            lambda w, t: _result(
+                "semgrep",
+                ScanStatus.PASSED,
+                findings=[_finding("semgrep", "src/hash.js", "CWE-79")],
+            ),
+        )
+
+        results = run_scanners(tmp_path, ["codeql", "semgrep"], 600)
+
+        keys = {(f.file_path, f.cwe_or_category) for r in results for f in r.findings}
+        assert keys == {("src/hash.js", "CWE-79")}
+
+    def test_non_cwe_categories_pass_through(self, monkeypatch, tmp_path):
+        monkeypatch.setitem(
+            scanners._SCANNER_DISPATCH,
+            "gitleaks",
+            lambda w, t: _result(
+                "gitleaks",
+                ScanStatus.PASSED,
+                findings=[_finding("gitleaks", "a.py", "generic-api-key")],
+            ),
+        )
+        (result,) = run_scanners(tmp_path, ["gitleaks"], 600)
+        assert result.findings[0].cwe_or_category == "generic-api-key"
 
 
 class TestRunScannersRelativizesFindings:
