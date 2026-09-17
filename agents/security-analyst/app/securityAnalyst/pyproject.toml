@@ -112,7 +112,8 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-# No hard threshold enforced yet — coverage is measured and reported, but the
-# baseline is still being established across the pipeline modules, mirroring
-# the sibling agent's convention. Raise `fail_under` once the scanner-dispatch
-# and finding-processing modules land (S-126+).
+# Floor set at PRD close (S-141 / Phase 5 QA rollup): measured 95% after
+# porting the sibling agent's credentials/signal_backstop/scrubber tests.
+# `main.py` and `agent_reporter.py` are omitted above (exercised by the
+# component pipeline tests and real invocations, not unit-covered).
+fail_under = 90
