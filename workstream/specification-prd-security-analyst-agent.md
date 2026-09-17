@@ -7,6 +7,7 @@
 | 1.0     | 2026-09-14 | Initial specification, translating [`prd-security-analyst-agent.md`](../docs/requirements/prd-security-analyst-agent.md) into an implementable design, grounded in the actual `agents/dependency-update/` codebase rather than only its PRD. | product-engineer |
 | 1.1     | 2026-09-14 | Reflects PRD v1.1's supported-stack decision (§7.4a): CodeQL scoped to `javascript-typescript`/`python` query packs only (§8.5, §15.2 — no compiled-language toolchain in the image), classifier's `_JS_LOCKFILES` set explicitly excludes Python manifests so Python version-bump findings stay mechanical (§8.4). | product-engineer |
 | 1.2     | 2026-09-14 | Reflects PRD v1.2's severity normalization (§7.4b/D28-D30) and `min_severity` gate (D31): adds §8.1a implementing the fixed per-tool severity table as pure functions, threads `min_severity` through the invocation contract (§6.1) and seed `params_schema` (§5.2), and rewrites `determine_outcome()` (§8.10) to apply the floor to the status/outcome decision only — scan, fix, and re-scan operate on the full unfiltered finding set throughout, per requirement 63. | product-engineer |
+| 1.3     | 2026-09-17 | S-141 implementation-time corrections from real invocations (PRs #235–#240, #242, #246): seven CORRECTED/CLARIFIED annotations in §8.5 (indexed at the top of that section) and one in §15.2. Design text is preserved as written; only the annotations and the §4.3/§8.8 `audit_report`-in-`fix`-mode diagrams changed. Agent verified live in both modes on runtime v9. | technical-writer |
 
 ---
 
@@ -143,8 +144,9 @@ sequenceDiagram
         AG->>SC: re-run all 5 scanners (under heartbeat, rescan step)
         AG->>AG: compare before/after by fingerprint (D25 gate)
         alt gate fails after budget exhausted
-            AG->>DB: fail/needs_review/RESCAN_NOT_CLEAN, no PR
+            AG->>DB: artifact(audit_report, before/after), fail/needs_review/RESCAN_NOT_CLEAN, no PR
         else gate passes
+            AG->>DB: artifact(audit_report, before/after) -- before open_pr, S-141
             AG->>GH: check existing security/fix-* PR
             alt none open
                 AG->>GH: push branch, open PR (--body-file)
@@ -372,7 +374,7 @@ class Finding:
     line_start: int
     line_end: int
     message: str                     # redacted per §12 -- never the raw matched secret
-    cwe_or_category: str
+    cwe_or_category: str             # canonicalized by run_scanners(): CWE-<int> (no zero-padding) or non-CWE value as-is
     remediation: Remediation | None  # None => unscannable candidate
     raw_ref: str                     # pointer into the raw per-tool output artifact, not embedded
 
@@ -454,7 +456,7 @@ Per requirement 22 / D19 — conservative merge, file+line overlap **and** categ
 def dedupe(findings: list[Finding]) -> list[MergedFinding]:
     groups: dict[tuple[str, str], list[Finding]] = defaultdict(list)
     for f in findings:
-        # group key: (file_path, normalized cwe_or_category) -- never tool alone
+        # group key: (file_path, cwe_or_category as canonicalized by run_scanners()) -- never tool alone
         groups[(f.file_path, f.cwe_or_category)].append(f)
     merged = []
     for (_, _), group in groups.items():
@@ -501,6 +503,20 @@ def classify(merged: MergedFinding) -> Bucket:
 
 ### 8.5 Scanner dispatch (`scanners/*.py`, generalizing `validator.py`'s pattern)
 
+**S-141 implementation-time corrections — index.** The first real invocations (tasks 17.10/17.11) surfaced behaviors of the real scanner binaries that the mocked-subprocess suite could not see. Each is recorded in place as a **CORRECTED/CLARIFIED in S-141** paragraph at the end of this section (the v1.2 design text above them is left as written); this index exists so a reader can find them:
+
+| # | One-line summary | PR |
+| --- | --- | --- |
+| 1 | CodeQL `database create` runs the autobuild script by default; `--build-mode=none` is now passed explicitly. | #236 |
+| 2 | Internal bucket name `javascript-typescript` is not a CodeQL CLI language; `_CLI_LANGUAGE_NAMES` translates it to `javascript` for `--language=`. | #237 |
+| 3 | CodeQL's JS/TS extractor needs a Node.js runtime on `PATH` regardless of `--build-mode=none`; the image now installs one (does not reopen req 14/51). | #238 |
+| 4 | CodeQL `--output=/dev/stdout` and Gitleaks `--report-path /dev/stdout` break under piped stdout (corrupted SARIF; zero bytes = silent false PASS); both now write a real temp file. | #239 |
+| 5 | Real Semgrep/Gitleaks echo absolute workspace paths; `run_scanners()` now relativizes every `file_path` at the dispatcher choke point (`relativize_path()`). | #240 |
+| 6 | `fix` mode recorded no `audit_report` on no-op/`RESCAN_NOT_CLEAN` paths; `build_fix_audit_report()` now records one on all three `fix` terminal paths (§4.3/§8.8 corrected). | #242 |
+| 7 | CodeQL zero-pads CWE ids (`CWE-079`) vs Semgrep's `CWE-79`, defeating `dedupe()`; `canonicalize_category()` at the dispatcher (`_normalize_findings()`) canonicalizes to `CWE-<int>`. | #246 |
+
+A related eighth correction lives in §15.2 (the CodeQL query pack is `codeql/javascript-queries`, not `codeql/javascript-typescript-queries` — PR #235). Cross-cutting lesson: mocked-subprocess tests validate the parser against a hand-authored fixture, not against the real binary's output shape; see `workstream/planner-state-security-analyst-agent.md` for the standing test-strategy gap.
+
 Per requirements 15-19. Each scanner module exposes one function with an identical signature shape, following `validator.py`'s `CheckStatus`/multi-check-runner pattern (research finding 9, S1 item 11) rather than `audit.py`'s single-command pattern:
 
 ```python
@@ -536,7 +552,21 @@ def run_scanners(workspace: Path, requested: list[str], timeout: int) -> list[Sc
 
 Each `run_<tool>` wraps its subprocess call with `scrubber.scrub_process_error()` on failure (reused pattern) and enforces `SCANNER_TIMEOUT` (default 600s, env-tunable per requirement 19) independently per tool — no shared timeout budget across scanners.
 
-CodeQL specifically (`codeql_runner.py`) is a two-phase call: `codeql database create --language=<lang>` then `codeql database analyze --format sarif-latest`, both under the same per-tool timeout envelope. Per PRD §7.4a, `<lang>` is resolved from a fixed two-entry table — `javascript-typescript` (triggered by any `.js`/`.ts`/`.jsx`/`.tsx`/`package.json` content) and `python` (triggered by any `.py`/`pyproject.toml`/`requirements.txt` content) — with **no third branch**: a repository matching neither is `SKIPPED` (requirement 17/51), and a repository matching both runs CodeQL twice, once per language, with findings from both merged into the same scan pass. Because both packs are interpreted-language extraction, `codeql database create` never triggers a compiled build step in v1 (requirement 14) — this is a direct consequence of the stack scoping, not a separate design choice.
+CodeQL specifically (`codeql_runner.py`) is a two-phase call: `codeql database create --language=<lang> --build-mode=none` then `codeql database analyze --format sarif-latest`, both under the same per-tool timeout envelope. Per PRD §7.4a, `<lang>` is resolved from a fixed two-entry table — `javascript-typescript` (triggered by any `.js`/`.ts`/`.jsx`/`.tsx`/`package.json` content) and `python` (triggered by any `.py`/`pyproject.toml`/`requirements.txt` content) — with **no third branch**: a repository matching neither is `SKIPPED` (requirement 17/51), and a repository matching both runs CodeQL twice, once per language, with findings from both merged into the same scan pass. Because both packs are interpreted-language extraction, `codeql database create` never requires a compiled build step in v1 (requirement 14) — this is a direct consequence of the stack scoping, not a separate design choice.
+
+**CORRECTED in S-141 (implementation-time finding, not a spec authoring error caught before build):** the original v1.2 spec text described `database create` as never triggering "a compiled build step" and did not include `--build-mode=none` in the command above. That phrasing conflated "no compiled build step is needed to extract from an interpreted language" (still true, and the basis for requirement 14) with `database create`'s own default behavior, which is a separate concern: without an explicit `--build-mode`, the CodeQL CLI still runs each language's **autobuild script** by default (for JS/TS, this includes `npm install` and any detected build script), regardless of whether the language is compiled. Real-repo verification (not exercised until S-141's first live invocation) hit this directly — a repo with no npm registry access failed the whole scan. The shipped `codeql_runner.py`'s `_build_create_command()` now passes `--build-mode=none` explicitly, skipping the build step and extracting straight from `--source-root`; the command line above is corrected to match.
+
+**CORRECTED in S-141 (second implementation-time finding, from the same first live invocation):** the command line above and the "resolved from a fixed two-entry table" wording imply `<lang>` — the internal bucket name `javascript-typescript`/`python` used throughout this spec, `detect_languages()`'s return values, and the `_QUERY_PACKS` dict key — is passed straight through as `--language=<lang>`'s literal value. It is not: `codeql resolve languages` (real CLI, confirmed against the shipped toolchain) has no `javascript-typescript` language, only `javascript` (which extracts both `.js` and `.ts` content; there is no separate `typescript` extractor). Passing the internal name directly was silently accepted by the CLI without error but resolved to no valid language, so `database create` fell back to running the JS autobuild script even with `--build-mode=none` set — the same class of internal-name-vs-external-CLI-identifier bug already found once for the query pack name (see the S-141 correction below). The shipped `codeql_runner.py` now has a `_CLI_LANGUAGE_NAMES` translation dict (`javascript-typescript` -> `javascript`, `python` -> `python`, i.e. a no-op for Python) that `_build_create_command()` looks up before building `--language=`; the internal bucket name itself is unchanged everywhere else (`detect_languages()`, `_QUERY_PACKS`, this spec's two-entry table).
+
+**CLARIFIED in S-141 (third implementation-time finding, from a subsequent live invocation against a real TypeScript repo, `llipe/memo-cli`):** `--build-mode=none` skips a *custom* build command (e.g. `npm run build`/`npm install`), but the JS/TS extractor's own parsing step is unaffected by that flag — it shells out to a real Node.js binary to parse `.ts`/`.tsx` files via the TypeScript compiler API, and fails with "Could not start Node.js. It is required for TypeScript extraction." if none is on `PATH`. This is a container-image dependency (installed at image build time via `apt`, not fetched during a scan run), not a compiled build step and not scan-time network egress, so it does **not** reopen requirement 14 (§7.4a/§8.5's "no compiled build step" claim, scoped to compiled-language toolchains and to requirement 14's own network-egress condition) or requirement 51's "no compiled build step" language — both remain accurate as written. The Dockerfile (§15.2) now installs a Node.js runtime (via NodeSource, pinned major version) immediately after the `codeql pack download` step to satisfy this.
+
+**CORRECTED in S-141 (fourth implementation-time finding, from a subsequent live invocation against `llipe/memo-cli`):** the `database analyze --format sarif-latest` phase above was originally shipped pointing its mandatory `--output` flag at `/dev/stdout` (the same Linux-device-file trick documented for Gitleaks' `--report-path`, §8.5), reading the SARIF back from the subprocess's captured stdout rather than from a file. This does not survive real use: when the calling process's own stdout is a pipe — exactly what `subprocess.run(..., capture_output=True)` gives it, the shape every `run_<tool>()` in this codebase uses — the real CodeQL binary also writes a human-readable one-line post-analysis summary onto that same pipe ahead of the SARIF JSON, breaking `json.loads()` at position 0 every time. This was invisible when the trick was originally verified only via a shell `>`-redirected real file (no such summary line appears in that redirected stream), which is why it passed S-132's original implementation and audit undetected. The shipped `codeql_runner.py` now points `--output` at a real file inside the same per-call temporary directory already used for the CodeQL database and reads the SARIF from that file; `/dev/stdout` is no longer used anywhere in this module. This finding prompted re-checking Gitleaks' own `--report-path /dev/stdout` trick for the same class of bug: it was **also** found affected, though via a distinct and more severe failure mode — no extraneous summary line was observed, but a real, findings-bearing Gitleaks run against a repo with genuine leaks produced **zero captured bytes** on the `/dev/stdout` redirect under pipe-captured stdout (silently downgrading a findings-bearing scan to a false "no leaks" result, rather than corrupting valid JSON with a prefix). `gitleaks_runner.py` received the identical real-file fix in the same S-141 pass; see its module docstring's REVERTED section for the full account. Neither scanner module uses `/dev/stdout` for its output any longer.
+
+**CLARIFIED in S-141 (fifth implementation-time finding, from the first fully clean `audit_only` run against `llipe/memo-cli`):** the `run_scanners()` snippet above shows the dispatcher's only responsibility as the requirement-18 total-failure check, and this section is silent on *which layer* is accountable for §8.1's `Finding.file_path` contract ("repo-relative, normalized separators") — implicitly leaving it to each `normalize_<tool>()`. Every hand-authored test fixture honors the contract, so the mocked-subprocess suite never exposed that the real binaries disagree with each other: Semgrep and Gitleaks, invoked with the absolute workspace path this pipeline passes them, echo that absolute path back (`/tmp/security-analyst-<repo>-<rand>/src/x.ts`), while Trivy, Checkov, and CodeQL report paths relative to the scan root. The persisted `audit_report` artifact from the real run carried the ephemeral `/tmp/...` prefix on its Gitleaks findings. This is not cosmetic: `fingerprint()` (§8.2) and `dedupe()` (§8.3) both key on `file_path`, so a Semgrep and a CodeQL finding on the same line of the same file could never merge across tools (defeating requirement 22), and the temp-directory path would have leaked into fix-mode PR bodies (§8.7 / S-139). Rather than patch five normalizers five ways, the shipped `scanners/__init__.py` now enforces the contract at the single choke point where all five `run_<tool>()` results converge: `run_scanners()` passes each `ScanResult` through a private `_relativize_findings()` that rewrites every finding's `file_path` via a public `relativize_path(file_path, workspace)` helper — an absolute path under `workspace` (matched as given or after `resolve()`, so a symlinked temp root such as macOS's `/tmp` -> `/private/tmp` still matches) becomes workspace-relative; a relative path is POSIX-normalized; an empty path or an absolute path *not* under the workspace (e.g. Trivy `image` mode's image-reference target) is returned unchanged, never raising. The per-tool normalizers are unchanged, and `checkov_runner.py`'s existing leading-`/` strip (its module docstring's "Deviation 2") remains in place and is now a tool-specific pre-step that the dispatcher-level normalization does not depend on. The dispatcher's responsibilities in the snippet above are therefore now two: path relativization of every result, then the total-failure check.
+
+**CORRECTED in S-141 (sixth implementation-time finding, from a real `mode=fix` run against `llipe/memo-cli`, run `6ae92d00`):** §4.3's sequence diagram and §8.8's state diagram originally showed `artifact(audit_report)` only on the `audit_only` branch and `pull_request` as `fix` mode's only artifact, even though §6 already defined `audit_report` as carrying "before/after counts in `fix` mode". The shipped `main.py` matched the diagrams, so both no-PR `fix` terminal paths recorded no `run_artifacts` row: the AC21 no-mechanical no-op left the remaining `manual`/`unscannable` findings visible only as a metrics count (PRD user story 4 / principle 6, requirement 37), and `RESCAN_NOT_CLEAN` violated requirement 36's MUST that the after-scan's full result be recorded as a `run_artifacts` row. `main.py` now records an `audit_report` via `build_fix_audit_report(after_classified, findings_before, findings_after)` — `build_audit_report()`'s grouping plus `findings_before`/`findings_after` bucket counts — on all three `fix` terminal paths (no-op, `RESCAN_NOT_CLEAN`, and before `open_pr` so it survives a PR-handoff failure). `audit_only` is unchanged; §4.3 and §8.8 are corrected to match.
+
+**CLARIFIED in S-141 (seventh implementation-time finding, from the first real `mode=fix` run against `llipe/security-analyst-fixture`, run `362f526e`):** §8.3's `dedupe()` groups on the exact `(file_path, cwe_or_category)` string, and §8.1's `Finding` comment plus the per-tool normalizers implicitly assumed every tool already emits a uniform bare `CWE-<n>`. The real binaries do not: CodeQL's SARIF tags its rules `external/cwe/cwe-079` (zero-padded, normalized to `CWE-079`), while Semgrep's `metadata.cwe` yields `CWE-79`. On that run CodeQL's `js/reflected-xss` and Semgrep's `raw-html-format` flagged the same line and were reported twice — exactly the cross-tool merge case requirement 22 exists for. The fix lives at the same choke point as the fifth finding: `_relativize_findings()` is renamed `_normalize_findings()` and additionally passes every finding's `cwe_or_category` through a public `canonicalize_category()` — any bare `CWE-<n>` (case-insensitive, leading zeros stripped) becomes `CWE-<int>`; non-CWE values (OWASP categories, `rule_id` fallbacks) are returned unchanged. The per-tool normalizers are unchanged. The dispatcher's responsibilities in the snippet above are therefore now three: path relativization and CWE canonicalization of every result, then the total-failure check. §8.1's `cwe_or_category` comment and §8.3's "normalized cwe_or_category" group key are to be read as "canonicalized by the dispatcher", not "uniform at the normalizer level".
 
 ### 8.6 Fix application
 
@@ -635,6 +665,8 @@ stateDiagram-v2
     rescan --> [*]: gate not clean, budget exhausted -- RESCAN_NOT_CLEAN, no PR
     open_pr --> [*]: succeeded per 8.1 below
 ```
+
+Every `fix`-mode terminal edge above (the AC21 no-mechanical no-op out of `fix`, the `RESCAN_NOT_CLEAN` exit, and the `open_pr` path) records an `audit_report` artifact carrying before/after bucket counts before terminating — see the sixth S-141 annotation in §8.5.
 
 `scan` and `rescan` are wrapped in `heartbeat.run_with_heartbeat(...)` (reused verbatim, §9.2) exactly as the sibling agent wraps `validate`/`llm_fix` — CodeQL's database-build phase in particular is the single most likely step to exceed the idle-session bound without it (research finding 5).
 
@@ -859,7 +891,7 @@ Generated layout mirrors `agents/dependency-update/` exactly (`agentcore/`, `app
 
 ### 15.2 Dockerfile
 
-Extends the sibling agent's ARM64/ECR-Public-mirror pattern (research item 16 — Docker Hub 429 workaround, CA-cert build arg) with the five scanner toolchains. Per PRD §7.4a, the image ships **only two CodeQL query packs** — no JDK, Go toolchain, or C/C++ compiler is installed, since neither `javascript-typescript` nor `python` requires a compiled build step:
+Extends the sibling agent's ARM64/ECR-Public-mirror pattern (research item 16 — Docker Hub 429 workaround, CA-cert build arg) with the five scanner toolchains. Per PRD §7.4a, the image ships **only two CodeQL query packs** — no JDK, Go toolchain, or C/C++ compiler is installed, since neither `javascript-typescript` nor `python` requires a compiled build step. This does not mean the image is dependency-free, though: the `javascript-typescript` extractor still needs a real Node.js runtime on `PATH` to parse `.ts`/`.tsx` content (see the third S-141 correction in §8.5), so a Node.js install step ships alongside the CodeQL CLI below — a runtime dependency, not a compiled build step, so requirement 14 is unaffected:
 
 ```dockerfile
 # Stage 1: Python base (same ECR Public mirror pattern as dependency-update)
@@ -878,12 +910,19 @@ RUN curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib
 RUN curl -sSfL <codeql-cli-arm64-url> -o codeql.tar.gz && tar xzf codeql.tar.gz
 RUN codeql pack download codeql/javascript-typescript-queries codeql/python-queries
 
+# Node.js runtime -- required by the JS/TS extractor to parse .ts/.tsx
+# content via the TypeScript compiler API; --build-mode=none only skips a
+# *custom* build command, not this extraction-time dependency (S-141).
+RUN curl -fsSL <nodesource-setup-script-url> | bash - && apt-get install -y nodejs
+
 # git + gh CLI (same as sibling)
 # Python deps (agent's own pyproject.toml, includes semgrep/checkov rulesets pinned per req 52)
 # Agent code
 ```
 
 **Blocking verification, per PRD §18 OQ5 and research risk 2:** confirm the CodeQL CLI ships an ARM64 Linux build at the version pinned here before this Dockerfile is finalized — AgentCore Runtime is ARM64-only (no x86_64 fallback), and this has historically lagged the x86_64 release.
+
+**CORRECTED in S-141 (implementation-time finding, not a spec authoring error caught before build):** `codeql/javascript-typescript-queries` in the snippet above is not a real published package — confirmed via `gh api orgs/codeql/packages`. The actual GHCR package name is `codeql/javascript-queries` (JS and TS share one combined query pack; there was never a separate "javascript-typescript" package). This snippet is left as originally written for historical accuracy of the spec's design intent at v1.2; the shipped `Dockerfile` and `scanners/codeql_runner.py`'s `_QUERY_PACKS` dict use the corrected name.
 
 ### 15.3 Deploy
 

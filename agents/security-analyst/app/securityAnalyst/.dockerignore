@@ -1,0 +1,11 @@
+# Test artifacts
+tests/
+__pycache__/
+*.pyc
+
+# Local CA certs (injected via --build-arg, never baked in by default)
+nscacert.pem
+*.pem
+!.ca-placeholder
+# virtualenv (local dev, never baked in)
+.venv/

@@ -37,13 +37,16 @@ This is a **pnpm workspace with two declared packages** (`pnpm-workspace.yaml`):
 
 A third package sits outside the pnpm workspace (it is a separate Python
 project, not a Node package): `agents/dependency-update/app/dependencyUpdate`
-— the `dependency-update` agent (the original, and still active, codebase).
+— the `dependency-update` agent (the original, and still active, codebase) —
+and `agents/security-analyst/app/securityAnalyst` — the `security-analyst`
+agent (S-125–S-141), which mirrors the sibling's layout, Makefile, and
+`pyproject.toml` conventions.
 
 Root `package.json` (`private: true`, `packageManager: pnpm@10.11.0`,
 `engines.node: ">=22 <25"`) declares thin aggregate scripts that all delegate
 via `pnpm --filter panel run ...` — see Commands below. The repo-root
 `Makefile` is the actual cross-language aggregate: it runs a Python branch
-(`*-py`, delegating into the `dependency-update` package dir) and a JS/TS
+(`*-py`, looping over both agent package dirs in `AGENT_DIRS`) and a JS/TS
 branch (`*-js`, delegating into `panel` via the pnpm workspace) and fails if
 either fails.
 
@@ -51,8 +54,8 @@ either fails.
 
 | Layer    | Name                      | Scope                                                                                                                             | Status |
 | -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| 1        | Deterministic foundations | Unit tests and schema/contract assertions with no network, database, or wall-clock dependency.                                    | configured — `dependency-update` `tests/unit/` (pytest `unit` marker); `panel` Vitest `unit` project (`panel/tests/unit/`). |
-| 2        | Constrained model/tool    | CLI, filesystem, subprocess, component, and fixture tests with external providers replaced by deterministic fixtures or stubs. | configured — `dependency-update` `tests/component/` (pytest `component` marker); `panel` Vitest `component` project (`panel/tests/component/`, jsdom, mocked externals). |
+| 1        | Deterministic foundations | Unit tests and schema/contract assertions with no network, database, or wall-clock dependency.                                    | configured — `dependency-update` and `security-analyst` `tests/unit/` (pytest `unit` marker); `panel` Vitest `unit` project (`panel/tests/unit/`). |
+| 2        | Constrained model/tool    | CLI, filesystem, subprocess, component, and fixture tests with external providers replaced by deterministic fixtures or stubs. | configured — `dependency-update` and `security-analyst` `tests/component/` (pytest `component` marker; `security-analyst`'s mock `subprocess.run` for all five scanners and drive `main.invoke()` end to end); `panel` Vitest `component` project (`panel/tests/component/`, jsdom, mocked externals). |
 | 2.5      | Integration               | Real database, migrations, RLS, and schema contracts without a mocked data layer.                                                 | **configured** — `panel` Vitest `integration` project (`panel/tests/integration/`), against a real local Postgres brought up by the Supabase CLI (`supabase start` / `supabase db reset`). Docker-gated via `panel/tests/integration/db.ts` (`probeLocalDb`); see CI-vs-local gating below. Not applicable to `dependency-update` (no owned database) or the CDK package. |
 | E2E      | End-to-end                | Playwright full-stack browser scenarios.                                                                                          | **configured** — `panel/playwright.config.ts` + `panel/tests/e2e/` (retries 0, one worker, headless in CI, `webServer` = `next dev`), driving the browser against the real local Supabase stack with AgentCore stubbed at the HTTP boundary. |
 | Contract | Contract validation       | `dt verify` API-spec diff, impact, and drift checks.                                                                              | not configured; no repository API spec (`panel` has no OpenAPI surface yet). |
@@ -97,6 +100,7 @@ can no longer pass CI vacuously.
 | Package                | Language                          | Runner                              | Test command                                                                                          | Test environment                                                                                                                        | Coverage tooling                                                                                          |
 | ---------------------- | --------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | `dependency-update` (`agents/dependency-update/app/dependencyUpdate/`) | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; all external I/O (boto3, `requests`, `jwt`, `subprocess`) mocked                                    | pytest-cov 7.1.0, branch coverage on; `[tool.coverage]` config; `coverage_gate` MEASURED (no `fail_under` floor yet) |
+| `security-analyst` (`agents/security-analyst/app/securityAnalyst/`)     | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; scanner binaries (`semgrep`, `gitleaks`, `trivy`, `checkov`, `codeql`) are NEVER invoked — every runner mocks `subprocess.run` against checked-in JSON/SARIF fixtures in `tests/fixtures/`; `boto3`/`requests`/`jwt` mocked as in the sibling | pytest-cov, branch coverage on; `[tool.coverage]` config with **`fail_under = 90`** (set at PRD close; measured 97%) |
 | `agentcore-cdk-app` (`agents/dependency-update/agentcore/cdk/`)        | TypeScript                        | jest 29 (ts-jest)                    | `pnpm test` (→ `jest`), run from the package dir; not reached by the repo-root aggregate                  | Node (jest default); CDK `Template` synth assertions                                                                                       | none configured                                                                                              |
 | `panel` (`panel/`)     | TypeScript (Next.js 15, React 19) | Vitest 3.2.x (`unit`/`component`/`integration` projects) + Playwright | `pnpm --filter panel run test` (→ `vitest run`, all three projects); `test:unit` / `test:integration` (`--passWithNoTests`) run one project; `test:e2e` (→ `playwright test`) gated separately; reachable from repo-root `make validate`/`pnpm run validate` | Node (unit + integration), jsdom (component, `setupFiles: tests/setup.ts`); `integration` project pinned `singleFork`/sequential (shared local Postgres — avoids the cross-file `reap_stale_runs()` race) | `@vitest/coverage-v8` (`pnpm --filter panel run test:coverage`) |
 
@@ -132,6 +136,7 @@ runs but no AWS call is made.
 | Package             | Local                                                   | CI                                                | Production / runtime |
 | -------------------- | -------------------------------------------------------- | ---------------------------------------------------- | ----------------------- |
 | `dependency-update` | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (`.github/workflows/ci.yml`, `python-quality` job) | `PYTHON_3_14` (AgentCore); Docker build base `python:3.13-slim` |
+| `security-analyst`  | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (same job; `agent` matrix axis added at PRD close) | AgentCore container built from `python:3.13-slim` (Dockerfile pins CodeQL 2.27.0, Gitleaks 8.30.1, Trivy 0.74.0, Node 22, `semgrep`/`checkov` via pip) |
 | `panel`             | Node `>=22 <25` per `package.json` `engines`; the pnpm-managed install **hard-rejects** an ambient Node outside that range (`ERR_PNPM_UNSUPPORTED_ENGINE` reproduced live against Node 26 — see Harness defects) | Node **22** pinned (`actions/setup-node@v4`, `panel-quality` job) | Fly.io deploy (pre-deploy scaffold; see `docs/technical-guidelines.md` §13) |
 | `agentcore-cdk-app` | Node (unpinned locally)                                  | not in CI yet                                        | n/a — build/deploy tooling |
 
@@ -170,26 +175,28 @@ thin `pnpm --filter panel run <script>` wrappers, so `pnpm run test` /
 | `dependency-update` | Coverage                      | `make test-cov` → `python -m pytest --cov --cov-report=term-missing`                     |
 | `dependency-update` | Audit                         | `make audit` → `pip-audit . --strict`                                                    |
 | `dependency-update` | **Aggregate gate**            | `make validate` → lint + format-check + typecheck + test-cov + audit (fail-fast)          |
+| `security-analyst`  | All of the above              | Identical `Makefile` targets (`make test`, `test-unit`, `test-component`, `lint`, `format-check`, `typecheck`, `test-cov`, `audit`, `validate`) run from `agents/security-analyst/app/securityAnalyst/` |
 | `agentcore-cdk-app` | Run test / build / format     | `pnpm test` (→ `jest`) / `pnpm run build` (→ `tsc`) / `pnpm run format:check` (from its own package dir) |
 
 ### Repo-root aggregate (`Makefile`)
 
 The repo-root `Makefile` runs both branches: `make install|lint|format-check|typecheck|test|audit|validate`
-each fan out to a `-py` target (delegates via `make -C agents/dependency-update/app/dependencyUpdate`)
+each fan out to a `-py` target (loops `make -C <dir>` over both agent package dirs in `AGENT_DIRS`, fail-fast)
 and a `-js` target (delegates via `pnpm --filter panel run ...`), and the
 aggregate fails if either branch fails. `make validate` = `validate-py` +
 `validate-js`.
 
 ### Gate reachability
 
-- **Aggregate test command:** `make test` (repo root) reaches both `dependency-update` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
+- **Aggregate test command:** `make test` (repo root) reaches `dependency-update` and `security-analyst` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
 - **CI gate:** `.github/workflows/ci.yml` runs two jobs on every push/PR to `main`: `python-quality` (3.13 + 3.14 matrix — lint → format-check → typecheck → `pytest --cov` → `pip-audit`) and `panel-quality` (Node 22 — boots the Supabase stack with `REQUIRE_LOCAL_DB=1`, lint → format:check → typecheck → the S-122 auth-gate parser test + shellcheck → `test:coverage` (incl. gated Layer 2.5) → Playwright E2E → audit). Neither job has a `paths:` filter excluding its package.
-- **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); `dependency-update` deploys via the AgentCore CLI/CDK. Neither invokes the aggregate gate automatically.
+- **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); both Python agents deploy via the AgentCore CLI/CDK. None invokes the aggregate gate automatically.
 
 ## Coverage
 
 ### Thresholds and baseline policy
 
+- **`security-analyst`:** pytest-cov, branch coverage on, `fail_under = 90` enforced by `make test-cov`/`make validate` and CI (set at PRD close, 2026-09-17, after porting the sibling's `credentials`/`signal_backstop`/`scrubber` tests; measured 97%, 712 tests). `main.py` and `agent_reporter.py` are coverage-omitted as in the sibling.
 - **`dependency-update`:** pytest-cov 7.1.0, branch coverage on, config in `pyproject.toml`. No hard `fail_under` floor yet — coverage is measured and reported on every `make test-cov`/`make validate` run. Baseline: high (~90%+) on the implemented pipeline modules; `credentials.py` **100%** (as of #106/#108/#109); `main.py` and `agent_reporter.py` remain coverage-excluded/untested (see gap table in `docs/technical-guidelines.md` §11/§18 and the archived per-issue fidelity reports for the full per-module figures).
 - **`panel`:** `@vitest/coverage-v8` is configured (`vitest.config.ts` declares the provider; `test:coverage` is a real, runnable script) and reachable from CI (`panel-quality` job runs `test:coverage`, not just `test`). **No repo-level numeric coverage baseline has been recorded for `panel` as a whole** — individual stories have recorded per-module coverage figures in their own fidelity reports (see `workstream/fidelity-report-S-*.md`), but no aggregate `panel`-wide percentage has been captured and committed here. This is a tracked gap, not a `SKIPPED` provider situation — the tooling exists and runs; only the aggregate number has never been pulled and recorded in this file.
 - **`agentcore-cdk-app`:** no coverage tooling configured (out of scope — IaC synth smoke test only).
@@ -282,6 +289,7 @@ suite. RLS is asserted deny-all for the anon role in
 1. **Local/CI Node major-version mismatch (`panel`).** `panel/package.json` declares `engines.node: ">=22 <25"`; an ambient Node outside that range (e.g. 26) makes `pnpm install --frozen-lockfile` hard-fail with `ERR_PNPM_UNSUPPORTED_ENGINE` before any test can run — reproduced live during the 2026-09-15 PRD rollup. Expected state: a repo-root `.nvmrc`/Volta/mise pin, or a pre-flight check, so an ad-hoc contributor shell does not silently fail on the `panel` workspace.
 2. **`dependency-update` — `main.py` and `agent_reporter.py` remain untested/coverage-excluded.** See `docs/technical-guidelines.md` §11/§18 for the ranked gap detail; unchanged by this pass.
 3. **`dependency-update` — security-negative server-side rejection cases remain a gap** (see above); unchanged by this pass.
+4. **`security-analyst` — mocked-subprocess tests cannot see real scanner output shapes.** Eight defects shipped through a green suite and were caught only by real AgentCore invocations during S-141 (wrong CodeQL `--language` id, `/dev/stdout` data loss for CodeQL SARIF and Gitleaks reports, empty/missing-key outputs from Gitleaks/Trivy, absolute vs relative `file_path`, `CWE-079` vs `CWE-79`). Recommended follow-up (from the PRD-close QA rollup): an opt-in `tests/smoke/` layer marked `real_binaries`, run in CI inside the built Docker image against a checked-in fixture repo, asserting per runner that the output file materializes, ≥1 normalized finding has `severity`/`cwe` populated, and `file_path` is repo-relative — plus a clean-repo case per runner. Est. ~200 lines of tests + ~40 lines of CI; would have caught 7 of the 8.
 4. **`panel` — 0/11 planned E2E scenarios for the S-142–S-148 batch were delivered** against `workstream/test-plan-prd-agent-fleet-panel-v3-ui-depth.md` §3 (see Coverage § above). Routed to `product-engineer`/`developer`, not fixed here.
 5. **`panel` — no aggregate `panel`-wide numeric coverage baseline has been recorded in this file.** Per-story figures exist in individual fidelity reports; a consolidated number has never been pulled and committed here.
 6. **`agentcore-cdk-app` is not reached by the repo-root aggregate `test`/`validate` targets.** Tested via its own `pnpm test`; low priority (single synth smoke test, IaC-only).

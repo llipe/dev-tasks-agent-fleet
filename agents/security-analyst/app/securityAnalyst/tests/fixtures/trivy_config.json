@@ -1,0 +1,67 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "/workspace/repo",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "ID": "DS002",
+          "AVDID": "AVD-DS-0002",
+          "Title": "Image user should not be 'root'",
+          "Description": "Running containers with 'root' user increases the risk of a container breakout.",
+          "Message": "Specify at least 1 USER command in Dockerfile with non-root user as argument",
+          "Resolution": "Add 'USER <non-root>' line to the Dockerfile",
+          "Severity": "HIGH",
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "StartLine": 1,
+            "EndLine": 1
+          }
+        },
+        {
+          "ID": "DS026",
+          "AVDID": "AVD-DS-0026",
+          "Title": "No HEALTHCHECK defined",
+          "Description": "You should add HEALTHCHECK instruction in your docker container images.",
+          "Message": "Add HEALTHCHECK instruction in Dockerfile",
+          "Severity": "LOW",
+          "Status": "FAIL",
+          "CauseMetadata": {}
+        },
+        {
+          "ID": "DS001",
+          "AVDID": "AVD-DS-0001",
+          "Title": "':latest' tag used",
+          "Description": "Using latest is prone to errors if the image is updated.",
+          "Message": "Base image tag pinned correctly",
+          "Severity": "MEDIUM",
+          "Status": "PASS"
+        }
+      ]
+    },
+    {
+      "Target": "main.tf",
+      "Class": "config",
+      "Type": "terraform",
+      "Misconfigurations": [
+        {
+          "ID": "AVD-AWS-0031",
+          "AVDID": "AVD-AWS-0031",
+          "Title": "S3 bucket does not have encryption enabled",
+          "Description": "S3 Bucket has no encryption enabled by default.",
+          "Message": "Bucket does not have encryption enabled",
+          "Severity": "CRITICAL",
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "StartLine": 12,
+            "EndLine": 18
+          }
+        }
+      ]
+    }
+  ]
+}

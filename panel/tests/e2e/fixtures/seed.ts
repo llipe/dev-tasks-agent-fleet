@@ -210,13 +210,19 @@ export async function readRun(runId: string): Promise<{
 }
 
 /**
- * Toggle the seeded `dependency-update` agent's `is_enabled` flag. Used only by
- * the empty-fleet edge case (Scenario 1.16), which must present the dashboard's
- * "no agents configured" state; restore to `true` immediately after.
+ * Toggle every seeded agent's `is_enabled` flag. Used only by the empty-fleet
+ * edge case (Scenario 1.16), which must present the dashboard's "no agents
+ * configured" state; restore to `true` immediately after.
+ *
+ * Updates ALL rows in `agents`, not one hardcoded slug: `seed.sql` grew a
+ * second agent (`security-analyst`, S-125) after this fixture was written,
+ * and disabling only `dependency-update` left one agent still enabled, so
+ * the "no agents configured" state never rendered (caught by CI on the
+ * security-analyst consolidated PR, #247).
  */
 export async function setSeededAgentEnabled(enabled: boolean): Promise<void> {
   await withDb(async (c) => {
-    await c.query(`update agents set is_enabled = $1 where slug = 'dependency-update'`, [enabled]);
+    await c.query(`update agents set is_enabled = $1`, [enabled]);
   });
 }
 
