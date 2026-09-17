@@ -189,7 +189,7 @@ describe("parseAuditReport — security-analyst shape", () => {
 
 describe("parseAuditReport — hostile content is data, never interpreted", () => {
   it("passes <script> and javascript: strings through untouched", () => {
-    const hostile = '<script>alert(1)</script> javascript:alert(1) <img src=x onerror=alert(1)>';
+    const hostile = "<script>alert(1)</script> javascript:alert(1) <img src=x onerror=alert(1)>";
     const view = parseAuditReport(
       securityAnalystReport({
         total_findings: 1,

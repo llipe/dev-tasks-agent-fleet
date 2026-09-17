@@ -1,5 +1,5 @@
 /**
- * `audit_report` artifact metadata parser (issue #241).
+ * `audit_report` artifact metadata parser (issue 241).
  *
  * `run_artifacts.metadata` is agent-authored, therefore untrusted (spec §12 —
  * the same posture guard #5 takes for `url`). This module turns that JSON into

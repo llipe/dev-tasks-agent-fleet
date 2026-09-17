@@ -12,7 +12,7 @@ import type { Json } from "@/lib/supabase/types";
 import styles from "./AuditReportPanel.module.css";
 
 /**
- * AuditReportPanel — /DESIGN.md §5.3 (audit-report findings block, issue #241).
+ * AuditReportPanel — /DESIGN.md §5.3 (audit-report findings block, issue 241).
  *
  * Renders an `audit_report` artifact's `metadata` on the run-detail summary:
  * a findings table for the security-analyst shape, a generic key/value list
@@ -122,9 +122,7 @@ function Findings({ caption, view }: { caption: string; view: AuditReportView })
           ))}
         </tbody>
       </table>
-      {view.truncated > 0 && (
-        <p className={styles.truncated}>{view.truncated} more not shown.</p>
-      )}
+      {view.truncated > 0 && <p className={styles.truncated}>{view.truncated} more not shown.</p>}
     </>
   );
 }

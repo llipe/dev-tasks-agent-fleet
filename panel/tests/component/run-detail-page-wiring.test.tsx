@@ -117,6 +117,67 @@ describe("run-detail page wiring", () => {
     expect(screen.getByRole("log", { name: /run log/i })).toHaveAttribute("aria-live", "polite");
   });
 
+  it("renders an audit_report artifact's findings on the page, on a FAILED run (issue #241 / AC14)", async () => {
+    queryMock.getRunById.mockResolvedValue(vrun({ status: "failed", effective_status: "failed" }));
+    queryMock.getRunArtifacts.mockResolvedValue([
+      {
+        id: "art-pr",
+        run_id: "r1",
+        type: "pull_request",
+        title: "Bump lodash",
+        url: "https://github.com/llipe/x/pull/42",
+        storage_path: null,
+        metadata: {},
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: "art-report",
+        run_id: "r1",
+        type: "audit_report",
+        title: "Security scan findings",
+        url: null,
+        storage_path: null,
+        metadata: {
+          total_findings: 1,
+          by_bucket: {
+            mechanical: [],
+            manual: [],
+            unscannable: [
+              {
+                tool: "gitleaks",
+                bucket: "unscannable",
+                rule_id: "generic-api-key",
+                severity: "critical",
+                file_path: "workstream/specification-prd-001-mvp.md",
+                line_start: 190,
+                line_end: 190,
+                message: "Detected a Generic API Key (gitleaks rule: generic-api-key)",
+                cwe_or_category: "generic-api-key",
+              },
+            ],
+          },
+          by_tool: { gitleaks: 1 },
+          by_severity: { critical: 1 },
+        },
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    const ui = await RunDetailPage({ params: Promise.resolve({ id: "r1" }) });
+    render(ui);
+
+    // The PR pill is unchanged (AC4)...
+    expect(screen.getByRole("link", { name: /bump lodash/i })).toBeInTheDocument();
+    // ...and the audit report's findings are visible on the page (AC1), even on a failed run.
+    const report = screen.getByRole("region", { name: /audit report/i });
+    expect(
+      within(report).getByText("Detected a Generic API Key (gitleaks rule: generic-api-key)"),
+    ).toBeInTheDocument();
+    expect(
+      within(report).getByText("workstream/specification-prd-001-mvp.md:190"),
+    ).toBeInTheDocument();
+  });
+
   it("renders a terminal-state banner for a timed_out run with the reaper text (AC6)", async () => {
     queryMock.getRunById.mockResolvedValue(
       vrun({

@@ -1,5 +1,5 @@
 import { isSafeArtifactUrl } from "@/lib/domain/artifact-url";
-import type { ArtifactType } from "@/lib/supabase/types";
+import type { ArtifactType, Json } from "@/lib/supabase/types";
 
 import styles from "./ArtifactLinks.module.css";
 
@@ -25,6 +25,11 @@ export interface ArtifactView {
   type: ArtifactType;
   title: string | null;
   url: string | null;
+  /**
+   * Agent-authored, untrusted. Rendered as text only by `AuditReportPanel`
+   * (issue 241). Optional: the pills never read it.
+   */
+  metadata?: Json | null;
 }
 
 const TYPE_LABEL: Record<string, string> = {
