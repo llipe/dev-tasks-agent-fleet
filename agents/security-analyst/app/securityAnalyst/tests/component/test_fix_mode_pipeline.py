@@ -310,6 +310,15 @@ class TestHappyPathZeroLLM:
         pr_artifacts = [a for a in fake_run.artifacts if a["type"] == "pull_request"]
         assert len(pr_artifacts) == 1
         assert pr_artifacts[0]["url"] == "https://github.com/org/repo/pull/1"
+        # Spec §6: fix-mode audit_report with before/after counts, recorded
+        # before open_pr so it exists even if PR creation fails.
+        reports = [a for a in fake_run.artifacts if a["type"] == "audit_report"]
+        assert len(reports) == 1
+        assert reports[0]["metadata"]["findings_before"]["mechanical"] == 1
+        assert reports[0]["metadata"]["findings_after"]["mechanical"] == 0
+        assert [a["type"] for a in fake_run.artifacts].index("audit_report") < [
+            a["type"] for a in fake_run.artifacts
+        ].index("pull_request")
 
     def test_multi_tool_simultaneous_findings_semgrep_and_trivy(self, monkeypatch):
         """Edge-case matrix: mechanical findings from Semgrep AND Trivy in the
@@ -430,6 +439,21 @@ class TestRescanGateBlocksUnverifiedFix:
         assert not any(a["type"] == "pull_request" for a in fake_run.artifacts)
         # "open_pr" step is only reached on a clean gate (spec §8.8 diagram).
         assert "open_pr" not in fake_run.step_calls
+        # Requirement 36 (S-141): the after-scan's full result MUST be
+        # recorded as an artifact so the operator can see what remained.
+        reports = [a for a in fake_run.artifacts if a["type"] == "audit_report"]
+        assert len(reports) == 1
+        assert reports[0]["metadata"]["total_findings"] == 1
+        assert reports[0]["metadata"]["findings_before"] == {
+            "mechanical": 1,
+            "manual": 0,
+            "unscannable": 0,
+        }
+        assert reports[0]["metadata"]["findings_after"] == {
+            "mechanical": 1,
+            "manual": 0,
+            "unscannable": 0,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +605,9 @@ class TestNoMechanicalFindings:
         assert "rescan" not in fake_run.step_calls
         assert "open_pr" not in fake_run.step_calls
         assert not any(a["type"] == "pull_request" for a in fake_run.artifacts)
+        reports = [a for a in fake_run.artifacts if a["type"] == "audit_report"]
+        assert len(reports) == 1
+        assert reports[0]["metadata"]["total_findings"] == 0
 
     def test_only_manual_and_unscannable_findings_is_needs_review_no_pr(self, monkeypatch):
         manual = _manual_finding()
@@ -602,6 +629,21 @@ class TestNoMechanicalFindings:
         assert payload["status"] == "succeeded"
         assert payload["outcome"] == "needs_review"
         assert payload["pr_url"] is None
+        # S-141 real-invocation finding (user story 4): with no PR body to
+        # carry them, the remaining findings MUST still be visible -- the
+        # real memo-cli fix run terminated here with two unscannable Gitleaks
+        # findings visible nowhere but a metrics count.
+        reports = [a for a in fake_run.artifacts if a["type"] == "audit_report"]
+        assert len(reports) == 1
+        meta = reports[0]["metadata"]
+        assert meta["total_findings"] == 2
+        assert len(meta["by_bucket"]["manual"]) == 1
+        assert len(meta["by_bucket"]["unscannable"]) == 1
+        assert (
+            meta["findings_before"]
+            == meta["findings_after"]
+            == {"mechanical": 0, "manual": 1, "unscannable": 1}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +679,10 @@ class TestIdempotency:
         pr_artifacts = [a for a in fake_run.artifacts if a["type"] == "pull_request"]
         assert len(pr_artifacts) == 1
         assert pr_artifacts[0]["metadata"]["existed"] is True
+        # The audit_report is written before open_pr, so the short-circuit
+        # path gets one too (verifier F-1 on PR #242: guard against a future
+        # refactor moving the write after open_pr_if_needed()).
+        assert sum(a["type"] == "audit_report" for a in fake_run.artifacts) == 1
 
 
 # ---------------------------------------------------------------------------

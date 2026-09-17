@@ -143,8 +143,9 @@ sequenceDiagram
         AG->>SC: re-run all 5 scanners (under heartbeat, rescan step)
         AG->>AG: compare before/after by fingerprint (D25 gate)
         alt gate fails after budget exhausted
-            AG->>DB: fail/needs_review/RESCAN_NOT_CLEAN, no PR
+            AG->>DB: artifact(audit_report, before/after), fail/needs_review/RESCAN_NOT_CLEAN, no PR
         else gate passes
+            AG->>DB: artifact(audit_report, before/after) -- before open_pr, S-141
             AG->>GH: check existing security/fix-* PR
             alt none open
                 AG->>GH: push branch, open PR (--body-file)
@@ -546,6 +547,8 @@ CodeQL specifically (`codeql_runner.py`) is a two-phase call: `codeql database c
 
 **CLARIFIED in S-141 (fifth implementation-time finding, from the first fully clean `audit_only` run against `llipe/memo-cli`):** the `run_scanners()` snippet above shows the dispatcher's only responsibility as the requirement-18 total-failure check, and this section is silent on *which layer* is accountable for §8.1's `Finding.file_path` contract ("repo-relative, normalized separators") — implicitly leaving it to each `normalize_<tool>()`. Every hand-authored test fixture honors the contract, so the mocked-subprocess suite never exposed that the real binaries disagree with each other: Semgrep and Gitleaks, invoked with the absolute workspace path this pipeline passes them, echo that absolute path back (`/tmp/security-analyst-<repo>-<rand>/src/x.ts`), while Trivy, Checkov, and CodeQL report paths relative to the scan root. The persisted `audit_report` artifact from the real run carried the ephemeral `/tmp/...` prefix on its Gitleaks findings. This is not cosmetic: `fingerprint()` (§8.2) and `dedupe()` (§8.3) both key on `file_path`, so a Semgrep and a CodeQL finding on the same line of the same file could never merge across tools (defeating requirement 22), and the temp-directory path would have leaked into fix-mode PR bodies (§8.7 / S-139). Rather than patch five normalizers five ways, the shipped `scanners/__init__.py` now enforces the contract at the single choke point where all five `run_<tool>()` results converge: `run_scanners()` passes each `ScanResult` through a private `_relativize_findings()` that rewrites every finding's `file_path` via a public `relativize_path(file_path, workspace)` helper — an absolute path under `workspace` (matched as given or after `resolve()`, so a symlinked temp root such as macOS's `/tmp` -> `/private/tmp` still matches) becomes workspace-relative; a relative path is POSIX-normalized; an empty path or an absolute path *not* under the workspace (e.g. Trivy `image` mode's image-reference target) is returned unchanged, never raising. The per-tool normalizers are unchanged, and `checkov_runner.py`'s existing leading-`/` strip (its module docstring's "Deviation 2") remains in place and is now a tool-specific pre-step that the dispatcher-level normalization does not depend on. The dispatcher's responsibilities in the snippet above are therefore now two: path relativization of every result, then the total-failure check.
 
+**CORRECTED in S-141 (sixth implementation-time finding, from a real `mode=fix` run against `llipe/memo-cli`, run `6ae92d00`):** §4.3's sequence diagram and §8.8's state diagram originally showed `artifact(audit_report)` only on the `audit_only` branch and `pull_request` as `fix` mode's only artifact, even though §6 already defined `audit_report` as carrying "before/after counts in `fix` mode". The shipped `main.py` matched the diagrams, so both no-PR `fix` terminal paths recorded no `run_artifacts` row: the AC21 no-mechanical no-op left the remaining `manual`/`unscannable` findings visible only as a metrics count (PRD user story 4 / principle 6, requirement 37), and `RESCAN_NOT_CLEAN` violated requirement 36's MUST that the after-scan's full result be recorded as a `run_artifacts` row. `main.py` now records an `audit_report` via `build_fix_audit_report(after_classified, findings_before, findings_after)` — `build_audit_report()`'s grouping plus `findings_before`/`findings_after` bucket counts — on all three `fix` terminal paths (no-op, `RESCAN_NOT_CLEAN`, and before `open_pr` so it survives a PR-handoff failure). `audit_only` is unchanged; §4.3 and §8.8 are corrected to match.
+
 ### 8.6 Fix application
 
 **Semgrep autofix (`fixers/semgrep_autofix.py`):**
@@ -643,6 +646,8 @@ stateDiagram-v2
     rescan --> [*]: gate not clean, budget exhausted -- RESCAN_NOT_CLEAN, no PR
     open_pr --> [*]: succeeded per 8.1 below
 ```
+
+Every `fix`-mode terminal edge above (the AC21 no-mechanical no-op out of `fix`, the `RESCAN_NOT_CLEAN` exit, and the `open_pr` path) records an `audit_report` artifact carrying before/after bucket counts before terminating — see the sixth S-141 annotation in §8.5.
 
 `scan` and `rescan` are wrapped in `heartbeat.run_with_heartbeat(...)` (reused verbatim, §9.2) exactly as the sibling agent wraps `validate`/`llm_fix` — CodeQL's database-build phase in particular is the single most likely step to exceed the idle-session bound without it (research finding 5).
 
