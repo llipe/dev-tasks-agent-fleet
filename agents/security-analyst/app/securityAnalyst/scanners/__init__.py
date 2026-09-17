@@ -15,12 +15,33 @@ module's own docstring already describes -- the one place all five
 `run_<tool>()` call sites converge. It is a thin, sequential loop (PRD §11 /
 OQ6 -- v1 deliberately does not parallelize scanners, to keep the AgentCore
 container's resource envelope predictable), not a thread pool.
+
+**S-141 real-invocation finding -- `file_path` normalization lives here.**
+Spec §8.1's `Finding.file_path` contract is "repo-relative, normalized
+separators", and every hand-authored test fixture honors it. The real
+binaries do not agree with each other: Semgrep and Gitleaks, invoked with
+the absolute workspace path this pipeline passes them, echo that absolute
+path back (`/tmp/security-analyst-<repo>-<rand>/src/x.ts`), while Trivy,
+Checkov, and CodeQL report paths relative to the scan root. Confirmed
+against a real `audit_only` run, whose persisted `audit_report` artifact
+carried the ephemeral `/tmp/...` workspace prefix. Two consequences beyond
+cosmetics: `fingerprint()`/`dedupe()` key on `file_path`, so a Semgrep and a
+CodeQL finding on the same line of the same file would never dedupe across
+tools; and the temp-directory path would leak into PR bodies (S-139).
+Rather than fix five runners five ways, `run_scanners()` relativizes every
+returned finding's `file_path` against `workspace` at this single choke
+point (`_relativize_findings()`), so the contract holds regardless of how
+any individual tool formats its output. Paths that are absolute but *not*
+under the workspace (Trivy `image` mode's target is an image reference, for
+example) are left untouched.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from dataclasses import replace
+from pathlib import Path, PurePosixPath
 
+from normalize import Finding
 from scanners.checkov_runner import run_checkov
 from scanners.codeql_runner import run_codeql
 from scanners.gitleaks_runner import run_gitleaks
@@ -30,6 +51,7 @@ from scanners.types import ScanResult, ScanStatus
 
 __all__ = [
     "AllScannersFailedError",
+    "relativize_path",
     "run_scanners",
     "run_semgrep",
     "run_gitleaks",
@@ -61,6 +83,42 @@ class AllScannersFailedError(Exception):
         super().__init__(f"All {len(results)} requested scanners failed ({reasons})")
 
 
+def relativize_path(file_path: str, workspace: Path) -> str:
+    """Return ``file_path`` as a repo-relative POSIX path (spec §8.1).
+
+    An absolute path under ``workspace`` (either as given or after
+    ``resolve()``, so a symlinked temp root like macOS's ``/tmp`` ->
+    ``/private/tmp`` still matches) becomes relative to it. A relative path
+    is returned POSIX-normalized. An empty path, or an absolute path *not*
+    under the workspace (Checkov's leading-slash convention is already
+    stripped by its own runner, so it never reaches here), is returned
+    unchanged -- never raises.
+    """
+    if not file_path:
+        return file_path
+    path = Path(file_path)
+    if not path.is_absolute():
+        return PurePosixPath(file_path).as_posix()
+    for root in (workspace, workspace.resolve()):
+        try:
+            return path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+    try:
+        return path.resolve().relative_to(workspace.resolve()).as_posix()
+    except (ValueError, OSError):
+        return file_path
+
+
+def _relativize_findings(result: ScanResult, workspace: Path) -> ScanResult:
+    if not result.findings:
+        return result
+    findings: list[Finding] = [
+        replace(f, file_path=relativize_path(f.file_path, workspace)) for f in result.findings
+    ]
+    return replace(result, findings=findings)
+
+
 def run_scanners(workspace: Path, requested: list[str], timeout: int) -> list[ScanResult]:
     """Run every scanner named in ``requested`` against ``workspace`` (spec §8.5).
 
@@ -75,8 +133,16 @@ def run_scanners(workspace: Path, requested: list[str], timeout: int) -> list[Sc
     not) on its own. A partial failure (one, or even four, of five) is not
     raised here — the caller aggregates whatever ``PASSED`` findings exist
     from the rest (PRD acceptance criterion 24).
+
+    Every returned finding's ``file_path`` is relativized against
+    ``workspace`` here (module docstring, S-141) so spec §8.1's repo-relative
+    contract holds uniformly across all five tools before anything downstream
+    (`dedupe()`, the audit artifact, the PR body) sees them.
     """
-    results = [_SCANNER_DISPATCH[name](workspace, timeout) for name in requested]
+    results = [
+        _relativize_findings(_SCANNER_DISPATCH[name](workspace, timeout), workspace)
+        for name in requested
+    ]
     if all(r.status == ScanStatus.FAILED for r in results):
         raise AllScannersFailedError(results)
     return results

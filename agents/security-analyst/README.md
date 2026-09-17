@@ -190,7 +190,11 @@ agents/security-analyst/
 │   ├── scanners/
 │   │   ├── __init__.py        # run_scanners() dispatcher + AllScannersFailedError (S-135) — the
 │   │   │                      # aggregation point for all five run_<tool>() call sites; sequential,
-│   │   │                      # not parallelized (PRD §11/OQ6)
+│   │   │                      # not parallelized (PRD §11/OQ6). Also relativize_path() +
+│   │   │                      # _relativize_findings() (S-141 real-invocation fix): every returned
+│   │   │                      # finding's file_path is made workspace-relative here, because the
+│   │   │                      # real Semgrep/Gitleaks binaries echo the absolute workspace path
+│   │   │                      # while Trivy/Checkov/CodeQL report scan-root-relative paths
 │   │   ├── types.py           # ScanStatus/ScanResult shared shape, reused verbatim by S-129-S-132 (S-127-adjacent, landed S-128)
 │   │   ├── semgrep_runner.py  # RULESET, run_semgrep(), normalize_semgrep() (S-128) — called by
 │   │   │                      # run_scanners() for audit_only mode (S-135)
@@ -334,7 +338,12 @@ agents/security-analyst/
    CodeQL's `database create`/`database analyze` phase in particular. If every requested scanner
    fails, `run_scanners()` raises `AllScannersFailedError` and the run terminates
    `failed`/`not_applicable`/`ALL_SCANNERS_FAILED` (PRD AC24); a partial failure (one, or even four,
-   of five) is non-fatal — the run continues with whatever `PASSED` results exist.
+   of five) is non-fatal — the run continues with whatever `PASSED` results exist. Before returning,
+   `run_scanners()` relativizes every finding's `file_path` against the workspace
+   (`relativize_path()`, spec §8.1's "repo-relative, normalized separators" contract) so cross-tool
+   dedup keys line up and the ephemeral `/tmp` workspace path never reaches the `audit_report`
+   artifact or a PR body — the real Semgrep and Gitleaks binaries echo the absolute workspace path
+   they were invoked with, unlike Trivy/Checkov/CodeQL (S-141 real-invocation finding).
 5. **`classify`** — the combined `Finding` list from every `PASSED`/`SKIPPED` scan result is deduped
    (`dedupe.dedupe()`, cross-tool file+category+line-overlap merge into `MergedFinding`) and each
    merged finding is classified (`classifier.classify()` — `mechanical`/`manual`/`unscannable`).

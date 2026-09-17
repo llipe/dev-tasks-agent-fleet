@@ -40,16 +40,22 @@ here, underspecified) reading of the spec's inline snippets.
 **Deviation 2 -- `file_path` normalization.** Checkov's `failed_checks[].file_path`
 is scan-root-relative but is written with a leading `/` (e.g. `"/main.tf"`
 when scanning with `-d <workspace>`) -- not an absolute filesystem path, just
-a leading separator convention. Every other tool's `Finding.file_path` in
-this pipeline (Semgrep, Gitleaks, Trivy) is bare-repo-relative with no
-leading separator (spec §8.1's `file_path` docstring: "repo-relative,
-normalized separators"). This module strips exactly one leading `/` so
-Checkov's findings are consistent with that convention (and so
-`fingerprint()`'s `file_path`-keyed hash and `dedupe()`'s
-`(file_path, cwe_or_category)` grouping key line up with Trivy/Checkov
-findings on the same IaC file, per PRD requirement 22's cross-tool merge
-example -- a Terraform misconfiguration flagged by both tools at the same
-resource).
+a leading separator convention. This module strips exactly one leading `/`
+so Checkov's findings are bare-repo-relative at the normalizer, per spec
+§8.1's `file_path` docstring ("repo-relative, normalized separators").
+
+S-141 correction to the original wording here: it is NOT true that every
+other normalizer already emits bare-relative paths -- the real Semgrep and
+Gitleaks binaries echo the absolute workspace path they are invoked with
+(only Trivy and CodeQL are scan-root-relative). Cross-tool consistency of
+`file_path` (and therefore `fingerprint()`'s `file_path`-keyed hash and
+`dedupe()`'s `(file_path, cwe_or_category)` grouping key, PRD requirement
+22) is ultimately guaranteed by `run_scanners()`'s `_relativize_findings()`
+in `scanners/__init__.py`, not by any per-tool normalizer. This strip must
+nevertheless stay: `relativize_path()` treats a leading-`/` path as
+absolute, and an absolute path *outside* the workspace is deliberately
+left untouched -- so an unstripped `/main.tf` would survive to the dedup
+key as-is and never match Trivy's `main.tf`.
 
 **IaC-file detection (`has_iac_files()`) -- requirement 17's skip condition,
 the canonical example spec §8.5 uses for this behavior.** Checkov itself has
@@ -155,8 +161,9 @@ def _build_command(workspace: Path) -> list[str]:
 
 def _normalize_file_path(raw_path: str) -> str:
     """Strip Checkov's leading `/` scan-root-relative separator (module
-    docstring Deviation 2) so `file_path` matches every other tool's bare
-    repo-relative convention.
+    docstring Deviation 2). Required even though `run_scanners()` now
+    relativizes all tools' paths: a leading `/` reads as an absolute path
+    outside the workspace there and would be left untouched.
     """
     return raw_path.lstrip("/")
 
