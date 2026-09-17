@@ -18,7 +18,7 @@
 | PRD | `docs/requirements/prd-security-analyst-agent.md` v1.2 |
 | Spec | `workstream/specification-prd-security-analyst-agent.md` v1.2 |
 | Stories | `workstream/user-stories-prd-security-analyst-agent.md` (S-125–S-141) |
-| Task plan | `workstream/tasks-prd-security-analyst-agent-plan.md` |
+| Task plan | `workstream/archive/tasks-prd-security-analyst-agent-plan.md` (archived — all 17 stories shipped) |
 | GitHub Issues | #185–#201 in `llipe/dev-tasks-agent-fleet` |
 | Target code location (not yet created) | `agents/security-analyst/app/securityAnalyst/` |
 

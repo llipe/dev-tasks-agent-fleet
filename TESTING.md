@@ -213,7 +213,7 @@ S-143/S-144/S-146), `repository-mutations.test.ts` (15 tests, S-147/S-148),
 and `pull-request-artifacts.test.ts` (6 tests, S-144). The 4 skips are all in
 `tests/unit/bundle-secrets.test.ts`, gated behind `RUN_BUNDLE_SECRET_TEST=1`
 (pre-existing, CI-only, unrelated to this batch). Full detail:
-`workstream/coverage-report-prd-agent-fleet-panel-v3-ui-depth.md`.
+`workstream/archive/coverage-report-prd-agent-fleet-panel-v3-ui-depth.md`.
 
 **Known gap carried forward from that rollup, not fixed here (routed to
 `product-engineer`/`developer`):** `workstream/test-plan-prd-agent-fleet-panel-v3-ui-depth.md`

@@ -7,6 +7,7 @@
 | 1.0     | 2026-08-26 | Initial version. Reformatted from consolidated PRD (tmp) into foundation doc format. No scope or decision changes. | product-engineer |
 | 1.1     | 2026-08-26 | Translated to English. Introduced two-phase delivery model (Phase 1: backend + agent; Phase 2: panel UI). | product-engineer |
 | 1.2     | 2026-09-11 | §9 Key Constraints — corrected the stale "No authentication in v1 … implies not exposing the panel publicly" constraint (issue #162 / S-123). The panel now requires a Supabase password login (D16 reversed) and is deployed **public** over HTTPS with login as the security boundary, mechanically asserted by the auth release gate. Current-state correction only; the D16/R1 decision-record cleanup in the spec/PRD is tracked in the separate drift-reconciliation pass. | developer |
+| 1.3     | 2026-09-17 | Full current-state sweep after the Phase 2 "UI Depth" wave (S-142–S-148, issue-241/PR-243 audit-report viewer) and the Phase 3 `security-analyst` agent's completion (S-125–S-141, verified live). §5 Current State rewritten: Phase 1 and Phase 2 are done and deployed (not pending); the medium-term "multiple agents" roadmap item is now demonstrated in production, not just schema-supported. §6 Vision & Roadmap: Phase 1/Phase 2 statuses flipped from "current"/build framing to done; added **Phase 3 — Security Analyst Agent (done)** describing the five-tool scan/fix/re-scan agent; the "multiple agents" medium-term bullet marked delivered. §12 Open Questions: removed the R1 "minimal mitigation … before or after first Fly deployment" question — resolved by the Supabase-password-login release gate (S-116–S-123), superseding it rather than answering it as originally posed. No product-strategy decision changed; this is a status-accuracy pass only. | technical-writer |
 
 ## 1. Executive Summary
 
@@ -36,18 +37,20 @@ There is no external market or intent to distribute to third parties in the curr
 
 ## 5. Current State
 
-**Reset followed by scope restart.** The project had a prior v1 on CDK/DynamoDB/Lambda/EventBridge that was torn down entirely (`RESET-PLAN.md`, phases 1-3). This document and the associated PRD correspond to the **Draft 2 — consolidated** of v2: the data design ([`001_schema.sql`](reference/001_schema.sql), [`002_seed.sql`](reference/002_seed.sql)), the agent reporting contract ([`agent_reporter.py`](reference/agent_reporter.py)), and the AWS credential provider ([`credentials.ts`](reference/credentials.ts)) are already specified and, per the source PRD, "Done" at the design/artifact level. The Next.js front-end and the `dependency-update` agent runtime in AgentCore are **pending implementation**.
+**Reset followed by scope restart, now three phases delivered.** The project had a prior v1 on CDK/DynamoDB/Lambda/EventBridge that was torn down entirely (`RESET-PLAN.md`, phases 1-3). Since the v2 restart: the Supabase schema, seed, agent reporting contract, and AWS credential provider are all applied/implemented (Phase 1, done); the Next.js panel is built and **deployed public** at `https://dt-agent-fleet-panel.fly.dev`, gated by a Supabase password login (Phase 2, done, including the "UI Depth" wave — Run History filtering/pagination, the Run Detail steps panel, the All Runs cross-agent feed, and the Repositories reference list, S-142–S-148); and the fleet's second agent, `security-analyst` (a five-tool scanner with `audit_only`/`fix` modes), is fully implemented and verified live against real repositories (Phase 3, done, S-125–S-141). The panel now also renders the `security-analyst` agent's `audit_report` artifact on the Run Detail screen (issue #241/PR #243).
 
 ## 6. Vision & Roadmap
 
-**Phase 1 — Backend + Agent (current):** Deploy the database schema to Supabase; build and deploy the `dependency-update` agent connected to GitHub via a GitHub App; expose a base API layer (PostgREST via Supabase) so the agent, when manually invoked, can write its lifecycle and events back to the database. If the API is unreachable, the run falls back to logging in CloudWatch (the SDK already dumps payloads to stderr on write failure).
+**Phase 1 — Backend + Agent (done):** The database schema is deployed to Supabase; the `dependency-update` agent is built and deployed, connected to GitHub via a GitHub App; a base API layer (PostgREST via Supabase) lets the agent write its lifecycle and events back to the database when manually invoked. If the API is unreachable, the run falls back to logging in CloudWatch (the SDK dumps payloads to stderr on write failure).
 
-**Phase 2 — Panel UI:** Build the Next.js application on Fly.io to visualize the run information already stored in the database — agent list, run list with status/duration/outcome, run detail with log tail in real time via Supabase Realtime, and the manual invocation form.
+**Phase 2 — Panel UI (done, deployed public):** The Next.js application on Fly.io visualizes the run information stored in the database — agent list, run list with status/duration/outcome, run detail with log tail in real time via Supabase Realtime, and the manual invocation form — behind a Supabase password login (see §9). The "UI Depth" wave (S-142–S-148) added Run History filtering/search/pagination, inline branch/PR links, a Run Detail steps panel with log-level filtering, the cross-agent All Runs feed, and a manually-managed Repositories reference list.
 
-**Medium term (data model already supports, not built yet):**
-- Multiple agents across multiple repos of the same GitHub organization.
-- Executions triggered by schedule or webhook, not only manually.
-- Enable/disable an agent per repository.
+**Phase 3 — Security Analyst Agent (done, verified live):** The fleet's second agent, `security-analyst`, runs five scanners (Semgrep, Gitleaks, Trivy, Checkov, CodeQL), classifies findings, and in `fix` mode applies a narrow set of deterministic (plus bounded-LLM-escape-hatch) fixes, re-scanning before opening a PR. Both `audit_only` and `fix` modes are wired end-to-end and have each been exercised against a real repository. See [`docs/requirements/prd-security-analyst-agent.md`](requirements/prd-security-analyst-agent.md).
+
+**Medium term (data model already supported this; now demonstrated in production by the second agent):**
+- Multiple agents across multiple repos of the same GitHub organization — proven out by `security-analyst` alongside `dependency-update`.
+- Executions triggered by schedule or webhook, not only manually — still not built.
+- Enable/disable an agent per repository — still not built (agents are enabled/disabled fleet-wide via the `agents.is_enabled` row today, not per-repository).
 
 **Backlog declared, not implemented** (detail in the technical specification): Supabase Auth with allowlist, `schedules` table + EventBridge, `agent_repository_settings`, repo sync from the GitHub App, `findings` with stable fingerprint, run cancellation, `run_events` retention, heartbeat as a finer health signal, agent SDK as a pip package if the fleet grows beyond ~4 agents.
 
@@ -95,5 +98,4 @@ A single decision-maker: the project author (Llipe), who is simultaneously produ
 
 - At what point (number of agents, or actual drift signal) is `agent_reporter.py` packaged as a pip package instead of copied per repo (see D13 and backlog)?
 - What is the retention threshold for `run_events` before table growth hurts (R3), and who reviews it?
-- Is the minimal mitigation for R1 (no authentication) — shared-secret header, or keeping the app private — decided before or after the first Fly deployment?
 - When does it become worthwhile to move from "a second Supabase project for development" (R7) to a more formal staging environment?
