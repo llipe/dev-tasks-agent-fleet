@@ -104,7 +104,11 @@ if [[ -n "${PANEL_AUTH_ENV_NAMES:-}" ]]; then
     const names = String(process.argv[1] || "").split(",").map(s => s.trim()).filter(Boolean);
     process.stdout.write(JSON.stringify(names));
   ' "$PANEL_AUTH_ENV_NAMES")"
-elif command -v fly >/dev/null 2>&1 && [[ -n "$APP" ]]; then
+elif { command -v flyctl >/dev/null 2>&1 || command -v fly >/dev/null 2>&1; } && [[ -n "$APP" ]]; then
+  # The official installer symlinks both `fly` and `flyctl`, but
+  # superfly/flyctl-actions/setup-flyctl (used in CI) only puts `flyctl` on
+  # PATH — resolve whichever is present, preferring `flyctl`.
+  if command -v flyctl >/dev/null 2>&1; then FLY_BIN="flyctl"; else FLY_BIN="fly"; fi
   # `fly secrets list` reports NAMES + digests (never values). Prefer the
   # `--json` output (a stable contract, immune to the drawn-table column layout
   # and its leading-space/`│`-separator rows that broke the original inline
@@ -112,14 +116,14 @@ elif command -v fly >/dev/null 2>&1 && [[ -n "$APP" ]]; then
   # Name extraction is delegated to the unit-tested pure parser so the real
   # flyctl output shape is covered by a regression test. Fail-closed: if the
   # call fails, leave the list empty so the env-name check fails.
-  if SECRETS_JSON="$(fly secrets list --json -a "$APP" 2>/dev/null)" && [[ -n "$SECRETS_JSON" ]]; then
+  if SECRETS_JSON="$("$FLY_BIN" secrets list --json -a "$APP" 2>/dev/null)" && [[ -n "$SECRETS_JSON" ]]; then
     ENV_NAMES_JSON="$(SECRETS_RAW="$SECRETS_JSON" node -e '
       import("'"$PARSER"'").then((m) => {
         const names = m.extractSecretNames(process.env.SECRETS_RAW || "", { json: true });
         process.stdout.write(JSON.stringify(names));
       });
     ')"
-  elif SECRETS_RAW="$(fly secrets list -a "$APP" 2>/dev/null)"; then
+  elif SECRETS_RAW="$("$FLY_BIN" secrets list -a "$APP" 2>/dev/null)"; then
     ENV_NAMES_JSON="$(SECRETS_RAW="$SECRETS_RAW" node -e '
       import("'"$PARSER"'").then((m) => {
         const names = m.extractSecretNames(process.env.SECRETS_RAW || "", { json: false });
