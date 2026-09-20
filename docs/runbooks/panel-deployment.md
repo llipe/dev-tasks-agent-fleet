@@ -557,9 +557,23 @@ Once Phase A/B above have run once, an ordinary code change no longer needs the
 full runbook. The release flow is:
 
 1. PRs merge to `main` as usual, gated by `ci.yml`.
-2. A human cuts a **GitHub Release** on an annotated tag named `panel-vX.Y.Z`
-   (tag policy: annotated, cut on `main` only, immutable). The `panel-` prefix
-   keeps this scoped to the panel in a monorepo that also ships agent images.
+2. A human runs `scripts/release-panel.sh` from a clean, up-to-date `main`
+   checkout. It reads the commits since the last `panel-v*` tag that touch
+   panel-relevant paths, classifies the bump from Conventional Commits
+   (`feat!`/`BREAKING CHANGE` → major, `feat:` → minor, anything else
+   conventional → patch), prints the suggested next version and the commit
+   list, and asks for confirmation before creating the annotated tag and the
+   GitHub Release. It refuses outright in CI without `INFRA_HUMAN_APPROVED=1`
+   and refuses to guess at confirmation with no TTY — tag/release creation
+   stays a human decision. Use `--dry-run` to see the suggestion without
+   changing anything.
+   ```bash
+   scripts/release-panel.sh --dry-run   # preview the suggested version + changelog
+   scripts/release-panel.sh             # confirm interactively, then cut the release
+   ```
+   (Tag policy, unchanged: annotated, cut on `main` only, immutable, no
+   prerelease. The `panel-` prefix keeps this scoped to the panel in a
+   monorepo that also ships agent images.)
 3. Publishing the release fires `.github/workflows/deploy-panel.yml`, which
    runs `scripts/deploy-panel.sh` inside the `production` GitHub Environment —
    configured with a **required reviewer**, so the job pauses for a manual

@@ -158,6 +158,11 @@ jobs:
       - name: Shellcheck the deploy script
         run: shellcheck scripts/deploy-panel.sh
 
+      # Static-check the release-numbering script. It never runs unattended
+      # in CI (human-only guard inside the script itself) — this only lints it.
+      - name: Shellcheck the release script
+        run: shellcheck scripts/release-panel.sh
+
       # Warm up Supabase Realtime before the Layer 2.5 + E2E branch: right after
       # `db reset` a cold Realtime can flake the first subscription (stream-e2e,
       # live-tail) under retries:0. Explicit readiness wait, not a sleep.
