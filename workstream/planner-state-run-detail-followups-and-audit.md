@@ -8,21 +8,21 @@
 - Repository: llipe/dev-tasks-agent-fleet
 - Developer execution mode: pre-approved autonomous sequential
 - Started: 2026-10-13T11:20-03:00
-- Last updated: 2026-10-13T11:20-03:00
+- Last updated: 2026-10-13T12:05-03:00
 
 ## Story Status
 
 | Sequence | Story ID | Issue # | Status         | PR  | Branch |
 | -------- | -------- | ------- | -------------- | --- | ------ |
-| 1        | 1.0      | #252    | 🔄 In Progress | —   | —      |
-| 2        | 2.0      | #245    | ⏳ Pending     | —   | —      |
+| 1        | 1.0      | #252    | ✅ Merged (redeploy pending, post-main) | #254 | issue/252-fix-deps-audit-gates |
+| 2        | 2.0      | #245    | 🔄 In Progress | —   | —      |
 | 3        | 3.0      | #244    | ⏳ Pending     | —   | —      |
 
 ## Current Position
 
-- Next story: #252 (delegated to developer)
-- Last merged PR: —
-- Integration branch HEAD: feae3f8
+- Next story: #245 (delegated to developer)
+- Last merged PR: #254
+- Integration branch HEAD: e609935
 
 ## Decisions Log
 
@@ -30,3 +30,6 @@
 - 2026-10-13: Merge gate for story PRs (D-13): developer-reported local `make validate` plus a planner re-run on the integration branch, because `ci.yml` does not trigger on PRs targeting `integration/**`. Real CI runs on the consolidated PR to `main`.
 - 2026-10-13: #252 task 1.16/1.17 (agent redeploy, AC6) is post-merge-to-`main`, run by `infra-engineer` with approval at each step; #252 stays open until it is verified (D-10).
 - 2026-10-13: Node 22 is required for panel commands (`engines: >=22 <25`); the local default is v26.
+- 2026-10-13: #254 merged (squash). Planner re-run green on Node 22. Non-blocking: semgrep bumped 1.177.0 → 1.180.0 (forced by the PyJWT pin), so the post-main security-analyst live invocation doubles as the semgrep regression check.
+- 2026-10-13: Drift for product-engineer: CT-3 unmet by pre-existing code (`jwt.encode` sits outside the `try` in `mint_installation_token`, so a malformed PEM is not classified as `CredentialError`), and the CT-3 test accepts any `Exception`. Follow-up issue candidate; out of #252 scope.
+- 2026-10-13: Developer installed a Rust toolchain via rustup (`~/.cargo`, user-local) to build `rustworkx` for security-analyst tests.
