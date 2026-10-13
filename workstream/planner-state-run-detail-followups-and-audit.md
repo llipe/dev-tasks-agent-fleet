@@ -8,7 +8,7 @@
 - Repository: llipe/dev-tasks-agent-fleet
 - Developer execution mode: pre-approved autonomous sequential
 - Started: 2026-10-13T11:20-03:00
-- Last updated: 2026-10-13T13:20-03:00
+- Last updated: 2026-10-13T14:12-03:00
 
 ## Story Status
 
@@ -39,3 +39,4 @@
 - 2026-10-13: Phase 5. `make validate` on the integration branch is green (both branches). Verifier rollup: High / Major (R-01 CT-3 pre-existing, R-02 disclosure marker, R-03 semgrep live check), posted on #252. coverage_gate: PASS. technical-writer: drift-fixed (roadmap row → In progress).
 - 2026-10-13: Consolidated PR #257 CI: all 4 Python cells pass (pip-audit fixed); panel failed on RT-1 timeout (5171ms under coverage). Fix-up story PR #258 (test-only, cheap `tbody tr` row count + 20s backstop) merged. Observation for qa-engineer: the panel's total test count varies between runs on the same ref (1188–1190), meaning nondeterministic test collection in some suite.
 - 2026-10-13: #257 CI round 2: unit/coverage green (RT-1 fixed); E2E 7/7 new-spec failures caused by fixture/schema (`"success"` not a run_outcome; succeeded seeds missing an outcome). Fix-up PR #259 (typed outcomes, so typecheck rejects invalid seeds) merged. Lesson: E2E written without a runnable DB stack shipped schema-invalid fixtures; static typing now guards the class.
+- 2026-10-13: #257 CI fully green on a031407 (E2E 26 passed; pnpm audit real verdict OK; pip-audit clean ×4). Handed to the user for review/merge. Pending after merge: #252 AC6 redeploy (infra-engineer), close #252, start the #217 run (task 4.4).
