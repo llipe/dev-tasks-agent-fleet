@@ -1,6 +1,7 @@
 ---
 name: github-ops
 description: "GitHub consistency and organization agent — standardizes issue titles, PR formats, branch names, labels, milestones, and comments across the project. Use when: creating issues, opening PRs, naming branches, applying labels, managing milestones, writing issue or PR comments, auditing GitHub hygiene."
+model: haiku
 tools: Bash, Read, Grep, Glob
 ---
 
@@ -46,7 +47,7 @@ Use this table to translate each convention in this file into a `gh` invocation.
 | Update PR                                              | `gh pr edit <number> --title "<title>" --body "<body>"`                                                                                               | `update_pull_request`                          |
 | Comment on PR                                          | `gh pr comment <number> --body "<comment>"`                                                                                                           | `add_issue_comment` (PRs share issue comments) |
 | Review a PR                                            | `gh pr review <number> --approve\|--request-changes\|--comment --body "<comment>"`                                                                    | `create_pull_request_review`                   |
-| Merge PR (integration branch only, planner-authorized) | `gh pr merge <number> --squash --delete-branch`                                                                                                       | `merge_pull_request`                           |
+| Merge PR (integration branch only, planner-authorized) | `gh pr merge <number> --merge --delete-branch`                                                                                                        | `merge_pull_request`                           |
 | List/audit PRs                                         | `gh pr list --state all --json number,title,body,baseRefName,headRefName,labels --limit 500`                                                          | `list_pull_requests`                           |
 | Create/list labels                                     | `gh label create "<name>" --color "<hex>" --description "<desc>"` / `gh label list`                                                                   | `create_label` / `list_labels`                 |
 | Create/list milestones                                 | `gh api repos/<owner>/<repo>/milestones -f title="<title>" -f description="<desc>" -f due_on="<ISO date>"` / `gh api repos/<owner>/<repo>/milestones` | (no dedicated MCP tool; use REST)              |
@@ -59,6 +60,7 @@ Notes:
 - `gh api <endpoint>` is the fallback for anything without a dedicated subcommand (milestones, some label edge cases, reactions). See <https://cli.github.com/manual/gh_api>.
 - `gh` respects the repository detected from the current working directory; pass `--repo <owner/repo>` explicitly when operating on a different repository than the one checked out locally.
 - Every `gh` invocation that mutates state (create/edit/close/merge) **MUST** be reflected in the Output Contract's `Changes applied` list, exactly as an MCP-driven change would be.
+- **MCP merge/write coverage (issue #178):** `merge_pull_request` — the MCP equivalent listed for "Merge PR" above — is not an unguarded shortcut around branch protection. `git-guard.sh`'s `PreToolUse` dispatch matches `mcp__github__merge_pull_request` (and `enable_pr_auto_merge`, `push_files`, `create_or_update_file`, `delete_file`, `create_branch`) by exact `tool_name` and enforces the same "never merge/write into the default branch" invariant on their structured `tool_input` fields that it enforces on the `gh` CLI command string. Do not treat any MCP tool call as exempt from that invariant merely because it isn't a `Bash` command — the actual durable control either way is GitHub branch protection on the remote (see `AGENTS.md` § Hooks), not this hook.
 
 ---
 
@@ -255,7 +257,7 @@ Rules:
 
 ## Branch-Type Merge Rules
 
-- Issue and story PRs **MUST** merge by squash with source-branch deletion. The planner merges them into an integration branch; the user merges them into `main`.
+- Issue and story PRs **MUST** merge by merge commit with source-branch deletion (`--merge --delete-branch`), so the per-task commits are preserved. Squash and rebase merges are **NOT** used unless the user explicitly asks for one on a specific PR. The planner merges them into an integration branch; the user merges them into `main`.
 - Integration PRs **MUST** merge into `main` by merge commit, and only the user may merge them.
 
 ---

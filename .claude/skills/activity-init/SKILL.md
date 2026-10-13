@@ -1,6 +1,6 @@
 ---
 name: activity-init
-description: "Establish product-context.md and technical-guidelines.md foundation docs. Use in product-engineer Init Mode."
+description: "Establish product.md and tech.md foundation docs. Use in product-engineer Init Mode."
 ---
 
 # Activity: Initialize Project Foundation
@@ -16,6 +16,27 @@ Establish the foundational documents for a project: Product Context and Technica
 Guide an AI assistant in establishing the foundational documents for a project: **Product Context** and **Technical Guidelines**. These documents serve as the "constitution" for all future development — every PRD, specification, user story, and implementation decision **SHOULD** be informed by them.
 
 Run this activity **once per project** (or when a major strategic or technical pivot occurs).
+
+## Foundation Document Names
+
+The canonical names are **`docs/product.md`** and **`docs/tech.md`**. Create and reference those names only.
+
+**Fallback, one release cycle (FR-45, `shared-understanding#D-42`).** These documents were renamed from `docs/product-context.md` and `docs/technical-guidelines.md`. A consumer repository installed before the rename still carries the old names, and `dev-tasks update` never renames a consumer-owned file on its own. So when reading a foundation document: resolve `docs/product.md` first and fall back to `docs/product-context.md` only if the new name is absent; likewise `docs/tech.md`, then `docs/technical-guidelines.md`. When writing, always write the new name.
+
+On encountering the old names, propose `dev-tasks migrate docs`, which performs the rename with content unchanged. Do not rename a consumer's files without being asked. The fallback is removed one release cycle after the rename ships (tracked in issue #201); after that the proposal is the only path.
+
+## Repository Setup — Branch Protection (Required)
+
+Before or alongside establishing the foundation documents, verify the repository's default branch has GitHub branch protection configured. This is not optional hardening — it is the actual gate for "no agent merges into the default branch." Every hook shipped with dev-tasks (`git-guard.sh`, `branch-guard.sh`, and their Kiro equivalents) is a best-effort, advisory, local check that can be evaded by a sufficiently creative command or tool-input shape, and Copilot has no hook system at all; only a server-side branch protection rule is unbypassable by any tool surface.
+
+Check with `gh api repos/<owner>/<repo>/branches/<default-branch>/protection` (a 404 means it is not configured). If missing, tell the user and offer to configure it:
+
+- Require a pull request before merging
+- Require at least 1 approving review
+- Require status checks to pass before merging
+- Disable force-pushes and branch deletion on the default branch
+
+See the README "Configure branch protection" step for the exact `gh api` invocation. You **MUST NOT** proceed to treat the project as fully initialized while branch protection remains unconfigured without the user's explicit acknowledgment.
 
 ## Document Changelog Convention
 
@@ -36,90 +57,119 @@ Every document produced by this activity **MUST** include a **Changelog** table 
 
 ---
 
-## Mode Detection (RF-60)
+## Mode Detection
 
 Before starting the interview, the skill **MUST** detect the repository mode and route accordingly. The detection logic is:
 
-1. **Multi-repo mode:** `component.json` exists at the repository root → the repository is a component in a multi-repo product. Context resolution passes exclusively through `dt`.
-2. **Mono-repo mode:** no `component.json` at root, but `/docs` directory exists → current single-repo flow (interview + direct docs generation).
-3. **Undocumented / greenfield mode:** neither `component.json` nor `/docs` → extraction-first flow to bootstrap documentation from code, then interview.
-
-> **Precedence:** If both `component.json` AND `/docs` exist, multi-repo mode wins — `component.json` is the authoritative signal.
+1. **Documented-repository mode:** `/docs` directory exists → interview + direct docs generation.
+   This mode is about whether documentation exists, not about how many packages the repository has. Repository _shape_ (single-package or monorepo) is detected separately — see Repository Shape Detection below. The mode was called "Mono-Repo" until `shared-understanding#D-44` renamed it to free the term.
+2. **Undocumented / greenfield mode:** no `/docs` → investigation-first flow to bootstrap documentation from the codebase, then interview.
 
 ---
 
-## Mode A — Multi-Repo (RF-61)
+## Mode A — Documented Repository (Current Flow)
 
-When `component.json` is present at the repo root, the skill **MUST** delegate all context resolution to `dt` and **MUST NOT** read `/docs` or walk the repository directly.
-
-### Process
-
-1. **Invoke `dt init --task "<user's task/product description>" --json`**.
-2. **Handle exit codes:**
-
-   | Exit Code | Meaning                         | Action                                                                                                                                                                                                           |
-   | --------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | `0`       | Success — bundle emitted        | Load bundle files in numeric order. Present `review_flags` (if any) to the user before proceeding to planning. Continue to the interview for product context and technical guidelines using the bundle as input. |
-   | `7`       | Gate abort — partition proposal | Present the partition proposal to the user. Explain that the scope is too broad and needs to be split. **Stop** — do not proceed to planning.                                                                    |
-   | `9`       | Stale catalog index             | Inform the user that the catalog index is stale and needs to be rebuilt (e.g., `dt catalog build`). **Stop** — do not proceed.                                                                                   |
-   | `10`      | Invalid scope after LLM retry   | Inform the user that automatic scoping failed. Suggest running with `--components` for manual scope. **Stop.**                                                                                                   |
-   | `11`      | No candidates found             | Inform the user that no components matched the task description. Suggest refining the task text or using `--components`. **Stop.**                                                                               |
-   | `6`       | Budget overflow                 | Inform the user that the scoped context exceeds the token budget. Suggest narrowing scope with `--max-components` or `--budget`. **Stop.**                                                                       |
-
-3. **On success (exit 0):**
-   - Load the assembled bundle files in numeric order (they form the context).
-   - If `review_flags` are present in the JSON output, present them as warnings to the user (e.g., "scope spans >2 domains", "low-payload boundary contract") and ask whether to proceed.
-   - Use the bundle content as the basis for the product-context and technical-guidelines interview — the bundle replaces direct `/docs` reading.
-
-### Constraints
-
-- The skill **MUST NOT** read `/docs`, walk the repository tree, or inspect source files directly in multi-repo mode.
-- All context comes from the `dt init` bundle output.
-- The skill **MAY** ask follow-up questions to fill gaps not covered by the bundle (e.g., strategic goals, success metrics).
-
----
-
-## Mode B — Mono-Repo (Current Flow)
-
-When no `component.json` is present but `/docs` exists, the skill follows the **existing single-repo flow** unchanged.
+When `/docs` exists, the skill follows the **existing single-repo flow** unchanged.
 
 ### Process
 
 1. **Receive Initial Brief:** The user describes the product, project, or technology stack.
 2. **Ask Clarifying Questions:** Gather information for both product context and technical guidelines in a single interview. Group questions by domain.
-3. **Generate Product Context Document:** Create `product-context.md` using the structure below.
-4. **Generate Technical Guidelines Document:** Create `technical-guidelines.md` using the structure below.
+3. **Generate Product Document:** Create `docs/product.md` using the structure below.
+4. **Generate Technical Document:** Create `docs/tech.md` using the structure below.
 5. **Save Output:** Save both documents in `/docs/` and present them for user review.
 
 ---
 
-## Mode C — Undocumented / Greenfield
+## Mode B — Undocumented / Greenfield
 
-When neither `component.json` nor `/docs` exists, the repository has no established documentation. The skill bootstraps documentation from code extraction before conducting the interview.
+When `/docs` does not exist, the repository has no established documentation. The skill investigates the codebase directly before conducting the interview.
 
 ### Process
 
-1. **Run detection:** Invoke `dt extract detect` to identify the repository's technology stack, frameworks, and extractable artifacts.
-2. **Run extraction:** Invoke `dt extract all --interactive` to extract schema, OpenAPI, AsyncAPI, and component manifest from the codebase.
-   - The `--interactive` flag allows the user to confirm or skip ambiguous extractions.
-   - If interrupted, the skill **SHOULD** inform the user how to resume (`dt extract all --interactive` picks up where it left off).
-3. **Present extraction report:** Show the user the results of extraction — what was found, confidence levels, any `unresolved` items.
-4. **Conduct the interview:** Proceed with the standard clarifying questions for product context and technical guidelines (same as Mono-Repo mode).
-5. **Generate documents:** Create `product-context.md` and `technical-guidelines.md` using the extraction results as pre-filled context combined with interview answers.
-6. **Save Output:** Save both documents in `/docs/` and present them for user review.
+1. **Investigate the codebase:** Read manifest files (`package.json`, `pyproject.toml`, `go.mod`, or equivalent), the directory structure, the README, and any existing configuration to identify the technology stack, frameworks, and conventions in use.
+2. **Present a findings summary:** Show the user what was found — stack, frameworks, notable directories, confidence per finding — before the interview.
+3. **Conduct the interview:** Proceed with the standard clarifying questions for product and technical context (same as documented-repository mode).
+4. **Generate documents:** Create `docs/product.md` and `docs/tech.md` using the investigation findings as pre-filled context combined with interview answers.
+5. **Save Output:** Save both documents in `/docs/` and present them for user review.
 
 ### Constraints
 
-- The extraction results inform but do not replace the interview — the user confirms and supplements.
-- If `dt extract detect` reports that no extractable content was found (empty project), skip extraction and proceed directly to the interview (pure greenfield).
+- The investigation findings inform but do not replace the interview — the user confirms and supplements.
+- If the repository has no identifiable stack (an empty project), skip investigation and proceed directly to the interview (pure greenfield).
 
 ---
+
+---
+
+## Repository Shape Detection
+
+Before the interview, detect the repository's **shape**. This is independent of the mode above: a documented repository can be either shape, and so can a greenfield one.
+
+Detect from these signals (FR-59):
+
+| Signal                                    | Read for                       |
+| ----------------------------------------- | ------------------------------ |
+| `pnpm-workspace.yaml`                     | Shape **and** the package list |
+| `workspaces` in `package.json`            | Shape **and** the package list |
+| `turbo.json`                              | Shape only                     |
+| `nx.json`                                 | Shape only                     |
+| `lerna.json`                              | Shape only                     |
+| `[tool.uv.workspace]` in `pyproject.toml` | Shape only                     |
+
+Any signal present → **monorepo**. No signal → **single-package**.
+
+Only the first two are parsed for a package list. When a repository signals monorepo through one of the other four, ask the user which packages exist rather than guessing.
+
+`core/distribution/workspace.ts` exports `detectWorkspace(repoRoot)`, which returns the shape, the signals found, and the packages. Use it rather than re-deriving the answer.
+
+### Package Map
+
+Record the result in `docs/tech.md` as a **Package Map** section, one row per package:
+
+```markdown
+## Package Map
+
+| Package    | Path          | Purpose             | Owner    | Canonical scripts     | Bounded context |
+| ---------- | ------------- | ------------------- | -------- | --------------------- | --------------- |
+| @acme/core | packages/core | Shared domain logic | platform | lint, typecheck, test | Ordering        |
+```
+
+Rules:
+
+- A **single-package repository records exactly one row**, for the root, with path `.`. The table has the same shape in both cases, so a reader never has to work out which kind of repository they are looking at.
+- **Purpose** and **Owner** come from the interview. Do not invent an owner; ask.
+- **Canonical scripts** lists the scripts the package actually defines, in the order `lint`, `format:check`, `typecheck`, `test`, `test:unit`, `test:integration`, `test:e2e`, `audit`, `validate`. Absent scripts are omitted, not marked missing.
+- **Bounded context** is filled **freeform at interview time** (`shared-understanding#D-45`). Ask: _"In one phrase, what part of the business or domain does this package own?"_ A freeform guess beats an empty column. Once `docs/domain/ubiquitous-language.md` defines a bounded context, that file is canonical: copy the name from its `## Bounded Context:` heading character for character, because `lint`'s glossary check matches the two exactly (`shared-understanding#D-69`, closing `#D-45`).
+- A package whose `package.json` has no `name` is listed by its path. Do not invent a name — nothing would match it.
+
+`dev-tasks doctor` warns when the map and the workspace disagree in either direction: a package on disk with no row, or a row for a package that no longer exists. It warns and never fails; structural failures belong to `lint`.
+
+---
+
+### Runbooks
+
+Initialization also establishes `docs/runbooks/` (PRD AC-26, S-005 AC-7). Create:
+
+- `docs/runbooks/README.md` — the index, with Runbook / Trigger / Owner / Last verified columns.
+- `docs/runbooks/runbook-template.md` — the form to copy for a new procedure.
+
+`dev-tasks install` delivers both install-if-absent, so in an installed repository they are already present and **MUST NOT** be overwritten. Create them only when absent, and confirm with the user which procedures are worth a runbook now rather than writing placeholder files.
+
+## SIMPLICITY.md Confirmation
+
+`SIMPLICITY.md` ships at the repository root and states the code-simplicity contract, including section D's tool-enforced thresholds. During initialization you **MUST** confirm two things with the user rather than assuming them:
+
+1. **Owner** — who is accountable for the contract. The shipped default is `housekeeping`.
+2. **Thresholds** — section D's defaults (function length ≤ 40 lines, cyclomatic complexity ≤ 10, cognitive complexity ≤ 15, nesting depth ≤ 3, parameters ≤ 4, file length ≤ 400 lines). A repository **MAY** tighten a default; it **MUST NOT** loosen one.
+
+Ask: _"SIMPLICITY.md's owner is `housekeeping` and its thresholds are the shipped defaults. Keep both, or tighten anything?"_ Record the answer in the file's frontmatter and in the section D table. Wiring the thresholds into a linter is a separate procedure — see `docs/runbooks/runbook-setup-simplicity-tooling.md`.
 
 ## Part 1 — Product Context
 
 ### Clarifying Questions
 
-Adapt questions based on context provided (and based on mode — in multi-repo mode, the bundle already provides some answers):
+Adapt questions based on context already gathered (e.g., from codebase investigation in greenfield mode):
 
 - **Product Definition:** "What is this product/project, and what does it do?"
 - **Problem Statement:** "What core problem does this product solve?"
@@ -132,7 +182,7 @@ Adapt questions based on context provided (and based on mode — in multi-repo m
 - **Key Constraints:** "Budget, timeline, technology, or regulatory constraints?"
 - **Stakeholders:** "Who are the key decision-makers?"
 
-### Output Structure: `product-context.md`
+### Output Structure: `docs/product.md`
 
 0. **Changelog** — Version history table (see Document Changelog Convention above)
 1. **Executive Summary** — 2-3 sentence overview
@@ -171,27 +221,28 @@ Adapt questions based on context provided (and based on mode — in multi-repo m
 - **Package Manager Standard:** "Can we standardize on `pnpm` for JS/TS projects?"
 - **Script Naming Standard:** "Should canonical `package.json` scripts (`lint`, `format:check`, `typecheck`, `test`, `audit`, `validate`) be enforced?"
 
-### Output Structure: `technical-guidelines.md`
+### Output Structure: `docs/tech.md`
 
 0. **Changelog** — Version history table (see Document Changelog Convention above)
 1. **Overview** — Technical vision and guiding principles
-2. **Technology Stack** — Backend/frontend languages, frameworks, databases, key dependencies
-3. **Architecture Patterns** — System architecture, key decisions and rationale, component organization
-4. **API Design Standards** — Style, naming, request/response formats, error handling
-5. **Authentication & Authorization** — Mechanism, model, permission levels, session management
-6. **Security Requirements** — Encryption, OWASP compliance, API key management, PII handling
-7. **Data & Database Guidelines** — Schema patterns, naming conventions, query optimization, backup
-8. **Integration Methods** — External integrations, patterns, retry/failure handling
-9. **Code Organization & Structure** — Folder/file conventions, module boundaries, naming
-10. **Design Patterns & Principles** — Preferred patterns, SOLID, DRY/KISS/YAGNI
-11. **Testing Strategy** — Frameworks, testing pyramid, coverage, mock strategies
-12. **Code Quality & Standards** — Linting, static analysis, reviews, documentation
-13. **Deployment & DevOps** — Environments, CI/CD, infrastructure-as-code, containers
-14. **Monitoring, Logging & Observability** — Levels, frameworks, alerting, error tracking
-15. **Performance & Scalability** — Response targets, throughput, caching, optimization
-16. **Dependency Management** — Management approach, version pinning, vulnerability scanning
-17. **Development Workflow** — Branching strategy, commit conventions, PR process
-18. **Known Constraints & Trade-offs** — Limitations and rationale
+2. **Package Map** — Repository shape and one row per package (see Repository Shape Detection above)
+3. **Technology Stack** — Backend/frontend languages, frameworks, databases, key dependencies
+4. **Architecture Patterns** — System architecture, key decisions and rationale, component organization
+5. **API Design Standards** — Style, naming, request/response formats, error handling
+6. **Authentication & Authorization** — Mechanism, model, permission levels, session management
+7. **Security Requirements** — Encryption, OWASP compliance, API key management, PII handling
+8. **Data & Database Guidelines** — Schema patterns, naming conventions, query optimization, backup
+9. **Integration Methods** — External integrations, patterns, retry/failure handling
+10. **Code Organization & Structure** — Folder/file conventions, module boundaries, naming
+11. **Design Patterns & Principles** — Preferred patterns, SOLID, DRY/KISS/YAGNI
+12. **Testing Strategy** — Frameworks, testing pyramid, coverage, mock strategies
+13. **Code Quality & Standards** — Linting, static analysis, reviews, documentation
+14. **Deployment & DevOps** — Environments, CI/CD, infrastructure-as-code, containers
+15. **Monitoring, Logging & Observability** — Levels, frameworks, alerting, error tracking
+16. **Performance & Scalability** — Response targets, throughput, caching, optimization
+17. **Dependency Management** — Management approach, version pinning, vulnerability scanning
+18. **Development Workflow** — Branching strategy, commit conventions, PR process
+19. **Known Constraints & Trade-offs** — Limitations and rationale
 
 ### JS/TS Package Manager and Script Defaults
 
@@ -213,7 +264,7 @@ When the project includes JavaScript/TypeScript:
 
 - **Format:** Markdown (`.md`)
 - **Location:** `/docs/`
-- **Filenames:** `product-context.md`, `technical-guidelines.md`
+- **Filenames:** `product.md`, `tech.md`
 
 ## AGENTS.md Sizing
 
@@ -232,4 +283,3 @@ When generating or updating `AGENTS.md` during project initialization, you **MUS
 5. You **MUST** save both files and present them for user review.
 6. You **SHOULD** iterate based on user feedback before finalizing.
 7. When updating an existing document, you **MUST** add a new row to the Changelog table with an incremented version, the current date, a summary of changes, and the responsible author/agent.
-8. In multi-repo mode, you **MUST NOT** read `/docs` or walk the repository directly — all context passes through `dt init`.

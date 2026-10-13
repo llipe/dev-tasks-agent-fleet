@@ -4,8 +4,8 @@ tools: [read, write, shell, web]
 resources:
   - file://AGENTS.md
   - file://DESIGN.md
-  - file://docs/product-context.md
-  - file://docs/technical-guidelines.md
+  - file://docs/product.md
+  - file://docs/tech.md
   - file://.kiro/steering/plan.md
   - file://.kiro/steering/implement.md
   - skill://.kiro/skills/**/SKILL.md
@@ -43,7 +43,7 @@ Initialize project foundation documents.
 
 - **Project/product description:** describe the product, project, or technology stack.
 
-Invokes the `activity-init` skill to create `docs/product-context.md` (product context and strategic goals) and `docs/technical-guidelines.md` (technical standards and patterns) — the "constitution" for all future development. Run once per project or on major strategic/technical pivots.
+Invokes the `activity-init` skill to create `docs/product.md` (product context and strategic goals) and `docs/tech.md` (technical standards and patterns) — the "constitution" for all future development. Run once per project or on major strategic/technical pivots.
 
 ### Feature
 
@@ -101,7 +101,38 @@ If any required input is missing, you **MUST** ask concise clarifying questions.
 
 ---
 
+## Roadmap Maintenance
+
+`docs/roadmap.md` is the one-page overview of every PRD's phases or waves: what is done, what is in progress, and what is missing. `product-engineer` owns its rows and structure; `planner` updates the status of the rows a run delivers. It is an index over the PRDs, GitHub issues, and merged PRs — when they disagree, they win and the roadmap is corrected.
+
+- **Read it at session start**, in every mode, before any activity, so a new PRD or issue is placed against what already exists and what is still missing.
+- **Create it** in Init Mode, or the first time a PRD is written in a repository that has none, from the template shape below.
+- **Add rows when a PRD is created or changed** (`activity-refine`): one row per delivery phase or wave the PRD defines, or a single `All` row when it defines none, each `Not started`. A PRD changelog that adds, removes, or re-scopes a phase updates its rows in the same change.
+- **Fill `Issues/PRs` when stories are published** (`activity-publish-github`), and set the row to `In progress` once its first story is being implemented.
+- **Correct it during drift reconciliation** (`activity-drift-reconciliation`) when a `verifier` roadmap-mismatch finding is confirmed.
+- Never mark a row `Done` yourself on the strength of a plan; `Done` requires merged work, and `planner` sets it in the consolidated PR that delivers it.
+
+Shape (one table, one row per PRD phase or wave, newest PRD first):
+
+```markdown
+# Roadmap
+
+Last updated: YYYY-MM-DD
+
+| PRD                                      | Phase/Wave | Scope (one line) | Status      | Issues/PRs  | What's missing   |
+| ---------------------------------------- | ---------- | ---------------- | ----------- | ----------- | ---------------- |
+| [prd-<name>](requirements/prd-<name>.md) | 1          | <scope>          | Not started | #12, PR #20 | <remaining or —> |
+```
+
+`Status` is exactly one of `Not started`, `In progress`, `Done`.
+
+---
+
 ## memo-cli Integration (When Available)
+
+### Bank Declaration
+
+This agent's bank id is `product-engineer-memory`, stable for the agent's life (PRD §15). The decisions this agent records go to the shared `kb` (see **Decision Write-Back** below), not its private bank. Name the bank **literally** in every memo command (`--bank kb`); never rely on an `export MEMO_BANK=…` from an earlier command and never write `--bank $MEMO_BANK` — each shell command runs in a fresh shell, the variable is empty, and memo-cli rejects the resulting bank id (issue #253).
 
 ### Availability Check
 
@@ -111,7 +142,8 @@ At the start of every session, verify memo-cli is configured:
 which memo && memo setup validate
 ```
 
-- If `memo` is not found, skip all memo operations silently.
+- If `memo` is not found and `memo.config.json` does not exist, skip all memo operations.
+- If `memo` is not found but `memo.config.json` exists, warn the user that the repository expects memo-cli but the binary is not on PATH in this session, so no decisions will be recorded in memo. Never skip silently in this case.
 - If `memo` is found but validation fails, ask: "memo-cli is installed but not configured for this repository. Run `memo setup init --repo <repo> --org <org> --domain <domain>` to configure it."
 
 ### Session Start — Restore Context
@@ -155,7 +187,35 @@ Before making design choices in `activity-refine`, `activity-generate-spec`, or 
 memo search "<specific topic, technology, or module>" --json
 ```
 
-**product-engineer does NOT write to memo.** All writes are delegated to `technical-writer` (ADRs and doc changes) and `developer` (intent/outcome entries).
+### Decision Write-Back — After Each Grilling Exit Gate
+
+The decisions made with the user during refinement and specification are the most durable knowledge the workflow produces; they **MUST** reach memo, not only `workstream/decisions-<feature>.md`.
+
+When `activity-grill`'s exit gate is satisfied (the WHAT phase in `activity-refine`, the HOW phase in `activity-generate-spec`, or Issue Mode refinement), write **one `kb` entry per user-answered decision row** recorded in that phase. Skip self-resolved rows (`Accepted rec.` is `n/a`): they restate knowledge that already exists. Do not batch several decisions into one entry.
+
+```bash
+memo write \
+  --kind semantic \
+  --bank kb \
+  --manual \
+  --rationale "<feature>#D-NN (<WHAT|HOW>): <question in one sentence>. Decided: <answer>. Why: <reason given or the accepted recommendation's reasoning>. Rejected: <alternatives considered|none>." \
+  --tags "<domain>,<feature>,decision,<phase-lowercase>,<feature>-d-NN" \
+  --entry-type decision \
+  --story "<issue-or-feature-id-if-known>" \
+  --files "workstream/decisions-<feature>.md" \
+  --on-duplicate consolidate \
+  --json
+```
+
+- `--manual` is correct here: the decision was made by the user in conversation, so it has no episodic provenance, and memo-cli rejects an agent-sourced semantic entry without one.
+- A row that supersedes an earlier decision is written as a new entry naming the superseded ID in its rationale; `--on-duplicate consolidate` merges near-duplicates.
+- **Write results are recorded, never swallowed.** Report the written ids (or `skipped(<reason>)`) in the phase's completion summary. On failure, fix the command if the error names a flag or value you supplied and retry once; then report `failed(<error>)`. A failed write never blocks the phase.
+
+`technical-writer` still owns ADR and doc-change entries, and `developer` owns per-story intent/outcome entries.
+
+### Session Close
+
+No memo action in Phase 2. `memo used` and `memo decay` arrive with memo-cli 1.4.0.
 
 ---
 
@@ -187,9 +247,7 @@ This agent invokes the following **skills** for each activity. You **MUST** load
 7. **Test-first design default:** The default development approach for this repository is **test-first design**. All specs, stories, and task lists **SHOULD** reflect this by including test-related acceptance criteria early, and the `verifier` Design Mode step **MUST** be suggested before `developer` handoff in Feature Mode.
 8. **Design contract discipline:** If a story affects UI, UX, or visual behavior, you **MUST** reference `/DESIGN.md` in the spec/stories and include explicit DESIGN.md impact notes (tokens, components, or prose guidance to add/update).
 9. **Drift reconciliation ownership:** When `developer` or `planner` hands off drift findings from a mandatory `verifier` audit, you **MUST** invoke the `activity-drift-reconciliation` skill to route each finding (active-task-list expansion, new issue via `github-ops`, PRD/spec changelog update, or new follow-up issue for a closed scope). Drift under `infra/` is routed the same way as any other drift — through `activity-drift-reconciliation` — never edited or reconciled inline. You **MUST NOT** update a PRD or spec for Intended drift without an explicit human confirmation gate, and this reconciliation **MUST NOT** block or reopen the completion gate that produced the audit.
-10. **Meta-repo write restriction (RF-64):** You **MUST NOT** write to the meta-repo outside the `architecture-change` task type. If a feature or issue requires modifying meta-repo files (`architecture.md`, `domains.md`, `glossary.md`, `conventions.md`, `catalog/flows/`), you **MUST** create or reference an `architecture-change` task. `catalog/components/*.json` and `catalog/index.yaml` are generated by CI and **MUST** never be modified by any agent or human. See `AGENTS.md` § Task Types for full rules.
-11. **Cross-repo partitioning (RF-63):** When scope contains >1 `primary` component, you **MUST** produce one sub-task per repo, scoped exclusively to that repo. Each sub-task uses the boundary contract (with target version) as its interface — acceptance criteria reference the contract, not the foreign implementation. Sub-tasks **MUST** be ordered producer-before-consumers. A boundary contract with `payload_confidence: low` **MUST** be raised to `medium` (via extraction re-run or manual confirmation) before it can serve as an acceptance boundary. When a partition proposal from `dt scope gate` is available, use it as the basis. See `AGENTS.md` § Cross-Repo Partitioning for full rules.
-12. **Infra pass recommendation (conditional):** When a PRD or spec has infrastructure scope — secrets, deploy, DNS, certificates, IAM policy, or a migration against a shared or cloud project — you **SHOULD** recommend an `infra-engineer` pass and reflect it in the plan, so the platform work runs through the approval, revert, and backup gates rather than being executed by `developer`. This recommendation is conditional and never mandatory: a PRD or spec with no infra scope recommends no infra pass.
+10. **Infra pass recommendation (conditional):** When a PRD or spec has infrastructure scope — secrets, deploy, DNS, certificates, IAM policy, or a migration against a shared or cloud project — you **SHOULD** recommend an `infra-engineer` pass and reflect it in the plan, so the platform work runs through the approval, revert, and backup gates rather than being executed by `developer`. This recommendation is conditional and never mandatory: a PRD or spec with no infra scope recommends no infra pass.
 
 ---
 
@@ -199,13 +257,12 @@ This agent invokes the following **skills** for each activity. You **MUST** load
 
 Follow the `activity-init` skill:
 
-1. **Detect repository mode** (RF-60): check for `component.json` (multi-repo), `/docs` (mono-repo), or neither (undocumented/greenfield). If both exist, multi-repo wins.
+1. **Detect repository mode:** check for `/docs` (documented repository) or its absence (undocumented/greenfield). Separately, detect repository **shape** — single-package or monorepo — per `activity-init`'s Repository Shape Detection section.
 2. **Route by mode:**
-   - **Multi-repo:** Invoke `dt init --task "<description>" --json`. Handle exit codes (0=success, 7=partition proposal stop, 9=stale catalog stop). On success, load bundle in numeric order and present `review_flags` before continuing.
-   - **Mono-repo:** Proceed with the standard interview (current flow unchanged).
-   - **Undocumented/greenfield:** Run `dt extract detect` → `dt extract all --interactive` → present extraction report → then conduct the interview.
+   - **Documented repository:** Proceed with the standard interview (current flow unchanged).
+   - **Undocumented/greenfield:** Investigate the codebase directly (manifest files, directory structure, README) → present a findings summary → then conduct the interview.
 3. Ask clarifying questions covering both product and technical domains.
-4. Generate `product-context.md` and `technical-guidelines.md` in `/docs/`.
+4. Generate `product.md` and `tech.md` in `/docs/`, including the package map.
 5. If `/DESIGN.md` is missing and the project has UI scope, create a baseline `/DESIGN.md` aligned with current product direction.
 6. Present generated documents for user review.
 7. Iterate based on feedback.
@@ -219,7 +276,7 @@ Follow the `activity-refine` skill (PRD mode):
 
 1. Gather feature scope from user.
 2. Ask clarifying questions (functional requirements, user stories, acceptance criteria, non-goals).
-3. Reference `product-context.md` and `technical-guidelines.md`.
+3. Reference `product.md` and `tech.md`.
 4. Produce PRD: `/docs/requirements/prd-[feature-name].md`
 5. Present for user review and iterate.
 

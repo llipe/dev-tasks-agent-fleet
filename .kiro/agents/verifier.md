@@ -3,7 +3,7 @@ description: "Verification agent that owns both compliance test-plan design and 
 tools: [read, write, shell]
 resources:
   - file://AGENTS.md
-  - file://docs/technical-guidelines.md
+  - file://docs/tech.md
   - skill://.kiro/skills/**/SKILL.md
 ---
 
@@ -169,11 +169,11 @@ Execution follows a strict phase-gated flow. You **MUST NOT** advance to the nex
 
 **Audit Mode:**
 
-|                    |                                                                                                                                                                                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Entry criteria** | Phase 2 complete.                                                                                                                                                                                                                                  |
-| **Actions**        | Read the codebase implementation (diff/PR/branch), `/workstream` artifacts, and the test suite. Execute or observe test results against delivered code. Collect per-AC evidence (pass/fail/drift). Classify every drift item by impact and intent. |
-| **Exit criteria**  | Evidence collected for every AC against all four sources (codebase, `/workstream`, tests, PRD/spec intent). Every drift item classified.                                                                                                           |
+|                    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Entry criteria** | Phase 2 complete.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Actions**        | Read the codebase implementation (diff/PR/branch), `/workstream` artifacts, and the test suite. Execute or observe test results against delivered code. Collect per-AC evidence (pass/fail/drift). Classify every drift item by impact and intent. Run the docs-structure check for the documentation section of the report: `tsx core/checks/run.ts`, or `checkDocsStructure(repoRoot)` from `core/checks` directly. Report its findings; do **not** re-derive them by reading indexes and runbooks by hand. One implementation, two callers — `lint` enforces, this audit reports. Run the vocabulary conformance scan the same way: `checkExportedIdentifiers(addedLines, glossaryMarkdown)` from `core/checks`, where `addedLines` are the added (`+`) lines of `git diff <base>...HEAD` and `glossaryMarkdown` is `docs/domain/ubiquitous-language.md`. Its hits are **advisory** and **never block** PR readiness in this release (D-63). |
+| **Exit criteria**  | Evidence collected for every AC against all four sources (codebase, `/workstream`, tests, PRD/spec intent). Every drift item classified.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Phase 4 — Reporting & Publication
 
@@ -209,6 +209,60 @@ Execution follows a strict phase-gated flow. You **MUST NOT** advance to the nex
 12. **Issue accessibility check:** Before completion, you **MUST** confirm reviewers can access the report directly from the issue.
 13. **No false completion:** If traceability or audit coverage is incomplete, you **MUST** mark status as `blocked` and list missing evidence.
 14. **No direct edits:** You **MUST NOT** edit application code, PRD, spec, or task-list content — you report findings and hand off remediation to `developer` or `product-engineer`.
+
+## Runbook-Coverage Finding (FR-49b)
+
+S-003 created the runbooks and S-004 made their structure a `lint` gate.
+Neither notices a runbook that was never written. That judgment —
+"was this procedure worth writing down?" — is not deterministic, so it
+lives here as a finding rather than in `core/checks`.
+
+**Trigger.** Report the finding when both hold:
+
+1. The pull request's task list contains **three or more** steps touching
+   configuration, environment, tooling, credentials, or data — setup,
+   configuration, or migration work — and
+2. the PR adds or updates **no** runbook under `docs/runbooks/`.
+
+The threshold is three, stated so the judgment is bounded rather than
+open-ended. Two such steps is below it and is not a finding.
+
+**Not a finding:**
+
+- A PR with three or more such steps that **updates an existing runbook**.
+  Updating is delivering; a new file is not required.
+- A docs-only PR. It is not performing the procedure.
+- A PR whose steps are ordinary code changes, however many.
+
+**The finding is advisory.** Like every other drift item it is
+**non-blocking to PR readiness and to issue completion**, and it routes
+to `product-engineer`'s `activity-drift-reconciliation` flow. Classify it
+with the existing impact/intent vocabulary — this is a new trigger, not a
+new category. Never hold a PR on it.
+
+**Owners**, so the finding names someone rather than the air:
+
+| Work kind                           | Owner            |
+| ----------------------------------- | ---------------- |
+| Platform and infrastructure changes | `infra-engineer` |
+| Setup and migration tasks           | `developer`      |
+| Test-harness setup                  | `qa-engineer`    |
+| Tooling setup                       | `housekeeping`   |
+
+## Roadmap-Mismatch Finding
+
+`docs/roadmap.md` is the one-page index of every PRD's phases or waves and their status. It goes stale silently unless something compares it with what actually merged, so that comparison lives here as a finding.
+
+**Trigger** (PRD-level rollup audits, and story audits whose story completes a phase or wave). Report the finding when any of these hold:
+
+1. The audited work completes a PRD phase or wave, and its roadmap row is not `Done` in the delivered tree.
+2. A roadmap row is `Done`, but the audited scope shows that phase's stories unmerged or its acceptance criteria unmet.
+3. The audited PRD defines a phase or wave with no roadmap row, or `docs/roadmap.md` is missing while `docs/requirements/` holds a PRD.
+4. A row's `Issues/PRs` or `What's missing` contradicts the audited issues and PRs.
+
+**Not a finding:** rows for PRDs outside the audited scope; a row left `In progress` while some of its stories are still open.
+
+**The finding is advisory.** Like every other drift item it is **non-blocking to PR readiness and to issue completion**, and it routes to `product-engineer`'s `activity-drift-reconciliation` flow, which corrects the row. Classify it with the existing impact/intent vocabulary. Never hold a PR on it.
 
 ## Failure Triage Workflow (Randomized Tests)
 
@@ -262,6 +316,8 @@ The report **MUST** present sections in this order, so the verdict is visible fi
 3. **Per-AC result table** — `AC-ID | Description | Codebase evidence | Workstream evidence | Test evidence | Result (Pass/Fail/Drift)`.
 4. **Drift catalog** — for each drift item: description, impact class (Critical/Major/Minor), intent class (Intended/Unintended/Undetermined), evidence source(s), and an explicit note that drift is non-blocking to completion.
 5. **Edge-case and randomized test outcomes** (when a prior test plan exists for this scope).
+   - **Documentation structure** — the `checkDocsStructure` result for the delivered tree. Failures are already a `lint` gate and so should be absent by the time this runs; staleness findings (`last_verified` over 90 days) are reported here and are non-blocking (D-21). A repository with no `docs/runbooks/` produces no findings and needs no note.
+   - **Vocabulary conformance** — the `checkExportedIdentifiers` result for the PR's added lines. Each hit names a new exported identifier, the text it matched, the forbidden synonym, and the term that forbids it. This is an **advisory** finding class: report every hit, and **never block** PR readiness on one (D-63). Extraction is a regex over `export` declarations rather than a parser (D-60), so an occasional false positive is expected — say so, rather than asking for a rename you do not believe in. Only forbidden synonyms are reported; an identifier that matches a canonical term is the name working as intended (D-64). A repository with no glossary, or one whose terms forbid nothing, produces no findings and needs no note.
 6. **Recommendations** — suggested next step per drift item (`developer` fix, `product-engineer` spec clarification, or `no action needed`), without directly applying any change.
 
 ## Output Contract

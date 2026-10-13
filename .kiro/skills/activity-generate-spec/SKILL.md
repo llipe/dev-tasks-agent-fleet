@@ -7,6 +7,8 @@ description: "Transform an approved PRD into a technical specification. Use in p
 
 Transform refined requirements (PRD) into an actionable technical design by synthesizing them with the project's Technical Guidelines. Use this skill when a PRD is approved and ready for technical breakdown. Invoked by the `product-engineer` agent in Feature Mode.
 
+Before asking any technical design question, this activity invokes the `activity-grill` sub-skill (HOW phase) to walk the design tree to shared understanding, and writes every resolved question to `workstream/decisions-<feature>.md` — see Process below. `product-engineer`'s own conditional pre-step `researcher` call (ADR-004) runs before this activity starts, not after; when its `/workstream/research-*.md` artifact exists, `activity-grill`'s resolve-before-ask step consults it before making its own bounded call (D-56).
+
 ---
 
 > **RFC 2119 Notice:** The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **SHOULD**, **SHOULD NOT**, **RECOMMENDED**, **MAY**, and **OPTIONAL** in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
@@ -19,8 +21,8 @@ Transform refined requirements (PRD) into an actionable technical design by synt
 
 This activity assumes the following documents already exist:
 
-- `product-context.md` — Product understanding
-- `technical-guidelines.md` — Technical standards and patterns
+- `product.md` — Product understanding
+- `tech.md` — Technical standards and patterns
 - `prd-[feature-name].md` — Feature requirements (produced by the **refine** activity)
 
 ## Document Changelog Convention
@@ -42,13 +44,13 @@ Every specification produced by this activity **MUST** include a **Changelog** t
 
 ## Process
 
-1. **Receive References:** User points to the existing PRD and confirms Technical Guidelines are available.
+1. **Receive References:** User points to the existing PRD and confirms Technical Guidelines are available. If a pre-step `researcher` artifact (`/workstream/research-*.md`) exists from `product-engineer`'s conditional pre-step call (ADR-004), treat it as already available evidence.
 2. **Analyze Documents:** You **MUST** read and analyze both the PRD and Technical Guidelines to identify integration points.
-3. **Ask Specification Questions:** You **SHOULD** ask targeted questions about specific technical decisions and implementation approach.
-4. **Generate Specification:** You **MUST** create a comprehensive technical specification using the structure below.
+3. **Invoke `activity-grill`:** Before asking any technical design question, invoke `activity-grill(phase="HOW", cap=cap.how)` (`cap.how` defaults to 25; read from `docs/tech.md` § Grilling if that subsection exists, else the hardcoded default) (FR-13, AC-02). The candidate questions below seed the interview's question pool — `activity-grill` owns the one-question-at-a-time, resolve-before-ask mechanics, including reuse of any pre-step `researcher` artifact and, only when that artifact does not cover a question, its own bounded `researcher` call sharing the phase's budget (D-56). You **MUST NOT** produce any specification section, draft, or outline until `activity-grill` returns the exit gate satisfied.
+4. **Generate Specification:** You **MUST** create a comprehensive technical specification using the structure below, citing inline (`… (D-NN)`) every technical decision a `D-NN` shaped.
 5. **Save Output.**
 
-## Clarifying Questions
+## Candidate Specification Questions (seed the `activity-grill` interview)
 
 Focus on technical decisions and implementation approach:
 
@@ -87,6 +89,26 @@ The generated Specification document **MUST** include:
 15. **Deployment & Rollout** — Feature flags, migration steps, backward compatibility, rollback plan
 16. **Dependencies & Risks** — Technology dependencies, known risks, mitigation strategies
 17. **Open Questions** — Remaining technical decisions
+18. **Decisions (HOW phase)** — Table (`ID | Decision (short form)`) listing every `activity-grill` decision ID consumed by this specification (FR-14, S-003-AC-3), in qualified `<feature>#D-NN` form when reusing a decision from another feature's log; may legitimately be empty for a trivial specification that needed no decisions, but the `activity-grill` interview and exit-gate confirmation still ran
+19. **Vocabulary** — `## Vocabulary` table listing every domain term the specification uses and where each one stands against the glossary: `existing`, `proposed`, or settled by a decision (FR-20, D-61). See "Vocabulary Section" below
+
+## Vocabulary Section (FR-20, D-61, D-75)
+
+The specification carries a `## Vocabulary` section immediately after `## Decisions (HOW phase)`, in the same shape `activity-refine` uses for PRDs:
+
+```markdown
+## Vocabulary
+
+| Term | Status in glossary                      | Bounded context | Definition (proposals only) | Forbidden synonyms (proposals only) |
+| ---- | --------------------------------------- | --------------- | --------------------------- | ----------------------------------- |
+| …    | existing \| proposed \| conflict → D-NN | …               | …                           | …                                   |
+```
+
+A row is complete when `existing` names a term `docs/domain/ubiquitous-language.md` already defines (case-insensitively), when `proposed` carries a bounded context, a definition, and forbidden synonyms (`none` is an answer), or when `conflict → D-NN` cites the decision that settled a clash — `->` and `→` are both accepted. A specification that introduces no domain concept of its own carries the section with exactly one line, and that line **MUST** be the section's only content — the sentinel is accepted only when nothing else stands beside it (a `None — …` sentence above a table does not make the table complete): `None — this specification introduces no domain concepts.`
+
+A specification introduces implementation vocabulary as readily as a PRD introduces product vocabulary, and the term that enters the codebase through a module name is the one nobody ever agreed on. Terms are identified during HOW-phase grilling, never by scanning the drafted prose (D-65).
+
+The glossary append itself is `activity-refine`'s write at PRD approval, not this skill's (D-61). A term a specification proposes is carried back to the PRD's `## Vocabulary` section for approval.
 
 ## Diagram Guidelines
 
@@ -130,8 +152,10 @@ The specification **MUST** clearly show how:
 
 1. You **MUST NOT** start implementing.
 2. You **MUST** read the referenced PRD and Technical Guidelines documents.
-3. You **SHOULD** ask clarifying questions about the technical implementation approach.
+3. You **MUST** ask clarifying questions about the technical implementation approach, conducted through `activity-grill(phase="HOW")` — you **MUST NOT** draft any part of the specification until `activity-grill`'s exit gate returns satisfied (FR-13).
 4. You **MUST** ensure the specification clearly maps PRD requirements to technical solutions.
-5. You **MUST** present the specification for user review.
-6. You **MUST** save the finalized version.
-7. When updating an existing specification, you **MUST** add a new row to the Changelog table with an incremented version, the current date, a summary of changes, and the responsible author/agent.
+5. Before presenting the specification for review, you **MUST** run `checkVocabularySection()` from `core/checks/glossary.ts` over the draft and the repository's glossary, and **MUST** report every finding by its rule name — `vocabulary-missing` or `vocabulary-incomplete` naming the row (D-75).
+6. You **MUST** present the specification for user review.
+7. You **MUST** save the finalized version.
+8. When updating an existing specification, you **MUST** add a new row to the Changelog table with an incremented version, the current date, a summary of changes, and the responsible author/agent.
+9. You **MUST** cite every decision that shaped a technical design choice inline (`… (D-NN)`), and **MUST** populate the document's `## Decisions (HOW phase)` section with every ID consumed from the `activity-grill` session, in qualified `<feature>#D-NN` form when reusing a decision from another feature's log (FR-14).
