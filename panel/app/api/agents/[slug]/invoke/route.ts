@@ -189,6 +189,7 @@ export async function POST(
       repositoryId,
       installationId,
       params,
+      trigger: { triggerType: "manual", triggeredBy: "panel" },
     });
     await insertQueuedRun(client, insert);
 

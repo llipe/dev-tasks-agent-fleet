@@ -113,6 +113,7 @@ describe("buildRunInsert — snapshot completeness (OQ3)", () => {
       repositoryId: "repo-1",
       installationId: "inst-1",
       params: { fix_mode: "audit_only" },
+      trigger: { triggerType: "manual", triggeredBy: "panel" },
     });
     expect(row.max_runtime_seconds).toBe(3600);
     expect(row.grace_seconds).toBe(120);
@@ -132,6 +133,7 @@ describe("buildRunInsert — snapshot completeness (OQ3)", () => {
       repositoryId: null,
       installationId: null,
       params: {},
+      trigger: { triggerType: "manual", triggeredBy: "panel" },
     });
     expect(row.repository_id).toBeNull();
     expect(row.installation_id).toBeNull();
@@ -145,6 +147,7 @@ describe("buildRunInsert — snapshot completeness (OQ3)", () => {
         repositoryId: "repo-1",
         installationId: "inst-1",
         params: {},
+        trigger: { triggerType: "manual", triggeredBy: "panel" },
       }),
     ).toThrow(RunSnapshotError);
   });
