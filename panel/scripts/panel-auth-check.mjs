@@ -274,7 +274,47 @@ export function checkSignupRejected(probe) {
 }
 
 /**
- * The gate verdict. Runs all four checks over the collected inputs and returns
+ * CHECK 5 — an unauthenticated request to an `/api/internal/**` endpoint returns
+ * 401 (S-160, FR5/FR6 / SD-A1). The scheduler's internal endpoints (the fire
+ * endpoint, the digest endpoint) are called by `pg_cron`/`pg_net` with a shared
+ * secret, NOT a session — so the middleware lets `/api/internal/**` through
+ * without the login gate, and the HANDLER's constant-time secret check is the
+ * authorization. This probe proves externally that an unauthenticated call is
+ * rejected at 401 — i.e. the internal path is NOT an open invoke hole.
+ *
+ * Only 401 passes. A 200/202 would mean the call was ACCEPTED without the secret
+ * (a critical hole). A 404 or 409 would mean the request got PAST the auth check
+ * into handler logic (route-not-found / stale-schedule) — i.e. auth did not run
+ * first — which also fails. Any error / unexpected code fails (fail-closed).
+ */
+export function checkInternalRejected(probe) {
+  if (probe && probe.error) {
+    return {
+      ok: false,
+      reason: `Internal-endpoint probe failed to complete: ${String(probe.error)}`,
+    };
+  }
+  const status = statusOf(probe);
+  if (status === null) {
+    return { ok: false, reason: "Internal-endpoint probe returned no usable status code." };
+  }
+  if (status === 200 || status === 202) {
+    return {
+      ok: false,
+      reason: `Internal endpoint returned ${status} to an unauthenticated request (secret gate NOT enforcing — open invoke hole).`,
+    };
+  }
+  if (status !== 401) {
+    return {
+      ok: false,
+      reason: `Internal endpoint returned ${status}; expected 401 before any handler logic (got past the secret check).`,
+    };
+  }
+  return { ok: true, reason: null };
+}
+
+/**
+ * The gate verdict. Runs all checks over the collected inputs and returns
  * `{ pass: boolean, checks: {...}, reasons: string[] }`. `pass` is true only
  * when EVERY check is ok.
  *
@@ -285,6 +325,7 @@ export function checkSignupRejected(probe) {
  *     protectedProbe: { status, location } | { error }
  *     sseProbe:       { status }         | { error }
  *     signupProbe:    { rejected, ... }
+ *     internalProbe:  { status }         | { error }
  *   }
  */
 export function evaluateAuthGate(input) {
@@ -294,6 +335,7 @@ export function evaluateAuthGate(input) {
     protectedRedirect: checkProtectedRedirect(src.protectedProbe),
     sseUnauthorized: checkSseUnauthorized(src.sseProbe),
     signupRejected: checkSignupRejected(src.signupProbe),
+    internalRejected: checkInternalRejected(src.internalProbe),
   };
   const reasons = [];
   for (const [, result] of Object.entries(checks)) {
@@ -336,7 +378,7 @@ function mainCli() {
   const verdict = evaluateAuthGate(parsed);
   if (verdict.pass) {
     console.log(
-      "[panel-auth] OK — auth boundary holds: env names present, protected UI → /login, SSE → 401, signups rejected.",
+      "[panel-auth] OK — auth boundary holds: env names present, protected UI → /login, SSE → 401, signups rejected, internal endpoint → 401.",
     );
     process.exit(0);
   }
