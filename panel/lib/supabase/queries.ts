@@ -905,3 +905,22 @@ export async function getAgentById(client: SupabaseClient, id: string): Promise<
   }
   return (result.data as AgentRow | null) ?? null;
 }
+
+/**
+ * G5-c manual clear (S-156): the operator marks a schedule's open-PR block as
+ * handled. Sets `pr_block_cleared_at = now()`; the next due-tick re-evaluates
+ * `scheduler.open_pr_block_run` and auto-clears the block when the current PR's
+ * artifact predates the clear. Idempotent.
+ */
+export async function clearSchedulePrBlock(
+  client: SupabaseClient,
+  scheduleId: string,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ pr_block_cleared_at: new Date().toISOString() })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("clearSchedulePrBlock", result.error);
+  }
+}
