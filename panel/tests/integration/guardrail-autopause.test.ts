@@ -81,7 +81,10 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-157 G3 circuit breaker"
       c
         .query<{
           n: string;
-        }>(`select count(*)::text n from notifications where schedule_id=$1 and kind='schedule_auto_paused'`, [id])
+        }>(
+          `select count(*)::text n from notifications where schedule_id=$1 and kind='schedule_auto_paused'`,
+          [id],
+        )
         .then((r) => Number(r.rows[0]!.n)),
     );
   }
