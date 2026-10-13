@@ -7,7 +7,7 @@
 - **Source ref to deploy:** `main` @ `85c8503` (contains #257: PyJWT 2.15.1, semgrep 1.180.0)
 - **Revert ref:** `main` @ `feae3f8` (pre-#257; PyJWT 2.13.0, semgrep 1.177.0)
 - **Cost summary:** no new resources. Each deploy runs one container build plus an ECR push (new image layers, ~1 GB storage per agent) and an AgentCore runtime version update. Incremental cost is ECR storage (~$0.10/GB-month, https://aws.amazon.com/ecr/pricing/) plus the verification invocations' model/compute usage. Below threshold; listed for awareness.
-- **Approval status:** plan APPROVED by @llipe 2026-10-13T14:49-03:00; each step still requires its own approval
+- **Approval status:** plan APPROVED by @llipe 2026-10-13T14:49-03:00; each step still requires its own approval. Steps 1–5 approved and applied 2026-10-13 (see result.md)
 
 ## Preconditions
 

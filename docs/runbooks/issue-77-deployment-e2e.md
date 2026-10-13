@@ -131,6 +131,47 @@ full console output in case of failure.
 
 - [x] `agentcore deploy -y` completed without error.
 
+### 7.2a — Redeploying an already-deployed agent (dependency bump)
+
+Use this when an agent's `pyproject.toml` changes (for example, a CVE-driven pin bump) and the
+running image must pick it up. Proven on 2026-10-13 for #252 (change record
+`infra/changes/20261013-redeploy-agents-pyjwt/`). Applies to both `dependency-update` and
+`security-analyst`.
+
+1. **Preconditions.**
+   - Docker is running, because CDK builds the Container asset locally.
+   - `agentcore/aws-targets.json` exists in the agent directory. It is gitignored, so a fresh
+     checkout does not have it. Its content is target `default`, account `755641879575`,
+     region `us-east-1`.
+   - `infra/environments.yaml` is present.
+2. **Record the restore point** before deploying: the runtime version and the image tag.
+
+   ```bash
+   aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id <runtime-id> --region us-east-1 \
+     --query '{v:agentRuntimeVersion,img:agentRuntimeArtifact.containerConfiguration.containerUri}'
+   ```
+
+3. **Deploy:** `cd agents/<agent> && agentcore deploy -y`. The runtime version increments.
+   In-flight sessions finish on the old version.
+4. **Verify the image, not just the deploy.** `deployHash` in `.cli/deployed-state.json`
+   hashes the project config, **not** the pip-resolved dependency set, so a dependency-only
+   bump leaves it unchanged. Check the new version is `READY`, then assert the versions
+   inside the image:
+
+   ```bash
+   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 755641879575.dkr.ecr.us-east-1.amazonaws.com
+   docker run --rm --platform linux/arm64 --entrypoint python <new-image-uri> -c "import jwt; print(jwt.__version__)"
+   ```
+
+5. **Verify live.** Invoke on a real repo and confirm the `resolve_credentials` step succeeded
+   and the run reached a terminal status. For `security-analyst`, use an `audit_only` run on
+   `llipe/security-analyst-fixture`, which produces semgrep and codeql findings, so scanner
+   output parsing is exercised too. Invoke through the panel. If the deployed panel cannot
+   invoke (see #280), run the panel locally against production Supabase (`pnpm --filter panel
+   dev`, local AWS credential chain).
+6. **Rollback:** redeploy from the pre-change commit in a worktree. Copy `aws-targets.json` in,
+   then run `agentcore deploy -y`. See the change record's `rollback.sh`.
+
 ---
 
 ## 7.3 — Confirm runtime ready + record the ARN
