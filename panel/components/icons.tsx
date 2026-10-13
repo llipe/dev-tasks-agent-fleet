@@ -21,8 +21,20 @@ import {
   Heartbeat,
   CaretLeft,
   CaretRight,
+  CaretDown,
   Power,
   X,
+  CalendarDots,
+  Bell,
+  Plus,
+  Pause,
+  Play,
+  Pencil,
+  Trash,
+  GitPullRequest,
+  Warning,
+  SkipForward,
+  LockSimple,
 } from "@phosphor-icons/react/ssr";
 import type { IconProps } from "@phosphor-icons/react";
 
@@ -39,3 +51,18 @@ export const ExpandIcon = CaretRight; // » Expand
 export const RowChevronIcon = CaretRight; // › Row chevron
 export const LogOutIcon = Power; // ⏻ Log out (S-120)
 export const CloseIcon = X; // ✕ Close
+
+// §10 Phase 4 — Agent Scheduler + Notifications (S-161..S-164).
+export const SchedulesIcon = CalendarDots; // Schedules nav + agent indicator
+export const NotificationsIcon = Bell; // Notifications nav + top-bar bell
+export const NewScheduleIcon = Plus; // New schedule button
+export const PauseIcon = Pause; // Pause action
+export const PlayIcon = Play; // Resume action
+export const EditIcon = Pencil; // Edit action
+export const DeleteIcon = Trash; // Delete action
+export const OpenPrIcon = GitPullRequest; // open_pr reason chip
+export const WarningIcon = Warning; // auto_paused reason chip
+export const SkipIcon = SkipForward; // concurrency_cap / missed_tick reason chip
+export const LockIcon = LockSimple; // always-on guardrail lines
+export const CaretDownIcon = CaretDown; // disclosure open
+export const CaretRightIcon = CaretRight; // disclosure closed

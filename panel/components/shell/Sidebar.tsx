@@ -9,6 +9,7 @@ import {
   CollapseIcon,
   ExpandIcon,
   RepositoriesIcon,
+  SchedulesIcon,
   SettingsIcon,
   SystemHealthIcon,
 } from "../icons";
@@ -47,6 +48,8 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
   const allRunsActive = pathname === "/runs" || pathname.startsWith("/runs/");
   // Repositories (S-147) owns "/repositories".
   const repositoriesActive = pathname === "/repositories";
+  // Schedules (S-161) owns "/schedules".
+  const schedulesActive = pathname === "/schedules" || pathname.startsWith("/schedules/");
 
   return (
     <nav
@@ -81,6 +84,13 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
           icon={<RepositoriesIcon />}
           label="Repositories"
           active={repositoriesActive}
+          collapsed={collapsed}
+        />
+        <NavItem
+          href="/schedules"
+          icon={<SchedulesIcon />}
+          label="Schedules"
+          active={schedulesActive}
           collapsed={collapsed}
         />
         <DisabledNavItem icon={<SettingsIcon />} label="Settings" collapsed={collapsed} />

@@ -19,6 +19,7 @@ import { escapeIlikeWildcards, type RunFilter } from "@/lib/domain/run-filter";
 import type { RunStatus } from "@/lib/domain/status";
 import type {
   AgentRow,
+  CadenceKind,
   GithubInstallationRow,
   NotificationRow,
   RepositoryRow,
@@ -27,6 +28,7 @@ import type {
   RunStepRow,
   ScheduleRow,
   VRunRow,
+  VScheduleRow,
 } from "@/lib/supabase/types";
 
 /** SD11 — the bounded initial `run_events` read cap. The SSE relay (S-110) */
@@ -963,4 +965,201 @@ export async function markNotificationsEmailed(
   if (result.error) {
     throw new DatabaseError("markNotificationsEmailed", result.error);
   }
+}
+
+// ---------------------------------------------------------------------
+// Phase 4 — Agent Scheduler list + CRUD (S-161/S-162/S-164).
+// ---------------------------------------------------------------------
+
+/**
+ * S-161 (#273) — the `/schedules` list read (SD-UI-1). Reads `v_schedules`
+ * (joined display columns + last-run status), newest-first. When `agentSlug` is
+ * given, scopes to that agent (the §5.7.1 agent-page filter). Returns `[]`, never
+ * null (EC-17).
+ */
+export async function getSchedules(
+  client: SupabaseClient,
+  agentSlug?: string,
+): Promise<VScheduleRow[]> {
+  let query = client.from("v_schedules").select("*").order("created_at", { ascending: false });
+  if (agentSlug) {
+    query = query.eq("agent_slug", agentSlug);
+  }
+  const result = await query;
+  return unwrap<VScheduleRow[]>("getSchedules", result) ?? [];
+}
+
+/**
+ * S-164 (#276) — the count of schedules bound to an agent, for the agent-page
+ * scheduled indicator (SD-UI-5). Head-count query (no rows transferred).
+ */
+export async function getScheduleCountByAgent(
+  client: SupabaseClient,
+  agentId: string,
+): Promise<number> {
+  const result = await client
+    .from("schedules")
+    .select("id", { count: "exact", head: true })
+    .eq("agent_id", agentId);
+  if (result.error) {
+    throw new DatabaseError("getScheduleCountByAgent", result.error);
+  }
+  return result.count ?? 0;
+}
+
+/**
+ * S-161 (#273) — pause a schedule (operator action). Sets `state='paused'` and a
+ * manual `block_reason`; the due-tick skips paused schedules (G6). Idempotent.
+ */
+export async function pauseSchedule(client: SupabaseClient, scheduleId: string): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ state: "paused", block_reason: "manual_pause", blocked_at: new Date().toISOString() })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("pauseSchedule", result.error);
+  }
+}
+
+/**
+ * S-161 (#273) — resume a paused/auto-paused schedule. Clears the paused state,
+ * the block reason, and (critically) the consecutive-failure counter so a
+ * resumed auto-paused schedule starts fresh (G3). The next due-tick recomputes
+ * `next_run_at`. Idempotent.
+ */
+export async function resumeSchedule(client: SupabaseClient, scheduleId: string): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({
+      state: "active",
+      block_reason: null,
+      blocked_at: null,
+      consecutive_failures: 0,
+    })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("resumeSchedule", result.error);
+  }
+}
+
+/**
+ * S-161 (#273) — delete a schedule. The schedule's produced runs are preserved
+ * (the `runs`/`notifications` FKs are `on delete set null`, spec §2) — deleting a
+ * schedule never deletes history. Idempotent (a missing id is a no-op).
+ */
+export async function deleteSchedule(client: SupabaseClient, scheduleId: string): Promise<void> {
+  const result = await client.from("schedules").delete().eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("deleteSchedule", result.error);
+  }
+}
+
+/** The writable cadence + binding fields for a schedule create/edit (S-162). */
+export interface ScheduleWriteInput {
+  agentId: string;
+  repositoryId: string | null;
+  installationId: string | null;
+  name: string | null;
+  params: Record<string, unknown>;
+  cadenceKind: CadenceKind;
+  cadenceMinute: number | null;
+  cadenceHour: number | null;
+  cadenceWeekday: number | null;
+  cadenceIntervalHours: number | null;
+  cadenceCron: string | null;
+  timezone: string;
+  autoPauseThreshold: number;
+  notifyOnSuccess: boolean;
+}
+
+function toScheduleColumns(input: ScheduleWriteInput) {
+  return {
+    agent_id: input.agentId,
+    repository_id: input.repositoryId,
+    installation_id: input.installationId,
+    name: input.name,
+    params: input.params,
+    cadence_kind: input.cadenceKind,
+    cadence_minute: input.cadenceMinute,
+    cadence_hour: input.cadenceHour,
+    cadence_weekday: input.cadenceWeekday,
+    cadence_interval_hours: input.cadenceIntervalHours,
+    cadence_cron: input.cadenceCron,
+    timezone: input.timezone,
+    auto_pause_threshold: input.autoPauseThreshold,
+    notify_on_success: input.notifyOnSuccess,
+  };
+}
+
+/**
+ * S-162 (#274) — create a schedule. The due-tick computes `next_run_at` on its
+ * next pass; the row is inserted `active`. Returns the new id.
+ */
+export async function insertSchedule(
+  client: SupabaseClient,
+  input: ScheduleWriteInput,
+): Promise<string> {
+  const result = await client
+    .from("schedules")
+    .insert(toScheduleColumns(input))
+    .select("id")
+    .single();
+  if (result.error) {
+    throw new DatabaseError("insertSchedule", result.error);
+  }
+  return (result.data as { id: string }).id;
+}
+
+/**
+ * S-162 (#274) — edit a schedule's binding/cadence/guardrail fields. Does NOT
+ * touch `state`/`next_run_at`/counters (the tick owns the cursor; pause/resume
+ * own state). The next tick recomputes `next_run_at` from the new cadence.
+ */
+export async function updateSchedule(
+  client: SupabaseClient,
+  scheduleId: string,
+  input: ScheduleWriteInput,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ ...toScheduleColumns(input), next_run_at: null })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("updateSchedule", result.error);
+  }
+}
+
+/**
+ * S-162 (#274) — the dialog's "Next N runs" preview from the AUTHORITATIVE
+ * plpgsql math via the public wrapper (SD-T6). Returns ISO strings (possibly
+ * fewer than `count`, or empty when the cadence never fires). Never throws into
+ * the UI on a bad cadence — the caller treats an error as "no preview".
+ */
+export async function previewNextRuns(
+  client: SupabaseClient,
+  cadence: {
+    kind: CadenceKind;
+    minute: number | null;
+    hour: number | null;
+    weekday: number | null;
+    intervalHours: number | null;
+    cron: string | null;
+    timezone: string;
+  },
+  count = 3,
+): Promise<string[]> {
+  const result = await client.rpc("scheduler_preview_next_runs", {
+    p_kind: cadence.kind,
+    p_minute: cadence.minute,
+    p_hour: cadence.hour,
+    p_weekday: cadence.weekday,
+    p_interval_hours: cadence.intervalHours,
+    p_cron: cadence.cron,
+    p_timezone: cadence.timezone,
+    p_count: count,
+  });
+  if (result.error) {
+    throw new DatabaseError("previewNextRuns", result.error);
+  }
+  return (result.data as string[] | null) ?? [];
 }
