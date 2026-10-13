@@ -159,8 +159,17 @@ export function LiveLogViewer({
     if (closedReason === null) return;
     // Already refreshed once this mount → no retry, no second render.
     if (refreshedRef.current) return;
-    refreshedRef.current = true;
     const timer = setTimeout(() => {
+      // Set the once-flag at FIRE time, not schedule time. Under React
+      // StrictMode (and `next dev`) the effect mounts, is cleaned up, and
+      // re-mounts; a `router` identity change while the timer is pending has
+      // the same shape. Setting the flag at schedule time would let the
+      // cleanup clear the only timer and the re-run return early (flag already
+      // true), so the refresh would never fire. Setting it here means a
+      // cleanup-then-re-run re-schedules, and whichever timer survives sets the
+      // flag exactly once before refreshing — still exactly one refresh per
+      // mount, and still none if unmounted before 500ms (the cleanup clears it).
+      refreshedRef.current = true;
       router.refresh();
     }, 500);
     // Clear the timer on unmount so navigating away within 500ms does not

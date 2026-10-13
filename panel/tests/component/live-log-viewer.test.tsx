@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -594,6 +594,89 @@ describe("LiveLogViewer — refresh on terminal (#244, D-08)", () => {
     act(() => {
       latest().emit("closed", {});
     });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * StrictMode regression (#244, PR #256 planner review). `panel/next.config.ts`
+ * sets `reactStrictMode: true`, and the Playwright webServer runs `next dev`,
+ * where React mounts, cleans up, and re-mounts effects. The refresh effect
+ * depends on `[closedReason, router]`; `useRouter()` returns a fresh object each
+ * render, so any render while the 500ms timer is pending cleans up and re-runs
+ * the effect.
+ *
+ * On the BUGGY code the once-flag is set when the timer is SCHEDULED: the first
+ * run sets the flag and schedules; the cleanup clears the timer; the re-run
+ * sees the flag already true and returns early, so no timer exists and
+ * `router.refresh()` is NEVER called. The flag MUST be set inside the timeout
+ * callback (fire time) so a cleanup-then-re-run re-schedules and the timer
+ * fires exactly once.
+ *
+ * The test renders inside `<React.StrictMode>` and, after the terminal `closed`
+ * frame, forces an in-window render (a live `event`) so the effect cleans up and
+ * re-runs before the debounce elapses — the StrictMode mount/cleanup/re-mount
+ * cycle in miniature. It asserts exactly one refresh 500ms after `closed`.
+ */
+describe("LiveLogViewer — refresh on terminal under StrictMode (#244, PR #256)", () => {
+  const liveProps = {
+    runId: "r1",
+    initialLines: [line(1)],
+    initialStatus: "running" as const,
+    maxRuntimeSeconds: 900,
+    graceSeconds: 60,
+    startTimeoutSeconds: 300,
+    startedAtMs: Date.now(),
+    queuedAtMs: Date.now(),
+    eventSourceFactory: factory,
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it("calls router.refresh exactly once 500ms after closed, even with StrictMode double-invoke", () => {
+    render(
+      <StrictMode>
+        <LiveLogViewer {...liveProps} />
+      </StrictMode>,
+    );
+
+    // Terminal close schedules the 500ms refresh.
+    act(() => {
+      latest().emit("closed", { reason: "succeeded" });
+    });
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    // An in-window render (a late line) makes React clean up and re-run the
+    // refresh effect while the timer is still pending — the StrictMode
+    // mount→cleanup→re-mount cycle in miniature (and the "router identity
+    // changed while the timer is pending" case the review calls out). The
+    // cleanup clears the pending timer; the re-run must RE-schedule it (with
+    // the fix) rather than early-return on a prematurely-set once-flag.
+    act(() => {
+      latest().emit("event", {
+        id: 2,
+        seq: 2,
+        ts: "t",
+        level: "info",
+        message: "late-line",
+        step_id: null,
+      });
+    });
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    // 500ms after the (re-)scheduled timer, exactly one refresh fires. On the
+    // buggy schedule-time-flag code the re-run early-returns and NO timer
+    // exists, so this stays at zero.
     act(() => {
       vi.advanceTimersByTime(500);
     });
