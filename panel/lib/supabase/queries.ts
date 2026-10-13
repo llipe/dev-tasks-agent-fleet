@@ -876,22 +876,22 @@ export async function recordScheduleFired(
 }
 
 /**
- * Record a fire-time failure: increment the consecutive-failure counter and
- * stash the error. The G3 auto-pause transition (flip to `paused` + notify at
- * the threshold) is wired in S-157; this helper only moves the counter so that
- * story can build on a correct count.
+ * Record a fire-time failure: atomically increment the consecutive-failure
+ * counter and, when it crosses the per-schedule `auto_pause_threshold`, flip the
+ * schedule to `paused` and record exactly one `schedule_auto_paused`
+ * notification (G3, SD-G3 / AC6). The whole transition is a single plpgsql
+ * function (`public.scheduler_record_fire_failure`) so the increment + trip +
+ * notification cannot race into a double-notify.
  */
 export async function recordScheduleFireFailure(
   client: SupabaseClient,
   scheduleId: string,
   errorText: string,
 ): Promise<void> {
-  const current = await getScheduleById(client, scheduleId);
-  const next = (current?.consecutive_failures ?? 0) + 1;
-  const result = await client
-    .from("schedules")
-    .update({ consecutive_failures: next, last_fire_error: errorText })
-    .eq("id", scheduleId);
+  const result = await client.rpc("scheduler_record_fire_failure", {
+    p_schedule_id: scheduleId,
+    p_error: errorText,
+  });
   if (result.error) {
     throw new DatabaseError("recordScheduleFireFailure", result.error);
   }
