@@ -176,7 +176,7 @@ describe("AuditReportPanel — security-analyst shape (AC1)", () => {
 
   it("notes how many rows were cut when the payload exceeds MAX_ROWS", () => {
     const many = Array.from({ length: MAX_ROWS + 3 }, (_, i) => finding({ line_start: i }));
-    render(
+    const { container } = render(
       <AuditReportPanel
         title="Big"
         metadata={{
@@ -188,8 +188,9 @@ describe("AuditReportPanel — security-analyst shape (AC1)", () => {
       />,
     );
     expect(screen.getByText(/3 more not shown/)).toBeInTheDocument();
-    // header + MAX_ROWS rows
-    expect(screen.getAllByRole("row")).toHaveLength(MAX_ROWS + 1);
+    // MAX_ROWS finding rows (header is in <thead>, excluded). Count with a cheap
+    // `tbody tr` DOM query, not `getAllByRole`, to stay fast on a large DOM (#245).
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(MAX_ROWS);
   });
 });
 
@@ -351,8 +352,9 @@ describe("AuditReportPanel — findings disclosure (issue #245)", () => {
     expect(details).not.toHaveAttribute("open");
 
     // All 50 finding rows are in the DOM even while closed (native <details>
-    // keeps its children mounted; it only hides them with CSS).
-    expect(screen.getAllByRole("row")).toHaveLength(51); // header + 50
+    // keeps its children mounted; it only hides them with CSS). Count with a
+    // cheap `tbody tr` DOM query, not `getAllByRole`, for speed on 50 rows (#245).
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(50);
 
     // Toggling open reflects the native `open` attribute.
     details.open = true;
@@ -483,13 +485,18 @@ describe("AuditReportPanel — findings disclosure (issue #245)", () => {
     );
     const details = container.querySelector("details") as HTMLDetailsElement;
     expect(details).not.toHaveAttribute("open");
-    // header + MAX_ROWS rows only.
-    expect(screen.getAllByRole("row")).toHaveLength(MAX_ROWS + 1);
+    // MAX_ROWS finding rows only (header is in <thead>). Cheap `tbody tr` DOM
+    // query, not `getAllByRole`, to stay fast on the MAX_ROWS DOM (#245).
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(MAX_ROWS);
     expect(details.contains(screen.getByText(/100 more not shown/))).toBe(true);
   });
 });
 
 describe("AuditReportPanel — randomized tactics (seeded, no dependency)", () => {
+  // Explicit 20s timeout as a CI-margin backstop: the real fix is the cheap
+  // `tbody tr` row count below (see the `rows` assertion) — `getAllByRole`
+  // builds the full accessibility tree, which is pathologically slow on the
+  // MAX_ROWS / MAX_ROWS+50 jsdom DOMs under coverage instrumentation (#245).
   it("RT-1: default-open state and row count hold across random sizes (seed 245001)", () => {
     const seed = Number(process.env.TEST_SEED ?? 245001);
     const rand = mulberry32(seed);
@@ -519,13 +526,16 @@ describe("AuditReportPanel — randomized tactics (seeded, no dependency)", () =
           details?.hasAttribute("open") ?? false,
           `seed=${seed} iter=${iter} n=${n}: open=${rendered <= 10}`,
         ).toBe(shouldOpen);
-        // rendered rows in DOM = min(n, MAX_ROWS) (header excluded).
-        const rows = within(container).getAllByRole("row").length - 1;
+        // rendered rows in DOM = min(n, MAX_ROWS) (header excluded). Count with
+        // a cheap DOM query (`tbody tr`) rather than `getAllByRole("row")`:
+        // building the accessibility tree is very slow on the large (MAX_ROWS /
+        // MAX_ROWS+50) jsdom DOMs and times RT-1 out under CI coverage (#245).
+        const rows = container.querySelectorAll("tbody tr").length;
         expect(rows, `seed=${seed} iter=${iter} n=${n}: rows`).toBe(rendered);
       }
       unmount();
     });
-  });
+  }, 20_000);
 
   it("RT-2: untrusted strings never break the single details/summary (seed 245002)", () => {
     const seed = Number(process.env.TEST_SEED ?? 245002);
