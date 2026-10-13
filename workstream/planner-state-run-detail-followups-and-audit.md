@@ -20,7 +20,7 @@
 
 ## Current Position
 
-- Next story: none. Phase 5 (rollup audit, docs pass, consolidated PR)
+- Next story: none. Consolidated PR open, awaiting user review/merge; then #252 AC6 redeploy (infra-engineer), then the #217 run
 - Last merged PR: #256
 - Integration branch HEAD: b84fb0c
 
@@ -36,3 +36,4 @@
 - 2026-10-13: #255 merged (squash). Planner re-run 1178 passed. Observation: `<summary>` uses `display: flex`, which hides the native disclosure marker; verify the affordance in the AC2 manual check.
 - 2026-10-13: #256 review requested changes. The refresh once-flag was set at schedule time, so under StrictMode (`reactStrictMode: true`, E2E on `next dev`) cleanup + re-mount meant `router.refresh()` never fired. Fixed in 1a5b291 with a StrictMode regression test that was failing first.
 - 2026-10-13: #256 fix-up initially returned `verifier_audit: blocked` (developer skipped the re-audit). A narrow retry got `verifier_audit: run` (High/None) on the current head. Merged (squash) as b84fb0c.
+- 2026-10-13: Phase 5. `make validate` on the integration branch is green (both branches). Verifier rollup: High / Major (R-01 CT-3 pre-existing, R-02 disclosure marker, R-03 semgrep live check), posted on #252. coverage_gate: PASS. technical-writer: drift-fixed (roadmap row → In progress).

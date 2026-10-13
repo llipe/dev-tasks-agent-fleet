@@ -54,7 +54,7 @@
   - [ ] 1.16 [agents/dependency-update, agents/security-analyst] **Post-merge, approval-gated:** hand off to `infra-engineer` to redeploy both agents with PyJWT 2.15.1 (`agentcore deploy -y`, per each agent's README "Deployment" section); the user approves before the deploy runs (D-10)
   - [ ] 1.17 Verify Acceptance Criterion AC6: a real invocation of each agent completes GitHub App auth and reaches a terminal status; record the new deployed-state hash and run ids on #252, then close #252 (D-10)
 
-- [ ] 2.0 Implement Issue #245 - https://github.com/llipe/dev-tasks-agent-fleet/issues/245: fix(panel): run detail becomes unscrollable when the summary grows
+- [x] 2.0 Implement Issue #245 - https://github.com/llipe/dev-tasks-agent-fleet/issues/245: fix(panel): run detail becomes unscrollable when the summary grows
 
   - [x] 2.1 [panel] Write failing component tests first in `AuditReportPanel.test.tsx`: 10 rows → `<details open>`; 11 rows → closed; 50 rows → closed by default, toggles open, `open` attribute reflects the state, all 50 rows are in the DOM once open; the summary line is inside `<summary>` and always visible; `<caption>` and `th[scope=col]` are preserved (D-02, D-07)
   - [x] 2.2 [panel] Add test cases: the zero-findings empty state and the generic fallback render with no disclosure; the "N more not shown." notice renders inside the open body
@@ -91,9 +91,9 @@
   - [x] 3.13 AC-to-test mapping: record AC1→E2E+manual, AC2–AC5→component/wiring, AC6→existing suites, in the PR body
 
 - [ ] 4.0 Batch close-out (planner)
-  - [ ] 4.1 [repo root] In `docs/roadmap.md`, set the "Issue batch: CI audit gates + run-detail follow-ups" row to `Done` (or `In progress` if 1.17's redeploy is still pending), fill Issues/PRs, rewrite What's missing, and set Last updated
-  - [ ] 4.2 Run the mandatory `verifier` audit over the batch; route drift findings to `product-engineer`
-  - [ ] 4.3 Record `coverage_gate` via `qa-engineer`
+  - [x] 4.1 [repo root] In `docs/roadmap.md`, set the "Issue batch: CI audit gates + run-detail follow-ups" row to `Done` (or `In progress` if 1.17's redeploy is still pending), fill Issues/PRs, rewrite What's missing, and set Last updated
+  - [x] 4.2 Run the mandatory `verifier` audit over the batch; route drift findings to `product-engineer`
+  - [x] 4.3 Record `coverage_gate` via `qa-engineer`
   - [ ] 4.4 Hand off to the #217 planner run (Next 16.4.0 upgrade), which starts immediately after this batch merges (D-09)
 
 ## Decisions Consumed
