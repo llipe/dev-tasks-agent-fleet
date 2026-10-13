@@ -1,284 +1,8 @@
 {
   "version": "0.16.4",
-  "pinned": "0.12.0",
-  "installed_at": "2026-10-13T13:04:48.537Z",
+  "pinned": "0.16.4",
+  "installed_at": "2026-10-13T17:26:46.384Z",
   "files": [
-    {
-      "path": ".kiro/agents/developer.md",
-      "profile": "kiro",
-      "sha256": "4f74fc0408deb598c0669bec520a7999c59e6aa1dd465db1275a11a48314a2b8",
-      "origin_sha256": "4f74fc0408deb598c0669bec520a7999c59e6aa1dd465db1275a11a48314a2b8"
-    },
-    {
-      "path": ".kiro/agents/github-ops.md",
-      "profile": "kiro",
-      "sha256": "b47ae478105f0c0af55bd613679ceb03eef00375a9f3a9b35d2eacb426df9e36",
-      "origin_sha256": "b47ae478105f0c0af55bd613679ceb03eef00375a9f3a9b35d2eacb426df9e36"
-    },
-    {
-      "path": ".kiro/agents/housekeeping.md",
-      "profile": "kiro",
-      "sha256": "cafc3935800aa0fa7b2ac8d47ca33d5083d9d13ef4cca1a1b2d20d6242ef78df",
-      "origin_sha256": "cafc3935800aa0fa7b2ac8d47ca33d5083d9d13ef4cca1a1b2d20d6242ef78df"
-    },
-    {
-      "path": ".kiro/agents/planner.md",
-      "profile": "kiro",
-      "sha256": "d7d0c38b2808941f2579b405e38e02189dd7cec42c0fca50d5d828f62ea6b2a0",
-      "origin_sha256": "d7d0c38b2808941f2579b405e38e02189dd7cec42c0fca50d5d828f62ea6b2a0"
-    },
-    {
-      "path": ".kiro/agents/product-engineer.md",
-      "profile": "kiro",
-      "sha256": "e8b72aaa517808abdcf2efc9eb07ddf714a6ae3dcdabcd3535f363f757b4fe5e",
-      "origin_sha256": "e8b72aaa517808abdcf2efc9eb07ddf714a6ae3dcdabcd3535f363f757b4fe5e"
-    },
-    {
-      "path": ".kiro/agents/qa-engineer.md",
-      "profile": "kiro",
-      "sha256": "3ae169591a4bf18d824b93a67f2ef25f931e9b464a82707240ae9edfe092bc05",
-      "origin_sha256": "3ae169591a4bf18d824b93a67f2ef25f931e9b464a82707240ae9edfe092bc05"
-    },
-    {
-      "path": ".kiro/agents/researcher.md",
-      "profile": "kiro",
-      "sha256": "492318f51717ad3ff0a32ee43888de93faf3d5d9a91cbc0ae17c05e240c1730a",
-      "origin_sha256": "492318f51717ad3ff0a32ee43888de93faf3d5d9a91cbc0ae17c05e240c1730a"
-    },
-    {
-      "path": ".kiro/agents/technical-writer.md",
-      "profile": "kiro",
-      "sha256": "2cbad292592c11ffaf071e4a607ab27a1ddb61102e14420470a49cacc23ecf22",
-      "origin_sha256": "2cbad292592c11ffaf071e4a607ab27a1ddb61102e14420470a49cacc23ecf22"
-    },
-    {
-      "path": ".kiro/agents/ux-engineer.md",
-      "profile": "kiro",
-      "sha256": "f6c56e2e0580117bde14cd5f4703b94642273ff3f6e8fece82c48967933f7dfe",
-      "origin_sha256": "f6c56e2e0580117bde14cd5f4703b94642273ff3f6e8fece82c48967933f7dfe"
-    },
-    {
-      "path": ".kiro/agents/verifier.md",
-      "profile": "kiro",
-      "sha256": "448d110be507a51696c9c7b43f9ba51ad6353d541be0a430b67d5ae3cce8a6c3",
-      "origin_sha256": "448d110be507a51696c9c7b43f9ba51ad6353d541be0a430b67d5ae3cce8a6c3"
-    },
-    {
-      "path": ".kiro/skills/activity-codebase-research/SKILL.md",
-      "profile": "kiro",
-      "sha256": "473d72b08880e1fbab91982b5bba9e95d9689d0186e9a535b15554d1cb57afd5",
-      "origin_sha256": "473d72b08880e1fbab91982b5bba9e95d9689d0186e9a535b15554d1cb57afd5"
-    },
-    {
-      "path": ".kiro/skills/activity-contract-test-design/SKILL.md",
-      "profile": "kiro",
-      "sha256": "ecce8fc024425f89a29b6b451474b539ca0f398e8704baf9cff9ba1bd7f3534f",
-      "origin_sha256": "ecce8fc024425f89a29b6b451474b539ca0f398e8704baf9cff9ba1bd7f3534f"
-    },
-    {
-      "path": ".kiro/skills/activity-contract-validation/SKILL.md",
-      "profile": "kiro",
-      "sha256": "b9d071faa26b931dbcbafd6ea6724f5066d68cca98c429cf4c907447c4429a2d",
-      "origin_sha256": "b9d071faa26b931dbcbafd6ea6724f5066d68cca98c429cf4c907447c4429a2d"
-    },
-    {
-      "path": ".kiro/skills/activity-coverage-gap-analysis/SKILL.md",
-      "profile": "kiro",
-      "sha256": "0c8542c5217a13f620f240c6df052631869129cf5e4a924fabc4811e8a11709a",
-      "origin_sha256": "0c8542c5217a13f620f240c6df052631869129cf5e4a924fabc4811e8a11709a"
-    },
-    {
-      "path": ".kiro/skills/activity-drift-reconciliation/SKILL.md",
-      "profile": "kiro",
-      "sha256": "7d60a397d8768aaa5af50f6fb27f11e2795e90e048a7902f501f81a954a0d021",
-      "origin_sha256": "7d60a397d8768aaa5af50f6fb27f11e2795e90e048a7902f501f81a954a0d021"
-    },
-    {
-      "path": ".kiro/skills/activity-e2e-test-design/SKILL.md",
-      "profile": "kiro",
-      "sha256": "d0ab60a259ec86fe5018a082ad6d48852902f4dfb74777f6ca238b1757c07ad0",
-      "origin_sha256": "d0ab60a259ec86fe5018a082ad6d48852902f4dfb74777f6ca238b1757c07ad0"
-    },
-    {
-      "path": ".kiro/skills/activity-e2e-test-implementation/SKILL.md",
-      "profile": "kiro",
-      "sha256": "ce65e8160a6e1f484b7f69123accdbc61a7ae44c19d6bc5977722b75257d79ca",
-      "origin_sha256": "ce65e8160a6e1f484b7f69123accdbc61a7ae44c19d6bc5977722b75257d79ca"
-    },
-    {
-      "path": ".kiro/skills/activity-edge-case-refinement/SKILL.md",
-      "profile": "kiro",
-      "sha256": "b3cbf021b8408cce87a2b151ff2c8d9d7c86a48fde569edf4dcaf219729632e4",
-      "origin_sha256": "b3cbf021b8408cce87a2b151ff2c8d9d7c86a48fde569edf4dcaf219729632e4"
-    },
-    {
-      "path": ".kiro/skills/activity-generate-spec/SKILL.md",
-      "profile": "kiro",
-      "sha256": "b292dd8cc330ea179cd5a258e08f3215eee3394f70a54c303e74b28ef625cb70",
-      "origin_sha256": "b292dd8cc330ea179cd5a258e08f3215eee3394f70a54c303e74b28ef625cb70"
-    },
-    {
-      "path": ".kiro/skills/activity-generate-stories/SKILL.md",
-      "profile": "kiro",
-      "sha256": "f960420c335b0af2029ba1d7c9fac0373da3444b11fffc17dc7fe876bd693a75",
-      "origin_sha256": "f960420c335b0af2029ba1d7c9fac0373da3444b11fffc17dc7fe876bd693a75"
-    },
-    {
-      "path": ".kiro/skills/activity-init/SKILL.md",
-      "profile": "kiro",
-      "sha256": "076e666c3768bd7f4aabad7e93c39f0a3981526384dc601a3ce73bdac110fdb7",
-      "origin_sha256": "076e666c3768bd7f4aabad7e93c39f0a3981526384dc601a3ce73bdac110fdb7"
-    },
-    {
-      "path": ".kiro/skills/activity-integration-test-implementation/SKILL.md",
-      "profile": "kiro",
-      "sha256": "0d8c1fd481e7016659357f53df2f022f36460db5ce46dc1d6673812a7a2457ba",
-      "origin_sha256": "0d8c1fd481e7016659357f53df2f022f36460db5ce46dc1d6673812a7a2457ba"
-    },
-    {
-      "path": ".kiro/skills/activity-publish-github/SKILL.md",
-      "profile": "kiro",
-      "sha256": "6887b0a4e73a40c5669f8c3a09ef47749ca05796474836b6c1321bc8cecf1ee6",
-      "origin_sha256": "6887b0a4e73a40c5669f8c3a09ef47749ca05796474836b6c1321bc8cecf1ee6"
-    },
-    {
-      "path": ".kiro/skills/activity-random-test-tactics/SKILL.md",
-      "profile": "kiro",
-      "sha256": "f202d150ec0adf3caf16f15ec275e8c56b18792e461b0e51c651f964372c706b",
-      "origin_sha256": "f202d150ec0adf3caf16f15ec275e8c56b18792e461b0e51c651f964372c706b"
-    },
-    {
-      "path": ".kiro/skills/activity-refine/SKILL.md",
-      "profile": "kiro",
-      "sha256": "82087e5ce60ecf8c84aa8779c97568f6aa3a4b9ceeba7868bb2719dbdc2e8aee",
-      "origin_sha256": "82087e5ce60ecf8c84aa8779c97568f6aa3a4b9ceeba7868bb2719dbdc2e8aee"
-    },
-    {
-      "path": ".kiro/skills/activity-test-implementation/SKILL.md",
-      "profile": "kiro",
-      "sha256": "b6d727b0cd9e3e3299b1b516fcb9ed74d346ec0d1fe1250e0a82c940f2578ae2",
-      "origin_sha256": "b6d727b0cd9e3e3299b1b516fcb9ed74d346ec0d1fe1250e0a82c940f2578ae2"
-    },
-    {
-      "path": ".kiro/skills/activity-test-standards/SKILL.md",
-      "profile": "kiro",
-      "sha256": "bbf4aee046b8dde53b0b1b85c9e35fdaa3854784bb89e0e73df6708e1ac78032",
-      "origin_sha256": "bbf4aee046b8dde53b0b1b85c9e35fdaa3854784bb89e0e73df6708e1ac78032"
-    },
-    {
-      "path": ".kiro/skills/git-ops/SKILL.md",
-      "profile": "kiro",
-      "sha256": "01342a6d920cbd6240883d1b88382cb87a4690801ae32703c3c689ea4a351520",
-      "origin_sha256": "01342a6d920cbd6240883d1b88382cb87a4690801ae32703c3c689ea4a351520"
-    },
-    {
-      "path": ".kiro/skills/memo-cli-usage/REFERENCE.md",
-      "profile": "kiro",
-      "sha256": "04c17fcc1f001227a2a205ef2994954a2e6d75f948df90ac46ff9b0b44ccc541",
-      "origin_sha256": "04c17fcc1f001227a2a205ef2994954a2e6d75f948df90ac46ff9b0b44ccc541"
-    },
-    {
-      "path": ".kiro/skills/memo-cli-usage/SKILL.md",
-      "profile": "kiro",
-      "sha256": "9805de894c2c712be7fd90fa645e80095b92e06950954ab4d56a082abc3ad25c",
-      "origin_sha256": "9805de894c2c712be7fd90fa645e80095b92e06950954ab4d56a082abc3ad25c"
-    },
-    {
-      "path": ".kiro/skills/ux-scaffold/SKILL.md",
-      "profile": "kiro",
-      "sha256": "7acba65f872d9a15a4273ec07e26aad6c993d5eb0eaff49e55a547920bdb5fe2",
-      "origin_sha256": "7acba65f872d9a15a4273ec07e26aad6c993d5eb0eaff49e55a547920bdb5fe2"
-    },
-    {
-      "path": ".kiro/skills/ux-scaffold/scripts/scaffold-full.sh",
-      "profile": "kiro",
-      "sha256": "ec9453fd592870a8a76b7b0b890b97b1efed30035c17a9284ad4725ec8d4e452",
-      "origin_sha256": "ec9453fd592870a8a76b7b0b890b97b1efed30035c17a9284ad4725ec8d4e452"
-    },
-    {
-      "path": ".kiro/skills/ux-scaffold/scripts/scaffold-lite.sh",
-      "profile": "kiro",
-      "sha256": "fa5c6e67ef94cea6d892af8e78f7231ac7863804f845a61bf4230ed8632d0e70",
-      "origin_sha256": "fa5c6e67ef94cea6d892af8e78f7231ac7863804f845a61bf4230ed8632d0e70"
-    },
-    {
-      "path": ".kiro/skills/ux-theme-gen/SKILL.md",
-      "profile": "kiro",
-      "sha256": "57e20e92f3517f06008215a1e197178ffcdaf03767f757ff3e43e4fef1f441f6",
-      "origin_sha256": "57e20e92f3517f06008215a1e197178ffcdaf03767f757ff3e43e4fef1f441f6"
-    },
-    {
-      "path": ".kiro/steering/git-guard-notice.md",
-      "profile": "kiro",
-      "sha256": "197448c4a3c62578f8ac4660236c28cf766121202f36ed99fbba15cdf8a35938",
-      "origin_sha256": "197448c4a3c62578f8ac4660236c28cf766121202f36ed99fbba15cdf8a35938"
-    },
-    {
-      "path": ".kiro/steering/implement.md",
-      "profile": "kiro",
-      "sha256": "97f72ed7fc39b0c6691b01a4c9b010272c5aa3acace3c1ab0a69d2f186773afa",
-      "origin_sha256": "97f72ed7fc39b0c6691b01a4c9b010272c5aa3acace3c1ab0a69d2f186773afa"
-    },
-    {
-      "path": ".kiro/steering/nextjs-pages-components.md",
-      "profile": "kiro",
-      "sha256": "3b1443526767824882441eac7be6f3c53c51c330a622654ad2edd9c0be9d2aa0",
-      "origin_sha256": "3b1443526767824882441eac7be6f3c53c51c330a622654ad2edd9c0be9d2aa0"
-    },
-    {
-      "path": ".kiro/steering/plan.md",
-      "profile": "kiro",
-      "sha256": "e1815fe21acf4cc4ea97175404d8ef1e9bec19f4f0fef54f15ff63c3867d024b",
-      "origin_sha256": "e1815fe21acf4cc4ea97175404d8ef1e9bec19f4f0fef54f15ff63c3867d024b"
-    },
-    {
-      "path": ".kiro/hooks/git-guard.json",
-      "profile": "kiro",
-      "sha256": "a0568ac84ad691abca9bed197033d3edf5a895f29f0c1255a186ca883306b9af",
-      "origin_sha256": "a0568ac84ad691abca9bed197033d3edf5a895f29f0c1255a186ca883306b9af"
-    },
-    {
-      "path": ".kiro/hooks/scripts/branch-guard.sh",
-      "profile": "kiro",
-      "sha256": "30f2e980b2cc3cf1fafdefaeee820e5636fb26c53796f906705d9a053484d14d",
-      "origin_sha256": "30f2e980b2cc3cf1fafdefaeee820e5636fb26c53796f906705d9a053484d14d"
-    },
-    {
-      "path": ".kiro/hooks/scripts/git-guard.sh",
-      "profile": "kiro",
-      "sha256": "3be1178f6cf4765fd3f202517f3a9ace0acbe93018eb787b79c2c8186f711831",
-      "origin_sha256": "3be1178f6cf4765fd3f202517f3a9ace0acbe93018eb787b79c2c8186f711831"
-    },
-    {
-      "path": ".kiro/agents/infra-engineer.md",
-      "profile": "kiro",
-      "sha256": "3068140c7e10b622d8a089aa2e551c906a4a99fb861d21dd0d0cf09ead333561",
-      "origin_sha256": "3068140c7e10b622d8a089aa2e551c906a4a99fb861d21dd0d0cf09ead333561"
-    },
-    {
-      "path": ".kiro/skills/aws-ops/SKILL.md",
-      "profile": "kiro",
-      "sha256": "803bf70c9de56d00538770b38310a1f5afe55f344d8bd595f575abee3bd69df3",
-      "origin_sha256": "803bf70c9de56d00538770b38310a1f5afe55f344d8bd595f575abee3bd69df3"
-    },
-    {
-      "path": ".kiro/skills/deploy-ops/SKILL.md",
-      "profile": "kiro",
-      "sha256": "8948ecd057a2827c2f02f5cf4c9dd710e61160cce9e5d6b12cd52c2b38e45cfe",
-      "origin_sha256": "8948ecd057a2827c2f02f5cf4c9dd710e61160cce9e5d6b12cd52c2b38e45cfe"
-    },
-    {
-      "path": ".kiro/skills/fly-ops/SKILL.md",
-      "profile": "kiro",
-      "sha256": "44a21eb30d3c6a21e346967508db7dbda923c583a5d2e333452713ead19a7347",
-      "origin_sha256": "44a21eb30d3c6a21e346967508db7dbda923c583a5d2e333452713ead19a7347"
-    },
-    {
-      "path": ".kiro/skills/supabase-ops/SKILL.md",
-      "profile": "kiro",
-      "sha256": "9f183494b14c3da63ffcd9a63897ee53fe2813f7829493350167e2fc21f141c4",
-      "origin_sha256": "9f183494b14c3da63ffcd9a63897ee53fe2813f7829493350167e2fc21f141c4"
-    },
     {
       "path": ".claude/agents/developer.md",
       "profile": "claude",
@@ -586,18 +310,6 @@
       "origin_sha256": "bcc85d2a327b6c3d3a74430d104f5341d2907706cd3033c6d2816b4bbf3372f2"
     },
     {
-      "path": "DESIGN.md",
-      "profile": "root",
-      "sha256": "f989ab8d5a37345aa6cc179a09f38ca1a17480144e2c55f5fa7c634a61a3a00a",
-      "origin_sha256": "f989ab8d5a37345aa6cc179a09f38ca1a17480144e2c55f5fa7c634a61a3a00a"
-    },
-    {
-      "path": "TESTING.md",
-      "profile": "root",
-      "sha256": "6e7d169bd96bc936194efd9ce32ba6ec566cb388d372cb3972806bf7b74ef081",
-      "origin_sha256": "6e7d169bd96bc936194efd9ce32ba6ec566cb388d372cb3972806bf7b74ef081"
-    },
-    {
       "path": ".claude/skills/activity-grill/SKILL.md",
       "profile": "claude",
       "sha256": "234b6127cfcddc3904a20539ac519b83a34b1b91af42d491edfec6c3167a0318",
@@ -610,10 +322,292 @@
       "origin_sha256": "1de5e0760d7a6a21b444d6da8f5fd432eb678d14078215e8a42577473f857293"
     },
     {
+      "path": ".kiro/agents/developer.md",
+      "profile": "kiro",
+      "sha256": "4f74fc0408deb598c0669bec520a7999c59e6aa1dd465db1275a11a48314a2b8",
+      "origin_sha256": "4f74fc0408deb598c0669bec520a7999c59e6aa1dd465db1275a11a48314a2b8"
+    },
+    {
+      "path": ".kiro/agents/github-ops.md",
+      "profile": "kiro",
+      "sha256": "b47ae478105f0c0af55bd613679ceb03eef00375a9f3a9b35d2eacb426df9e36",
+      "origin_sha256": "b47ae478105f0c0af55bd613679ceb03eef00375a9f3a9b35d2eacb426df9e36"
+    },
+    {
+      "path": ".kiro/agents/housekeeping.md",
+      "profile": "kiro",
+      "sha256": "cafc3935800aa0fa7b2ac8d47ca33d5083d9d13ef4cca1a1b2d20d6242ef78df",
+      "origin_sha256": "cafc3935800aa0fa7b2ac8d47ca33d5083d9d13ef4cca1a1b2d20d6242ef78df"
+    },
+    {
+      "path": ".kiro/agents/infra-engineer.md",
+      "profile": "kiro",
+      "sha256": "3068140c7e10b622d8a089aa2e551c906a4a99fb861d21dd0d0cf09ead333561",
+      "origin_sha256": "3068140c7e10b622d8a089aa2e551c906a4a99fb861d21dd0d0cf09ead333561"
+    },
+    {
+      "path": ".kiro/agents/planner.md",
+      "profile": "kiro",
+      "sha256": "d7d0c38b2808941f2579b405e38e02189dd7cec42c0fca50d5d828f62ea6b2a0",
+      "origin_sha256": "d7d0c38b2808941f2579b405e38e02189dd7cec42c0fca50d5d828f62ea6b2a0"
+    },
+    {
+      "path": ".kiro/agents/product-engineer.md",
+      "profile": "kiro",
+      "sha256": "e8b72aaa517808abdcf2efc9eb07ddf714a6ae3dcdabcd3535f363f757b4fe5e",
+      "origin_sha256": "e8b72aaa517808abdcf2efc9eb07ddf714a6ae3dcdabcd3535f363f757b4fe5e"
+    },
+    {
+      "path": ".kiro/agents/qa-engineer.md",
+      "profile": "kiro",
+      "sha256": "3ae169591a4bf18d824b93a67f2ef25f931e9b464a82707240ae9edfe092bc05",
+      "origin_sha256": "3ae169591a4bf18d824b93a67f2ef25f931e9b464a82707240ae9edfe092bc05"
+    },
+    {
+      "path": ".kiro/agents/researcher.md",
+      "profile": "kiro",
+      "sha256": "492318f51717ad3ff0a32ee43888de93faf3d5d9a91cbc0ae17c05e240c1730a",
+      "origin_sha256": "492318f51717ad3ff0a32ee43888de93faf3d5d9a91cbc0ae17c05e240c1730a"
+    },
+    {
+      "path": ".kiro/agents/technical-writer.md",
+      "profile": "kiro",
+      "sha256": "2cbad292592c11ffaf071e4a607ab27a1ddb61102e14420470a49cacc23ecf22",
+      "origin_sha256": "2cbad292592c11ffaf071e4a607ab27a1ddb61102e14420470a49cacc23ecf22"
+    },
+    {
+      "path": ".kiro/agents/ux-engineer.md",
+      "profile": "kiro",
+      "sha256": "f6c56e2e0580117bde14cd5f4703b94642273ff3f6e8fece82c48967933f7dfe",
+      "origin_sha256": "f6c56e2e0580117bde14cd5f4703b94642273ff3f6e8fece82c48967933f7dfe"
+    },
+    {
+      "path": ".kiro/agents/verifier.md",
+      "profile": "kiro",
+      "sha256": "448d110be507a51696c9c7b43f9ba51ad6353d541be0a430b67d5ae3cce8a6c3",
+      "origin_sha256": "448d110be507a51696c9c7b43f9ba51ad6353d541be0a430b67d5ae3cce8a6c3"
+    },
+    {
+      "path": ".kiro/skills/activity-codebase-research/SKILL.md",
+      "profile": "kiro",
+      "sha256": "473d72b08880e1fbab91982b5bba9e95d9689d0186e9a535b15554d1cb57afd5",
+      "origin_sha256": "473d72b08880e1fbab91982b5bba9e95d9689d0186e9a535b15554d1cb57afd5"
+    },
+    {
+      "path": ".kiro/skills/activity-contract-test-design/SKILL.md",
+      "profile": "kiro",
+      "sha256": "ecce8fc024425f89a29b6b451474b539ca0f398e8704baf9cff9ba1bd7f3534f",
+      "origin_sha256": "ecce8fc024425f89a29b6b451474b539ca0f398e8704baf9cff9ba1bd7f3534f"
+    },
+    {
+      "path": ".kiro/skills/activity-coverage-gap-analysis/SKILL.md",
+      "profile": "kiro",
+      "sha256": "0c8542c5217a13f620f240c6df052631869129cf5e4a924fabc4811e8a11709a",
+      "origin_sha256": "0c8542c5217a13f620f240c6df052631869129cf5e4a924fabc4811e8a11709a"
+    },
+    {
+      "path": ".kiro/skills/activity-drift-reconciliation/SKILL.md",
+      "profile": "kiro",
+      "sha256": "7d60a397d8768aaa5af50f6fb27f11e2795e90e048a7902f501f81a954a0d021",
+      "origin_sha256": "7d60a397d8768aaa5af50f6fb27f11e2795e90e048a7902f501f81a954a0d021"
+    },
+    {
+      "path": ".kiro/skills/activity-e2e-test-design/SKILL.md",
+      "profile": "kiro",
+      "sha256": "d0ab60a259ec86fe5018a082ad6d48852902f4dfb74777f6ca238b1757c07ad0",
+      "origin_sha256": "d0ab60a259ec86fe5018a082ad6d48852902f4dfb74777f6ca238b1757c07ad0"
+    },
+    {
+      "path": ".kiro/skills/activity-e2e-test-implementation/SKILL.md",
+      "profile": "kiro",
+      "sha256": "ce65e8160a6e1f484b7f69123accdbc61a7ae44c19d6bc5977722b75257d79ca",
+      "origin_sha256": "ce65e8160a6e1f484b7f69123accdbc61a7ae44c19d6bc5977722b75257d79ca"
+    },
+    {
+      "path": ".kiro/skills/activity-edge-case-refinement/SKILL.md",
+      "profile": "kiro",
+      "sha256": "b3cbf021b8408cce87a2b151ff2c8d9d7c86a48fde569edf4dcaf219729632e4",
+      "origin_sha256": "b3cbf021b8408cce87a2b151ff2c8d9d7c86a48fde569edf4dcaf219729632e4"
+    },
+    {
+      "path": ".kiro/skills/activity-generate-spec/SKILL.md",
+      "profile": "kiro",
+      "sha256": "b292dd8cc330ea179cd5a258e08f3215eee3394f70a54c303e74b28ef625cb70",
+      "origin_sha256": "b292dd8cc330ea179cd5a258e08f3215eee3394f70a54c303e74b28ef625cb70"
+    },
+    {
+      "path": ".kiro/skills/activity-generate-stories/SKILL.md",
+      "profile": "kiro",
+      "sha256": "f960420c335b0af2029ba1d7c9fac0373da3444b11fffc17dc7fe876bd693a75",
+      "origin_sha256": "f960420c335b0af2029ba1d7c9fac0373da3444b11fffc17dc7fe876bd693a75"
+    },
+    {
       "path": ".kiro/skills/activity-grill/SKILL.md",
       "profile": "kiro",
       "sha256": "234b6127cfcddc3904a20539ac519b83a34b1b91af42d491edfec6c3167a0318",
       "origin_sha256": "234b6127cfcddc3904a20539ac519b83a34b1b91af42d491edfec6c3167a0318"
+    },
+    {
+      "path": ".kiro/skills/activity-init/SKILL.md",
+      "profile": "kiro",
+      "sha256": "076e666c3768bd7f4aabad7e93c39f0a3981526384dc601a3ce73bdac110fdb7",
+      "origin_sha256": "076e666c3768bd7f4aabad7e93c39f0a3981526384dc601a3ce73bdac110fdb7"
+    },
+    {
+      "path": ".kiro/skills/activity-integration-test-implementation/SKILL.md",
+      "profile": "kiro",
+      "sha256": "0d8c1fd481e7016659357f53df2f022f36460db5ce46dc1d6673812a7a2457ba",
+      "origin_sha256": "0d8c1fd481e7016659357f53df2f022f36460db5ce46dc1d6673812a7a2457ba"
+    },
+    {
+      "path": ".kiro/skills/activity-publish-github/SKILL.md",
+      "profile": "kiro",
+      "sha256": "6887b0a4e73a40c5669f8c3a09ef47749ca05796474836b6c1321bc8cecf1ee6",
+      "origin_sha256": "6887b0a4e73a40c5669f8c3a09ef47749ca05796474836b6c1321bc8cecf1ee6"
+    },
+    {
+      "path": ".kiro/skills/activity-random-test-tactics/SKILL.md",
+      "profile": "kiro",
+      "sha256": "f202d150ec0adf3caf16f15ec275e8c56b18792e461b0e51c651f964372c706b",
+      "origin_sha256": "f202d150ec0adf3caf16f15ec275e8c56b18792e461b0e51c651f964372c706b"
+    },
+    {
+      "path": ".kiro/skills/activity-refine/SKILL.md",
+      "profile": "kiro",
+      "sha256": "82087e5ce60ecf8c84aa8779c97568f6aa3a4b9ceeba7868bb2719dbdc2e8aee",
+      "origin_sha256": "82087e5ce60ecf8c84aa8779c97568f6aa3a4b9ceeba7868bb2719dbdc2e8aee"
+    },
+    {
+      "path": ".kiro/skills/activity-test-implementation/SKILL.md",
+      "profile": "kiro",
+      "sha256": "b6d727b0cd9e3e3299b1b516fcb9ed74d346ec0d1fe1250e0a82c940f2578ae2",
+      "origin_sha256": "b6d727b0cd9e3e3299b1b516fcb9ed74d346ec0d1fe1250e0a82c940f2578ae2"
+    },
+    {
+      "path": ".kiro/skills/activity-test-standards/SKILL.md",
+      "profile": "kiro",
+      "sha256": "bbf4aee046b8dde53b0b1b85c9e35fdaa3854784bb89e0e73df6708e1ac78032",
+      "origin_sha256": "bbf4aee046b8dde53b0b1b85c9e35fdaa3854784bb89e0e73df6708e1ac78032"
+    },
+    {
+      "path": ".kiro/skills/aws-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "803bf70c9de56d00538770b38310a1f5afe55f344d8bd595f575abee3bd69df3",
+      "origin_sha256": "803bf70c9de56d00538770b38310a1f5afe55f344d8bd595f575abee3bd69df3"
+    },
+    {
+      "path": ".kiro/skills/deploy-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "8948ecd057a2827c2f02f5cf4c9dd710e61160cce9e5d6b12cd52c2b38e45cfe",
+      "origin_sha256": "8948ecd057a2827c2f02f5cf4c9dd710e61160cce9e5d6b12cd52c2b38e45cfe"
+    },
+    {
+      "path": ".kiro/skills/fly-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "44a21eb30d3c6a21e346967508db7dbda923c583a5d2e333452713ead19a7347",
+      "origin_sha256": "44a21eb30d3c6a21e346967508db7dbda923c583a5d2e333452713ead19a7347"
+    },
+    {
+      "path": ".kiro/skills/git-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "01342a6d920cbd6240883d1b88382cb87a4690801ae32703c3c689ea4a351520",
+      "origin_sha256": "01342a6d920cbd6240883d1b88382cb87a4690801ae32703c3c689ea4a351520"
+    },
+    {
+      "path": ".kiro/skills/memo-cli-usage/REFERENCE.md",
+      "profile": "kiro",
+      "sha256": "04c17fcc1f001227a2a205ef2994954a2e6d75f948df90ac46ff9b0b44ccc541",
+      "origin_sha256": "04c17fcc1f001227a2a205ef2994954a2e6d75f948df90ac46ff9b0b44ccc541"
+    },
+    {
+      "path": ".kiro/skills/memo-cli-usage/SKILL.md",
+      "profile": "kiro",
+      "sha256": "9805de894c2c712be7fd90fa645e80095b92e06950954ab4d56a082abc3ad25c",
+      "origin_sha256": "9805de894c2c712be7fd90fa645e80095b92e06950954ab4d56a082abc3ad25c"
+    },
+    {
+      "path": ".kiro/skills/supabase-ops/SKILL.md",
+      "profile": "kiro",
+      "sha256": "9f183494b14c3da63ffcd9a63897ee53fe2813f7829493350167e2fc21f141c4",
+      "origin_sha256": "9f183494b14c3da63ffcd9a63897ee53fe2813f7829493350167e2fc21f141c4"
+    },
+    {
+      "path": ".kiro/skills/ux-scaffold/SKILL.md",
+      "profile": "kiro",
+      "sha256": "7acba65f872d9a15a4273ec07e26aad6c993d5eb0eaff49e55a547920bdb5fe2",
+      "origin_sha256": "7acba65f872d9a15a4273ec07e26aad6c993d5eb0eaff49e55a547920bdb5fe2"
+    },
+    {
+      "path": ".kiro/skills/ux-scaffold/scripts/scaffold-full.sh",
+      "profile": "kiro",
+      "sha256": "ec9453fd592870a8a76b7b0b890b97b1efed30035c17a9284ad4725ec8d4e452",
+      "origin_sha256": "ec9453fd592870a8a76b7b0b890b97b1efed30035c17a9284ad4725ec8d4e452"
+    },
+    {
+      "path": ".kiro/skills/ux-scaffold/scripts/scaffold-lite.sh",
+      "profile": "kiro",
+      "sha256": "fa5c6e67ef94cea6d892af8e78f7231ac7863804f845a61bf4230ed8632d0e70",
+      "origin_sha256": "fa5c6e67ef94cea6d892af8e78f7231ac7863804f845a61bf4230ed8632d0e70"
+    },
+    {
+      "path": ".kiro/skills/ux-theme-gen/SKILL.md",
+      "profile": "kiro",
+      "sha256": "57e20e92f3517f06008215a1e197178ffcdaf03767f757ff3e43e4fef1f441f6",
+      "origin_sha256": "57e20e92f3517f06008215a1e197178ffcdaf03767f757ff3e43e4fef1f441f6"
+    },
+    {
+      "path": ".kiro/steering/git-guard-notice.md",
+      "profile": "kiro",
+      "sha256": "197448c4a3c62578f8ac4660236c28cf766121202f36ed99fbba15cdf8a35938",
+      "origin_sha256": "197448c4a3c62578f8ac4660236c28cf766121202f36ed99fbba15cdf8a35938"
+    },
+    {
+      "path": ".kiro/steering/implement.md",
+      "profile": "kiro",
+      "sha256": "97f72ed7fc39b0c6691b01a4c9b010272c5aa3acace3c1ab0a69d2f186773afa",
+      "origin_sha256": "97f72ed7fc39b0c6691b01a4c9b010272c5aa3acace3c1ab0a69d2f186773afa"
+    },
+    {
+      "path": ".kiro/steering/nextjs-pages-components.md",
+      "profile": "kiro",
+      "sha256": "3b1443526767824882441eac7be6f3c53c51c330a622654ad2edd9c0be9d2aa0",
+      "origin_sha256": "3b1443526767824882441eac7be6f3c53c51c330a622654ad2edd9c0be9d2aa0"
+    },
+    {
+      "path": ".kiro/steering/plan.md",
+      "profile": "kiro",
+      "sha256": "e1815fe21acf4cc4ea97175404d8ef1e9bec19f4f0fef54f15ff63c3867d024b",
+      "origin_sha256": "e1815fe21acf4cc4ea97175404d8ef1e9bec19f4f0fef54f15ff63c3867d024b"
+    },
+    {
+      "path": ".kiro/hooks/git-guard.json",
+      "profile": "kiro",
+      "sha256": "a0568ac84ad691abca9bed197033d3edf5a895f29f0c1255a186ca883306b9af",
+      "origin_sha256": "a0568ac84ad691abca9bed197033d3edf5a895f29f0c1255a186ca883306b9af"
+    },
+    {
+      "path": ".kiro/hooks/scripts/branch-guard.sh",
+      "profile": "kiro",
+      "sha256": "30f2e980b2cc3cf1fafdefaeee820e5636fb26c53796f906705d9a053484d14d",
+      "origin_sha256": "30f2e980b2cc3cf1fafdefaeee820e5636fb26c53796f906705d9a053484d14d"
+    },
+    {
+      "path": ".kiro/hooks/scripts/git-guard.sh",
+      "profile": "kiro",
+      "sha256": "3be1178f6cf4765fd3f202517f3a9ace0acbe93018eb787b79c2c8186f711831",
+      "origin_sha256": "3be1178f6cf4765fd3f202517f3a9ace0acbe93018eb787b79c2c8186f711831"
+    },
+    {
+      "path": "DESIGN.md",
+      "profile": "root",
+      "sha256": "f989ab8d5a37345aa6cc179a09f38ca1a17480144e2c55f5fa7c634a61a3a00a",
+      "origin_sha256": "f989ab8d5a37345aa6cc179a09f38ca1a17480144e2c55f5fa7c634a61a3a00a"
+    },
+    {
+      "path": "TESTING.md",
+      "profile": "root",
+      "sha256": "ffea0d474bef2b411149818131420e26a6007f0dd8c4637b2e27333a9f5fe3c9",
+      "origin_sha256": "ffea0d474bef2b411149818131420e26a6007f0dd8c4637b2e27333a9f5fe3c9"
     }
   ],
   "extraction": {}
