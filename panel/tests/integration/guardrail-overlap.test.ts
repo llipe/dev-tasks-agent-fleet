@@ -41,7 +41,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-155 G1 overlap", () => 
   afterEach(async () => {
     await withDb(async (c) => {
       for (const id of runIds.splice(0)) await c.query(`delete from runs where id=$1`, [id]);
-      for (const id of scheduleIds.splice(0)) await c.query(`delete from schedules where id=$1`, [id]);
+      for (const id of scheduleIds.splice(0))
+        await c.query(`delete from schedules where id=$1`, [id]);
     });
   });
 
@@ -76,7 +77,14 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-155 G1 overlap", () => 
          values ($1,$2,'0.1.0',$3,$4,'schedule','{}'::jsonb,$5::run_status,
                  now()-interval '${startedAgo}', now()-interval '${startedAgo}',
                  3600,120,300, $6)`,
-        [id, agentId, repoId, installationId, status, kind === "succeeded" ? "no_vulnerabilities" : null],
+        [
+          id,
+          agentId,
+          repoId,
+          installationId,
+          status,
+          kind === "succeeded" ? "no_vulnerabilities" : null,
+        ],
       ),
     );
     return id;
@@ -84,7 +92,9 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-155 G1 overlap", () => 
 
   async function fire(): Promise<number> {
     return withDb((c) =>
-      c.query<{ n: number }>(`select scheduler.fire_due_schedules() as n`).then((r) => r.rows[0]!.n),
+      c
+        .query<{ n: number }>(`select scheduler.fire_due_schedules() as n`)
+        .then((r) => r.rows[0]!.n),
     );
   }
   async function state(id: string) {
@@ -114,7 +124,10 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-155 G1 overlap", () => 
 
     // the run finishes
     await withDb((c) =>
-      c.query(`update runs set status='succeeded', outcome='no_vulnerabilities', finished_at=now() where id=$1`, [run]),
+      c.query(
+        `update runs set status='succeeded', outcome='no_vulnerabilities', finished_at=now() where id=$1`,
+        [run],
+      ),
     );
     const dispatched = await fire(); // should auto-clear + fire
     expect(dispatched).toBe(1);
