@@ -20,6 +20,7 @@ import type { RunStatus } from "@/lib/domain/status";
 import type {
   AgentRow,
   GithubInstallationRow,
+  NotificationRow,
   RepositoryRow,
   RunArtifactRow,
   RunEventRow,
@@ -922,5 +923,44 @@ export async function clearSchedulePrBlock(
     .eq("id", scheduleId);
   if (result.error) {
     throw new DatabaseError("clearSchedulePrBlock", result.error);
+  }
+}
+
+/**
+ * S-159 (#271) — the daily-digest selection (SD-N6). All notifications not yet
+ * emailed, oldest-first so the digest reads chronologically. An empty result
+ * means an empty window: the digest route returns 204 and sends nothing
+ * (SD-N7). Returns `[]`, never null (EC-17).
+ */
+export async function getUndeliveredNotifications(
+  client: SupabaseClient,
+): Promise<NotificationRow[]> {
+  const result = await client
+    .from("notifications")
+    .select("*")
+    .is("emailed_at", null)
+    .order("created_at", { ascending: true });
+  return unwrap<NotificationRow[]>("getUndeliveredNotifications", result) ?? [];
+}
+
+/**
+ * S-159 (#271) — mark exactly the digested rows as emailed (SD-N8). Called ONLY
+ * after SES confirms the send, so a send failure leaves `emailed_at` null and
+ * the window retries next day rather than dropping (R-S9). Idempotent over the
+ * id set.
+ */
+export async function markNotificationsEmailed(
+  client: SupabaseClient,
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const result = await client
+    .from("notifications")
+    .update({ emailed_at: new Date().toISOString() })
+    .in("id", ids as string[]);
+  if (result.error) {
+    throw new DatabaseError("markNotificationsEmailed", result.error);
   }
 }
