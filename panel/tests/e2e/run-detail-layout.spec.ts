@@ -40,7 +40,19 @@ function auditReport(n: number): Record<string, unknown> {
 }
 
 async function seedTerminalRunWithReport(n: number): Promise<string> {
-  const runId = await seedRun({ status: "succeeded", startedAgoSecs: 300, finishedAgoSecs: 10 });
+  // A succeeded run REQUIRES a non-null, valid run_outcome (DB
+  // chk_runs_terminal_outcome; now enforced by the seed spec's type). Pick the
+  // outcome the scenario models: a clean scan (zero findings) is `no_findings`
+  // (SC-245-3N), any run that carries findings is `needs_review`. These layout
+  // scenarios assert on the findings table / empty state, not the outcome tag,
+  // so the value only has to be valid and scenario-appropriate.
+  const outcome = n === 0 ? "no_findings" : "needs_review";
+  const runId = await seedRun({
+    status: "succeeded",
+    startedAgoSecs: 300,
+    finishedAgoSecs: 10,
+    outcome,
+  });
   await seedArtifact(runId, "audit_report", "Security scan findings", null, auditReport(n));
   return runId;
 }

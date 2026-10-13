@@ -96,8 +96,29 @@ export type RunStatus =
   | "timed_out"
   | "failed_to_start";
 
-export interface SeedRunSpec {
-  status: RunStatus;
+/**
+ * The exact `run_outcome` Postgres enum, as the local schema defines it
+ * (`supabase/migrations/20260902200101_initial_schema.sql` + the `no_findings`
+ * value added by `20260916194500_add_no_findings_run_outcome.sql`).
+ *
+ * Seed helpers type their `outcome` params against THIS union — not against
+ * `@/lib/supabase/types`'s `RunOutcome`, which is a hand-maintained app type
+ * that is currently missing `no_findings` and so would both reject a legitimate
+ * value and fail to catch an illegal one. Mirroring the enum here means an
+ * invalid literal (e.g. the old `"success"`) fails `typecheck` before a run
+ * ever hits the DB's `invalid input value for enum run_outcome` error, and a
+ * terminal `succeeded` run cannot be seeded without an explicit, valid outcome.
+ */
+export type RunOutcomeValue =
+  | "fixed"
+  | "partial"
+  | "no_vulnerabilities"
+  | "needs_review"
+  | "not_applicable"
+  | "no_findings";
+
+/** Fields shared by every seed spec, independent of the run's status. */
+interface SeedRunBase {
   /** started_at = now() - startedAgoSecs; null leaves started_at null. */
   startedAgoSecs?: number | null;
   /** queued_at = now() - queuedAgoSecs (default 60). */
@@ -106,10 +127,26 @@ export interface SeedRunSpec {
   maxRuntimeSeconds?: number;
   graceSeconds?: number;
   startTimeoutSeconds?: number;
-  outcome?: string | null;
   repositoryId?: string | null;
   errorMessage?: string | null;
 }
+
+/**
+ * A seed spec for a run.
+ *
+ * Modeled as a discriminated union on `status` so the DB's
+ * `chk_runs_terminal_outcome` check (`status = 'succeeded'` ⇒ `outcome` not
+ * null) is enforced by `typecheck`, not just at insert time: a `succeeded` run
+ * REQUIRES a non-null, valid `outcome`, while any other status leaves it
+ * optional (and nullable). `seedRun` therefore never silently derives a default
+ * outcome — the caller must state it explicitly for a terminal success.
+ */
+export type SeedRunSpec =
+  | (SeedRunBase & { status: "succeeded"; outcome: RunOutcomeValue })
+  | (SeedRunBase & {
+      status: Exclude<RunStatus, "succeeded">;
+      outcome?: RunOutcomeValue | null;
+    });
 
 /** Insert a run against the seeded agent with explicit clocks. Returns run id. */
 export async function seedRun(spec: SeedRunSpec): Promise<string> {
@@ -174,7 +211,7 @@ export async function seedEvent(
 export async function setRunTerminal(
   runId: string,
   status: Extract<RunStatus, "succeeded" | "failed" | "canceled" | "timed_out" | "failed_to_start">,
-  outcome: string | null = null,
+  outcome: RunOutcomeValue | null = null,
   finishedAgoSecs = 0,
 ): Promise<void> {
   await withDb(async (c) => {

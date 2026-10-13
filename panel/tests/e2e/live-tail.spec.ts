@@ -183,13 +183,17 @@ test.describe("live tail", () => {
     };
     await seedArtifact(runId, "pull_request", "Bump lodash", "https://github.com/llipe/x/pull/42");
     await seedArtifact(runId, "audit_report", "Security scan findings", null, auditMetadata);
-    await setRunTerminal(runId, "succeeded", "success");
+    // A succeeded run carrying an audit report WITH findings resolves to the
+    // `needs_review` outcome; the panel renders its tag as "NEEDS REVIEW"
+    // (lib/domain/run-row.ts → outcomeLabel). "success" is not a run_outcome
+    // enum value — the type now rejects it, matching the DB enum.
+    await setRunTerminal(runId, "succeeded", "needs_review");
 
     // Within 5s, WITHOUT reloading, the terminal summary appears: the succeeded
     // pill, the outcome tag, the Finished metadata (a real clock, not "—"), the
     // artifact pill, and the findings summary line.
     await expect(summary.getByText("succeeded")).toBeVisible({ timeout: 5_000 });
-    await expect(summary.getByText(/success/i)).toBeVisible({ timeout: 5_000 });
+    await expect(summary.getByText("NEEDS REVIEW")).toBeVisible({ timeout: 5_000 });
     const finished = summary.locator("dd").filter({ hasText: /:/ });
     await expect(finished.first()).toBeVisible({ timeout: 5_000 });
     await expect(summary.getByRole("link", { name: /bump lodash/i })).toBeVisible({
@@ -228,7 +232,8 @@ test.describe("live tail", () => {
     await expect(log.getByText(`${tag}-error`)).toBeVisible();
 
     // Drive terminal → the viewer swaps to the terminal LogViewer after refresh.
-    await setRunTerminal(runId, "succeeded", "success");
+    // `needs_review` is a valid run_outcome; "success" is not (type-rejected).
+    await setRunTerminal(runId, "succeeded", "needs_review");
     await expect(
       page.getByRole("region", { name: /run summary/i }).getByText("succeeded"),
     ).toBeVisible({ timeout: 5_000 });
