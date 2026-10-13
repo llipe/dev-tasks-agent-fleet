@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { AuditReportPanel } from "@/components/run-detail/AuditReportPanel";
 import { MAX_ROWS } from "@/lib/domain/audit-report";
@@ -573,5 +573,41 @@ describe("AuditReportPanel — randomized tactics (seeded, no dependency)", () =
       ).toBe(1);
       unmount();
     }
+  });
+});
+
+describe("AuditReportPanel — disclosure state across the #244 refresh (EC-245-7)", () => {
+  /**
+   * EC-245-7 pins the open/closed state of a >10-row disclosure after #244's
+   * `router.refresh()` re-renders the server tree. `router.refresh()` re-reads
+   * the Server Component output and RECONCILES it into the existing client
+   * tree (it does not force a full client remount of unchanged components).
+   *
+   * Because `AuditReportPanel` sets `open={rows.length <= 10}` server-side and
+   * that computed value does NOT change across the refresh (the finding count
+   * is unchanged), React does not re-write the native `open` attribute, so a
+   * user's manual toggle survives the reconcile. We model `router.refresh()`
+   * with `rerender(<same element, same props>)` — the identical reconcile path.
+   *
+   * Verdict recorded in the PR: the user-opened state is PRESERVED across the
+   * refresh (not reset to the server default).
+   */
+  it("preserves a user-opened >10-row disclosure across a server-tree reconcile", () => {
+    const metadata = reportWith(50);
+    const { container, rerender } = render(<AuditReportPanel title="x" metadata={metadata} />);
+
+    const details = container.querySelector("details") as HTMLDetailsElement;
+    // Default closed for >10 rendered rows.
+    expect(details.hasAttribute("open")).toBe(false);
+
+    // The user expands it to read the findings.
+    fireEvent.click(container.querySelector("summary") as HTMLElement);
+    expect(details.open).toBe(true);
+
+    // #244 refresh: the same server output reconciles in (same props).
+    rerender(<AuditReportPanel title="x" metadata={metadata} />);
+
+    // The open state is PRESERVED — the reconcile did not collapse it.
+    expect(container.querySelector("details")?.open).toBe(true);
   });
 });

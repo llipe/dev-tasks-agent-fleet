@@ -5,6 +5,14 @@ import { RunDetailLogSection } from "@/components/run-detail/RunDetailLogSection
 import type { StepPanelRow, LogLineView } from "@/lib/domain/run-detail";
 
 /**
+ * `next/navigation` is mocked because the live viewer (`LiveLogViewer`) now
+ * calls `useRouter()` for the #244 refresh-on-terminal effect.
+ */
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
+/**
  * Layer 2 (component) — RunDetailLogSection (Story S-145).
  *
  * The `"use client"` filter-state wrapper that owns `{ stepId, level }` and
@@ -143,5 +151,65 @@ describe("RunDetailLogSection — live run (LiveLogViewer)", () => {
       "run-log",
     );
     expect(screen.getByText("Checkout")).toBeInTheDocument();
+  });
+});
+
+describe("RunDetailLogSection — filter persists across the refresh viewer swap (#244 AC5, D-03)", () => {
+  const liveFactory = () =>
+    ({
+      addEventListener: () => {},
+      close: () => {},
+    }) as unknown as EventSource;
+
+  it("keeps the selected level filter applied after the live viewer swaps to the terminal LogViewer", () => {
+    const lines = [
+      line(1, "step-1", "info", "swap-info"),
+      line(2, "step-1", "error", "swap-error"),
+    ];
+
+    // 1) Live render (running run). The user selects "Errors only".
+    const { rerender } = render(
+      <RunDetailLogSection
+        steps={[stepRow({ id: "step-1" })]}
+        isLive={true}
+        liveLogViewerProps={{
+          runId: "r1",
+          initialLines: lines,
+          initialStatus: "running",
+          maxRuntimeSeconds: 900,
+          graceSeconds: 60,
+          startTimeoutSeconds: 300,
+          startedAtMs: Date.now(),
+          queuedAtMs: Date.now(),
+          eventSourceFactory: liveFactory,
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/log level/i), { target: { value: "error" } });
+    expect(screen.queryByText("swap-info")).toBeNull();
+    expect(screen.getByText("swap-error")).toBeInTheDocument();
+
+    // 2) router.refresh() re-reads the server tree: the run is now terminal, so
+    // the page passes isLive=false and the terminal LogViewer replaces the live
+    // one. RunDetailLogSection stays mounted at the same position, so its
+    // useState filter ({ level: "error" }) is PRESERVED (D-03).
+    rerender(
+      <RunDetailLogSection
+        steps={[stepRow({ id: "step-1" })]}
+        isLive={false}
+        logViewerProps={{
+          initialLines: lines,
+          hasEarlier: false,
+          oldestSeq: 1,
+          loadEarlier: vi.fn(async () => []),
+        }}
+      />,
+    );
+
+    // The filter is still "Errors only" — the info line stays hidden, the error
+    // line stays visible, with no re-selection by the user.
+    expect(screen.getByLabelText(/log level/i)).toHaveValue("error");
+    expect(screen.queryByText("swap-info")).toBeNull();
+    expect(screen.getByText("swap-error")).toBeInTheDocument();
   });
 });

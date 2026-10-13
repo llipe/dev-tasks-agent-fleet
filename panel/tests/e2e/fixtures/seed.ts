@@ -163,6 +163,33 @@ export async function seedEvent(
 }
 
 /**
+ * Drive an open run to a terminal state in place (issue #244): set its status,
+ * outcome, and `finished_at` so a page already open on the running run sees the
+ * terminal summary appear after the SSE `closed` frame triggers `router.refresh()`.
+ *
+ * `finishedAgoSecs` defaults to 0 (now). This updates the run row only; seed the
+ * artifacts separately with `seedArtifact` BEFORE calling this, so the refreshed
+ * server render reads them.
+ */
+export async function setRunTerminal(
+  runId: string,
+  status: Extract<RunStatus, "succeeded" | "failed" | "canceled" | "timed_out" | "failed_to_start">,
+  outcome: string | null = null,
+  finishedAgoSecs = 0,
+): Promise<void> {
+  await withDb(async (c) => {
+    await c.query(
+      `update runs
+         set status = $2::run_status,
+             outcome = $3::run_outcome,
+             finished_at = now() - make_interval(secs => $4::int)
+       where id = $1`,
+      [runId, status, outcome, finishedAgoSecs],
+    );
+  });
+}
+
+/**
  * Attach a run artifact (e.g. a pull_request link for Scenario 7, or an
  * `audit_report` carrying findings in `metadata` for the #245 layout spec).
  *
