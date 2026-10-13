@@ -14,15 +14,15 @@
 - `panel/components/run-detail/AuditReportPanel.tsx` - `<details>` disclosure
 - `panel/components/run-detail/AuditReportPanel.module.css` - disclosure styling, 40vh scroll cap
 - `panel/components/run-detail/RunDetailLogSection.module.css` - 240px `min-height` floor
-- `panel/components/run-detail/LiveLogViewer.tsx` - refresh-on-terminal effect (or mount point)
-- `panel/components/run-detail/RunRefreshOnTerminal.tsx` - optional new client component for the refresh effect
+- `panel/components/run-detail/LiveLogViewer.tsx` - refresh-on-terminal effect (CHOSEN mount point — reuses the existing `useRunStream` subscription; no second EventSource)
+- `panel/components/run-detail/RunRefreshOnTerminal.tsx` - NOT created (the effect lives in `LiveLogViewer` to avoid opening a second SSE stream)
 - `panel/lib/hooks/useRunStream.ts` - source of `closedReason` / `authStopped` (read only)
 - `panel/tests/component/AuditReportPanel.test.tsx` - disclosure tests
 - `panel/tests/component/RunDetailLogSection.test.tsx` - regression
 - `panel/tests/component/live-log-viewer.test.tsx` - refresh wiring tests
 - `panel/tests/component/run-detail-page-wiring.test.tsx` - already-terminal no-refresh test
 - `panel/tests/e2e/stale-and-artifact.spec.ts` / `panel/tests/e2e/live-tail.spec.ts` - E2E for the layout and refresh
-- `panel/tests/e2e/fixtures/seed.ts` - `seedArtifact` gains an optional `metadata` param (F-2)
+- `panel/tests/e2e/fixtures/seed.ts` - `seedArtifact` gains an optional `metadata` param (F-2); `setRunTerminal` added to drive a live run terminal in place (#244 E2E)
 - `panel/tests/e2e/fixtures/` - seeded 50-finding `audit_report` artifact
 - `agents/*/app/*/tests/` - real-library JWT round-trip test TC-252-3a (F-1)
 - `workstream/test-plan-issue-252-245-244.md` - verifier Design Mode plan (cited in every handoff)
@@ -74,21 +74,21 @@
   - [x] 2.15 Run Tests: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run test:e2e`, then `make validate` (E2E NOT RUN — Docker unavailable locally; runs on the consolidated PR CI)
   - [x] 2.16 AC-to-test mapping: record AC1→E2E, AC2→component+manual, AC3→component+E2E, AC4/AC5→component, AC6→DESIGN.md review, in the PR body
 
-- [ ] 3.0 Implement Issue #244 - https://github.com/llipe/dev-tasks-agent-fleet/issues/244: feat(panel): refresh run detail when a live run reaches a terminal state
+- [x] 3.0 Implement Issue #244 - https://github.com/llipe/dev-tasks-agent-fleet/issues/244: feat(panel): refresh run detail when a live run reaches a terminal state
 
-  - [ ] 3.1 [panel] Write failing wiring tests first (fake timers, mocked `EventSource`, `vi.mock("next/navigation")` following the `Sidebar.test.tsx` pattern): `closed` frame → `router.refresh` is called exactly once after 500ms; a second `closed` or a stream error/reconnect → no extra call; `authStopped` → no call; unmount before 500ms → no call (D-08)
-  - [ ] 3.2 [panel] Write a failing test in `run-detail-page-wiring.test.tsx`: an already-terminal render mounts no refresh effect and makes no `router.refresh` call
-  - [ ] 3.3 [panel] Write a failing test: the step/level filter selected in `RunDetailLogSection` is still applied after the live viewer is replaced by `LogViewer` (D-03)
-  - [ ] 3.4 [panel] Implement the refresh effect (in `LiveLogViewer` or a new `RunRefreshOnTerminal` client component mounted only on the live branch): trigger on `closedReason` becoming non-null, never on `authStopped`; a ref flag ensures one refresh per mount; a 500ms timer is cleared on unmount; no retry (D-08)
-  - [ ] 3.5 [panel] Add an E2E scenario on the local stack: open a running run, drive it to terminal with artifacts (including an `audit_report`), and assert that within 5s the status pill, outcome tag, `finished` metadata, artifact pills, and findings summary line appear without a reload. Assert the summary line, not table rows, because #245's disclosure may be closed
-  - [ ] 3.6 Verify Acceptance Criterion AC1: the summary updates within 5s of `closed` (E2E); manually watch a real `security-analyst` `audit_only` run to completion on the deployed panel
-  - [ ] 3.7 Verify Acceptance Criterion AC2: an already-terminal run makes no refresh call and no extra server render
-  - [ ] 3.8 Verify Acceptance Criterion AC3: at most one refresh per mount; errors, reconnects, and `authStopped` never trigger it
-  - [ ] 3.9 Verify Acceptance Criterion AC4: the wiring test covers once-only, already-terminal, and unmount-before-debounce
-  - [ ] 3.10 Verify Acceptance Criterion AC5: the filter state persists across the refresh
-  - [ ] 3.11 Verify Acceptance Criterion AC6: the existing `run-detail`, `live-log-viewer`, `use-run-stream`, `run-detail-page-wiring`, and `stream-route` tests pass
-  - [ ] 3.12 Run Tests: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run test:e2e`, then `make validate`
-  - [ ] 3.13 AC-to-test mapping: record AC1→E2E+manual, AC2–AC5→component/wiring, AC6→existing suites, in the PR body
+  - [x] 3.1 [panel] Write failing wiring tests first (fake timers, mocked `EventSource`, `vi.mock("next/navigation")` following the `Sidebar.test.tsx` pattern): `closed` frame → `router.refresh` is called exactly once after 500ms; a second `closed` or a stream error/reconnect → no extra call; `authStopped` → no call; unmount before 500ms → no call (D-08)
+  - [x] 3.2 [panel] Write a failing test in `run-detail-page-wiring.test.tsx`: an already-terminal render mounts no refresh effect and makes no `router.refresh` call
+  - [x] 3.3 [panel] Write a failing test: the step/level filter selected in `RunDetailLogSection` is still applied after the live viewer is replaced by `LogViewer` (D-03)
+  - [x] 3.4 [panel] Implement the refresh effect (in `LiveLogViewer` or a new `RunRefreshOnTerminal` client component mounted only on the live branch): trigger on `closedReason` becoming non-null, never on `authStopped`; a ref flag ensures one refresh per mount; a 500ms timer is cleared on unmount; no retry (D-08)
+  - [x] 3.5 [panel] Add an E2E scenario on the local stack: open a running run, drive it to terminal with artifacts (including an `audit_report`), and assert that within 5s the status pill, outcome tag, `finished` metadata, artifact pills, and findings summary line appear without a reload. Assert the summary line, not table rows, because #245's disclosure may be closed
+  - [x] 3.6 Verify Acceptance Criterion AC1: the summary updates within 5s of `closed` (E2E written; NOT RUN locally — Docker unavailable); manual watch of a real `security-analyst` `audit_only` run deferred to the deployed panel
+  - [x] 3.7 Verify Acceptance Criterion AC2: an already-terminal run makes no refresh call and no extra server render
+  - [x] 3.8 Verify Acceptance Criterion AC3: at most one refresh per mount; errors, reconnects, and `authStopped` never trigger it
+  - [x] 3.9 Verify Acceptance Criterion AC4: the wiring test covers once-only, already-terminal, and unmount-before-debounce
+  - [x] 3.10 Verify Acceptance Criterion AC5: the filter state persists across the refresh
+  - [x] 3.11 Verify Acceptance Criterion AC6: the existing `run-detail`, `live-log-viewer`, `use-run-stream`, `run-detail-page-wiring`, and `stream-route` tests pass
+  - [x] 3.12 Run Tests: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run test:e2e` (NOT RUN — Docker unavailable), then `make validate`
+  - [x] 3.13 AC-to-test mapping: record AC1→E2E+manual, AC2–AC5→component/wiring, AC6→existing suites, in the PR body
 
 - [ ] 4.0 Batch close-out (planner)
   - [ ] 4.1 [repo root] In `docs/roadmap.md`, set the "Issue batch: CI audit gates + run-detail follow-ups" row to `Done` (or `In progress` if 1.17's redeploy is still pending), fill Issues/PRs, rewrite What's missing, and set Last updated
