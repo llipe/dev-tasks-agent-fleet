@@ -11,17 +11,18 @@
  * therefore protected by default rather than exposed by default.
  */
 
-export type RoutePolicy = "public" | "ui" | "api";
+export type RoutePolicy = "public" | "ui" | "api" | "internal";
 
 /**
  * Classifies a request pathname into a gate policy.
  *
- * | Pathname            | Policy   |
- * | ------------------- | -------- |
- * | `/login`            | `public` |
- * | `/api/auth/logout`  | `public` | (S-120 — session-ending, must be reachable)
- * | `/api/**`           | `api`    |
- * | everything else     | `ui`     | (incl. `/dev/**`, unknown paths — fail-closed)
+ * | Pathname            | Policy     |
+ * | ------------------- | ---------- |
+ * | `/login`            | `public`   |
+ * | `/api/auth/logout`  | `public`   | (S-120 — session-ending, must be reachable)
+ * | `/api/internal/**`  | `internal` | (S-153 — shared-secret, NOT session-gated)
+ * | `/api/**`           | `api`      |
+ * | everything else     | `ui`       | (incl. `/dev/**`, unknown paths — fail-closed)
  *
  * @param pathname the URL pathname (no query/hash), e.g. `request.nextUrl.pathname`.
  */
@@ -40,6 +41,19 @@ export function classifyRoute(pathname: string): RoutePolicy {
   // `/api/auth/logout/extra` and `/api/auth/whoami` stay gated `api` below.
   if (pathname === "/login" || pathname === "/api/auth/logout") {
     return "public";
+  }
+
+  // Scheduler internal surface (S-153). Called by the pg_cron jobs via pg_net,
+  // not by a logged-in human, so it CANNOT present a session cookie. The gate
+  // therefore does not run the session check for these — but they are NEVER
+  // public: each handler enforces a fail-closed, constant-time shared-secret
+  // check itself (SD-A1). Classifying them `internal` tells the middleware to
+  // skip the session gate and let the request reach the handler; the middleware
+  // MUST NOT itself return 200 for this class. A prefix match (`/api/internal`
+  // or `/api/internal/...`) so every internal endpoint is covered, while a
+  // sibling like `/api/internalish` stays `api`.
+  if (pathname === "/api/internal" || pathname.startsWith("/api/internal/")) {
+    return "internal";
   }
 
   // API surface (route handlers + the SSE stream). These must receive a JSON

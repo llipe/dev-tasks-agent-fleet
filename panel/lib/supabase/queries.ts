@@ -24,6 +24,7 @@ import type {
   RunArtifactRow,
   RunEventRow,
   RunStepRow,
+  ScheduleRow,
   VRunRow,
 } from "@/lib/supabase/types";
 
@@ -824,4 +825,83 @@ export async function archiveRepository(client: SupabaseClient, id: string): Pro
   if (result.error) {
     throw new DatabaseError("archiveRepository", result.error);
   }
+}
+
+// ---------------------------------------------------------------------
+// Agent Scheduler fire path (S-153). The pg_cron tick (S-154) POSTs to the
+// internal fire endpoint, which reads the schedule, inserts the queued run via
+// the schedule trigger descriptor, invokes, and records the outcome back onto
+// the schedule row. Guardrail re-checks (overlap/open-PR/cap) and G3 auto-pause
+// land in S-155/S-156/S-157.
+// ---------------------------------------------------------------------
+
+/** Read a single schedule by id (fire path). Returns null when absent. */
+export async function getScheduleById(
+  client: SupabaseClient,
+  id: string,
+): Promise<ScheduleRow | null> {
+  const result = await client.from("schedules").select("*").eq("id", id).maybeSingle();
+  if (result.error) {
+    throw new DatabaseError("getScheduleById", result.error);
+  }
+  return (result.data as ScheduleRow | null) ?? null;
+}
+
+/**
+ * Record a successful fire: reset the consecutive-failure counter, pin the run
+ * refs, and clear any transient block. The due cursor (`next_run_at`) is owned
+ * and advanced by the `fire_due_schedules()` tick when it dispatches (SD-T2),
+ * NOT here — so the fire endpoint has no dependency on exposing the `scheduler`
+ * schema to PostgREST, and there is one writer of the cursor.
+ */
+export async function recordScheduleFired(
+  client: SupabaseClient,
+  scheduleId: string,
+  runId: string,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({
+      consecutive_failures: 0,
+      state: "active",
+      block_reason: null,
+      last_run_id: runId,
+      last_fired_at: new Date().toISOString(),
+      last_fire_error: null,
+    })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("recordScheduleFired", result.error);
+  }
+}
+
+/**
+ * Record a fire-time failure: increment the consecutive-failure counter and
+ * stash the error. The G3 auto-pause transition (flip to `paused` + notify at
+ * the threshold) is wired in S-157; this helper only moves the counter so that
+ * story can build on a correct count.
+ */
+export async function recordScheduleFireFailure(
+  client: SupabaseClient,
+  scheduleId: string,
+  errorText: string,
+): Promise<void> {
+  const current = await getScheduleById(client, scheduleId);
+  const next = (current?.consecutive_failures ?? 0) + 1;
+  const result = await client
+    .from("schedules")
+    .update({ consecutive_failures: next, last_fire_error: errorText })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("recordScheduleFireFailure", result.error);
+  }
+}
+
+/** Read a single agent by id (the fire path has the schedule's agent_id). */
+export async function getAgentById(client: SupabaseClient, id: string): Promise<AgentRow | null> {
+  const result = await client.from("agents").select("*").eq("id", id).maybeSingle();
+  if (result.error) {
+    throw new DatabaseError("getAgentById", result.error);
+  }
+  return (result.data as AgentRow | null) ?? null;
 }
