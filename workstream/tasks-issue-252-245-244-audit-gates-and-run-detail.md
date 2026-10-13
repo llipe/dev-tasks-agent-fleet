@@ -7,7 +7,7 @@
 - `package.json` - root `pnpm.overrides` (sharp, source-map-js, fast-uri)
 - `pnpm-lock.yaml` - regenerated after the overrides
 - `agents/dependency-update/app/dependencyUpdate/pyproject.toml` - PyJWT pin
-- `agents/security-analyst/app/securityAnalyst/pyproject.toml` - PyJWT pin
+- `agents/security-analyst/app/securityAnalyst/pyproject.toml` - PyJWT pin + semgrep bump 1.177.0→1.180.0 (semgrep ≤1.178.0 pins pyjwt~=2.13.0, blocking the 2.15.1 pin)
 - `agents/dependency-update/app/dependencyUpdate/credentials.py` - `jwt.encode` caller (verify only)
 - `agents/security-analyst/app/securityAnalyst/credentials.py` - `jwt.encode` caller (verify only)
 - `agents/*/agentcore/` - deployed-state hash after the redeploy
@@ -35,22 +35,22 @@
 
   > Note: `next` is NOT touched here; its two moderate advisories belong to #217 (D-05, D-06). Run the panel audit under Node 22 (`engines: >=22 <25`); it refuses to run on Node 26.
 
-  - [ ] 1.1 [agents/dependency-update, agents/security-analyst] Reproduce: run `pip-audit . --strict` in both agent packages and record the PyJWT 2.13.0 findings (D-01)
-  - [ ] 1.2 [panel] Reproduce: run `pnpm --filter panel run audit` and `pnpm audit --prod --json` under Node 22 and record the blocking `sharp` / `source-map-js` advisories (D-01)
-  - [ ] 1.3 [agents/dependency-update] Pin `PyJWT==2.15.1` in `pyproject.toml`; reinstall `.[dev]` (D-06)
-  - [ ] 1.4 [agents/security-analyst] Pin `PyJWT==2.15.1` in `pyproject.toml`; reinstall `.[dev]` (D-06)
-  - [ ] 1.5 [agents/dependency-update, agents/security-analyst] Run the existing GitHub App credential tests (RS256 `jwt.encode`) and confirm they pass unchanged; if PyJWT 2.15 requires a change, keep it minimal and document it in the PR
-  - [ ] 1.5a [agents/dependency-update, agents/security-analyst] (verifier F-1) Add a real-library test, TC-252-3a, to each agent's `tests/`. Generate an RSA key with `cryptography`, call the real `credentials.py` signing path with `jwt` NOT mocked, then `jwt.decode` with the public key. Assert header `alg=RS256`, integer `iat`/`exp`, string `iss`, and `exp - iat == 600`. Prove the test bites by breaking the signing call locally before trusting it
-  - [ ] 1.6 [repo root] In root `package.json` `pnpm.overrides`, replace `sharp@<0.34.4 → 0.35.4` with `sharp@<0.35.5 → 0.35.5`; add `source-map-js@<1.2.2 → 1.2.2` and `fast-uri@<3.1.8 → 3.1.8` (D-06)
-  - [ ] 1.7 [repo root] Regenerate `pnpm-lock.yaml` (`pnpm install`); review that the diff touches only the overridden packages and their direct dependents
-  - [ ] 1.8 [panel] Run `pnpm --filter panel build` and confirm `sharp` 0.35.5 resolves a prebuilt binary; build `Dockerfile.panel` locally if Docker is available
-  - [ ] 1.9 Verify Acceptance Criterion AC1: `pnpm --filter panel run audit` exits 0; `pnpm audit --prod --json` shows no high/critical advisory, and only the two moderate `next` ones remain
-  - [ ] 1.10 Verify Acceptance Criterion AC2: `pip-audit . --strict` exits 0 in both agents (3.13 locally; 3.14 via the CI matrix)
-  - [ ] 1.11 Verify Acceptance Criterion AC3: agent credential tests pass on PyJWT 2.15.1
-  - [ ] 1.12 Verify Acceptance Criterion AC5: panel build succeeds; `pnpm run test:e2e` and the auth-gate parser test are unaffected
-  - [ ] 1.13 Run Tests: `make validate` (Python and JS/TS branches) passes; both CI jobs (`python-quality`, `panel-quality`) are green on the PR (AC4)
-  - [ ] 1.14 AC-to-test mapping: record AC1→panel audit step, AC2→pip-audit matrix, AC3→credential suites, AC4→`make validate`+CI, AC5→build+E2E, AC6→live invocation, in the PR body
-  - [ ] 1.15 Note on #217 that the two `next <15.5.27` advisories remain open pending the Next 16.4.0 upgrade (D-06)
+  - [x] 1.1 [agents/dependency-update, agents/security-analyst] Reproduce: run `pip-audit . --strict` in both agent packages and record the PyJWT 2.13.0 findings (D-01)
+  - [x] 1.2 [panel] Reproduce: run `pnpm --filter panel run audit` and `pnpm audit --prod --json` under Node 22 and record the blocking `sharp` / `source-map-js` advisories (D-01)
+  - [x] 1.3 [agents/dependency-update] Pin `PyJWT==2.15.1` in `pyproject.toml`; reinstall `.[dev]` (D-06)
+  - [x] 1.4 [agents/security-analyst] Pin `PyJWT==2.15.1` in `pyproject.toml`; reinstall `.[dev]` (D-06)
+  - [x] 1.5 [agents/dependency-update, agents/security-analyst] Run the existing GitHub App credential tests (RS256 `jwt.encode`) and confirm they pass unchanged; if PyJWT 2.15 requires a change, keep it minimal and document it in the PR
+  - [x] 1.5a [agents/dependency-update, agents/security-analyst] (verifier F-1) Add a real-library test, TC-252-3a, to each agent's `tests/`. Generate an RSA key with `cryptography`, call the real `credentials.py` signing path with `jwt` NOT mocked, then `jwt.decode` with the public key. Assert header `alg=RS256`, integer `iat`/`exp`, string `iss`, and `exp - iat == 600`. Prove the test bites by breaking the signing call locally before trusting it
+  - [x] 1.6 [repo root] In root `package.json` `pnpm.overrides`, replace `sharp@<0.34.4 → 0.35.4` with `sharp@<0.35.5 → 0.35.5`; add `source-map-js@<1.2.2 → 1.2.2` and `fast-uri@<3.1.8 → 3.1.8` (D-06)
+  - [x] 1.7 [repo root] Regenerate `pnpm-lock.yaml` (`pnpm install`); review that the diff touches only the overridden packages and their direct dependents
+  - [x] 1.8 [panel] Run `pnpm --filter panel build` and confirm `sharp` 0.35.5 resolves a prebuilt binary; build `Dockerfile.panel` locally if Docker is available
+  - [x] 1.9 Verify Acceptance Criterion AC1: `pnpm --filter panel run audit` exits 0; `pnpm audit --prod --json` shows no high/critical advisory, and only the two moderate `next` ones remain
+  - [x] 1.10 Verify Acceptance Criterion AC2: `pip-audit . --strict` exits 0 in both agents (3.13 locally; 3.14 via the CI matrix)
+  - [x] 1.11 Verify Acceptance Criterion AC3: agent credential tests pass on PyJWT 2.15.1
+  - [x] 1.12 Verify Acceptance Criterion AC5: panel build succeeds; `pnpm run test:e2e` and the auth-gate parser test are unaffected
+  - [x] 1.13 Run Tests: `make validate` (Python and JS/TS branches) passes; both CI jobs (`python-quality`, `panel-quality`) are green on the PR (AC4)
+  - [x] 1.14 AC-to-test mapping: record AC1→panel audit step, AC2→pip-audit matrix, AC3→credential suites, AC4→`make validate`+CI, AC5→build+E2E, AC6→live invocation, in the PR body
+  - [x] 1.15 Note on #217 that the two `next <15.5.27` advisories remain open pending the Next 16.4.0 upgrade (D-06)
   - [ ] 1.16 [agents/dependency-update, agents/security-analyst] **Post-merge, approval-gated:** hand off to `infra-engineer` to redeploy both agents with PyJWT 2.15.1 (`agentcore deploy -y`, per each agent's README "Deployment" section); the user approves before the deploy runs (D-10)
   - [ ] 1.17 Verify Acceptance Criterion AC6: a real invocation of each agent completes GitHub App auth and reaches a terminal status; record the new deployed-state hash and run ids on #252, then close #252 (D-10)
 
