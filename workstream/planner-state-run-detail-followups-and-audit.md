@@ -8,7 +8,7 @@
 - Repository: llipe/dev-tasks-agent-fleet
 - Developer execution mode: pre-approved autonomous sequential
 - Started: 2026-10-13T11:20-03:00
-- Last updated: 2026-10-13T12:30-03:00
+- Last updated: 2026-10-13T13:20-03:00
 
 ## Story Status
 
@@ -16,13 +16,13 @@
 | -------- | -------- | ------- | -------------- | --- | ------ |
 | 1        | 1.0      | #252    | ✅ Merged (redeploy pending, post-main) | #254 | issue/252-fix-deps-audit-gates |
 | 2        | 2.0      | #245    | ✅ Merged      | #255 | story/245-run-detail-unscrollable-summary |
-| 3        | 3.0      | #244    | 🔄 In Progress | —   | —      |
+| 3        | 3.0      | #244    | ✅ Merged      | #256 | story/244-refresh-run-detail-on-terminal |
 
 ## Current Position
 
-- Next story: #244 (delegated to developer)
-- Last merged PR: #255
-- Integration branch HEAD: 2e1c37b
+- Next story: none. Phase 5 (rollup audit, docs pass, consolidated PR)
+- Last merged PR: #256
+- Integration branch HEAD: b84fb0c
 
 ## Decisions Log
 
@@ -34,3 +34,5 @@
 - 2026-10-13: Drift for product-engineer: CT-3 unmet by pre-existing code (`jwt.encode` sits outside the `try` in `mint_installation_token`, so a malformed PEM is not classified as `CredentialError`), and the CT-3 test accepts any `Exception`. Follow-up issue candidate; out of #252 scope.
 - 2026-10-13: Developer installed a Rust toolchain via rustup (`~/.cargo`, user-local) to build `rustworkx` for security-analyst tests.
 - 2026-10-13: #255 merged (squash). Planner re-run 1178 passed. Observation: `<summary>` uses `display: flex`, which hides the native disclosure marker; verify the affordance in the AC2 manual check.
+- 2026-10-13: #256 review requested changes. The refresh once-flag was set at schedule time, so under StrictMode (`reactStrictMode: true`, E2E on `next dev`) cleanup + re-mount meant `router.refresh()` never fired. Fixed in 1a5b291 with a StrictMode regression test that was failing first.
+- 2026-10-13: #256 fix-up initially returned `verifier_audit: blocked` (developer skipped the re-audit). A narrow retry got `verifier_audit: run` (High/None) on the current head. Merged (squash) as b84fb0c.
