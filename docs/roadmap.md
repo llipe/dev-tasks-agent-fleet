@@ -20,7 +20,8 @@ One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are
 | Batch | Scope (one line) | Status | Issues/PRs | What's missing |
 | --- | --- | --- | --- | --- |
 | CI audit gates + run-detail follow-ups | Unblock the pnpm and pip-audit CI gates (PyJWT 2.15.1, transitive overrides, redeploy both agents); bound the audit-report findings table; refresh run detail when a run finishes | Done | #252 / PR #254, #245 / PR #255, #244 / PR #256 (all merged into `integration/run-detail-followups-and-audit`); consolidated PR #257; plan `workstream/tasks-issue-252-245-244-audit-gates-and-run-detail.md`; redeploy change record `infra/changes/20261013-redeploy-agents-pyjwt/` | — (follow-ups tracked separately: #280 panel Fly OIDC, R-01 CT-3 classification) |
-| Next.js 16 upgrade | Next 15.5.25 → 16.4.0 and Node LTS bump; clears the two moderate `next` advisories handed over by #252. Runs immediately after the batch above | Not started | #217 | Entire scope; needs refinement against 16.4.0 |
+| Panel Fly OIDC fix | Deployed panel cannot invoke agents (non-root `nextjs` gets EACCES on root-only `/.fly/api`): root entrypoint grants group write then drops to uid 1001; OIDC token probe in `deploy-panel.sh`. Runs before #217 | Not started | #280; plan `workstream/tasks-issue-280-panel-fly-oidc-eacces.md` | Entire scope |
+| Next.js 16 upgrade | Next 15.5.25 → 16.4.0 and Node LTS bump; clears the two moderate `next` advisories handed over by #252. Runs after #280 | Not started | #217 | Entire scope; needs refinement against 16.4.0 |
 
 ## Not yet on a PRD
 
