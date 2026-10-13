@@ -20,6 +20,7 @@ import type { RunStatus } from "@/lib/domain/status";
 import type {
   AgentRow,
   GithubInstallationRow,
+  NotificationRow,
   RepositoryRow,
   RunArtifactRow,
   RunEventRow,
@@ -876,22 +877,22 @@ export async function recordScheduleFired(
 }
 
 /**
- * Record a fire-time failure: increment the consecutive-failure counter and
- * stash the error. The G3 auto-pause transition (flip to `paused` + notify at
- * the threshold) is wired in S-157; this helper only moves the counter so that
- * story can build on a correct count.
+ * Record a fire-time failure: atomically increment the consecutive-failure
+ * counter and, when it crosses the per-schedule `auto_pause_threshold`, flip the
+ * schedule to `paused` and record exactly one `schedule_auto_paused`
+ * notification (G3, SD-G3 / AC6). The whole transition is a single plpgsql
+ * function (`public.scheduler_record_fire_failure`) so the increment + trip +
+ * notification cannot race into a double-notify.
  */
 export async function recordScheduleFireFailure(
   client: SupabaseClient,
   scheduleId: string,
   errorText: string,
 ): Promise<void> {
-  const current = await getScheduleById(client, scheduleId);
-  const next = (current?.consecutive_failures ?? 0) + 1;
-  const result = await client
-    .from("schedules")
-    .update({ consecutive_failures: next, last_fire_error: errorText })
-    .eq("id", scheduleId);
+  const result = await client.rpc("scheduler_record_fire_failure", {
+    p_schedule_id: scheduleId,
+    p_error: errorText,
+  });
   if (result.error) {
     throw new DatabaseError("recordScheduleFireFailure", result.error);
   }
@@ -904,4 +905,62 @@ export async function getAgentById(client: SupabaseClient, id: string): Promise<
     throw new DatabaseError("getAgentById", result.error);
   }
   return (result.data as AgentRow | null) ?? null;
+}
+
+/**
+ * G5-c manual clear (S-156): the operator marks a schedule's open-PR block as
+ * handled. Sets `pr_block_cleared_at = now()`; the next due-tick re-evaluates
+ * `scheduler.open_pr_block_run` and auto-clears the block when the current PR's
+ * artifact predates the clear. Idempotent.
+ */
+export async function clearSchedulePrBlock(
+  client: SupabaseClient,
+  scheduleId: string,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ pr_block_cleared_at: new Date().toISOString() })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("clearSchedulePrBlock", result.error);
+  }
+}
+
+/**
+ * S-159 (#271) — the daily-digest selection (SD-N6). All notifications not yet
+ * emailed, oldest-first so the digest reads chronologically. An empty result
+ * means an empty window: the digest route returns 204 and sends nothing
+ * (SD-N7). Returns `[]`, never null (EC-17).
+ */
+export async function getUndeliveredNotifications(
+  client: SupabaseClient,
+): Promise<NotificationRow[]> {
+  const result = await client
+    .from("notifications")
+    .select("*")
+    .is("emailed_at", null)
+    .order("created_at", { ascending: true });
+  return unwrap<NotificationRow[]>("getUndeliveredNotifications", result) ?? [];
+}
+
+/**
+ * S-159 (#271) — mark exactly the digested rows as emailed (SD-N8). Called ONLY
+ * after SES confirms the send, so a send failure leaves `emailed_at` null and
+ * the window retries next day rather than dropping (R-S9). Idempotent over the
+ * id set.
+ */
+export async function markNotificationsEmailed(
+  client: SupabaseClient,
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const result = await client
+    .from("notifications")
+    .update({ emailed_at: new Date().toISOString() })
+    .in("id", ids as string[]);
+  if (result.error) {
+    throw new DatabaseError("markNotificationsEmailed", result.error);
+  }
 }

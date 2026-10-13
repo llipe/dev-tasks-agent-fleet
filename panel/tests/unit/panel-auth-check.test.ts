@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkEnvNames,
+  checkInternalRejected,
   checkProtectedRedirect,
   checkSignupRejected,
   checkSseUnauthorized,
@@ -30,6 +31,7 @@ const ENV_OK = [...REQUIRED_AUTH_ENV_NAMES, "SUPABASE_SERVICE_ROLE_KEY", "AGENT_
 const PROTECTED_OK = { status: 302, location: "/login?redirect=/" };
 const SSE_OK = { status: 401 };
 const SIGNUP_OK = { rejected: true, message: "Signups not allowed for this instance" };
+const INTERNAL_OK = { status: 401 };
 
 /** A fully correct deployment: every check passes. */
 const GATE_INPUT_OK = {
@@ -37,6 +39,7 @@ const GATE_INPUT_OK = {
   protectedProbe: PROTECTED_OK,
   sseProbe: SSE_OK,
   signupProbe: SIGNUP_OK,
+  internalProbe: INTERNAL_OK,
 };
 
 describe("checkEnvNames — auth env var NAMES present (names only, never values)", () => {
@@ -277,6 +280,32 @@ describe("checkSignupRejected — attempted signUp is rejected (PRD AC17 / R9)",
   });
 });
 
+describe("checkInternalRejected — unauthenticated /api/internal/** → 401 (S-160, FR5/FR6)", () => {
+  it("passes on a 401 (the secret gate rejected before any handler logic)", () => {
+    expect(checkInternalRejected({ status: 401 }).ok).toBe(true);
+  });
+
+  it("FAILS on 200/202 — the call was ACCEPTED without the secret (open invoke hole)", () => {
+    const r200 = checkInternalRejected({ status: 200 });
+    expect(r200.ok).toBe(false);
+    expect(r200.reason).toMatch(/open invoke hole|not enforcing/i);
+    expect(checkInternalRejected({ status: 202 }).ok).toBe(false);
+  });
+
+  it("FAILS on 404/409 — the request got PAST auth into handler logic", () => {
+    const r404 = checkInternalRejected({ status: 404 });
+    expect(r404.ok).toBe(false);
+    expect(r404.reason).toMatch(/past the secret check|expected 401/i);
+    expect(checkInternalRejected({ status: 409 }).ok).toBe(false);
+  });
+
+  it("is fail-closed on an error / missing / garbage probe", () => {
+    expect(checkInternalRejected({ error: "ETIMEDOUT" }).ok).toBe(false);
+    expect(checkInternalRejected(null).ok).toBe(false);
+    expect(checkInternalRejected({}).ok).toBe(false);
+  });
+});
+
 describe("evaluateAuthGate — the release-gate verdict (both directions)", () => {
   it("PASSES on a fully correct deployment fixture", () => {
     const v = evaluateAuthGate(GATE_INPUT_OK);
@@ -305,6 +334,17 @@ describe("evaluateAuthGate — the release-gate verdict (both directions)", () =
     expect(v.reasons.join(" ")).toMatch(/self-register|enabled|succeeded/i);
   });
 
+  it("FAILS the release when the internal endpoint returns 200 (S-160, open invoke hole)", () => {
+    const v = evaluateAuthGate({ ...GATE_INPUT_OK, internalProbe: { status: 200 } });
+    expect(v.pass).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/open invoke hole|not enforcing/i);
+  });
+
+  it("FAILS the release when the internal endpoint 401 cannot be confirmed (fail-closed)", () => {
+    const v = evaluateAuthGate({ ...GATE_INPUT_OK, internalProbe: { error: "ECONNREFUSED" } });
+    expect(v.pass).toBe(false);
+  });
+
   it("FAILS the release when a required env name is missing", () => {
     const v = evaluateAuthGate({ ...GATE_INPUT_OK, envNames: ["NEXT_PUBLIC_SUPABASE_URL"] });
     expect(v.pass).toBe(false);
@@ -320,8 +360,8 @@ describe("evaluateAuthGate — the release-gate verdict (both directions)", () =
   it("is fail-closed on an EMPTY object (no probes collected at all)", () => {
     const v = evaluateAuthGate({});
     expect(v.pass).toBe(false);
-    // All four checks should contribute a reason.
-    expect(v.reasons.length).toBe(4);
+    // All five checks should contribute a reason.
+    expect(v.reasons.length).toBe(5);
   });
 
   it("reports EVERY failing reason, not just the first (multiple violations)", () => {
@@ -330,8 +370,9 @@ describe("evaluateAuthGate — the release-gate verdict (both directions)", () =
       protectedProbe: { status: 200 },
       sseProbe: { status: 200 },
       signupProbe: { rejected: false },
+      internalProbe: { status: 200 },
     });
     expect(v.pass).toBe(false);
-    expect(v.reasons.length).toBe(4);
+    expect(v.reasons.length).toBe(5);
   });
 });

@@ -85,12 +85,71 @@ select scheduler.get_setting('panel_base_url'), scheduler.max_inflight();
 > `scheduler-daily-digest` (`<min> <hour> * * *`). Verify with
 > `select jobname, schedule from cron.job order by jobname;`.
 
+The migrations register all three jobs on apply. The digest hour is derived from
+`scheduler.config` (`digest_local_hour` / `digest_local_minute` /
+`digest_timezone`, default `08:00 America/Santiago`) and converted to a **static
+UTC** cron at register time (SD-N6a). To change the hour, or to re-align it after
+a DST boundary:
+
+```sql
+update scheduler.config set value = '7' where key = 'digest_local_hour';
+select scheduler.schedule_daily_digest();   -- re-registers at the new UTC hour; returns the cron string
+```
+
+Because the UTC hour is static (a single operator setting, not per-schedule),
+the digest can land up to an hour off its local target across a DST change until
+the helper is re-run — an accepted trade-off (SD-N6a), unlike per-schedule firing
+which is DST-correct every tick.
+
 ## 5. (S-159) SES sender + IAM
 
-> Appended by the digest story. Verify the `NOTIFICATION_SENDER` identity in SES,
-> add `ses:SendEmail`/`ses:SendRawEmail` scoped to that identity's ARN to the
-> panel's AgentCore role, and set `NOTIFICATION_SENDER`/`NOTIFICATION_RECIPIENT`
-> via `fly secrets`.
+The daily digest sends via Amazon SES using the panel's existing Fly OIDC → STS
+role (no static keys, SD-N7). Three operator steps:
+
+1. **Verify the sender identity** in SES (one-time, in the panel's AWS region):
+
+   ```bash
+   aws ses verify-email-identity --email-address fleet@your-domain.com --region <region>
+   # (or verify-domain-identity for a whole domain)
+   aws ses get-identity-verification-attributes --identities fleet@your-domain.com --region <region>
+   ```
+
+   If the account is still in the SES **sandbox**, also verify the recipient
+   address (or request production access) — the sandbox only delivers to verified
+   recipients.
+
+2. **Grant the panel role `ses:SendEmail`/`ses:SendRawEmail`**, scoped to the
+   verified identity ARN — never `*` (SD-X2). Add to the panel's AgentCore role
+   (the same role `credentials.ts` assumes):
+
+   ```json
+   {
+     "Effect": "Allow",
+     "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+     "Resource": "arn:aws:ses:<region>:<account-id>:identity/fleet@your-domain.com"
+   }
+   ```
+
+3. **Set the sender + recipient secrets** on the panel:
+
+   ```bash
+   fly secrets set NOTIFICATION_SENDER='fleet@your-domain.com' \
+                   NOTIFICATION_RECIPIENT='ops@your-domain.com' -a dt-agent-fleet-panel
+   ```
+
+   A missing `NOTIFICATION_SENDER`/`NOTIFICATION_RECIPIENT` makes the digest
+   endpoint return 500 (`DIGEST_NOT_CONFIGURED`) rather than send — it never
+   silently drops the window.
+
+**Verify the digest end-to-end** without waiting for the cron (service-side, with
+the shared secret):
+
+```bash
+curl -i -X POST "$PANEL_BASE_URL/api/internal/notifications/digest" \
+  -H 'Content-Type: application/json' -H "X-Scheduler-Secret: $SCHEDULER_TRIGGER_SECRET"
+# 204 when the window is empty (nothing sent); 200 {"sent":N} after a confirmed send;
+# 401 without the secret; 502 (SES_SEND_FAILED) if SES rejects — rows stay unmarked and retry.
+```
 
 ## 6. (post-trigger) Live verification
 

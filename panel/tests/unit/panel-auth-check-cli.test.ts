@@ -31,6 +31,7 @@ const OK = {
   protectedProbe: { status: 302, location: "/login?redirect=/" },
   sseProbe: { status: 401 },
   signupProbe: { rejected: true },
+  internalProbe: { status: 401 },
 };
 
 beforeAll(() => {
