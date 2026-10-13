@@ -8,19 +8,19 @@
 - Repository: llipe/dev-tasks-agent-fleet
 - Developer execution mode: pre-approved autonomous sequential
 - Started: 2026-10-13T11:20-03:00
-- Last updated: 2026-10-13T14:12-03:00
+- Last updated: 2026-10-13T17:20-03:00
 
 ## Story Status
 
 | Sequence | Story ID | Issue # | Status         | PR  | Branch |
 | -------- | -------- | ------- | -------------- | --- | ------ |
-| 1        | 1.0      | #252    | ✅ Merged (redeploy pending, post-main) | #254 | issue/252-fix-deps-audit-gates |
+| 1        | 1.0      | #252    | ✅ Merged + redeployed (verified) | #254 | issue/252-fix-deps-audit-gates |
 | 2        | 2.0      | #245    | ✅ Merged      | #255 | story/245-run-detail-unscrollable-summary |
 | 3        | 3.0      | #244    | ✅ Merged      | #256 | story/244-refresh-run-detail-on-terminal |
 
 ## Current Position
 
-- Next story: none. Consolidated PR #257 open, awaiting user review/merge; then #252 AC6 redeploy (infra-engineer), then the #217 run
+- Next story: none. Run complete. Next: #280 (panel Fly OIDC), then the #217 planner run
 - Last merged PR: #256
 - Integration branch HEAD: b84fb0c
 
@@ -40,3 +40,4 @@
 - 2026-10-13: Consolidated PR #257 CI: all 4 Python cells pass (pip-audit fixed); panel failed on RT-1 timeout (5171ms under coverage). Fix-up story PR #258 (test-only, cheap `tbody tr` row count + 20s backstop) merged. Observation for qa-engineer: the panel's total test count varies between runs on the same ref (1188–1190), meaning nondeterministic test collection in some suite.
 - 2026-10-13: #257 CI round 2: unit/coverage green (RT-1 fixed); E2E 7/7 new-spec failures caused by fixture/schema (`"success"` not a run_outcome; succeeded seeds missing an outcome). Fix-up PR #259 (typed outcomes, so typecheck rejects invalid seeds) merged. Lesson: E2E written without a runnable DB stack shipped schema-invalid fixtures; static typing now guards the class.
 - 2026-10-13: #257 CI fully green on a031407 (E2E 26 passed; pnpm audit real verdict OK; pip-audit clean ×4). Handed to the user for review/merge. Pending after merge: #252 AC6 redeploy (infra-engineer), close #252, start the #217 run (task 4.4).
+- 2026-10-13: #252 AC6 done via infra change `20261013-redeploy-agents-pyjwt` (every step approved): dependency-update v7→v8 (image 12421822…, PyJWT 2.15.1), security-analyst v9→v10 (image 6a440aef…, PyJWT 2.15.1, semgrep 1.180.0). Live runs 15f3b1f2 (dep-update, memo-cli), 7cb97c44 (SA, memo-cli), bf1eabc2 (SA, fixture: semgrep 3 + codeql 1, matches v9 baseline, R-03 closed). #252 closed. Found and filed #280: deployed-panel invoke fails with Fly OIDC EACCES (non-root user). User priority: #280 next, then #217.

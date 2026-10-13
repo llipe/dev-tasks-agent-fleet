@@ -31,7 +31,7 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Issue #252 - https://github.com/llipe/dev-tasks-agent-fleet/issues/252: fix(deps): unblock the pnpm and pip-audit CI gates
+- [x] 1.0 Implement Issue #252 - https://github.com/llipe/dev-tasks-agent-fleet/issues/252: fix(deps): unblock the pnpm and pip-audit CI gates
 
   > Note: `next` is NOT touched here; its two moderate advisories belong to #217 (D-05, D-06). Run the panel audit under Node 22 (`engines: >=22 <25`); it refuses to run on Node 26.
 
@@ -51,8 +51,8 @@
   - [x] 1.13 Run Tests: `make validate` (Python and JS/TS branches) passes; both CI jobs (`python-quality`, `panel-quality`) are green on the PR (AC4)
   - [x] 1.14 AC-to-test mapping: record AC1→panel audit step, AC2→pip-audit matrix, AC3→credential suites, AC4→`make validate`+CI, AC5→build+E2E, AC6→live invocation, in the PR body
   - [x] 1.15 Note on #217 that the two `next <15.5.27` advisories remain open pending the Next 16.4.0 upgrade (D-06)
-  - [ ] 1.16 [agents/dependency-update, agents/security-analyst] **Post-merge, approval-gated:** hand off to `infra-engineer` to redeploy both agents with PyJWT 2.15.1 (`agentcore deploy -y`, per each agent's README "Deployment" section); the user approves before the deploy runs (D-10)
-  - [ ] 1.17 Verify Acceptance Criterion AC6: a real invocation of each agent completes GitHub App auth and reaches a terminal status; record the new deployed-state hash and run ids on #252, then close #252 (D-10)
+  - [x] 1.16 [agents/dependency-update, agents/security-analyst] **Post-merge, approval-gated:** hand off to `infra-engineer` to redeploy both agents with PyJWT 2.15.1 (`agentcore deploy -y`, per each agent's README "Deployment" section); the user approves before the deploy runs (D-10)
+  - [x] 1.17 Verify Acceptance Criterion AC6: a real invocation of each agent completes GitHub App auth and reaches a terminal status; record the new deployed-state hash and run ids on #252, then close #252 (D-10)
 
 - [x] 2.0 Implement Issue #245 - https://github.com/llipe/dev-tasks-agent-fleet/issues/245: fix(panel): run detail becomes unscrollable when the summary grows
 
@@ -90,11 +90,11 @@
   - [x] 3.12 Run Tests: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run test:e2e` (NOT RUN — Docker unavailable), then `make validate`
   - [x] 3.13 AC-to-test mapping: record AC1→E2E+manual, AC2–AC5→component/wiring, AC6→existing suites, in the PR body
 
-- [ ] 4.0 Batch close-out (planner)
+- [x] 4.0 Batch close-out (planner)
   - [x] 4.1 [repo root] In `docs/roadmap.md`, set the "Issue batch: CI audit gates + run-detail follow-ups" row to `Done` (or `In progress` if 1.17's redeploy is still pending), fill Issues/PRs, rewrite What's missing, and set Last updated
   - [x] 4.2 Run the mandatory `verifier` audit over the batch; route drift findings to `product-engineer`
   - [x] 4.3 Record `coverage_gate` via `qa-engineer`
-  - [ ] 4.4 Hand off to the #217 planner run (Next 16.4.0 upgrade), which starts immediately after this batch merges (D-09)
+  - [x] 4.4 Hand off to the #217 planner run (Next 16.4.0 upgrade), which starts immediately after this batch merges (D-09)
 
 ## Decisions Consumed
 

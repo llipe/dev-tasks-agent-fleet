@@ -1,0 +1,39 @@
+# infra/environments.yaml — environment declaration read by infra-engineer and deploy-ops.
+# Consumer-owned. Values below were resolved from read-only probes on 2026-10-13
+# (aws sts get-caller-identity, agentcore status, flyctl auth whoami) and from the
+# committed IAM policy documents in this directory. Secrets are never stored here.
+
+environments:
+  prod:
+    production: true
+    description: >-
+      The single live environment: two AgentCore agents (dependency-update,
+      security-analyst), the Fly.io panel, and the Supabase system of record.
+    cost_approval_threshold_usd: 0 # any new recurring cost is approved by name
+
+    aws:
+      account_id: "755641879575"
+      region: us-east-1
+      agentcore:
+        # Deployed via the AgentCore CLI (CDK-managed, Container build, ARM64).
+        # Each agent dir needs a local, gitignored agentcore/aws-targets.json with
+        # target `default` → this account/region.
+        runtimes:
+          dependency-update:
+            project_dir: agents/dependency-update
+            runtime_id: dependencyupdate_dependency_update-UsQc5U5Yz0
+            ecr_repository: dependencyupdate/dependency_update
+          security-analyst:
+            project_dir: agents/security-analyst
+            runtime_id: securityanalyst_security_analyst-w6CpbYHRE0
+            ecr_repository: securityanalyst/security_analyst
+      secrets_prefix: agent-fleet/prod/ # Secrets Manager, referenced by name only
+
+    fly:
+      org: personal
+      app: dt-agent-fleet-panel
+      primary_region: iad
+      # Fly OIDC → AWS role: infra/trust-policy.json (sub personal:dt-agent-fleet-panel:*)
+
+    supabase:
+      project_ref: hegxeycmbmjfgzqpdiik # "dev-tasks-agent-fleet", us-west-2; matches SUPABASE_URL in panel/.env.local
