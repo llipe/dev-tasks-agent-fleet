@@ -20,7 +20,7 @@
 
 ## Current Position
 
-- Next story: none. Consolidated PR open, awaiting user review/merge; then #252 AC6 redeploy (infra-engineer), then the #217 run
+- Next story: none. Consolidated PR #257 open, awaiting user review/merge; then #252 AC6 redeploy (infra-engineer), then the #217 run
 - Last merged PR: #256
 - Integration branch HEAD: b84fb0c
 
