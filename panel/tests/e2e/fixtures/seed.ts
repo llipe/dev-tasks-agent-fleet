@@ -162,17 +162,28 @@ export async function seedEvent(
   });
 }
 
-/** Attach a run artifact (e.g. a pull_request link for Scenario 7). */
+/**
+ * Attach a run artifact (e.g. a pull_request link for Scenario 7, or an
+ * `audit_report` carrying findings in `metadata` for the #245 layout spec).
+ *
+ * `metadata` is optional and defaults to `null` so existing callers are
+ * unchanged: when it is `null` the column's own `'{}'::jsonb` default applies
+ * (verifier F-2). Pass a JSON object to seed a findings payload the
+ * `AuditReportPanel` will render.
+ */
 export async function seedArtifact(
   runId: string,
   type: "pull_request" | "audit_report" | "diff" | "file",
   title: string,
   url: string | null,
+  metadata: unknown = null,
 ): Promise<void> {
   await withDb(async (c) => {
     await c.query(
-      `insert into run_artifacts (run_id, type, title, url) values ($1, $2::artifact_type, $3, $4)`,
-      [runId, type, title, url],
+      `insert into run_artifacts (run_id, type, title, url, metadata)
+       values ($1, $2::artifact_type, $3, $4,
+               coalesce($5::jsonb, '{}'::jsonb))`,
+      [runId, type, title, url, metadata === null ? null : JSON.stringify(metadata)],
     );
   });
 }

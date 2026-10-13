@@ -56,23 +56,23 @@
 
 - [ ] 2.0 Implement Issue #245 - https://github.com/llipe/dev-tasks-agent-fleet/issues/245: fix(panel): run detail becomes unscrollable when the summary grows
 
-  - [ ] 2.1 [panel] Write failing component tests first in `AuditReportPanel.test.tsx`: 10 rows → `<details open>`; 11 rows → closed; 50 rows → closed by default, toggles open, `open` attribute reflects the state, all 50 rows are in the DOM once open; the summary line is inside `<summary>` and always visible; `<caption>` and `th[scope=col]` are preserved (D-02, D-07)
-  - [ ] 2.2 [panel] Add test cases: the zero-findings empty state and the generic fallback render with no disclosure; the "N more not shown." notice renders inside the open body
-  - [ ] 2.3 [panel] Implement the `<details>`/`<summary>` wrapper in `AuditReportPanel.tsx`, with `open` server-set when rows ≤ 10; keep the component server-safe (no `"use client"`) and keep untrusted metadata as escaped text (D-02, D-07)
-  - [ ] 2.4 [panel] In `AuditReportPanel.module.css`, cap the table's scroll container at `max-height: 40vh; overflow-y: auto`, set on the scroll container, not on `<details>`; style `<summary>` with existing §2 tokens and keep a visible focus ring (D-07)
-  - [ ] 2.5 [panel] Add `min-height: 240px` to `.section` in `RunDetailLogSection.module.css` (D-07)
-  - [ ] 2.3a [panel] (verifier F-3, confirmed by D-12) The default-open threshold uses **rendered rows** (`view.rows.length`), not `view.totalFindings`. Add test EC-245-2: `totalFindings=50`, 8 rows → open
-  - [ ] 2.6 [panel] (verifier F-2) Extend `panel/tests/e2e/fixtures/seed.ts::seedArtifact` with an optional `metadata` JSON param (default `null`; existing callers unchanged), then add an E2E fixture: a run with a 50-finding `audit_report` artifact
-  - [ ] 2.7 [panel] Add an E2E scenario at 1280×720: with the disclosure closed and open, the steps panel, log toolbar, and log viewer are visible, the log viewer scrolls, and the log section is ≥ 240px tall; if it fails with the table open, lower the cap (for example `min(40vh, …)`) and record the change in DESIGN.md
-  - [ ] 2.8 [repo root] Update `DESIGN.md` §5.3: the disclosure, the 10-row default-open threshold, the 40vh cap, the 240px log-section floor; add changelog row 1.11
-  - [ ] 2.9 Verify Acceptance Criterion AC1: no content is pushed off-screen at 1280×720 with 50 findings (E2E and manual)
-  - [ ] 2.10 Verify Acceptance Criterion AC2: mouse and keyboard (Enter/Space) toggling; the expanded state is announced by a screen reader (manual); table semantics are intact
-  - [ ] 2.11 Verify Acceptance Criterion AC3: boundary at 10/11 rows; the log section stays usable with the table open
-  - [ ] 2.12 Verify Acceptance Criterion AC4: the empty state, fallback, and truncation notice are unchanged apart from the wrapper
-  - [ ] 2.13 Verify Acceptance Criterion AC5: the new component tests pass; the existing `AuditReportPanel`, `run-detail`, and `RunDetailLogSection` tests pass
-  - [ ] 2.14 Verify Acceptance Criterion AC6: the DESIGN.md §5.3 diff and changelog row are present
-  - [ ] 2.15 Run Tests: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run test:e2e`, then `make validate`
-  - [ ] 2.16 AC-to-test mapping: record AC1→E2E, AC2→component+manual, AC3→component+E2E, AC4/AC5→component, AC6→DESIGN.md review, in the PR body
+  - [x] 2.1 [panel] Write failing component tests first in `AuditReportPanel.test.tsx`: 10 rows → `<details open>`; 11 rows → closed; 50 rows → closed by default, toggles open, `open` attribute reflects the state, all 50 rows are in the DOM once open; the summary line is inside `<summary>` and always visible; `<caption>` and `th[scope=col]` are preserved (D-02, D-07)
+  - [x] 2.2 [panel] Add test cases: the zero-findings empty state and the generic fallback render with no disclosure; the "N more not shown." notice renders inside the open body
+  - [x] 2.3 [panel] Implement the `<details>`/`<summary>` wrapper in `AuditReportPanel.tsx`, with `open` server-set when rows ≤ 10; keep the component server-safe (no `"use client"`) and keep untrusted metadata as escaped text (D-02, D-07)
+  - [x] 2.4 [panel] In `AuditReportPanel.module.css`, cap the table's scroll container at `max-height: 40vh; overflow-y: auto`, set on the scroll container, not on `<details>`; style `<summary>` with existing §2 tokens and keep a visible focus ring (D-07)
+  - [x] 2.5 [panel] Add `min-height: 240px` to `.section` in `RunDetailLogSection.module.css` (D-07)
+  - [x] 2.3a [panel] (verifier F-3, confirmed by D-12) The default-open threshold uses **rendered rows** (`view.rows.length`), not `view.totalFindings`. Add test EC-245-2: `totalFindings=50`, 8 rows → open
+  - [x] 2.6 [panel] (verifier F-2) Extend `panel/tests/e2e/fixtures/seed.ts::seedArtifact` with an optional `metadata` JSON param (default `null`; existing callers unchanged), then add an E2E fixture: a run with a 50-finding `audit_report` artifact
+  - [x] 2.7 [panel] Add an E2E scenario at 1280×720: with the disclosure closed and open, the steps panel, log toolbar, and log viewer are visible, the log viewer scrolls, and the log section is ≥ 240px tall; if it fails with the table open, lower the cap (for example `min(40vh, …)`) and record the change in DESIGN.md
+  - [x] 2.8 [repo root] Update `DESIGN.md` §5.3: the disclosure, the 10-row default-open threshold, the 40vh cap, the 240px log-section floor; add changelog row 1.11
+  - [x] 2.9 Verify Acceptance Criterion AC1: no content is pushed off-screen at 1280×720 with 50 findings (E2E and manual)
+  - [x] 2.10 Verify Acceptance Criterion AC2: mouse and keyboard (Enter/Space) toggling; the expanded state is announced by a screen reader (manual); table semantics are intact
+  - [x] 2.11 Verify Acceptance Criterion AC3: boundary at 10/11 rows; the log section stays usable with the table open
+  - [x] 2.12 Verify Acceptance Criterion AC4: the empty state, fallback, and truncation notice are unchanged apart from the wrapper
+  - [x] 2.13 Verify Acceptance Criterion AC5: the new component tests pass; the existing `AuditReportPanel`, `run-detail`, and `RunDetailLogSection` tests pass
+  - [x] 2.14 Verify Acceptance Criterion AC6: the DESIGN.md §5.3 diff and changelog row are present
+  - [x] 2.15 Run Tests: `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test`, `pnpm run test:e2e`, then `make validate` (E2E NOT RUN — Docker unavailable locally; runs on the consolidated PR CI)
+  - [x] 2.16 AC-to-test mapping: record AC1→E2E, AC2→component+manual, AC3→component+E2E, AC4/AC5→component, AC6→DESIGN.md review, in the PR body
 
 - [ ] 3.0 Implement Issue #244 - https://github.com/llipe/dev-tasks-agent-fleet/issues/244: feat(panel): refresh run detail when a live run reaches a terminal state
 

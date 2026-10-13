@@ -36,6 +36,16 @@ export interface AuditReportPanelProps {
 
 const DEFAULT_TITLE = "Audit report";
 
+/**
+ * Default-open threshold (/DESIGN.md §5.3, D-07/D-12). Reports with this many
+ * RENDERED rows or fewer open by default; larger ones render collapsed so the
+ * findings table cannot push the steps panel, log toolbar, and log viewer off
+ * screen (§4.2 "no outer scroll"). The input is `view.rows.length` — the rows
+ * actually in the DOM (≤ MAX_ROWS) — not the agent-reported `totalFindings`,
+ * because the rendered rows are what take up space (verifier F-3, D-12).
+ */
+const DEFAULT_OPEN_MAX_ROWS = 10;
+
 /** Severity → status token tint (§2.4). Unknown severities get no tint. */
 const SEVERITY_TOKEN: Record<string, string> = {
   critical: "var(--st-fail)",
@@ -65,65 +75,71 @@ export function AuditReportPanel({ title, metadata }: AuditReportPanelProps) {
 }
 
 function Findings({ caption, view }: { caption: string; view: AuditReportView }) {
+  // Threshold on RENDERED rows (D-12 / verifier F-3), not the agent total.
+  const defaultOpen = view.rows.length <= DEFAULT_OPEN_MAX_ROWS;
   return (
-    <>
-      <p className={styles.summaryLine}>
-        <span className={styles.total}>
-          {view.totalFindings} {view.totalFindings === 1 ? "finding" : "findings"}
-        </span>
-        {view.byTool.length > 0 && (
-          <span className={styles.counts}>
-            {view.byTool.map(([tool, n]) => `${tool} ${n}`).join(" · ")}
+    <details className={styles.disclosure} open={defaultOpen}>
+      <summary className={styles.summary}>
+        <span className={styles.summaryLine}>
+          <span className={styles.total}>
+            {view.totalFindings} {view.totalFindings === 1 ? "finding" : "findings"}
           </span>
-        )}
-        {view.bySeverity.length > 0 && (
-          <span className={styles.counts}>
-            {view.bySeverity.map(([sev, n]) => `${sev} ${n}`).join(" · ")}
-          </span>
-        )}
-      </p>
-      {view.beforeAfter && (
-        <p className={styles.beforeAfter}>
-          <span className={styles.beforeAfterLabel}>before → after</span>
-          {BUCKETS.map((bucket) => (
-            <span key={bucket} className={styles.counts}>
-              {bucket} {view.beforeAfter!.before[bucket]} → {view.beforeAfter!.after[bucket]}
+          {view.byTool.length > 0 && (
+            <span className={styles.counts}>
+              {view.byTool.map(([tool, n]) => `${tool} ${n}`).join(" · ")}
             </span>
-          ))}
-        </p>
-      )}
-      <table className={styles.table}>
-        <caption className={styles.caption}>{caption}</caption>
-        <thead>
-          <tr className={`${styles.row} ${styles.headRow}`}>
-            <th scope="col" className={styles.headCell}>
-              Tool
-            </th>
-            <th scope="col" className={styles.headCell}>
-              Severity
-            </th>
-            <th scope="col" className={styles.headCell}>
-              Bucket
-            </th>
-            <th scope="col" className={styles.headCell}>
-              Location
-            </th>
-            <th scope="col" className={styles.headCell}>
-              Rule
-            </th>
-            <th scope="col" className={styles.headCell}>
-              Message
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {view.rows.map((row, i) => (
-            <FindingTr key={i} row={row} />
-          ))}
-        </tbody>
-      </table>
-      {view.truncated > 0 && <p className={styles.truncated}>{view.truncated} more not shown.</p>}
-    </>
+          )}
+          {view.bySeverity.length > 0 && (
+            <span className={styles.counts}>
+              {view.bySeverity.map(([sev, n]) => `${sev} ${n}`).join(" · ")}
+            </span>
+          )}
+        </span>
+        {view.beforeAfter && (
+          <span className={styles.beforeAfter}>
+            <span className={styles.beforeAfterLabel}>before → after</span>
+            {BUCKETS.map((bucket) => (
+              <span key={bucket} className={styles.counts}>
+                {bucket} {view.beforeAfter!.before[bucket]} → {view.beforeAfter!.after[bucket]}
+              </span>
+            ))}
+          </span>
+        )}
+      </summary>
+      <div className={styles.disclosureBody}>
+        <table className={styles.table}>
+          <caption className={styles.caption}>{caption}</caption>
+          <thead>
+            <tr className={`${styles.row} ${styles.headRow}`}>
+              <th scope="col" className={styles.headCell}>
+                Tool
+              </th>
+              <th scope="col" className={styles.headCell}>
+                Severity
+              </th>
+              <th scope="col" className={styles.headCell}>
+                Bucket
+              </th>
+              <th scope="col" className={styles.headCell}>
+                Location
+              </th>
+              <th scope="col" className={styles.headCell}>
+                Rule
+              </th>
+              <th scope="col" className={styles.headCell}>
+                Message
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.rows.map((row, i) => (
+              <FindingTr key={i} row={row} />
+            ))}
+          </tbody>
+        </table>
+        {view.truncated > 0 && <p className={styles.truncated}>{view.truncated} more not shown.</p>}
+      </div>
+    </details>
   );
 }
 
