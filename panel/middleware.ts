@@ -86,6 +86,17 @@ export function createMiddleware(makeClient?: MiddlewareClientFactory) {
       return NextResponse.next();
     }
 
+    // Internal scheduler routes (S-153) are NOT session-gated — the caller is
+    // pg_cron via pg_net, which holds no session cookie. The middleware lets
+    // the request reach the handler, which enforces a fail-closed, constant-time
+    // shared-secret check itself (SD-A1). Critically, the middleware does NOT
+    // authorize the request here — it only declines to apply the session gate;
+    // authorization is the handler's secret check, never an open pass. We MUST
+    // NOT return a 200 or any success body here.
+    if (policy === "internal") {
+      return NextResponse.next();
+    }
+
     // A single response object threads refreshed cookies to request + browser.
     const { supabase, response } = createMiddlewareClient(request, makeClient);
 
