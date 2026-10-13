@@ -6,6 +6,9 @@ One row per PRD phase or wave, newest PRD first. This page indexes the PRDs, Git
 
 | PRD | Phase/Wave | Scope (one line) | Status | Issues/PRs | What's missing |
 | --- | --- | --- | --- | --- | --- |
+| [prd-agent-scheduler](requirements/prd-agent-scheduler.md) | Wave A — Foundation | `schedules` + `notifications` schema/enums/RLS, `buildRunInsert` trigger descriptor, `pg_net` + Vault + settings + runbook | Not started | #261–#263 (S-149…S-151) | Delivered on `integration/agent-scheduler` as the dependency base for Wave B |
+| [prd-agent-scheduler](requirements/prd-agent-scheduler.md) | Wave B — Trigger (A1) | `compute_next_run_at` (DST + cron) + RPC, fire endpoint + shared-secret internal class, `fire_due_schedules` tick + G4 cap + G2 no-catch-up | In progress | #264–#266 (S-152…S-154), `integration/agent-scheduler` | Active implementation wave (this run). Depends on Wave A |
+| [prd-agent-scheduler](requirements/prd-agent-scheduler.md) | Waves C–E | Guardrails (G1/G3/G5), notifications (sweep + SES digest + release gate), UI (`/schedules`, dialog, feed, agent indicator) | Not started | #267–#276 (S-155…S-164) | Pending Wave B. Fast-follows: G5-b auto GitHub PR-state polling, Slack channel, webhook triggers |
 | [prd-agent-fleet-panel-v3-ui-depth](requirements/prd-agent-fleet-panel-v3-ui-depth.md) | All | Run History filter/search/pagination and inline links, Run Detail steps panel and log-level filtering, queued-animation fix, All Runs feed, Repositories reference list | Done | #202–#208, PR #216; follow-up #241 / PR #243 | — (Settings, System health, and command palette are parked as non-goals, not missing scope) |
 | [prd-security-analyst-agent](requirements/prd-security-analyst-agent.md) | All | `security-analyst` agent: five scanners, cross-tool dedup, classification, `audit_only` and `fix` modes with re-scan gate, verified live | Done | #185–#201, PR #247; hardening PRs #235–#240, #242, #246 | — |
 | [prd-panel-password-auth](requirements/prd-panel-password-auth.md) | Phase A | Supabase password login, fail-closed middleware gate, logout, live-tail 401 handling, auth release gate (verified while private) | Done | #155–#161, PR #170, #173 | — |
@@ -18,4 +21,4 @@ One row per PRD phase or wave, newest PRD first. This page indexes the PRDs, Git
 ## Not yet on a PRD
 
 - Open issues without a PRD: #244 (refresh run detail when a run reaches a terminal state), #245 (run detail can't scroll when the summary is tall), #217 (Next.js 16 + Node LTS upgrade).
-- Product backlog with no PRD yet (see [`product-context.md`](product-context.md) §6): scheduled and webhook triggers, per-repository agent enablement, GitHub App repo sync, `findings` with stable fingerprints, run cancellation, `run_events` retention.
+- Product backlog with no PRD yet (see [`product-context.md`](product-context.md) §6): webhook triggers, per-repository agent enablement, GitHub App repo sync, `findings` with stable fingerprints, run cancellation, `run_events` retention. (Scheduled triggers now have a PRD — see [prd-agent-scheduler](requirements/prd-agent-scheduler.md) above.)

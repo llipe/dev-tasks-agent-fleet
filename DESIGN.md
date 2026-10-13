@@ -14,6 +14,7 @@
 | 1.7     | 2026-09-15 | Added **§5.6 Repositories (`/repositories`)** (Story S-147 / issue #207, FR15/FR16/FR18). Documents the list + Add-repository form as a **first-pass layout, not a dedicated `ux-engineer` design pass** (spec Open Question #4 was unresolved when this story started — explicitly flagged rather than improvised silently): the list reuses the `RunHistoryTable` semantic-table-on-CSS-grid pattern with a `Tag`-based enabled/disabled state; the form reuses `LoginForm`'s field-row + `role="alert"` + pending/disabled double-submit pattern. No Archive action yet (Story S-148 scope). Sidebar "Repositories" flips from `DisabledNavItem` to a live `NavItem`. No new visual token or component variant introduced — every primitive used (`Tag`, `Input`, `Button`, `KLabel`) already existed. | developer |
 | 1.8     | 2026-09-15 | Extended **§5.6 Repositories** with the **Archive action** (Story S-148 / issue #208, FR17). Documents the new Actions column + per-row "Archive" button and the panel's **first destructive-action confirm dialog** (a minimal, accessible `role="dialog"`/`aria-modal="true"` overlay — not a reusable primitive, since no other screen has one yet): names the repository, states the consequence in plain language (stops appearing as an invocation target; existing runs keep their history/name unchanged; not undoable from the UI, AC6), Cancel/Confirm actions, and a `router.refresh()`-driven re-fetch on success rather than client-side row removal. No new visual token — reuses `Button` (`variant="ghost"`/`"secondary"`/`"primary"`), the existing `--space-*`/`--rule`/`--st-fail` tokens, and the `role="alert"` error pattern already established by `AddRepositoryForm`. | developer |
 | 1.9     | 2026-09-15 | Planner-level drift pass (`integration/panel-v3-ui-depth` pre-merge check): added **§5.2a All Runs (`/runs`)** — Story S-146 / issue #206 shipped this cross-agent feed screen with no corresponding §5 section; it was documented in the changelog (row 1.39 there is none — see `docs/technical-guidelines.md` row 1.39) but never given its own screen-spec entry here. §5.2a documents it as a pure composition of the existing §5.2 filter bar + table plus one Agent column, matching the shipped code. Also added a **"Sidebar nav item state (current)"** note to **§4.1** stating plainly which of the five nav items are live (Agents, All runs, Repositories) versus still disabled (Settings, System health) — this fact was previously only recoverable by reading each screen section's closing sentence individually. Current-state, documentation-only additions; no visual token, component, or behavior change. | technical-writer |
+| 1.11    | 2026-10-13 | Added the **Agent Scheduler** screen specs (Phase 4, [`prd-agent-scheduler.md`](requirements/prd-agent-scheduler.md) / [`specification-prd-agent-scheduler.md`](../workstream/specification-prd-agent-scheduler.md)), pinned to the delivered Nocturne prototype (`docs/prototype/Agent Scheduler.dc.html`, same `_ds` bundle hash as the existing screens — zero DS divergence). New **§5.7 Schedules (`/schedules`)** (the fleet-wide list: State/Agent/Repository/Cadence/Next run/Last run/Actions semantic-table-on-grid, the unified blocked/skipped reason chip + "PR handled · resume anyway" ghost action, the New/Edit dialog with the schema-driven param form + cadence picker + live summary + next-3-runs preview + collapsible guardrails, and the delete `alertdialog`) and **§5.8 Notifications (`/notifications` + top-bar bell)** (the bell + unread badge + popover, and the full grouped feed). **§4.1** nav-state note updated: **Schedules** and **Notifications** are now live nav destinations (four of six items live; Settings + System health remain disabled). **§10** gains the scheduler icons (`CalendarDots` Schedules, `Bell` Notifications, plus the row-action `Pencil`/`Trash`/`Play`/`Pause` and reason `GitPullRequest`/`Warning`/`SkipForward`/`LockSimple`). No new visual token or component variant introduced — every surface reuses existing primitives (semantic table, `Button` ghost/primary/secondary, `Tag`/status-pill pattern, segmented control `.seg`, toggle switch, the dialog shell, `KLabel`). Documentation locking the design contract to the reviewed prototype ahead of story generation. | product-engineer |
 | 1.10    | 2026-09-17 | Added the **audit-report findings block** to **§5.3 Run Detail** (issue #241). `audit_report` artifacts carry their content in `metadata` and have no URL by design, so the pill link alone showed nothing reviewable. The summary now renders, under the artifact pills, one findings block per `audit_report`: a summary line (total, per-tool and per-severity counts, before→after bucket counts for fix-mode reports) and a semantic `<table>` on the §4.4 CSS-grid pattern (tool · severity · bucket · `path:line` · rule · message), with a generic key/value `<dl>` fallback for unrecognized metadata shapes and an explicit "No findings." empty state. Severity text is tinted with the existing §2.4 status tokens (`--st-fail` for critical/high, `--st-timeout` for medium, `--faint` for low) via a per-row custom property, mirroring `StatusPill`'s `--st-color` mechanism. Metadata is untrusted and renders as text only (no markup, no links) — the same posture as §5.3's artifact-link guard. No new token or component variant introduced; header/row typography reuses the §2 table tokens. | developer |
 
 ---
@@ -393,11 +394,13 @@ Visibility: **Log out renders only when the request is authenticated, and is abs
 
 #### Sidebar nav item state (current)
 
-Of the five primary nav items, **three are live links** — Agents (since S-101),
-**All runs** (since Story S-146, §5.2a), and **Repositories** (since Story
-S-147, §5.6) — and **two remain `DisabledNavItem`** — Settings and System
-health (`aria-disabled`, "not available in this phase", not focusable, per PRD
-§10; no story in the v3 "UI Depth" batch scoped either of these).
+As of Phase 4 (the Agent Scheduler, §5.7/§5.8), **four of the six primary nav
+items are live links** — Agents (since S-101), **All runs** (S-146, §5.2a),
+**Repositories** (S-147, §5.6), and now **Schedules** (§5.7, `CalendarDots`) and
+**Notifications** (§5.8, `Bell`, carrying the unread badge) — and **two remain
+`DisabledNavItem`** — Settings and System health (`aria-disabled`, "not
+available in this phase", not focusable, per PRD §10). (Before Phase 4 only the
+first three were live; Schedules and Notifications were disabled placeholders.)
 
 ### 4.2 Run Detail (full-height, no outer scroll)
 
@@ -535,6 +538,172 @@ A single server-rendered screen (`app/(panel)/repositories/page.tsx`) composed o
 Sidebar: the "Repositories" item (§4.1) flips from a `DisabledNavItem` to a live `NavItem` linking to `/repositories`, using the same `GitBranch` icon it already had while disabled.
 
 Styling is token-only CSS Modules, following the established grid/spacing/color-token set (`--space-*`, `--rule`, `--faint`, `--muted`, `--color-text`, `--st-fail`, `--st-ok`) — no new token introduced. No new component was built either: `RepositoryTable` and `AddRepositoryForm` are new FILES, but every visual primitive inside them (`Tag`, `Input`, `Button`, `KLabel`) already existed.
+
+### 5.7 Schedules (`/schedules`)
+
+Phase 4 — the Agent Scheduler (PRD/spec Phase 4). Pinned to the reviewed prototype
+`docs/prototype/Agent Scheduler.dc.html` (Nocturne, same `_ds` bundle as every other
+screen). A new authenticated fleet-wide surface; the sidebar **Schedules** item flips
+from `DisabledNavItem` to a live `NavItem` (icon `CalendarDots`, §10). No new visual
+token or component variant — every element below reuses an existing primitive.
+
+**Page header.** Flush-left `h1` "Schedules" (`500 21px/1.2 var(--font-heading)`); when
+scoped to one agent (arriving from the §5.2 agent-page indicator, §5.7.1), an inline
+filter chip `agent: <slug>` (`--color-accent-300`, 999px, 1px rule border) with an `✕`
+clear control, and a mirrored breadcrumb `Schedules / <slug>` in the top bar. A summary
+stat line in mono/`--faint`: `N schedules · M paused · K blocked` (the blocked count
+tints `--st-timeout` when non-zero), plus the standing note `all times
+America/Santiago unless noted`. Right-aligned primary **New schedule** button
+(`btn-primary`, `Plus` icon) opening the §5.7.2 dialog.
+
+**Table (semantic `<table>` on the §4.4 CSS-grid pattern).** `role="table"`, min-width
+1080px (horizontal scroll below that — this is a wide table on a 1024px floor, §9),
+grid columns `100px minmax(150px,1.1fr) minmax(170px,1.25fr) minmax(150px,1.1fr) 120px
+136px 184px`. Uppercase 10px `.klabel` headers; the header rule and each row's bottom
+rule use the Nocturne **fade-to-transparent-at-48px** gradient (§1.1), not a flat
+border. Row hover = 4% text tint. Columns:
+
+- **State** — a status-pill (§3.4 pattern, `500 10.5px mono`, 999px, 14%/13%/6% tint):
+  `active` (`--st-ok` solid dot), `blocked` (`--st-timeout` solid dot), `paused`
+  (`--muted` text, **hollow** dot — border only, mirroring `failed_to_start` §8.1).
+- **Agent** — name (`500 13px heading`) over slug (`mono 11px --color-accent-400`).
+- **Repository** — `owner/repo` (`mono --color-accent-300`, ellipsis) over a branch row
+  (`mono 11px --muted` with a `GitBranch` glyph).
+- **Cadence** — the human summary (`mono --color-text`): `Daily · 07:00`, `Weekly · Mon
+  04:00`, `Every 6h`, `Hourly`, or `Cron · 0 4 * * 1`; the IANA timezone below in
+  `mono 10.5px --faint`.
+- **Next run** — relative (`in 3h 40m`, `tomorrow 07:00`, `Thu 05:00`) in mono over the
+  absolute `Wed 14 Oct · 07:00` sub-line; `—` when paused, `held` (`--faint`) when
+  blocked with a `tick … skipped` sub-line.
+- **Last run** — a compact outcome pill (`success`/`failed`/`timed_out`, §8 colors)
+  over `<ago> ↗`, the whole cell linking to that run's `/runs/[id]`.
+- **Actions** — right-aligned ghost buttons: **Pause/Resume** (toggle, `Pause`/`Play`
+  icon + label), **Edit** (`Pencil`, icon-only 28px), **Delete** (`Trash`, icon-only;
+  hover tints `--st-fail` + a `--st-fail` 50% border).
+
+**Blocked / skipped reason row (unified, spec SD-G6).** When a row is `blocked` or was
+recently `skipped`, a second row spanning columns 2→end shows one reason chip
+(`mono 10.5px`, 6px radius, 1px tinted border, a leading glyph): `open_pr` →
+`GitPullRequest` + `--st-timeout` ("Blocked: PR #214 awaiting review"); `auto_paused`
+→ `Warning` + `--st-timeout`; manual pause → `Pause` + `--muted`; `concurrency_cap` /
+`missed_tick` → `SkipForward` + `--faint`. An `open_pr` block additionally renders a
+ghost **"PR handled · resume anyway"** button (the G5-c manual clear).
+
+**Empty state.** A dashed-border panel (`KLabel` "Schedules" + one muted line — "No
+schedules yet." or "No schedules for `<slug>` yet." when filtered — + the New schedule
+CTA), never a blank area.
+
+**On create/edit success**, the affected row flashes a 2px `--color-accent` left inset
+(`rise`-adjacent, transient ~2.4s) — the server-refetch-is-truth posture (§5.6), the
+flash is purely a confirmation cue.
+
+#### 5.7.1 Agent-page scheduled indicator (`/agents/[slug]`)
+
+A read-only pointer in the agent run-history header (§5.2): a small `mono`/`Tag` count
+`N schedules` linking to `/schedules?agent=<slug>` (which renders the header filter
+chip above). No CRUD on the agent page — the indicator is a link only.
+
+#### 5.7.2 New / Edit schedule dialog
+
+A centered modal over a `--color-neutral-900` 62% backdrop, max-width 760px,
+`--color-bg` panel, `--radius-lg` (14px), `--shadow-lg`, `rise` entrance — the same
+dialog shell family as §5.4 Invoke. Header: title ("New schedule" / "Edit schedule") +
+the selected agent slug (`mono --color-accent-300`) + an `X` close. Scrolls within the
+viewport; sticky-feel footer band.
+
+- **Agent select** — `select.input` (mono), enabled agents only; a disabled agent shows
+  `(disabled)` and is non-selectable. Changing the agent reloads the param rows from
+  that agent's schema and resets param values to the schema defaults.
+- **Repository select** — rendered **separately, first** (same rule as §5.4), only when
+  the agent `requires_repository`. A hint line shows `branch: <default> (default)` once
+  picked, `20 repos connected` before, or a `--st-fail` "required — pick a repository"
+  when the form was submitted invalid.
+- **Parameters** — a `KLabel` "Parameters" + `from parameters_schema` note, then the
+  **schema-driven `fieldrow` grid** (`minmax(0,1fr) minmax(200px,268px)`, 22px gap,
+  top-ruled rows), identical in shape to §5.4: left column = the param key (`mono 500`),
+  a `.ftype` chip (`string · enum`, `integer · 1–5`, `boolean`, …), a `*` required
+  marker, and the description; right column = the control (`select` for enums, the §3.10
+  **toggle switch** for booleans with an `on`/`off` mono label, `number`/`text` input
+  otherwise) + a `default: <x>` hint.
+- **Cadence** — a `KLabel` "Cadence" + `when this schedule fires`, then a **segmented
+  control** (`.seg`/`.seg-opt`, §forms) over `Hourly · Daily · Weekly · Every N hours ·
+  Advanced (cron)` (the selected option reads `--color-accent`). Below, a two-column
+  grid: **left** = the kind-specific fields — `Hourly` shows an explanatory line; `Daily`
+  a `time` input (`HH:MM`); `Weekly` a weekday `select` + the `time` input; `Every N
+  hours` a bounded number input (1–23) with an inline `--st-fail` range error; `Advanced
+  (cron)` a `mono` cron Input (placeholder `0 4 * * 1`, border tints `--st-fail` on an
+  invalid expression) with a live hint (`✓ valid · first fire …` in `--st-ok`, or the
+  parse error in `--st-fail`) and the field legend `minute · hour · day-of-month · month
+  · day-of-week`; and in every kind a **Timezone** `select` defaulting
+  `America/Santiago`. **Right** = a bordered **Preview** card (`KLabel` "Preview", a
+  `500 13px` human summary e.g. "Runs daily at 07:00 America/Santiago", the derived
+  `cron …` line in `mono --faint`, and a ruled **Next 3 runs** list of absolute+relative
+  times in mono). The summary/preview recompute live from the cadence fields (spec SD-T6
+  — the real panel sources these from the authoritative DB RPC, not a TS reimpl).
+- **Advanced · guardrails** — a collapsible disclosure (`CaretRight`/`CaretDown`, a
+  one-line `pause after N · success email on/off` summary when collapsed): an
+  **Auto-pause after failures** number input (default 3) and an **Email me when a run
+  succeeds** toggle (default off, with the note that failures/auto-pauses always notify
+  and successes otherwise only appear in the daily digest). Two read-only always-on
+  guardrail lines (`LockSimple` glyph, `--muted`): "Won't fire while a prior run is still
+  active" (G1) and "Won't fire while a prior run's PR is open" (G5).
+- **Footer** — a left hint (`POST /schedules · first fire <rel>`, or a `--st-fail` "Fix
+  the highlighted fields to continue" when invalid) + **Cancel** (ghost) + a primary
+  **Create schedule** / **Save** button carrying a pending dot + "Creating…"/"Saving…"
+  label and a disabled state while submitting or while the cadence is invalid.
+
+#### 5.7.3 Delete confirm dialog
+
+The §5.6/§3-pattern destructive confirm, as an `alertdialog` (`role="alertdialog"`,
+`aria-modal`): "Delete schedule?", a plain-language body naming the agent + repo +
+cadence (`mono --color-accent-300`) and stating "will stop firing. Past runs and their
+logs are kept.", Cancel (ghost) + a `btn-secondary` **Delete schedule** tinted
+`--st-fail` (hover fills a 12% `--st-fail` tint). Deleting a schedule never deletes its
+produced runs (the `on delete set null` FK, spec §2).
+
+### 5.8 Notifications (`/notifications` + top-bar bell)
+
+Phase 4. The channel-agnostic `notifications` table surfaced in-panel (spec SD-N5). Two
+entry points share one data source:
+
+**Top-bar bell.** A `btn-ghost` icon button (`Bell`, §10) in the top bar's right cluster
+(beside the realtime/region indicators and the user email). An **unread badge** —
+`min-width 15px`, 999px, `--color-accent` fill, `--color-bg` text, a 2px `--color-bg`
+ring so it reads over the bar — shows the unread count; absent at zero. Clicking opens a
+**popover** (384px, `--color-surface`, `--radius 12px`, `--shadow-lg`, `rise` entrance,
+closed by an invisible full-viewport scrim): a header ("Notifications" + a "Mark all
+read" ghost shown only when unread > 0), up to 5 newest items (the §5.8 item row), an
+empty state (`KLabel` "Inbox" + "No notifications."), and a footer (`<unread> unread ·
+<total> total` + a "View all ▸" link to `/notifications`).
+
+**Feed (`/notifications`).** A single-column surface, max-width 780px. Header `h1`
+"Notifications" + a `mono --faint` stat (`<unread> unread · <total> total · newest
+first`) + a "Mark all read" ghost (dimmed to 0.45 when nothing is unread). The list is
+grouped by day with `.klabel` group headers ("Today" / "Earlier"). Each **item row** is
+a `8px minmax(0,1fr) auto` grid:
+
+- a leading **kind dot** (7px) colored by kind — `run_succeeded` `--st-ok`,
+  `run_failed` `--st-fail`, `schedule_auto_paused` `--st-timeout`, `pr_opened`
+  `--color-accent` — with a `box-shadow` glow when unread;
+- a title (`13px body`; **unread** = `--color-text` weight 500 + a 2px `--color-accent`
+  left edge + a 5% accent background; **read** = `--muted` weight 400, transparent edge),
+  e.g. "security-analyst run failed on llipe/ripley-ingest", "Schedule auto-paused after
+  3 failures", "dependency-update opened a PR on llipe/thinkfirst-web";
+- a `mono --muted` detail line (reason / `error_code` / PR note — **untrusted, rendered
+  as text only**, never markup or a metadata-built link, same posture as §5.3);
+- optional `mono` links ("Open run ▸" → `/runs/[id]`, "View schedule ▸" → `/schedules`,
+  "PR #214 ↗");
+- a `mono 10.5px --faint` relative timestamp, right-aligned.
+
+Clicking an item marks it read (clears the unread treatment). An empty feed shows the
+dashed `KLabel` "Inbox" + "No notifications." panel. A persistent `mono --faint` footer
+states: **"A daily email digest of these is sent at 08:00 America/Santiago."** (the SES
+digest, spec SD-N6 — the panel feed and the digest are two consumers of the same table).
+
+Server-read (SD2, RLS deny-all); mark-(all)-read is a Server Action; routes declare
+inline route-segment config. No new visual token or component variant — the bell reuses
+`btn-ghost`, the badge/dots reuse the status-pill color mechanism, the rows reuse the
+`KLabel` + mono/body type set.
 
 ---
 
@@ -706,7 +875,16 @@ Use **Phosphor Icons** (https://phosphoricons.com) throughout, rendered as inlin
 |-------|---------|-------------------|
 | ▦ | Agents | `GridFour` or `Robot` |
 | ≡ | All runs | `List` |
-| ⑃ | Repositories | `GitBranch` |
+| ⑃ | Repositories | `GitBranch` / `GitFork` |
+| 🗓 | Schedules (nav, §5.7) | `CalendarDots` |
+| 🔔 | Notifications (nav + top-bar bell, §5.8) | `Bell` |
+| ✎ | Edit schedule (row action, §5.7) | `PencilSimple` |
+| 🗑 | Delete schedule (row action, §5.7) | `Trash` |
+| ▶ / ⏸ | Resume / Pause schedule (row action, §5.7) | `Play` / `Pause` |
+| ⎇ | Open-PR block reason (§5.7) | `GitPullRequest` |
+| ⚠ | Auto-pause block reason (§5.7) | `Warning` |
+| ⏭ | Skipped reason — cap / missed tick (§5.7) | `SkipForward` |
+| 🔒 | Always-on guardrail line (dialog, §5.7.2) | `LockSimple` |
 | ⚙ | Settings | `GearSix` |
 | ◈ | System health | `Heartbeat` |
 | ⏻ | Log out (sidebar footer, §4.1) | `Power` |
