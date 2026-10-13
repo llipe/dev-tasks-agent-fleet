@@ -19,7 +19,7 @@ One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are
 
 | Batch | Scope (one line) | Status | Issues/PRs | What's missing |
 | --- | --- | --- | --- | --- |
-| CI audit gates + run-detail follow-ups | Unblock the pnpm and pip-audit CI gates (PyJWT 2.15.1, transitive overrides, redeploy both agents); bound the audit-report findings table; refresh run detail when a run finishes | Not started | #252, #245, #244; plan `workstream/tasks-issue-252-245-244-audit-gates-and-run-detail.md` | Entire scope |
+| CI audit gates + run-detail follow-ups | Unblock the pnpm and pip-audit CI gates (PyJWT 2.15.1, transitive overrides, redeploy both agents); bound the audit-report findings table; refresh run detail when a run finishes | In progress | #252 / PR #254, #245 / PR #255, #244 / PR #256 (all merged into `integration/run-detail-followups-and-audit`); consolidated PR #257; plan `workstream/tasks-issue-252-245-244-audit-gates-and-run-detail.md` | #252 AC6 only — the post-merge redeploy of both agents on PyJWT 2.15.1 and a live invocation confirming GitHub App auth (D-10, `infra-engineer`, operator-gated) |
 | Next.js 16 upgrade | Next 15.5.25 → 16.4.0 and Node LTS bump; clears the two moderate `next` advisories handed over by #252. Runs immediately after the batch above | Not started | #217 | Entire scope; needs refinement against 16.4.0 |
 
 ## Not yet on a PRD
