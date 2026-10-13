@@ -167,3 +167,74 @@ export interface RunArtifactRow {
   metadata: Json;
   created_at: string;
 }
+
+// ---------------------------------------------------------------------
+// Phase 4 — Agent Scheduler (S-149). Mirrors
+// `supabase/migrations/20261013160000_scheduler_schema.sql`.
+// ---------------------------------------------------------------------
+
+export type ScheduleState = "active" | "paused" | "blocked";
+export type CadenceKind = "hourly" | "daily" | "weekly" | "every_n_hours" | "advanced";
+export type NotificationKind =
+  | "run_failed"
+  | "schedule_auto_paused"
+  | "pr_opened"
+  | "run_succeeded";
+
+/** `schedules` — a recurring agent invocation (SD-S1). */
+export interface ScheduleRow {
+  id: string;
+  agent_id: string;
+  repository_id: string | null;
+  installation_id: string | null;
+
+  name: string | null;
+  params: Json;
+
+  cadence_kind: CadenceKind;
+  cadence_minute: number | null;
+  cadence_hour: number | null;
+  cadence_weekday: number | null;
+  cadence_interval_hours: number | null;
+  cadence_cron: string | null;
+  timezone: string;
+
+  state: ScheduleState;
+  is_enabled: boolean;
+
+  consecutive_failures: number;
+  auto_pause_threshold: number;
+  block_reason: string | null;
+  blocked_at: string | null;
+  last_skipped_reason: string | null;
+  last_skipped_at: string | null;
+
+  pr_block_run_id: string | null;
+  pr_block_cleared_at: string | null;
+
+  notify_on_success: boolean;
+
+  last_fired_at: string | null;
+  last_run_id: string | null;
+  next_run_at: string | null;
+  last_fire_error: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** `notifications` — channel-agnostic notable-event record (SD-N1). */
+export interface NotificationRow {
+  id: string;
+  kind: NotificationKind;
+  schedule_id: string | null;
+  agent_id: string | null;
+  repository_id: string | null;
+  run_id: string | null;
+  title: string;
+  detail: string | null;
+  data: Json;
+  read_at: string | null;
+  emailed_at: string | null;
+  created_at: string;
+}
