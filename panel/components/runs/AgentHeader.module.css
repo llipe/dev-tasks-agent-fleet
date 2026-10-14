@@ -68,3 +68,12 @@
 .invokeLink {
   text-decoration: none;
 }
+
+/* S-164 — the scheduled indicator in the meta row (§5.7.1). */
+.scheduleLink {
+  color: var(--color-accent-300);
+  text-decoration: none;
+}
+.scheduleLink:hover {
+  text-decoration: underline;
+}

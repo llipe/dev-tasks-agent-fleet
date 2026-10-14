@@ -2,7 +2,10 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shell/AppShell";
+import { NotificationBell } from "@/components/shell/NotificationBell";
 import { createAuthServerClient } from "@/lib/supabase/auth-server";
+import { createServerClient } from "@/lib/supabase/server";
+import { getNotificationTotal, getNotifications, getUnreadCount } from "@/lib/supabase/queries";
 
 /**
  * Authenticated route-group layout (Story S-118, extended in S-120).
@@ -39,5 +42,37 @@ export default async function PanelLayout({ children }: { children: ReactNode })
     authenticated = false;
   }
 
-  return <AppShell authenticated={authenticated}>{children}</AppShell>;
+  // Notification bell data (S-163). Server-read (SD2); the bell is a client
+  // component but never fetches — initial data is threaded in. Fail-soft: on any
+  // read error the bell renders empty rather than breaking the shell.
+  let bellRows: Awaited<ReturnType<typeof getNotifications>> = [];
+  let bellUnread = 0;
+  let bellTotal = 0;
+  if (authenticated) {
+    try {
+      const client = createServerClient();
+      [bellRows, bellUnread, bellTotal] = await Promise.all([
+        getNotifications(client, 5),
+        getUnreadCount(client),
+        getNotificationTotal(client),
+      ]);
+    } catch {
+      bellRows = [];
+      bellUnread = 0;
+      bellTotal = 0;
+    }
+  }
+
+  return (
+    <AppShell
+      authenticated={authenticated}
+      topBarActions={
+        authenticated ? (
+          <NotificationBell rows={bellRows} unread={bellUnread} total={bellTotal} />
+        ) : undefined
+      }
+    >
+      {children}
+    </AppShell>
+  );
 }

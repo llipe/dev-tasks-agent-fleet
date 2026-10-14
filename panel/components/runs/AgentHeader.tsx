@@ -23,9 +23,11 @@ export interface AgentHeaderProps {
   header: AgentHeaderData;
   /** Invoke route target, or null while the route is unbuilt (S-113). */
   invokeHref: string | null;
+  /** S-164: count of schedules bound to this agent (the §5.7.1 indicator). */
+  scheduleCount?: number;
 }
 
-export function AgentHeader({ header, invokeHref }: AgentHeaderProps) {
+export function AgentHeader({ header, invokeHref, scheduleCount }: AgentHeaderProps) {
   const params = `${header.paramsCount} ${header.paramsCount === 1 ? "param" : "params"}`;
   const p50 = header.p50Duration != null ? `p50 ${header.p50Duration}` : "no duration data";
   const success = header.successRate != null ? `${header.successRate}% success` : "no runs yet";
@@ -52,6 +54,13 @@ export function AgentHeader({ header, invokeHref }: AgentHeaderProps) {
             <span>{params}</span>
             <span>{p50}</span>
             <span>{success}</span>
+            {scheduleCount != null && (
+              <Link href={`/schedules?agent=${header.slug}`} className={styles.scheduleLink}>
+                {scheduleCount === 0
+                  ? "No schedules"
+                  : `${scheduleCount} ${scheduleCount === 1 ? "schedule" : "schedules"}`}
+              </Link>
+            )}
           </div>
         </div>
         <div className={styles.actions}>

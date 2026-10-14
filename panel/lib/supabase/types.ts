@@ -238,3 +238,20 @@ export interface NotificationRow {
   emailed_at: string | null;
   created_at: string;
 }
+
+/**
+ * `v_schedules` — the schedules list view (S-161). `schedules.*` plus joined
+ * agent/repository display columns and the last produced run's reaper-correct
+ * status/outcome/finish time. The panel reads the list through this view, never
+ * the raw `schedules` table (SD4 read path).
+ */
+export interface VScheduleRow extends ScheduleRow {
+  agent_name: string;
+  agent_slug: string;
+  agent_is_enabled: boolean;
+  repository_full_name: string | null;
+  repository_default_branch: string | null;
+  last_run_status: RunStatus | null;
+  last_run_outcome: RunOutcome | null;
+  last_run_finished_at: string | null;
+}
