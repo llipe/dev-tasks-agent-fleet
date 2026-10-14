@@ -26,7 +26,7 @@ STS has no IAM OIDC provider for the issuer `oidc.fly.io/felipe-mallea`, so it r
 ## Backup
 
 - `backup/trust-policy.before.json`: the role `panel-agentcore-invoke` trust policy, captured before any change
-- `backup/invoke-runtime.before.json`: the role's `invoke-runtime` inline policy, captured before any change
+- `backup/runtime-invoke-policy.before.json`: the role's `invoke-runtime` inline policy, captured before any change
 
 ## Steps
 
@@ -44,9 +44,9 @@ STS has no IAM OIDC provider for the issuer `oidc.fly.io/felipe-mallea`, so it r
 
 ### Step 3 — Allow the panel to invoke security-analyst (optional; separate approval)
 - **Kind:** IAM inline-policy update · **Tool:** aws · **Touches state:** yes
-- **Forward:** `aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime --policy-document file://infra/invoke-policy.json`, where `Resource` lists exactly the two runtime ARNs (dependency-update, security-analyst). Still action-scoped to `InvokeAgentRuntime`, with no wildcard.
+- **Forward:** `aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime --policy-document file://infra/agentcore-invoke-policy.json`, where `Resource` lists exactly the two runtime ARNs (dependency-update, security-analyst). Still action-scoped to `InvokeAgentRuntime`, with no wildcard.
 - **Verify:** `aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime` matches the file
-- **Revert:** `aws iam put-role-policy … --policy-document file://infra/changes/20261014-fly-oidc-issuer-trust/backup/invoke-runtime.before.json`
+- **Revert:** `aws iam put-role-policy … --policy-document file://infra/changes/20261014-fly-oidc-issuer-trust/backup/runtime-invoke-policy.before.json`
 
 ### Step 4 — Verify live (AC4)
 - **Kind:** verification invocation · **Touches state:** one normal `runs` row
@@ -55,5 +55,5 @@ STS has no IAM OIDC provider for the issuer `oidc.fly.io/felipe-mallea`, so it r
 - **Revert:** none (on failure, revert Steps 2→1)
 
 ### Step 5 — Record and close
-- **Forward:** commit `infra/trust-policy.json`, `infra/invoke-policy.json` (new in the repo), and this change record; update the runbook (`panel-deployment.md`: the issuer is the org slug, with a socket/claims probe recipe); append D-08 to `workstream/decisions-panel-fly-oidc.md`; open a draft PR; close #280
+- **Forward:** commit `infra/trust-policy.json`, `infra/agentcore-invoke-policy.json` (new in the repo; named to avoid the `invoke-*.json` payload ignore pattern), and this change record; update the runbook (`panel-deployment.md`: the issuer is the org slug, with a socket/claims probe recipe); append D-08 to `workstream/decisions-panel-fly-oidc.md`; open a draft PR; close #280
 - **Revert:** n/a
