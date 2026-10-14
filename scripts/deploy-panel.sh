@@ -97,12 +97,14 @@ echo "== deploy-panel: deploying $FLY_APP from repo root =="
 
 echo "== deploy-panel: verifying the auth boundary against the deployed host =="
 HOST="https://${FLY_APP}.fly.dev"
-# The auth gate command. DEPLOY_PANEL_VERIFY_CMD is a TEST-ONLY seam: it lets the
-# probe-decision test (panel/tests/unit/deploy-panel-probe.test.ts) drive this
-# real script through the OIDC-probe branch without a live deploy or a live auth
-# gate. In production it is unset and the real release gate runs.
-VERIFY_CMD="${DEPLOY_PANEL_VERIFY_CMD:-scripts/verify-panel-auth.sh}"
-if ! "$VERIFY_CMD" "$HOST" -a "$FLY_APP"; then
+# The auth gate is hard-wired to scripts/verify-panel-auth.sh — the control
+# ADR-007 makes the panel's security boundary. There is NO env-driven override:
+# a switch that could disable a security gate from the environment (CI leak,
+# operator shell, copied snippet) is itself the vulnerability. The gate is
+# resolved relative to the working directory (the repo root this script cd's
+# into), so a test can exercise the probe branch by running the real script
+# from a temp dir that mirrors the layout with a stub scripts/verify-panel-auth.sh.
+if ! scripts/verify-panel-auth.sh "$HOST" -a "$FLY_APP"; then
   echo "" >&2
   echo "VERIFY-FAIL: the auth gate failed against $HOST after a successful deploy." >&2
   echo "CONTAIN FIRST if this is a surprise regression:" >&2
