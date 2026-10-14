@@ -5,7 +5,7 @@
 - **Environment:** `prod` (`production: true`)
 - **Resolved identity:** AWS account `755641879575` (IAM is global); Fly org slug `felipe-mallea` (alias `personal`), app `dt-agent-fleet-panel`
 - **Cost:** none (IAM OIDC providers, role trust policies, and inline policies are free)
-- **Approval status:** plan PENDING
+- **Approval status:** plan APPROVED by @llipe 2026-10-14T15:27-03:00; each step requires its own approval. Steps 1, 2, 3, 3b, 4, 5 approved and applied 2026-10-14 (see result.md); 3b was added after step 4's first attempt surfaced the endpoint-ARN requirement
 
 ## Discovery (read-only, 2026-10-14)
 
