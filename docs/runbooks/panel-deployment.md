@@ -150,10 +150,12 @@ flyctl machine exec <machine-id> 'grep -E "^(Uid|Gid):" /proc/1/status' -a dt-ag
 
 **Deploy-time token probe (D-05) — the regression guard.** `scripts/deploy-panel.sh`, after the auth
 release gate passes, runs the shipped probe (`/app/fly-oidc-probe.mjs`) on **every started Machine**
-(via `flyctl machine exec` as uid 1001) — the exact same code the 26 unit tests cover
+(via `flyctl machine exec` as uid 1001) — the exact same code the unit tests cover
 (`panel/tests/unit/fly-oidc-probe.test.ts`), not an inline copy. It is the exact same request
-`panel/lib/aws/credentials.ts` makes, with the same token-presence rule (`extractOidcToken`: a string
-`value` or `token` key). It does **no** STS exchange — obtaining a token as uid 1001 is the only
+`panel/lib/aws/credentials.ts` makes, with the same token-presence rule (`extractOidcToken`: a raw
+**JWT body** — three base64url segments separated by dots — OR a JSON object with a string `value`
+or `token` key OR a JSON-encoded JWT string; see the raw-JWT note below and D-07). It does **no** STS
+exchange — obtaining a token as uid 1001 is the only
 thing that was broken.
 
 Because `flyctl machine exec` exits 0 even when the remote probe fails (see the TRAP note above), the
@@ -364,9 +366,15 @@ If the entrypoint's grant itself failed, its warning (`warn: could not grant gro
         --data '{"aud":"sts.amazonaws.com"}'
    ```
 
-   **Record the JSON response SHAPE only** — the key names, not the token value. The panel's
-   `extractOidcToken` accepts a string `value` or `token` field and throws `FlyOidcShapeError`
-   (naming the keys received) for anything else (the F5 fix). Confirm which key carries the token.
+   **Record the response SHAPE only** — never the token value. As of **2026-10-14** (Machine
+   `845de5f2e502e8`, release `panel-v1.1.0` / Fly v13) the socket returns **HTTP 200** with
+   `content-type: application/json; charset=utf-8` but a body that is **NOT valid JSON** — it is a
+   **raw JWT** (three base64url segments separated by dots, ~1613 bytes). The earlier **2026-09-11**
+   note recorded a JSON object; the live platform now returns a bare JWT. The panel's
+   `extractOidcToken` accepts **all** of: a raw JWT body (verbatim), a JSON object with a string
+   `value`/`token` field, and a JSON-encoded JWT string; it throws `FlyOidcShapeError` (naming the
+   keys received, never any value) for anything else (`{}`, an HTML error page, a two-segment string).
+   See D-07 in `workstream/decisions-panel-fly-oidc.md`.
 
 2. **Record AWS's normalized `sub` claim.** After the first successful assume-role (or from the OIDC
    token's decoded `sub`), record the exact `sub` string AWS matched against the trust policy
@@ -374,11 +382,14 @@ If the entrypoint's grant itself failed, its warning (`warn: could not grant gro
    condition must match.
 
 3. **Compare to SD9 and correct code ONLY if reality differs (task 1.14):**
-   - If the socket returns `{"value": "<token>"}` (or `{"token": ...}`) and `sub` matches the
-     assumed `<org>:<app>:*` pattern → **no code change.** Record "matches SD9" with the evidence.
-   - If the shape differs (different key, or `sub` normalized differently) → correct
-     `panel/lib/aws/credentials.ts` (`extractOidcToken` and/or the trust policy pattern),
-     re-run `pnpm --filter panel run test:unit`, and commit the correction.
+   - If the socket returns a raw JWT body, `{"value": "<token>"}`, or `{"token": ...}` and `sub`
+     matches the assumed `<org>:<app>:*` pattern → **no code change** (all three are accepted since
+     D-07). Record "matches SD9" with the evidence.
+   - If the shape differs again (a new key, or `sub` normalized differently) → correct
+     `panel/lib/aws/credentials.ts` (`extractOidcToken` and/or the trust policy pattern) **and**
+     `panel/scripts/fly-oidc-probe.mjs` (`tokenIsPresent`/`isJwtShaped` — they share the rule by
+     duplication, guarded by the parity corpus test), re-run `pnpm --filter panel run test:unit`,
+     and commit the correction.
 
 4. **Confirm `DurationSeconds: 900 ≤ MaxSessionDuration` (task 1.15 / AC5).** The role was created
    with `--max-session-duration 3600` (§2). Confirm the assume-role at 900 succeeds; a
