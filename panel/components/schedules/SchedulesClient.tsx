@@ -21,7 +21,7 @@ import { ScheduleDialog, type AgentOption, type RepositoryOption } from "./Sched
 import styles from "./SchedulesTable.module.css";
 
 /**
- * S-161/S-162 (#273/#274) — the client controller for `/schedules` (DESIGN.md
+ * S-161/S-162 (issues 273/274) — the client controller for `/schedules` (DESIGN.md
  * §5.7). Shapes the server-read `v_schedules` rows into table cell models
  * (`buildScheduleCellModel`, clock taken once at mount), owns the New/Edit
  * dialog and the delete `alertdialog`, and wires the pause/resume/delete/clear

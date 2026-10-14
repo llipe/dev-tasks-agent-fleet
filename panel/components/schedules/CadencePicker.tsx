@@ -7,7 +7,7 @@ import { validateCron, type CadenceKind } from "@/lib/domain/cadence";
 import styles from "./CadencePicker.module.css";
 
 /**
- * S-162 (#274) — the cadence segmented control + kind-specific fields + timezone
+ * S-162 (issue 274) — the cadence segmented control + kind-specific fields + timezone
  * + the live Preview card (DESIGN.md §5.7.2). The preview's "Next 3 runs" come
  * from the authoritative RPC (passed in as `preview`); this component renders
  * them and the human `summary`, and shows the advanced-cron validity hint from

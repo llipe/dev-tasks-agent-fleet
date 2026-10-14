@@ -17,7 +17,7 @@ import type { ScheduleCellModel, ReasonChip } from "@/lib/domain/schedule-row";
 import styles from "./SchedulesTable.module.css";
 
 /**
- * S-161 (#273) — the `/schedules` table (DESIGN.md §5.7). A semantic `<table>`
+ * S-161 (issue 273) — the `/schedules` table (DESIGN.md §5.7). A semantic `<table>`
  * on the §4.4 CSS-grid pattern (`role` preserved by the native element) with the
  * seven columns of §5.7, the unified blocked/skipped reason row (SD-G6), and the
  * right-aligned Pause/Resume · Edit · Delete actions.

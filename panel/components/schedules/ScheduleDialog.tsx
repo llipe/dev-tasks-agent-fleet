@@ -17,7 +17,7 @@ import { CadencePicker } from "./CadencePicker";
 import styles from "./ScheduleDialog.module.css";
 
 /**
- * S-162 (#274) — the New / Edit schedule dialog (DESIGN.md §5.7.2). Same dialog
+ * S-162 (issue 274) — the New / Edit schedule dialog (DESIGN.md §5.7.2). Same dialog
  * shell family as the §5.4 Invoke dialog. Agent + (conditional) repository
  * selects, a schema-driven `FieldRow` param grid (reused from invoke), the
  * cadence segmented picker with a live Preview sourced from the authoritative
