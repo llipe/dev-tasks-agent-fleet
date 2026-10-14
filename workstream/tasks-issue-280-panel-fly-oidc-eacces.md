@@ -7,8 +7,9 @@
 - `Dockerfile.panel` - runner stage: drop `USER nextjs`, add the entrypoint
 - `panel/scripts/docker-entrypoint.sh` - new: grant socket group write, `exec setpriv` → uid 1001
 - `scripts/deploy-panel.sh` - add the post-gate OIDC token probe (exit 3 on failure)
-- `panel/scripts/fly-oidc-probe.mjs` - new (optional): the Node probe run on the Machine as uid 1001; prints only status and token presence
+- `panel/scripts/fly-oidc-probe.mjs` - new (optional): the Node probe run on the Machine as uid 1001; prints only status and token presence. **PR #295 review:** now ALSO shipped into the runtime image (`/app/fly-oidc-probe.mjs`) and run by `deploy-panel.sh` via `machine exec`, so the unit-tested code is what runs on Fly (inline `PROBE_JS` deleted)
 - `panel/tests/unit/fly-oidc-probe.test.ts` - new (if the probe has parse logic): status/token-presence parsing, no token echo
+- `panel/tests/unit/deploy-panel-probe.test.ts` - **new (PR #295 review):** drives the real `deploy-panel.sh` with a realistic fake `flyctl` (exits 0, echoes `Exit code: N`) to prove the probe verdict is taken from the OUTPUT line, not flyctl's exit status
 - `.github/workflows/ci.yml` - shellcheck the entrypoint; add the image smoke test
 - `docs/runbooks/panel-deployment.md` - runtime-user OIDC probe, deploy-time probe, `machine exec` fallback
 

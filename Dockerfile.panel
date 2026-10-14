@@ -95,6 +95,15 @@ COPY --from=build --chown=nextjs:nodejs /repo/panel/.next/static ./panel/.next/s
 # panel/scripts/docker-entrypoint.sh and docs/runbooks/panel-deployment.md.
 COPY --chmod=0755 panel/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 
+# Ship the UNIT-TESTED OIDC probe into the runtime image (Issue #280, PR #295
+# review). The deploy-time release gate (scripts/deploy-panel.sh) runs this exact
+# file on each started Machine via `flyctl machine exec … setpriv … node
+# /app/fly-oidc-probe.mjs`, so the code that runs on Fly is the same code the 26
+# unit tests cover (panel/tests/unit/fly-oidc-probe.test.ts) — not an inline
+# copy. It is owned by nextjs:nodejs and runnable as uid 1001. Off Fly (no
+# /.fly/api) it prints `status=0 token=absent` and exits 1.
+COPY --chown=nextjs:nodejs --chmod=0755 panel/scripts/fly-oidc-probe.mjs /app/fly-oidc-probe.mjs
+
 EXPOSE 8080
 
 # `server.js` lives under panel/ inside the standalone tree because tracing is

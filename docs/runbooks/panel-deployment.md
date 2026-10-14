@@ -110,15 +110,25 @@ drops to uid 1001 — verified by the CI image smoke test (`.github/workflows/ci
 **Probe the socket AS THE RUNTIME USER (operator).** Because root always got a 404 (it could connect
 regardless of mode), the only meaningful probe is one that runs **as uid 1001**, exactly as the
 server does. `flyctl ssh console` has been returning a WebSocket **502** on this app, so use
-`flyctl machine exec`:
+`flyctl machine exec` to run the **same unit-tested probe that ships in the image**
+(`/app/fly-oidc-probe.mjs`, Issue #280 / PR #295 review):
 
 ```bash
 flyctl machine list -a dt-agent-fleet-panel --json        # find started Machine id(s)
 flyctl machine exec <machine-id> \
-  "setpriv --reuid=1001 --regid=1001 --init-groups node -e 'const h=require(\"http\");const b=JSON.stringify({aud:\"sts.amazonaws.com\"});const r=h.request({socketPath:\"/.fly/api\",path:\"/v1/tokens/oidc\",method:\"POST\",headers:{\"Content-Type\":\"application/json\",\"Content-Length\":Buffer.byteLength(b)}},s=>{let d=\"\";s.on(\"data\",c=>d+=c);s.on(\"end\",()=>{let p=false;try{const o=JSON.parse(d);p=o&&typeof o===\"object\"&&(typeof o.value===\"string\"||typeof o.token===\"string\")}catch{}console.log(\"status=\"+s.statusCode+\" token=\"+(p?\"present\":\"absent\"))})});r.on(\"error\",()=>console.log(\"status=0 token=absent\"));r.write(b);r.end()'" \
+  "setpriv --reuid=1001 --regid=1001 --init-groups node /app/fly-oidc-probe.mjs" \
   -a dt-agent-fleet-panel
 # EXPECT: status=200 token=present   (the token VALUE is never printed — only presence.)
 ```
+
+> **TRAP — `flyctl machine exec`'s exit status is NOT the remote command's status.** `flyctl machine
+> exec` returns **exit 0 even when the command it ran inside the Machine failed**; the remote
+> command's real status is printed to stdout as a separate `Exit code: <n>` line. For example,
+> `flyctl machine exec <id> 'false'` prints `Exit code: 1` yet `flyctl` itself exits `0`. So when you
+> run the probe by hand, **read the `status=… token=…` OUTPUT line to judge pass/fail — do not trust
+> `echo $?`.** `scripts/deploy-panel.sh` does exactly this: it greps the output for a line matching
+> exactly `status=2XX token=present` and never gates on flyctl's own exit status (it keeps flyctl's
+> nonzero status as a failure too, but a zero status is not treated as success on its own).
 
 Also confirm the socket is now group-writable by `nodejs`:
 
@@ -139,17 +149,24 @@ flyctl machine exec <machine-id> 'grep -E "^(Uid|Gid):" /proc/1/status' -a dt-ag
 > the SSH/WebSocket path.
 
 **Deploy-time token probe (D-05) — the regression guard.** `scripts/deploy-panel.sh`, after the auth
-release gate passes, runs the probe above on **every started Machine** (via `flyctl machine exec` as
-uid 1001). It is the exact same request `panel/lib/aws/credentials.ts` makes, with the same
-token-presence rule (`extractOidcToken`: a string `value` or `token` key). It does **no** STS
-exchange — obtaining a token as uid 1001 is the only thing that was broken.
+release gate passes, runs the shipped probe (`/app/fly-oidc-probe.mjs`) on **every started Machine**
+(via `flyctl machine exec` as uid 1001) — the exact same code the 26 unit tests cover
+(`panel/tests/unit/fly-oidc-probe.test.ts`), not an inline copy. It is the exact same request
+`panel/lib/aws/credentials.ts` makes, with the same token-presence rule (`extractOidcToken`: a string
+`value` or `token` key). It does **no** STS exchange — obtaining a token as uid 1001 is the only
+thing that was broken.
 
-- **PASS:** HTTP 2xx **and** a token present on every Machine → the script continues and exits `0`
-  (healthy deploy, AC6: `status=200 token=present` per Machine).
-- **FAIL:** any Machine returns non-2xx, the wrong shape, or a transport error (no socket / `EACCES`)
-  → the probe prints `status=<code> token=absent` (**never** the token value) and `deploy-panel.sh`
-  **exits 3** with the rollback hint and a pointer to this section. Exit 3 keeps the script's existing
-  contract: `0` ok · `1` error · `2` blocked · `3` verify-fail.
+Because `flyctl machine exec` exits 0 even when the remote probe fails (see the TRAP note above), the
+script **decides pass/fail from the probe's OUTPUT, not from flyctl's exit status**:
+
+- **PASS:** the captured output contains a line matching **exactly** `status=2XX token=present` on
+  every Machine → the script continues and exits `0` (healthy deploy, AC6: `status=200 token=present`
+  per Machine).
+- **FAIL:** anything else — `token=absent`, a non-2xx status, an `Exit code: <nonzero>` echo, empty
+  output, or a flyctl-level error (flyctl's own nonzero status is still a failure) → the probe prints
+  `status=<code> token=absent` (**never** the token value) and `deploy-panel.sh` **exits 3** with the
+  rollback hint and a pointer to this section. Exit 3 keeps the script's existing contract: `0` ok ·
+  `1` error · `2` blocked · `3` verify-fail.
 
 The release pipeline (`deploy-panel.yml` → `scripts/deploy-panel.sh`) therefore fails the release
 instead of shipping a panel that silently cannot invoke. `scripts/deploy-panel.sh --dry-run`
