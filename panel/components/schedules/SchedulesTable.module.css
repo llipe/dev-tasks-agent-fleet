@@ -1,0 +1,348 @@
+/* SchedulesTable — /DESIGN.md §5.7. Semantic <table> on the §4.4 CSS-grid
+   pattern (role=table), min-width 1080px with horizontal scroll below.
+   Reuses the RunHistoryTable/RepositoryTable grid-row posture and the
+   StatusPill color mechanism — no new visual token. */
+.scroll {
+  overflow-x: auto;
+}
+
+.actionsBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.destructive {
+  color: var(--st-fail);
+}
+.destructive:hover {
+  background: color-mix(in srgb, var(--st-fail) 12%, transparent);
+}
+
+.table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+  display: block;
+}
+
+.table thead,
+.table tbody {
+  display: block;
+}
+
+.row {
+  display: grid;
+  grid-template-columns:
+    100px minmax(150px, 1.1fr) minmax(170px, 1.25fr) minmax(150px, 1.1fr)
+    120px 136px 184px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.headRow {
+  padding-bottom: 6px;
+}
+
+.headCell {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  text-align: left;
+}
+
+.body .row:hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+/* create/edit success flash — a transient 2px accent left inset. */
+.flash {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+  animation: flashfade 2.4s ease-out forwards;
+}
+
+@keyframes flashfade {
+  0% {
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.cell {
+  min-width: 0;
+  text-align: left;
+}
+
+/* state / last-run pill (reuses the §3.4 pill mechanism) */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 10.5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-color) 14%, transparent);
+  color: var(--color-text);
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--st-color);
+  flex: none;
+}
+.hollow {
+  background: transparent;
+  border: 1px solid var(--st-color);
+}
+.pillLabel {
+  line-height: 1;
+}
+
+/* Agent cell */
+.agentName {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agentSlug {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--color-accent-400);
+}
+
+/* Repository cell */
+.repo {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--color-accent-300);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.noRepo {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* Cadence cell */
+.cadence {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--color-text);
+}
+.tz {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+/* Next run cell */
+.nextRel {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--color-text);
+}
+.nextAbs {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.held {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* Last run cell */
+.lastCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-decoration: none;
+}
+.lastAgo {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.iconBtn:hover {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+.deleteBtn:hover {
+  color: var(--st-fail);
+  border-color: color-mix(in srgb, var(--st-fail) 50%, transparent);
+  background: color-mix(in srgb, var(--st-fail) 8%, transparent);
+}
+.toggleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+.toggleBtn:hover {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+/* Unified reason row (SD-G6) spanning cols 2→end */
+.reasonRow {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 14px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.reasonInner {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.reasonChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--st-color, var(--rule));
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--st-color, var(--muted)) 8%, transparent);
+}
+.clearBtn {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.clearBtn:hover {
+  color: var(--color-text);
+}
+
+/* Empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 44px 16px 48px;
+  border: 1px dashed var(--rule);
+  border-radius: 10px;
+}
+.emptyBody {
+  margin: 0;
+  max-width: 44ch;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* Delete alertdialog overlay */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-neutral-900, black) 62%, transparent);
+  z-index: 50;
+}
+.dialog {
+  width: 100%;
+  max-width: 440px;
+  background: var(--color-bg);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.dialogTitle {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--color-text);
+}
+.dialogBody {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.dialogBody strong {
+  font-family: var(--mono);
+  color: var(--color-accent-300);
+  font-weight: 400;
+}
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.alert {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--st-fail);
+}

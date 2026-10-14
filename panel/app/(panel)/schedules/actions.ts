@@ -8,6 +8,7 @@ import {
   getRepositoryById,
   insertSchedule,
   pauseSchedule as pauseScheduleRow,
+  previewNextRuns,
   resumeSchedule as resumeScheduleRow,
   updateSchedule as updateScheduleRow,
 } from "@/lib/supabase/queries";
@@ -18,6 +19,7 @@ import {
   type SaveScheduleResult,
   type ScheduleActionResult,
 } from "@/lib/domain/schedule-save";
+import type { CadenceKind } from "@/lib/domain/cadence";
 
 /**
  * S-161/S-162 — the `/schedules` Server Actions (SD-UI-1/SD-UI-2): pause,
@@ -92,4 +94,26 @@ export async function saveScheduleAction(raw: SaveScheduleRaw): Promise<SaveSche
     create: (input) => insertSchedule(client, input),
     update: (id, input) => updateScheduleRow(client, id, input),
   });
+}
+
+/**
+ * The dialog's live "Next 3 runs" preview (S-162, SD-T6). Calls the
+ * authoritative RPC; an invalid/never-matching cadence returns `[]` (the dialog
+ * renders "no upcoming runs") rather than throwing.
+ */
+export async function previewScheduleAction(cadence: {
+  kind: CadenceKind;
+  minute: number | null;
+  hour: number | null;
+  weekday: number | null;
+  intervalHours: number | null;
+  cron: string | null;
+  timezone: string;
+}): Promise<string[]> {
+  const client = createServerClient();
+  try {
+    return await previewNextRuns(client, cadence, 3);
+  } catch {
+    return [];
+  }
 }

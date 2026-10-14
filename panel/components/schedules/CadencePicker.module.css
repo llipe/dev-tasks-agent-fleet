@@ -1,0 +1,151 @@
+/* CadencePicker — /DESIGN.md §5.7.2 cadence block. Segmented control over the
+   five kinds, a two-column (fields | preview) grid, and the bordered Preview
+   card. Reuses --seg tokens / the forms family; no new visual token. */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: var(--color-surface);
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+}
+.segOpt {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.segOpt:hover {
+  color: var(--color-text);
+}
+.segActive {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 22px;
+  align-items: start;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fieldLabel {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--muted);
+}
+.select {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 7px 9px;
+  background: var(--color-surface);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  color: var(--color-text);
+}
+.explain {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.legend {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+.err {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--st-fail);
+}
+.cronOk {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--st-ok);
+}
+.cronInvalid {
+  border-color: var(--st-fail) !important;
+}
+
+/* Preview card */
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+.summary {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.cronLine {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+.nextLabel {
+  margin-top: 6px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+.nextList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nextItem {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--color-text);
+}
+.noRuns {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
