@@ -15,7 +15,7 @@ import {
 import styles from "./NotificationsFeed.module.css";
 
 /**
- * S-163 (#275) — the `/notifications` feed (DESIGN.md §5.8). A single-column
+ * S-163 (issue 275) — the `/notifications` feed (DESIGN.md §5.8). A single-column
  * surface grouped by day (Today / Earlier). Each item row: a kind dot (glow when
  * unread), the title (unread = accent edge + weight), the UNTRUSTED detail
  * rendered as text only, the structured links, and a relative timestamp.

@@ -16,7 +16,7 @@ import {
 import styles from "./NotificationBell.module.css";
 
 /**
- * S-163 (#275) — the top-bar notification bell (DESIGN.md §5.8). A `btn-ghost`
+ * S-163 (issue 275) — the top-bar notification bell (DESIGN.md §5.8). A `btn-ghost`
  * icon with an unread badge (absent at zero), opening a 384px popover of the 5
  * newest items (closed by a full-viewport scrim). Initial data is server-fetched
  * in the authenticated layout and passed in; mark-read goes through the Server
