@@ -79,6 +79,94 @@ docker rmi dt-panel:local
 
 ---
 
+## OIDC token probe (#280) — non-root socket access + the deploy-time regression guard
+
+> **Added by #280.** This section documents how the deployed panel — which runs as a **non-root**
+> user (uid 1001, `nextjs`) — gets access to the Fly Machine OIDC socket, and the deploy-time probe
+> that fails the release if that access breaks. It supersedes the "root `fly ssh console` curl" probe
+> in Impl Step 5 above as the **operator** procedure (that step's AWS-side `sub`/duration checks still
+> apply; only the socket-connect probe moves to the runtime user).
+
+**Root cause recap (D-01/D-02).** Fly creates `/.fly/api` at Machine boot as `srwxr-xr-x 0:0`
+(root-owned, mode `0755`). Connecting to a unix socket requires **write** permission, which "other"
+lacks — so uid 1001 gets `EACCES` and cannot obtain an OIDC token, while root connects (and gets a
+plain HTTP 404 on the probe path, which *hid* the problem when probing from a root `ssh console`).
+The image build cannot change the mode: the socket does not exist until boot. Since release v12 this
+broke every invoke from the deployed panel (`CREDENTIALS_UNAVAILABLE`).
+
+**The runtime fix (D-03/D-04).** The container now **starts as root** (`Dockerfile.panel` no longer
+sets `USER nextjs`) and `panel/scripts/docker-entrypoint.sh` runs:
+
+1. If `/.fly/api` exists as a socket, `chgrp nodejs /.fly/api && chmod g+w /.fly/api` — **group write
+   for `nodejs` only, never world-writable**. On failure it logs a warning and continues (it never
+   fails startup).
+2. Always `exec setpriv --reuid=1001 --regid=1001 --init-groups node panel/server.js` — so node is
+   **PID 1** running as uid 1001, and `--init-groups` gives it the `nodejs` group that now owns the
+   socket. `setpriv` is from util-linux in `node:22-slim`; **nothing is installed**.
+
+Off Fly (local `docker run`, CI) the socket is absent, the grant is skipped, and the server still
+drops to uid 1001 — verified by the CI image smoke test (`.github/workflows/ci.yml`, `panel-quality`).
+
+**Probe the socket AS THE RUNTIME USER (operator).** Because root always got a 404 (it could connect
+regardless of mode), the only meaningful probe is one that runs **as uid 1001**, exactly as the
+server does. `flyctl ssh console` has been returning a WebSocket **502** on this app, so use
+`flyctl machine exec`:
+
+```bash
+flyctl machine list -a dt-agent-fleet-panel --json        # find started Machine id(s)
+flyctl machine exec <machine-id> \
+  "setpriv --reuid=1001 --regid=1001 --init-groups node -e 'const h=require(\"http\");const b=JSON.stringify({aud:\"sts.amazonaws.com\"});const r=h.request({socketPath:\"/.fly/api\",path:\"/v1/tokens/oidc\",method:\"POST\",headers:{\"Content-Type\":\"application/json\",\"Content-Length\":Buffer.byteLength(b)}},s=>{let d=\"\";s.on(\"data\",c=>d+=c);s.on(\"end\",()=>{let p=false;try{const o=JSON.parse(d);p=o&&typeof o===\"object\"&&(typeof o.value===\"string\"||typeof o.token===\"string\")}catch{}console.log(\"status=\"+s.statusCode+\" token=\"+(p?\"present\":\"absent\"))})});r.on(\"error\",()=>console.log(\"status=0 token=absent\"));r.write(b);r.end()'" \
+  -a dt-agent-fleet-panel
+# EXPECT: status=200 token=present   (the token VALUE is never printed — only presence.)
+```
+
+Also confirm the socket is now group-writable by `nodejs`:
+
+```bash
+flyctl machine exec <machine-id> 'ls -ln /.fly/api' -a dt-agent-fleet-panel
+# EXPECT: srwxrwxr-x 0 1001   (group 1001 has write; AC1)
+```
+
+And confirm the server process is uid/gid 1001 (AC2):
+
+```bash
+flyctl machine exec <machine-id> 'grep -E "^(Uid|Gid):" /proc/1/status' -a dt-agent-fleet-panel
+# EXPECT: Uid: 1001 1001 1001 1001 / Gid: 1001 1001 1001 1001  (node is PID 1, not root)
+```
+
+> **`flyctl ssh console` fallback.** If `ssh console` 502s (as it does on this app), use
+> `flyctl machine exec <id> '<cmd>'` for every one of these checks — it reaches the Machine without
+> the SSH/WebSocket path.
+
+**Deploy-time token probe (D-05) — the regression guard.** `scripts/deploy-panel.sh`, after the auth
+release gate passes, runs the probe above on **every started Machine** (via `flyctl machine exec` as
+uid 1001). It is the exact same request `panel/lib/aws/credentials.ts` makes, with the same
+token-presence rule (`extractOidcToken`: a string `value` or `token` key). It does **no** STS
+exchange — obtaining a token as uid 1001 is the only thing that was broken.
+
+- **PASS:** HTTP 2xx **and** a token present on every Machine → the script continues and exits `0`
+  (healthy deploy, AC6: `status=200 token=present` per Machine).
+- **FAIL:** any Machine returns non-2xx, the wrong shape, or a transport error (no socket / `EACCES`)
+  → the probe prints `status=<code> token=absent` (**never** the token value) and `deploy-panel.sh`
+  **exits 3** with the rollback hint and a pointer to this section. Exit 3 keeps the script's existing
+  contract: `0` ok · `1` error · `2` blocked · `3` verify-fail.
+
+The release pipeline (`deploy-panel.yml` → `scripts/deploy-panel.sh`) therefore fails the release
+instead of shipping a panel that silently cannot invoke. `scripts/deploy-panel.sh --dry-run`
+describes the probe without running it.
+
+**Residual risk (D-06).** The entrypoint grant happens at container start. If Fly **recreates or
+re-modes** `/.fly/api` *after* start (e.g. a platform-agent restart), the group-write grant is lost
+and uid 1001 would get `EACCES` again. The deploy-time probe catches this **at release time**, but
+**not** in the window between releases. This is an accepted residual risk. If it ever manifests
+(invoke fails on a long-running Machine with no recent deploy), re-run the runtime-user probe above;
+a `status=0`/`EACCES` with an unchanged image means a post-boot re-mode — restart the Machine (which
+re-runs the entrypoint) or redeploy, and consider revisiting the root-stays / sidecar alternatives.
+If the entrypoint's grant itself failed, its warning (`warn: could not grant group write on
+/.fly/api …`) is in the Machine logs (`flyctl logs -a dt-agent-fleet-panel`).
+
+---
+
 ## Impl Step 2 — AWS OIDC IdP + IAM role (task 1.9) · **[LIVE / CONFIRM]**
 
 > **Effect:** creates a durable AWS OIDC identity provider trusting Fly, and an IAM role the Fly app

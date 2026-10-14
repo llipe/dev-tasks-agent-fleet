@@ -84,9 +84,20 @@ RUN groupadd --system --gid 1001 nodejs \
 COPY --from=build --chown=nextjs:nodejs /repo/panel/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /repo/panel/.next/static ./panel/.next/static
 
-USER nextjs
+# Runtime entrypoint (Issue #280). The container deliberately starts AS ROOT
+# (note: NO `USER nextjs` here anymore) and the entrypoint drops privileges to
+# uid/gid 1001 via `setpriv` before exec'ing node — so node is PID 1 and is
+# NEVER run as root. The one thing root does first is group-grant the Fly OIDC
+# socket (/.fly/api, created root-owned 0755 at Machine boot) to `nodejs`, which
+# is the only way the non-root server can obtain an OIDC token. Off Fly the
+# socket is absent and the grant is skipped; the server still drops to 1001.
+# `setpriv` is from util-linux in node:22-slim — no package is installed. See
+# panel/scripts/docker-entrypoint.sh and docs/runbooks/panel-deployment.md.
+COPY --chmod=0755 panel/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+
 EXPOSE 8080
 
 # `server.js` lives under panel/ inside the standalone tree because tracing is
-# rooted one level above the package.
-CMD ["node", "panel/server.js"]
+# rooted one level above the package. The entrypoint ends in
+# `exec setpriv … node panel/server.js`.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

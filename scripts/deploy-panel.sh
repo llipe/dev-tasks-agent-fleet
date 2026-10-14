@@ -79,6 +79,11 @@ if $DRY_RUN; then
   echo "-- DRY RUN: would run --"
   echo "fly deploy -a $FLY_APP --config panel/fly.toml --local-only"
   echo "scripts/verify-panel-auth.sh https://${FLY_APP}.fly.dev -a $FLY_APP"
+  echo "# then, for EACH started Machine, the OIDC token probe as uid 1001 (#280):"
+  echo "flyctl machine exec <id> \"setpriv --reuid=1001 --regid=1001 --init-groups node -e '<probe>'\" -a $FLY_APP"
+  echo "#   probe POSTs {\"aud\":\"sts.amazonaws.com\"} to /v1/tokens/oidc on /.fly/api,"
+  echo "#   prints only 'status=<code> token=<present|absent>' (never the token),"
+  echo "#   PASS = HTTP 2xx + token present; any failure => exit 3 with the rollback hint."
   exit 0
 fi
 
@@ -102,4 +107,58 @@ if ! scripts/verify-panel-auth.sh "$HOST" -a "$FLY_APP"; then
   exit 3
 fi
 
-echo "== deploy-panel: OK — deployed and auth gate passed against $HOST =="
+echo "== deploy-panel: OIDC token probe (as uid 1001) on each started Machine (#280) =="
+# Regression guard for #280: the deployed server runs as uid 1001, and the Fly
+# OIDC socket (/.fly/api) is created root-owned at boot — so uid 1001 could not
+# obtain a token and every invoke failed. The entrypoint now group-grants the
+# socket before dropping to 1001; this probe PROVES uid 1001 can actually get a
+# token on every started Machine, so a recurrence FAILS the release (exit 3)
+# instead of silently breaking invoke. No STS exchange — getting the token is
+# the only thing that was broken. The token value is NEVER printed or logged;
+# the probe emits only `status=<code> token=<present|absent>` (D-05).
+#
+# The probe runs AS uid 1001 (setpriv), exactly as the server does, so it
+# exercises the real permission path — not root's (root always got HTTP 404,
+# which hid the EACCES). It is embedded inline (single-quoted) so no file needs
+# to ship in the runtime image.
+PROBE_JS='const http=require("http");const body=JSON.stringify({aud:"sts.amazonaws.com"});const req=http.request({socketPath:"/.fly/api",path:"/v1/tokens/oidc",method:"POST",headers:{"Content-Type":"application/json","Content-Length":Buffer.byteLength(body)}},res=>{let d="";res.on("data",c=>d+=c);res.on("end",()=>{let present=false;try{const o=JSON.parse(d);if(o&&typeof o==="object"&&!Array.isArray(o)){present=typeof o.value==="string"||typeof o.token==="string";}}catch{}const ok=res.statusCode>=200&&res.statusCode<300&&present;console.log("status="+res.statusCode+" token="+(present?"present":"absent"));process.exit(ok?0:1);});});req.on("error",()=>{console.log("status=0 token=absent");process.exit(1);});req.write(body);req.end();'
+PROBE_CMD="setpriv --reuid=1001 --regid=1001 --init-groups node -e '${PROBE_JS}'"
+
+# Enumerate STARTED Machines only — a stopped Machine has no live socket to
+# probe. `flyctl machine list --json` carries a `state` field per Machine.
+MACHINES_JSON="$("$FLY_BIN" machine list -a "$FLY_APP" --json 2>/dev/null || echo '[]')"
+MACHINE_IDS="$(printf '%s' "$MACHINES_JSON" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let a=[];try{a=JSON.parse(s)}catch{};for(const m of (Array.isArray(a)?a:[]))if((m.state||"")==="started"&&m.id)console.log(m.id)})')"
+
+if [[ -z "$MACHINE_IDS" ]]; then
+  echo "VERIFY-FAIL: no started Machine found to probe for an OIDC token (#280)." >&2
+  echo "  flyctl machine list -a $FLY_APP   # inspect Machine states" >&2
+  echo "See docs/runbooks/panel-deployment.md § 'OIDC token probe (#280)'." >&2
+  exit 3
+fi
+
+PROBE_FAILED=false
+while IFS= read -r MID; do
+  [[ -z "$MID" ]] && continue
+  echo "-- probing Machine $MID --"
+  if PROBE_OUT="$("$FLY_BIN" machine exec "$MID" "$PROBE_CMD" -a "$FLY_APP" 2>/dev/null)"; then
+    # The probe process succeeded (exit 0) only on 2xx + token present.
+    echo "   $PROBE_OUT"
+  else
+    echo "   ${PROBE_OUT:-<no probe output>}" >&2
+    PROBE_FAILED=true
+  fi
+done <<< "$MACHINE_IDS"
+
+if $PROBE_FAILED; then
+  echo "" >&2
+  echo "VERIFY-FAIL: uid 1001 could not obtain an OIDC token on at least one Machine (#280)." >&2
+  echo "The deployed panel cannot invoke agents (CREDENTIALS_UNAVAILABLE). Roll back:" >&2
+  echo "  fly releases -a $FLY_APP" >&2
+  echo "  fly deploy -a $FLY_APP --image <prior-image-ref>   # or: fly releases rollback" >&2
+  echo "Diagnose per docs/runbooks/panel-deployment.md § 'OIDC token probe (#280)'" >&2
+  echo "(socket ownership/mode on /.fly/api, entrypoint grant warning in Machine logs)." >&2
+  exit 3
+fi
+
+echo "== deploy-panel: OK — deployed, auth gate passed, OIDC token present as uid 1001 on each Machine ($HOST) =="

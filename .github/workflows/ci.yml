@@ -163,6 +163,13 @@ jobs:
       - name: Shellcheck the release script
         run: shellcheck scripts/release-panel.sh
 
+      # Static-check the panel runtime entrypoint (Issue #280). It starts the
+      # container as root, group-grants the Fly OIDC socket, then drops to uid
+      # 1001 via setpriv. POSIX sh, `set -eu` — shellcheck guards it like the
+      # other release-path scripts.
+      - name: Shellcheck the panel entrypoint (#280)
+        run: shellcheck panel/scripts/docker-entrypoint.sh
+
       # Warm up Supabase Realtime before the Layer 2.5 + E2E branch: right after
       # `db reset` a cold Realtime can flake the first subscription (stream-e2e,
       # live-tail) under retries:0. Explicit readiness wait, not a sleep.
@@ -192,3 +199,57 @@ jobs:
         # on a third-party network blip.
         timeout-minutes: 5
         run: pnpm --filter panel run audit
+
+      # --- Image smoke test (Issue #280, D-06) --------------------------------
+      # Build Dockerfile.panel and prove the runtime user invariant holds OFF
+      # Fly: with NO /.fly/api socket, the container must (a) start normally and
+      # answer on :8080, and (b) run its server process (PID 1) as uid 1001 —
+      # never root. Today's image already passes; this step exists to GUARD the
+      # switch to start-as-root + `setpriv` (Dockerfile.panel / docker-entrypoint
+      # .sh), which would silently leave the server running as root if the
+      # privilege drop ever broke. The GitHub Ubuntu runner ships Docker.
+      - name: Build panel image (smoke test)
+        run: docker build -f Dockerfile.panel -t dt-panel:ci .
+
+      - name: Smoke test — server on :8080 and PID 1 is uid 1001 (#280)
+        run: |
+          set -euo pipefail
+          # No /.fly/api is mounted — exercises the socket-absent path (AC3).
+          CID=$(docker run -d -p 8080:8080 \
+            -e SUPABASE_URL=http://example.invalid \
+            -e SUPABASE_SERVICE_ROLE_KEY=ci-smoke \
+            dt-panel:ci)
+          cleanup() { docker rm -f "$CID" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          # Wait for the server to bind and answer on :8080. Any HTTP response
+          # (even a 500 from the deliberately-invalid Supabase URL) proves the
+          # server started and is serving; a never-answering port means it did
+          # not start (AC3).
+          ready=""
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+              echo "server answered on :8080 with HTTP $code"
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            echo "FAIL: server never answered on :8080" >&2
+            docker logs "$CID" >&2 || true
+            exit 1
+          fi
+
+          # PID 1 must be uid 1001 / gid 1001 — the entrypoint dropped privileges
+          # via setpriv and node is PID 1 (AC2). A root PID 1 fails the gate.
+          uid_line=$(docker exec "$CID" grep '^Uid:' /proc/1/status)
+          gid_line=$(docker exec "$CID" grep '^Gid:' /proc/1/status)
+          echo "PID 1 $uid_line"
+          echo "PID 1 $gid_line"
+          echo "$uid_line" | grep -qE '^Uid:[[:space:]]+1001[[:space:]]+1001' \
+            || { echo "FAIL: PID 1 is not uid 1001 (server running as root?)" >&2; exit 1; }
+          echo "$gid_line" | grep -qE '^Gid:[[:space:]]+1001[[:space:]]+1001' \
+            || { echo "FAIL: PID 1 is not gid 1001" >&2; exit 1; }
+          echo "OK: server on :8080, PID 1 is uid/gid 1001"
