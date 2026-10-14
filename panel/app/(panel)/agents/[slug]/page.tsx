@@ -9,6 +9,7 @@ import {
   getFilteredRuns,
   getPullRequestArtifactsForRuns,
   getRunStatusCounts,
+  getScheduleCountByAgent,
   getStepProgressForRuns,
 } from "@/lib/supabase/queries";
 import type { AgentRow, Json, VRunRow } from "@/lib/supabase/types";
@@ -141,16 +142,19 @@ export default async function AgentRunHistoryPage({
   // `getFilteredRuns` (S-143, spec §8.1) — a deliberate two-reads shape, not
   // an oversight, so the header never contradicts itself when an operator
   // narrows the table with a filter.
-  const [allRunsForHeader, filtered, statusCounts, repositories] = await Promise.all([
-    getAllRunsByAgentSlug(client, slug),
-    getFilteredRuns(client, queryFilter, PAGE_SIZE),
-    getRunStatusCounts(client, {
-      agentSlug: slug,
-      repositoryId: filter.repositoryId,
-      search: filter.search,
-    }),
-    getEnabledRepositories(client),
-  ]);
+  const [allRunsForHeader, filtered, statusCounts, repositories, scheduleCount] = await Promise.all(
+    [
+      getAllRunsByAgentSlug(client, slug),
+      getFilteredRuns(client, queryFilter, PAGE_SIZE),
+      getRunStatusCounts(client, {
+        agentSlug: slug,
+        repositoryId: filter.repositoryId,
+        search: filter.search,
+      }),
+      getEnabledRepositories(client),
+      getScheduleCountByAgent(client, resolved.id),
+    ],
+  );
 
   const filteredRunIds = filtered.rows.map((r) => r.id);
   // Two grouped reads for the visible page of rows — step progress (S-108)
@@ -200,7 +204,7 @@ export default async function AgentRunHistoryPage({
 
   return (
     <section className={styles.page} aria-label={`${resolved.name} run history`}>
-      <AgentHeader header={header} invokeHref={invokeHref} />
+      <AgentHeader header={header} invokeHref={invokeHref} scheduleCount={scheduleCount} />
       <RunFilterBar
         basePath={basePath}
         filter={filter}
