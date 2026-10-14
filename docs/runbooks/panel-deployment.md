@@ -186,6 +186,29 @@ If the entrypoint's grant itself failed, its warning (`warn: could not grant gro
 
 ---
 
+### OIDC → STS → InvokeAgentRuntime: what the live path actually requires (#280, 2026-10-14)
+
+`#280` was four stacked failures. Each one was hidden until the previous one was fixed. Check all four when invoking from the deployed panel fails:
+
+| Layer | Symptom (panel log / run `error_message`) | Requirement | Where it lives |
+| --- | --- | --- | --- |
+| 1. Socket access | `Fly OIDC socket is unreachable: connect EACCES /.fly/api` | uid 1001 needs group write on `/.fly/api` (Fly creates it `0755 root:root`) | `panel/scripts/docker-entrypoint.sh` (above) |
+| 2. Token shape | `FlyOidcShapeError` | the socket returns a **raw JWT body**, not JSON (D-07) | `panel/lib/aws/credentials.ts` `extractOidcToken` |
+| 3. Issuer / sub | `AssumeRoleWithWebIdentity failed …` (`CREDENTIALS_UNAVAILABLE`) | Fly signs with the **org slug**: `iss=https://oidc.fly.io/felipe-mallea`, `sub=felipe-mallea:dt-agent-fleet-panel:<machine>`, **not** the `personal` alias. The IAM OIDC provider **and** the role trust conditions must use the slug (D-08) | IAM provider `oidc.fly.io/felipe-mallea`; `infra/trust-policy.json` |
+| 4. Invoke authz | `InvokeAgentRuntime failed.` (`INVOCATION_FAILED`) | with a runtime **qualifier** (both agents use `DEFAULT`), AgentCore authorizes against `…:runtime/<id>/runtime-endpoint/<qualifier>`, so the policy must list that endpoint ARN as well as the runtime ARN (D-09) | `infra/agentcore-invoke-policy.json` (inline policy `invoke-runtime` on role `panel-agentcore-invoke`) |
+
+**Diagnosing layers 3–4 without printing secrets.** Run these on a Machine **as the runtime user** (`flyctl machine exec <id> "sh -c '… setpriv --reuid=1001 --regid=1001 --init-groups node /tmp/x.js'"`):
+
+- **Claims:** POST `/v1/tokens/oidc` on `/.fly/api`, split the body on `.`, base64url-decode **only the payload**, and print `iss`/`aud`/`sub`. Never print the token.
+- **STS:** send an unsigned POST `Action=AssumeRoleWithWebIdentity` to `sts.us-east-1.amazonaws.com` with `RoleArn=$AGENT_RUNTIME_ROLE_ARN`. Print only `AssumedRoleUser/Arn` or the error `Code`.
+- **Invoke authz:** make a SigV4-signed `POST /runtimes/<url-encoded runtime ARN>/invocations?qualifier=DEFAULT` with a dummy body. A `403 AccessDeniedException` names the exact resource ARN being authorized. A `200` whose agent reply is `INVALID_PARAMS` means authorization passed.
+
+`flyctl machine exec` exits 0 even when the remote command fails, so read the output. Change record: `infra/changes/20261014-fly-oidc-issuer-trust/`.
+
+**Retired:** the IAM provider `oidc.fly.io/personal` no longer backs any trust policy. Delete it in a separate, approved change (`aws iam delete-open-id-connect-provider --open-id-connect-provider-arn arn:aws:iam::755641879575:oidc-provider/oidc.fly.io/personal`) once nothing else references it.
+
+---
+
 ## Impl Step 2 — AWS OIDC IdP + IAM role (task 1.9) · **[LIVE / CONFIRM]**
 
 > **Effect:** creates a durable AWS OIDC identity provider trusting Fly, and an IAM role the Fly app
