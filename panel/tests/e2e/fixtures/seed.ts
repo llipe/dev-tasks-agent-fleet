@@ -96,8 +96,29 @@ export type RunStatus =
   | "timed_out"
   | "failed_to_start";
 
-export interface SeedRunSpec {
-  status: RunStatus;
+/**
+ * The exact `run_outcome` Postgres enum, as the local schema defines it
+ * (`supabase/migrations/20260902200101_initial_schema.sql` + the `no_findings`
+ * value added by `20260916194500_add_no_findings_run_outcome.sql`).
+ *
+ * Seed helpers type their `outcome` params against THIS union — not against
+ * `@/lib/supabase/types`'s `RunOutcome`, which is a hand-maintained app type
+ * that is currently missing `no_findings` and so would both reject a legitimate
+ * value and fail to catch an illegal one. Mirroring the enum here means an
+ * invalid literal (e.g. the old `"success"`) fails `typecheck` before a run
+ * ever hits the DB's `invalid input value for enum run_outcome` error, and a
+ * terminal `succeeded` run cannot be seeded without an explicit, valid outcome.
+ */
+export type RunOutcomeValue =
+  | "fixed"
+  | "partial"
+  | "no_vulnerabilities"
+  | "needs_review"
+  | "not_applicable"
+  | "no_findings";
+
+/** Fields shared by every seed spec, independent of the run's status. */
+interface SeedRunBase {
   /** started_at = now() - startedAgoSecs; null leaves started_at null. */
   startedAgoSecs?: number | null;
   /** queued_at = now() - queuedAgoSecs (default 60). */
@@ -106,10 +127,26 @@ export interface SeedRunSpec {
   maxRuntimeSeconds?: number;
   graceSeconds?: number;
   startTimeoutSeconds?: number;
-  outcome?: string | null;
   repositoryId?: string | null;
   errorMessage?: string | null;
 }
+
+/**
+ * A seed spec for a run.
+ *
+ * Modeled as a discriminated union on `status` so the DB's
+ * `chk_runs_terminal_outcome` check (`status = 'succeeded'` ⇒ `outcome` not
+ * null) is enforced by `typecheck`, not just at insert time: a `succeeded` run
+ * REQUIRES a non-null, valid `outcome`, while any other status leaves it
+ * optional (and nullable). `seedRun` therefore never silently derives a default
+ * outcome — the caller must state it explicitly for a terminal success.
+ */
+export type SeedRunSpec =
+  | (SeedRunBase & { status: "succeeded"; outcome: RunOutcomeValue })
+  | (SeedRunBase & {
+      status: Exclude<RunStatus, "succeeded">;
+      outcome?: RunOutcomeValue | null;
+    });
 
 /** Insert a run against the seeded agent with explicit clocks. Returns run id. */
 export async function seedRun(spec: SeedRunSpec): Promise<string> {
@@ -162,17 +199,55 @@ export async function seedEvent(
   });
 }
 
-/** Attach a run artifact (e.g. a pull_request link for Scenario 7). */
+/**
+ * Drive an open run to a terminal state in place (issue #244): set its status,
+ * outcome, and `finished_at` so a page already open on the running run sees the
+ * terminal summary appear after the SSE `closed` frame triggers `router.refresh()`.
+ *
+ * `finishedAgoSecs` defaults to 0 (now). This updates the run row only; seed the
+ * artifacts separately with `seedArtifact` BEFORE calling this, so the refreshed
+ * server render reads them.
+ */
+export async function setRunTerminal(
+  runId: string,
+  status: Extract<RunStatus, "succeeded" | "failed" | "canceled" | "timed_out" | "failed_to_start">,
+  outcome: RunOutcomeValue | null = null,
+  finishedAgoSecs = 0,
+): Promise<void> {
+  await withDb(async (c) => {
+    await c.query(
+      `update runs
+         set status = $2::run_status,
+             outcome = $3::run_outcome,
+             finished_at = now() - make_interval(secs => $4::int)
+       where id = $1`,
+      [runId, status, outcome, finishedAgoSecs],
+    );
+  });
+}
+
+/**
+ * Attach a run artifact (e.g. a pull_request link for Scenario 7, or an
+ * `audit_report` carrying findings in `metadata` for the #245 layout spec).
+ *
+ * `metadata` is optional and defaults to `null` so existing callers are
+ * unchanged: when it is `null` the column's own `'{}'::jsonb` default applies
+ * (verifier F-2). Pass a JSON object to seed a findings payload the
+ * `AuditReportPanel` will render.
+ */
 export async function seedArtifact(
   runId: string,
   type: "pull_request" | "audit_report" | "diff" | "file",
   title: string,
   url: string | null,
+  metadata: unknown = null,
 ): Promise<void> {
   await withDb(async (c) => {
     await c.query(
-      `insert into run_artifacts (run_id, type, title, url) values ($1, $2::artifact_type, $3, $4)`,
-      [runId, type, title, url],
+      `insert into run_artifacts (run_id, type, title, url, metadata)
+       values ($1, $2::artifact_type, $3, $4,
+               coalesce($5::jsonb, '{}'::jsonb))`,
+      [runId, type, title, url, metadata === null ? null : JSON.stringify(metadata)],
     );
   });
 }

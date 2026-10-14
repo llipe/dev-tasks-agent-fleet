@@ -12,14 +12,19 @@ dependencies = [
     "strands-agents==1.53.0",
     "boto3==1.43.81",
     "requests==2.34.2",
-    "PyJWT==2.13.0",
+    "PyJWT==2.15.1",
     "cryptography==50.0.1",
     # Scanner toolchains: semgrep and checkov ship as pip packages with a
     # bundled scan binary; gitleaks and trivy are separate Go binaries
     # installed in the Dockerfile (no PyPI package). Real-repo verification
     # (S-141) found these four were never added to the image -- only CodeQL's
     # toolchain (a two-part CLI + query-pack install) landed in S-132.
-    "semgrep==1.177.0",
+    # Bumped 1.177.0 -> 1.180.0 for issue #252: semgrep <=1.178.0 pins
+    # `pyjwt[crypto]~=2.13.0` (i.e. <2.14), which blocks the PyJWT==2.15.1
+    # security pin above. semgrep 1.179.0 relaxed that to
+    # `pyjwt[crypto]>=2.15.0,<3`; 1.180.0 is the newest release and resolves
+    # cleanly against PyJWT 2.15.1.
+    "semgrep==1.180.0",
     # checkov pinned to 3.2.0, not latest (3.3.17): starting at checkov
     # 3.2.15 (confirmed via PyPI metadata; 3.2.10 is still loose), checkov
     # pins boto3 to an exact old version (e.g. ==1.34.25 at 3.2.15, ==1.35.49

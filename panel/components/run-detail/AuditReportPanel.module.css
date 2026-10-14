@@ -28,6 +28,42 @@
   color: var(--muted);
 }
 
+/*
+ * Findings disclosure (/DESIGN.md §5.3, issue 245). Native <details>; the
+ * summary line is the always-visible <summary>, the table scrolls inside the
+ * capped body so a large report can never push the log section off screen
+ * (§4.2 "no outer scroll"). No new token — §2 typography and existing spacing.
+ */
+.disclosure {
+  min-width: 0;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  border-radius: var(--radius-md);
+  list-style-position: inside;
+}
+
+/* Keep a visible keyboard focus ring on the summary (accessibility, AC2). */
+.summary:focus-visible {
+  outline: 2px solid var(--color-accent-400);
+  outline-offset: 2px;
+}
+
+/* The scroll container — the cap sits HERE, not on <details>, so the summary
+ * line stays visible while the table scrolls within 40vh (D-07). */
+.disclosureBody {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+
 .total {
   color: var(--color-text);
 }

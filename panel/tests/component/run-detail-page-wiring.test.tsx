@@ -17,10 +17,14 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 
 const notFoundError = new Error("NEXT_NOT_FOUND");
 
+// `useRouter().refresh` is tracked so the already-terminal test (#244 AC2) can
+// assert that a terminal run mounts NO refresh effect and makes NO refresh call.
+const refreshMock = vi.fn();
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw notFoundError;
   },
+  useRouter: () => ({ refresh: refreshMock }),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: () => ({}) }));
@@ -90,6 +94,24 @@ describe("run-detail page wiring", () => {
     await expect(RunDetailPage({ params: Promise.resolve({ id: "does-not-exist" }) })).rejects.toBe(
       notFoundError,
     );
+  });
+
+  it("mounts no refresh effect and makes no router.refresh call for an already-terminal run (#244 AC2)", async () => {
+    // The default vrun() is a FAILED (terminal) run → the page renders the
+    // server-rendered LogViewer, not the live viewer, so the #244 refresh effect
+    // (which lives in LiveLogViewer, driven by useRunStream) never mounts. No
+    // stream, no closed frame, no router.refresh — and so no extra server render.
+    queryMock.getRunById.mockResolvedValue(
+      vrun({ status: "succeeded", effective_status: "succeeded", outcome: "success" }),
+    );
+    const ui = await RunDetailPage({ params: Promise.resolve({ id: "r1" }) });
+    render(ui);
+
+    // The live viewer is absent: no live-tail control is rendered for a terminal
+    // run (that control only exists while the SSE stream is open).
+    expect(screen.queryByRole("button", { name: /live tail/i })).toBeNull();
+    // And no refresh was scheduled or fired.
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a pull_request artifact on a FAILED run, alongside the failed pill (AC14)", async () => {

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import { useRouter } from "next/navigation";
 
 import { LogLine } from "@/components/LogLine";
 import { StatusPill } from "@/components/StatusPill";
@@ -137,6 +139,43 @@ export function LiveLogViewer({
   // If the stream closes, following is meaningless — drop the control. An
   // auth stop (Story S-121) is also a closed state — no live control.
   const isLive = connected && closedReason === null && !authStopped;
+
+  // Issue 244 — refresh the server-rendered summary once the run reaches a
+  // terminal state, so `finished_at`, the outcome, artifact pills, and the
+  // audit-report findings appear without a manual reload (D-08).
+  //
+  // Trigger rule (D-08): fire ONLY when `closedReason` becomes non-null — the
+  // terminal `closed` frame. NEVER on `authStopped` (S-121 session-expired
+  // stop), nor on stream errors/reconnects (those never set `closedReason`).
+  // A 500ms debounce absorbs the writer race where `finished_at`/artifacts land
+  // just after the close. EXACTLY ONE refresh per mount, enforced by a ref flag
+  // so a reconnect-race second `closed` cannot schedule twice. No retry: after
+  // the refresh the server re-reads a terminal run and renders the terminal
+  // `LogViewer`, which has no stream, so there is no second trigger and no loop.
+  const router = useRouter();
+  const refreshedRef = useRef(false);
+  useEffect(() => {
+    // Not terminal (or an auth stop, which never sets closedReason) → nothing.
+    if (closedReason === null) return;
+    // Already refreshed once this mount → no retry, no second render.
+    if (refreshedRef.current) return;
+    const timer = setTimeout(() => {
+      // Set the once-flag at FIRE time, not schedule time. Under React
+      // StrictMode (and `next dev`) the effect mounts, is cleaned up, and
+      // re-mounts; a `router` identity change while the timer is pending has
+      // the same shape. Setting the flag at schedule time would let the
+      // cleanup clear the only timer and the re-run return early (flag already
+      // true), so the refresh would never fire. Setting it here means a
+      // cleanup-then-re-run re-schedules, and whichever timer survives sets the
+      // flag exactly once before refreshing — still exactly one refresh per
+      // mount, and still none if unmounted before 500ms (the cleanup clears it).
+      refreshedRef.current = true;
+      router.refresh();
+    }, 500);
+    // Clear the timer on unmount so navigating away within 500ms does not
+    // refresh a page that is no longer shown (EC-244-1).
+    return () => clearTimeout(timer);
+  }, [closedReason, router]);
 
   return (
     <div className={styles.viewer}>

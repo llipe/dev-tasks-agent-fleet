@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { resetRuns, seedEvent, seedRun } from "./fixtures/seed";
+import { resetRuns, seedArtifact, seedEvent, seedRun, setRunTerminal } from "./fixtures/seed";
 
 /**
  * E2E — SSE live tail (S-114, PRD AC6 + SD6).
@@ -109,5 +109,139 @@ test.describe("live tail", () => {
       })
       .filter((n) => !Number.isNaN(n));
     expect(order).toEqual([1, 2, 3]);
+  });
+
+  /**
+   * SC-244-1 (issue #244, AC1). Open a `running` run, wait for the live log,
+   * then drive it to terminal with artifacts (a `pull_request` and a 3-finding
+   * `audit_report`). The SSE relay sends `closed` once the run is terminal; the
+   * live viewer debounces 500ms and calls `router.refresh()` ONCE, so the
+   * server-rendered summary re-reads WITHOUT a `page.reload()`.
+   *
+   * We assert the findings SUMMARY LINE ("3 findings"), not table rows: after
+   * #245 the >10-row disclosure may be closed, but the summary line inside
+   * `<summary>` is always visible regardless of the open/closed state.
+   */
+  test("Scenario 4 — live run reaches terminal: summary updates within 5s, no reload (#244 AC1)", async ({
+    page,
+  }) => {
+    const runId = await seedRun({ status: "running", startedAgoSecs: 30 });
+
+    await page.goto(`/runs/${runId}`);
+    const log = page.locator('[data-sse-mount="run-log"]');
+    await expect(log).toBeVisible();
+
+    // While live, there is no terminal "Finished" clock value and no artifacts.
+    const summary = page.getByRole("region", { name: /run summary/i });
+    await expect(summary).toBeVisible();
+
+    // Seed artifacts FIRST so the refreshed server render reads them, then drive
+    // the run terminal. The audit_report carries 3 findings in its metadata.
+    const auditMetadata = {
+      total_findings: 3,
+      by_bucket: {
+        mechanical: [],
+        manual: [],
+        unscannable: [
+          {
+            tool: "gitleaks",
+            bucket: "unscannable",
+            rule_id: "generic-api-key",
+            severity: "critical",
+            file_path: "src/a.ts",
+            line_start: 10,
+            line_end: 10,
+            message: "finding one",
+            cwe_or_category: "generic-api-key",
+          },
+          {
+            tool: "semgrep",
+            bucket: "unscannable",
+            rule_id: "rule-2",
+            severity: "high",
+            file_path: "src/b.ts",
+            line_start: 20,
+            line_end: 20,
+            message: "finding two",
+            cwe_or_category: "rule-2",
+          },
+          {
+            tool: "trivy",
+            bucket: "unscannable",
+            rule_id: "rule-3",
+            severity: "medium",
+            file_path: "src/c.ts",
+            line_start: 30,
+            line_end: 30,
+            message: "finding three",
+            cwe_or_category: "rule-3",
+          },
+        ],
+      },
+      by_tool: { gitleaks: 1, semgrep: 1, trivy: 1 },
+      by_severity: { critical: 1, high: 1, medium: 1 },
+    };
+    await seedArtifact(runId, "pull_request", "Bump lodash", "https://github.com/llipe/x/pull/42");
+    await seedArtifact(runId, "audit_report", "Security scan findings", null, auditMetadata);
+    // A succeeded run carrying an audit report WITH findings resolves to the
+    // `needs_review` outcome; the panel renders its tag as "NEEDS REVIEW"
+    // (lib/domain/run-row.ts → outcomeLabel). "success" is not a run_outcome
+    // enum value — the type now rejects it, matching the DB enum.
+    await setRunTerminal(runId, "succeeded", "needs_review");
+
+    // Within 5s, WITHOUT reloading, the terminal summary appears: the succeeded
+    // pill, the outcome tag, the Finished metadata (a real clock, not "—"), the
+    // artifact pill, and the findings summary line.
+    await expect(summary.getByText("succeeded")).toBeVisible({ timeout: 5_000 });
+    await expect(summary.getByText("NEEDS REVIEW")).toBeVisible({ timeout: 5_000 });
+    const finished = summary.locator("dd").filter({ hasText: /:/ });
+    await expect(finished.first()).toBeVisible({ timeout: 5_000 });
+    await expect(summary.getByRole("link", { name: /bump lodash/i })).toBeVisible({
+      timeout: 5_000,
+    });
+    // The findings summary line — assert the line, not the table rows (the
+    // disclosure state is irrelevant; 3 findings keeps it open, but the line is
+    // always inside <summary> regardless).
+    await expect(summary.getByText("3 findings")).toBeVisible({ timeout: 5_000 });
+  });
+
+  /**
+   * SC-244-1b (issue #244, AC5 / D-03). The step + level filter selected while
+   * the run is live is still applied after the terminal refresh swaps the live
+   * viewer for the server-rendered `LogViewer`. `RunDetailLogSection` owns the
+   * filter in `useState` and stays mounted across `router.refresh()`, so the
+   * selection must persist.
+   */
+  test("Scenario 5 — the log-level filter persists across the terminal refresh (#244 AC5)", async ({
+    page,
+  }) => {
+    const runId = await seedRun({ status: "running", startedAgoSecs: 30 });
+
+    await page.goto(`/runs/${runId}`);
+    const log = page.locator('[data-sse-mount="run-log"]');
+    await expect(log).toBeVisible();
+
+    // Insert one info and one error line, then select "Errors only".
+    const tag = `f-${Date.now()}`;
+    await seedEvent(runId, 1, `${tag}-info`, "info");
+    await seedEvent(runId, 2, `${tag}-error`, "error");
+    await expect(log.getByText(`${tag}-error`)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByLabel(/log level/i).selectOption("error");
+    await expect(log.getByText(`${tag}-info`)).toBeHidden();
+    await expect(log.getByText(`${tag}-error`)).toBeVisible();
+
+    // Drive terminal → the viewer swaps to the terminal LogViewer after refresh.
+    // `needs_review` is a valid run_outcome; "success" is not (type-rejected).
+    await setRunTerminal(runId, "succeeded", "needs_review");
+    await expect(
+      page.getByRole("region", { name: /run summary/i }).getByText("succeeded"),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // The filter is still "Errors only": the info line stays hidden, the error
+    // line stays visible — no re-selection by the user.
+    await expect(page.getByLabel(/log level/i)).toHaveValue("error");
+    await expect(log.getByText(`${tag}-info`)).toBeHidden();
+    await expect(log.getByText(`${tag}-error`)).toBeVisible();
   });
 });
