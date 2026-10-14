@@ -23,6 +23,9 @@
 #   4. An attempted signUp is REJECTED. A SUCCESSFUL signup FAILS the release
 #      (PRD AC17 / R9). Uses a clearly-marked disposable address and DELETES any
 #      account it somehow creates.
+#   5. An unauthenticated POST to an /api/internal/** endpoint returns 401 (not
+#      200/202/404/409) — the scheduler's internal fire/digest endpoints are
+#      secret-gated in the handler, not an open invoke hole (S-160, FR5/FR6).
 #
 # SECURITY: this script prints only NAMES, status codes, and pass/fail reasons.
 # It never prints secret values, tokens, cookies, or the anon/service keys.
@@ -96,7 +99,7 @@ json_str() { node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? "")
 # ---------------------------------------------------------------------------
 # CHECK 1 — auth env-var NAMES present on the app (NAMES ONLY).
 # ---------------------------------------------------------------------------
-echo "[panel-auth] (1/4) Collecting auth env-var NAMES (names only, never values)..."
+echo "[panel-auth] (1/5) Collecting auth env-var NAMES (names only, never values)..."
 ENV_NAMES_JSON="[]"
 if [[ -n "${PANEL_AUTH_ENV_NAMES:-}" ]]; then
   # Explicit override (comma-separated), e.g. for local/dev runs without flyctl.
@@ -142,7 +145,7 @@ fi
 # `-i` to capture headers; do NOT follow redirects (`-L` would hide the 302).
 # We extract the status code and the Location header only.
 # ---------------------------------------------------------------------------
-echo "[panel-auth] (2/4) Probing protected UI path ${PROTECTED_PATH} (expect 302 -> /login)..."
+echo "[panel-auth] (2/5) Probing protected UI path ${PROTECTED_PATH} (expect 302 -> /login)..."
 PROTECTED_JSON='{"error":"probe not run"}'
 if HDRS="$(curl -sS -i -o - -D - \
     --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
@@ -164,7 +167,7 @@ fi
 # CHECK 3 — unauthenticated SSE path → 401. Status code is authoritative.
 # ---------------------------------------------------------------------------
 SSE_PATH="/api/runs/${RUN_UUID}/events/stream"
-echo "[panel-auth] (3/4) Probing SSE path ${SSE_PATH} (expect 401)..."
+echo "[panel-auth] (3/5) Probing SSE path ${SSE_PATH} (expect 401)..."
 SSE_JSON='{"error":"probe not run"}'
 if SSTATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
     -H 'Accept: text/event-stream' \
@@ -186,7 +189,7 @@ fi
 # marked disposable address. A rejection (error) is PASS; a success is FAIL, and
 # we DELETE any account that was somehow created.
 # ---------------------------------------------------------------------------
-echo "[panel-auth] (4/4) Attempting a signUp (expect REJECTED — signups must be disabled)..."
+echo "[panel-auth] (4/5) Attempting a signUp (expect REJECTED — signups must be disabled)..."
 SIGNUP_JSON='{"error":"probe not run"}'
 SB_URL="${NEXT_PUBLIC_SUPABASE_URL:-}"
 # Prefer the new publishable client key (#172); fall back to the legacy anon
@@ -262,11 +265,36 @@ else
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# CHECK 5 — unauthenticated POST to an /api/internal/** endpoint → 401 (S-160,
+# FR5/FR6 / SD-A1). The scheduler's internal endpoints are secret-gated in the
+# handler (constant-time, fail-closed), NOT session-gated — the middleware lets
+# /api/internal/** through. This proves an unauthenticated call is rejected at
+# 401 before any handler logic (not an open invoke hole). A nonexistent schedule
+# id is used so even a secret-bypassed call could not fire anything; the point
+# is that auth MUST return 401 before the route resolves the id.
+# ---------------------------------------------------------------------------
+INTERNAL_PATH="/api/internal/schedules/00000000-0000-0000-0000-000000000000/fire"
+echo "[panel-auth] (5/5) Probing internal endpoint ${INTERNAL_PATH} unauthenticated (expect 401)..."
+INTERNAL_JSON='{"error":"probe not run"}'
+if ISTATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+    -X POST -H 'Content-Type: application/json' \
+    --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
+    "${BASE_URL}${INTERNAL_PATH}" 2>"$TMP_DIR/ierr")"; then
+  INTERNAL_JSON="$(node -e '
+    const status = Number.parseInt(process.argv[1] || "", 10);
+    process.stdout.write(JSON.stringify({ status: Number.isInteger(status) ? status : null }));
+  ' "$ISTATUS")"
+else
+  ERR="$(tr -d '\n' < "$TMP_DIR/ierr" | head -c 200)"
+  INTERNAL_JSON="{\"error\":$(json_str "curl: ${ERR:-request failed/timeout}")}"
+fi
+
 # --- Assemble the gate input and hand it to the pure parser ----------------
 node -e '
-  const [envNames, protectedProbe, sseProbe, signupProbe] = process.argv.slice(1).map((a) => JSON.parse(a));
-  process.stdout.write(JSON.stringify({ envNames, protectedProbe, sseProbe, signupProbe }));
-' "$ENV_NAMES_JSON" "$PROTECTED_JSON" "$SSE_JSON" "$SIGNUP_JSON" > "$INPUT_JSON"
+  const [envNames, protectedProbe, sseProbe, signupProbe, internalProbe] = process.argv.slice(1).map((a) => JSON.parse(a));
+  process.stdout.write(JSON.stringify({ envNames, protectedProbe, sseProbe, signupProbe, internalProbe }));
+' "$ENV_NAMES_JSON" "$PROTECTED_JSON" "$SSE_JSON" "$SIGNUP_JSON" "$INTERNAL_JSON" > "$INPUT_JSON"
 
 # The parser exits 0 (boundary holds) or 1 (any failure). `set -e` would abort
 # before we can echo, so capture the code.

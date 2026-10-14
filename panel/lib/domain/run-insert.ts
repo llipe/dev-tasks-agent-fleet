@@ -17,7 +17,17 @@
  *
  * SD7: `triggered_by` is the constant `"panel"`, never a user identity (there
  * is no auth in v1, D16). `trigger_type` is `"manual"`.
+ *
+ * S-150 (#262): the trigger is now parameterized via a `TriggerDescriptor` so a
+ * scheduled firing (S-153) records `trigger_type='schedule'` /
+ * `triggered_by='schedule:<id>'` while the manual invoke route passes the manual
+ * descriptor and produces the byte-identical pre-S-150 row (SD-X1 / FR7).
  */
+
+/** Who/what triggered the run — the only varying part of the insert shape. */
+export type TriggerDescriptor =
+  | { triggerType: "manual"; triggeredBy: "panel" }
+  | { triggerType: "schedule"; triggeredBy: `schedule:${string}` };
 
 /** The columns the panel writes when inserting the `queued` run. */
 export interface RunInsert {
@@ -26,8 +36,8 @@ export interface RunInsert {
   agent_version: string;
   repository_id: string | null;
   installation_id: string | null;
-  trigger_type: "manual";
-  triggered_by: "panel";
+  trigger_type: TriggerDescriptor["triggerType"];
+  triggered_by: TriggerDescriptor["triggeredBy"];
   params: Record<string, unknown>;
   status: "queued";
   /** All three timeout snapshots are explicit (OQ3). */
@@ -54,6 +64,8 @@ export interface BuildRunInsertInput {
   installationId: string | null;
   /** The Ajv-validated params (schema-present keys only). */
   params: Record<string, unknown>;
+  /** Who/what triggered the run (S-150). The manual route passes the manual descriptor. */
+  trigger: TriggerDescriptor;
 }
 
 /**
@@ -80,8 +92,9 @@ function requireFinite(field: string, value: unknown): number {
 
 /**
  * Builds the `queued`-row insert payload. Copies all three timeout columns
- * explicitly from the agent snapshot (OQ3), sets `triggered_by = "panel"`
- * (SD7), and never relies on a schema default. Throws `RunSnapshotError` rather
+ * explicitly from the agent snapshot (OQ3), writes `trigger_type`/`triggered_by`
+ * from the supplied descriptor (S-150; the manual route passes `manual`/`panel`,
+ * SD7), and never relies on a schema default. Throws `RunSnapshotError` rather
  * than write a row the reaper cannot resolve.
  */
 export function buildRunInsert(input: BuildRunInsertInput): RunInsert {
@@ -91,8 +104,8 @@ export function buildRunInsert(input: BuildRunInsertInput): RunInsert {
     agent_version: input.agent.version,
     repository_id: input.repositoryId,
     installation_id: input.installationId,
-    trigger_type: "manual",
-    triggered_by: "panel",
+    trigger_type: input.trigger.triggerType,
+    triggered_by: input.trigger.triggeredBy,
     params: input.params,
     status: "queued",
     max_runtime_seconds: requireFinite("max_runtime_seconds", input.agent.max_runtime_seconds),

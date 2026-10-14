@@ -19,12 +19,16 @@ import { escapeIlikeWildcards, type RunFilter } from "@/lib/domain/run-filter";
 import type { RunStatus } from "@/lib/domain/status";
 import type {
   AgentRow,
+  CadenceKind,
   GithubInstallationRow,
+  NotificationRow,
   RepositoryRow,
   RunArtifactRow,
   RunEventRow,
   RunStepRow,
+  ScheduleRow,
   VRunRow,
+  VScheduleRow,
 } from "@/lib/supabase/types";
 
 /** SD11 — the bounded initial `run_events` read cap. The SSE relay (S-110) */
@@ -823,5 +827,406 @@ export async function archiveRepository(client: SupabaseClient, id: string): Pro
     .eq("id", id);
   if (result.error) {
     throw new DatabaseError("archiveRepository", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Agent Scheduler fire path (S-153). The pg_cron tick (S-154) POSTs to the
+// internal fire endpoint, which reads the schedule, inserts the queued run via
+// the schedule trigger descriptor, invokes, and records the outcome back onto
+// the schedule row. Guardrail re-checks (overlap/open-PR/cap) and G3 auto-pause
+// land in S-155/S-156/S-157.
+// ---------------------------------------------------------------------
+
+/** Read a single schedule by id (fire path). Returns null when absent. */
+export async function getScheduleById(
+  client: SupabaseClient,
+  id: string,
+): Promise<ScheduleRow | null> {
+  const result = await client.from("schedules").select("*").eq("id", id).maybeSingle();
+  if (result.error) {
+    throw new DatabaseError("getScheduleById", result.error);
+  }
+  return (result.data as ScheduleRow | null) ?? null;
+}
+
+/**
+ * Record a successful fire: reset the consecutive-failure counter, pin the run
+ * refs, and clear any transient block. The due cursor (`next_run_at`) is owned
+ * and advanced by the `fire_due_schedules()` tick when it dispatches (SD-T2),
+ * NOT here — so the fire endpoint has no dependency on exposing the `scheduler`
+ * schema to PostgREST, and there is one writer of the cursor.
+ */
+export async function recordScheduleFired(
+  client: SupabaseClient,
+  scheduleId: string,
+  runId: string,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({
+      consecutive_failures: 0,
+      state: "active",
+      block_reason: null,
+      last_run_id: runId,
+      last_fired_at: new Date().toISOString(),
+      last_fire_error: null,
+    })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("recordScheduleFired", result.error);
+  }
+}
+
+/**
+ * Record a fire-time failure: atomically increment the consecutive-failure
+ * counter and, when it crosses the per-schedule `auto_pause_threshold`, flip the
+ * schedule to `paused` and record exactly one `schedule_auto_paused`
+ * notification (G3, SD-G3 / AC6). The whole transition is a single plpgsql
+ * function (`public.scheduler_record_fire_failure`) so the increment + trip +
+ * notification cannot race into a double-notify.
+ */
+export async function recordScheduleFireFailure(
+  client: SupabaseClient,
+  scheduleId: string,
+  errorText: string,
+): Promise<void> {
+  const result = await client.rpc("scheduler_record_fire_failure", {
+    p_schedule_id: scheduleId,
+    p_error: errorText,
+  });
+  if (result.error) {
+    throw new DatabaseError("recordScheduleFireFailure", result.error);
+  }
+}
+
+/** Read a single agent by id (the fire path has the schedule's agent_id). */
+export async function getAgentById(client: SupabaseClient, id: string): Promise<AgentRow | null> {
+  const result = await client.from("agents").select("*").eq("id", id).maybeSingle();
+  if (result.error) {
+    throw new DatabaseError("getAgentById", result.error);
+  }
+  return (result.data as AgentRow | null) ?? null;
+}
+
+/**
+ * G5-c manual clear (S-156): the operator marks a schedule's open-PR block as
+ * handled. Sets `pr_block_cleared_at = now()`; the next due-tick re-evaluates
+ * `scheduler.open_pr_block_run` and auto-clears the block when the current PR's
+ * artifact predates the clear. Idempotent.
+ */
+export async function clearSchedulePrBlock(
+  client: SupabaseClient,
+  scheduleId: string,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ pr_block_cleared_at: new Date().toISOString() })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("clearSchedulePrBlock", result.error);
+  }
+}
+
+/**
+ * S-159 (#271) — the daily-digest selection (SD-N6). All notifications not yet
+ * emailed, oldest-first so the digest reads chronologically. An empty result
+ * means an empty window: the digest route returns 204 and sends nothing
+ * (SD-N7). Returns `[]`, never null (EC-17).
+ */
+export async function getUndeliveredNotifications(
+  client: SupabaseClient,
+): Promise<NotificationRow[]> {
+  const result = await client
+    .from("notifications")
+    .select("*")
+    .is("emailed_at", null)
+    .order("created_at", { ascending: true });
+  return unwrap<NotificationRow[]>("getUndeliveredNotifications", result) ?? [];
+}
+
+/**
+ * S-159 (#271) — mark exactly the digested rows as emailed (SD-N8). Called ONLY
+ * after SES confirms the send, so a send failure leaves `emailed_at` null and
+ * the window retries next day rather than dropping (R-S9). Idempotent over the
+ * id set.
+ */
+export async function markNotificationsEmailed(
+  client: SupabaseClient,
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  const result = await client
+    .from("notifications")
+    .update({ emailed_at: new Date().toISOString() })
+    .in("id", ids as string[]);
+  if (result.error) {
+    throw new DatabaseError("markNotificationsEmailed", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Phase 4 — Agent Scheduler list + CRUD (S-161/S-162/S-164).
+// ---------------------------------------------------------------------
+
+/**
+ * S-161 (#273) — the `/schedules` list read (SD-UI-1). Reads `v_schedules`
+ * (joined display columns + last-run status), newest-first. When `agentSlug` is
+ * given, scopes to that agent (the §5.7.1 agent-page filter). Returns `[]`, never
+ * null (EC-17).
+ */
+export async function getSchedules(
+  client: SupabaseClient,
+  agentSlug?: string,
+): Promise<VScheduleRow[]> {
+  let query = client.from("v_schedules").select("*").order("created_at", { ascending: false });
+  if (agentSlug) {
+    query = query.eq("agent_slug", agentSlug);
+  }
+  const result = await query;
+  return unwrap<VScheduleRow[]>("getSchedules", result) ?? [];
+}
+
+/**
+ * S-164 (#276) — the count of schedules bound to an agent, for the agent-page
+ * scheduled indicator (SD-UI-5). Head-count query (no rows transferred).
+ */
+export async function getScheduleCountByAgent(
+  client: SupabaseClient,
+  agentId: string,
+): Promise<number> {
+  const result = await client
+    .from("schedules")
+    .select("id", { count: "exact", head: true })
+    .eq("agent_id", agentId);
+  if (result.error) {
+    throw new DatabaseError("getScheduleCountByAgent", result.error);
+  }
+  return result.count ?? 0;
+}
+
+/**
+ * S-161 (#273) — pause a schedule (operator action). Sets `state='paused'` and a
+ * manual `block_reason`; the due-tick skips paused schedules (G6). Idempotent.
+ */
+export async function pauseSchedule(client: SupabaseClient, scheduleId: string): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ state: "paused", block_reason: "manual_pause", blocked_at: new Date().toISOString() })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("pauseSchedule", result.error);
+  }
+}
+
+/**
+ * S-161 (#273) — resume a paused/auto-paused schedule. Clears the paused state,
+ * the block reason, and (critically) the consecutive-failure counter so a
+ * resumed auto-paused schedule starts fresh (G3). The next due-tick recomputes
+ * `next_run_at`. Idempotent.
+ */
+export async function resumeSchedule(client: SupabaseClient, scheduleId: string): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({
+      state: "active",
+      block_reason: null,
+      blocked_at: null,
+      consecutive_failures: 0,
+    })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("resumeSchedule", result.error);
+  }
+}
+
+/**
+ * S-161 (#273) — delete a schedule. The schedule's produced runs are preserved
+ * (the `runs`/`notifications` FKs are `on delete set null`, spec §2) — deleting a
+ * schedule never deletes history. Idempotent (a missing id is a no-op).
+ */
+export async function deleteSchedule(client: SupabaseClient, scheduleId: string): Promise<void> {
+  const result = await client.from("schedules").delete().eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("deleteSchedule", result.error);
+  }
+}
+
+/** The writable cadence + binding fields for a schedule create/edit (S-162). */
+export interface ScheduleWriteInput {
+  agentId: string;
+  repositoryId: string | null;
+  installationId: string | null;
+  name: string | null;
+  params: Record<string, unknown>;
+  cadenceKind: CadenceKind;
+  cadenceMinute: number | null;
+  cadenceHour: number | null;
+  cadenceWeekday: number | null;
+  cadenceIntervalHours: number | null;
+  cadenceCron: string | null;
+  timezone: string;
+  autoPauseThreshold: number;
+  notifyOnSuccess: boolean;
+}
+
+function toScheduleColumns(input: ScheduleWriteInput) {
+  return {
+    agent_id: input.agentId,
+    repository_id: input.repositoryId,
+    installation_id: input.installationId,
+    name: input.name,
+    params: input.params,
+    cadence_kind: input.cadenceKind,
+    cadence_minute: input.cadenceMinute,
+    cadence_hour: input.cadenceHour,
+    cadence_weekday: input.cadenceWeekday,
+    cadence_interval_hours: input.cadenceIntervalHours,
+    cadence_cron: input.cadenceCron,
+    timezone: input.timezone,
+    auto_pause_threshold: input.autoPauseThreshold,
+    notify_on_success: input.notifyOnSuccess,
+  };
+}
+
+/**
+ * S-162 (#274) — create a schedule. The due-tick computes `next_run_at` on its
+ * next pass; the row is inserted `active`. Returns the new id.
+ */
+export async function insertSchedule(
+  client: SupabaseClient,
+  input: ScheduleWriteInput,
+): Promise<string> {
+  const result = await client
+    .from("schedules")
+    .insert(toScheduleColumns(input))
+    .select("id")
+    .single();
+  if (result.error) {
+    throw new DatabaseError("insertSchedule", result.error);
+  }
+  return (result.data as { id: string }).id;
+}
+
+/**
+ * S-162 (#274) — edit a schedule's binding/cadence/guardrail fields. Does NOT
+ * touch `state`/`next_run_at`/counters (the tick owns the cursor; pause/resume
+ * own state). The next tick recomputes `next_run_at` from the new cadence.
+ */
+export async function updateSchedule(
+  client: SupabaseClient,
+  scheduleId: string,
+  input: ScheduleWriteInput,
+): Promise<void> {
+  const result = await client
+    .from("schedules")
+    .update({ ...toScheduleColumns(input), next_run_at: null })
+    .eq("id", scheduleId);
+  if (result.error) {
+    throw new DatabaseError("updateSchedule", result.error);
+  }
+}
+
+/**
+ * S-162 (#274) — the dialog's "Next N runs" preview from the AUTHORITATIVE
+ * plpgsql math via the public wrapper (SD-T6). Returns ISO strings (possibly
+ * fewer than `count`, or empty when the cadence never fires). Never throws into
+ * the UI on a bad cadence — the caller treats an error as "no preview".
+ */
+export async function previewNextRuns(
+  client: SupabaseClient,
+  cadence: {
+    kind: CadenceKind;
+    minute: number | null;
+    hour: number | null;
+    weekday: number | null;
+    intervalHours: number | null;
+    cron: string | null;
+    timezone: string;
+  },
+  count = 3,
+): Promise<string[]> {
+  const result = await client.rpc("scheduler_preview_next_runs", {
+    p_kind: cadence.kind,
+    p_minute: cadence.minute,
+    p_hour: cadence.hour,
+    p_weekday: cadence.weekday,
+    p_interval_hours: cadence.intervalHours,
+    p_cron: cadence.cron,
+    p_timezone: cadence.timezone,
+    p_count: count,
+  });
+  if (result.error) {
+    throw new DatabaseError("previewNextRuns", result.error);
+  }
+  return (result.data as string[] | null) ?? [];
+}
+
+// ---------------------------------------------------------------------
+// Phase 4 — Notifications feed + bell (S-163).
+// ---------------------------------------------------------------------
+
+/**
+ * S-163 (#275) — the notifications feed read (SD-N5). Newest-first; `limit`
+ * bounds the popover (5) vs the full feed. Returns `[]`, never null (EC-17).
+ */
+export async function getNotifications(
+  client: SupabaseClient,
+  limit?: number,
+): Promise<NotificationRow[]> {
+  let query = client.from("notifications").select("*").order("created_at", { ascending: false });
+  if (limit && limit > 0) {
+    query = query.limit(limit);
+  }
+  const result = await query;
+  return unwrap<NotificationRow[]>("getNotifications", result) ?? [];
+}
+
+/** S-163 (#275) — the unread (`read_at is null`) count for the bell badge. */
+export async function getUnreadCount(client: SupabaseClient): Promise<number> {
+  const result = await client
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
+  if (result.error) {
+    throw new DatabaseError("getUnreadCount", result.error);
+  }
+  return result.count ?? 0;
+}
+
+/** S-163 (#275) — the total notification count (feed footer). */
+export async function getNotificationTotal(client: SupabaseClient): Promise<number> {
+  const result = await client.from("notifications").select("id", { count: "exact", head: true });
+  if (result.error) {
+    throw new DatabaseError("getNotificationTotal", result.error);
+  }
+  return result.count ?? 0;
+}
+
+/** S-163 (#275) — mark one notification read (sets `read_at`). Idempotent. */
+export async function markNotificationRead(
+  client: SupabaseClient,
+  notificationId: string,
+): Promise<void> {
+  const result = await client
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", notificationId)
+    .is("read_at", null);
+  if (result.error) {
+    throw new DatabaseError("markNotificationRead", result.error);
+  }
+}
+
+/** S-163 (#275) — mark every unread notification read ("Mark all read"). */
+export async function markAllNotificationsRead(client: SupabaseClient): Promise<void> {
+  const result = await client
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .is("read_at", null);
+  if (result.error) {
+    throw new DatabaseError("markAllNotificationsRead", result.error);
   }
 }

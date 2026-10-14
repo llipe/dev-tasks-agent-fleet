@@ -39,6 +39,22 @@ describe("classifyRoute (spec §7.3)", () => {
     expect(classifyRoute("/api/auth/whoami")).toBe("api");
   });
 
+  // S-153: the scheduler internal surface is NOT session-gated (the caller is
+  // pg_cron via pg_net, which holds no cookie) but is NEVER public — each
+  // handler enforces a shared-secret check. The middleware uses `internal` to
+  // skip the session gate and let the request reach that check.
+  it.each([
+    "/api/internal",
+    "/api/internal/schedules/abc/fire",
+    "/api/internal/notifications/digest",
+  ])("classifies internal scheduler path %s as internal", (p) => {
+    expect(classifyRoute(p)).toBe("internal");
+  });
+
+  it("does not treat a sibling like /api/internalish as internal (stays api)", () => {
+    expect(classifyRoute("/api/internalish")).toBe("api");
+  });
+
   it("fails closed: an unknown path defaults to ui", () => {
     expect(classifyRoute("/some/future/route")).toBe("ui");
   });

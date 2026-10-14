@@ -35,11 +35,14 @@ export function AppShell({
   children,
   breadcrumb,
   actions,
+  topBarActions,
   authenticated = false,
 }: {
   children: ReactNode;
   breadcrumb?: ReactNode;
   actions?: ReactNode;
+  /** Always-on top-bar right-cluster content (e.g. the notification bell, S-163). */
+  topBarActions?: ReactNode;
   /**
    * Whether the current request is authenticated. Server-provided and static
    * per request (the authenticated layout determines it via the auth-server
@@ -83,7 +86,17 @@ export function AppShell({
         authenticated={authenticated}
       />
       <div className={styles.column}>
-        <TopBar breadcrumb={breadcrumb} actions={actions} />
+        <TopBar
+          breadcrumb={breadcrumb}
+          actions={
+            topBarActions || actions ? (
+              <>
+                {actions}
+                {topBarActions}
+              </>
+            ) : undefined
+          }
+        />
         <main className={styles.content}>{children}</main>
       </div>
     </div>

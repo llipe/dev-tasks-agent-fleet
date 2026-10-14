@@ -106,6 +106,7 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — invoke run insert (S-112)", () =
       repositoryId: fx.repoId,
       installationId: fx.installationId,
       params: { fix_mode: "audit_only" },
+      trigger: { triggerType: "manual", triggeredBy: "panel" },
     });
 
     await insertQueuedRun(client, row);
@@ -145,6 +146,7 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — invoke run insert (S-112)", () =
         repositoryId: fx.repoId,
         installationId: fx.installationId,
         params: { fix_mode: "audit_only" },
+        trigger: { triggerType: "manual", triggeredBy: "panel" },
       }),
     );
 
@@ -175,6 +177,7 @@ describe.skipIf(!runSuite)("panel Layer 2.5 — invoke run insert (S-112)", () =
         repositoryId: fx.repoId,
         installationId: fx.installationId,
         params: {},
+        trigger: { triggerType: "manual", triggeredBy: "panel" },
       }),
     );
     await updateRunInvocationRefs(client, runId, {
