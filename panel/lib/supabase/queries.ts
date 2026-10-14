@@ -1163,3 +1163,70 @@ export async function previewNextRuns(
   }
   return (result.data as string[] | null) ?? [];
 }
+
+// ---------------------------------------------------------------------
+// Phase 4 — Notifications feed + bell (S-163).
+// ---------------------------------------------------------------------
+
+/**
+ * S-163 (#275) — the notifications feed read (SD-N5). Newest-first; `limit`
+ * bounds the popover (5) vs the full feed. Returns `[]`, never null (EC-17).
+ */
+export async function getNotifications(
+  client: SupabaseClient,
+  limit?: number,
+): Promise<NotificationRow[]> {
+  let query = client.from("notifications").select("*").order("created_at", { ascending: false });
+  if (limit && limit > 0) {
+    query = query.limit(limit);
+  }
+  const result = await query;
+  return unwrap<NotificationRow[]>("getNotifications", result) ?? [];
+}
+
+/** S-163 (#275) — the unread (`read_at is null`) count for the bell badge. */
+export async function getUnreadCount(client: SupabaseClient): Promise<number> {
+  const result = await client
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
+  if (result.error) {
+    throw new DatabaseError("getUnreadCount", result.error);
+  }
+  return result.count ?? 0;
+}
+
+/** S-163 (#275) — the total notification count (feed footer). */
+export async function getNotificationTotal(client: SupabaseClient): Promise<number> {
+  const result = await client.from("notifications").select("id", { count: "exact", head: true });
+  if (result.error) {
+    throw new DatabaseError("getNotificationTotal", result.error);
+  }
+  return result.count ?? 0;
+}
+
+/** S-163 (#275) — mark one notification read (sets `read_at`). Idempotent. */
+export async function markNotificationRead(
+  client: SupabaseClient,
+  notificationId: string,
+): Promise<void> {
+  const result = await client
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", notificationId)
+    .is("read_at", null);
+  if (result.error) {
+    throw new DatabaseError("markNotificationRead", result.error);
+  }
+}
+
+/** S-163 (#275) — mark every unread notification read ("Mark all read"). */
+export async function markAllNotificationsRead(client: SupabaseClient): Promise<void> {
+  const result = await client
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .is("read_at", null);
+  if (result.error) {
+    throw new DatabaseError("markAllNotificationsRead", result.error);
+  }
+}

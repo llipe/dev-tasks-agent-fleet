@@ -10,6 +10,7 @@ import {
   ExpandIcon,
   RepositoriesIcon,
   SchedulesIcon,
+  NotificationsIcon,
   SettingsIcon,
   SystemHealthIcon,
 } from "../icons";
@@ -50,6 +51,8 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
   const repositoriesActive = pathname === "/repositories";
   // Schedules (S-161) owns "/schedules".
   const schedulesActive = pathname === "/schedules" || pathname.startsWith("/schedules/");
+  // Notifications (S-163) owns "/notifications".
+  const notificationsActive = pathname === "/notifications";
 
   return (
     <nav
@@ -91,6 +94,13 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
           icon={<SchedulesIcon />}
           label="Schedules"
           active={schedulesActive}
+          collapsed={collapsed}
+        />
+        <NavItem
+          href="/notifications"
+          icon={<NotificationsIcon />}
+          label="Notifications"
+          active={notificationsActive}
           collapsed={collapsed}
         />
         <DisabledNavItem icon={<SettingsIcon />} label="Settings" collapsed={collapsed} />
