@@ -40,37 +40,73 @@ function isFly(): boolean {
 // --------------------------------------------------------------- Fly OIDC
 
 /**
- * Extracts the OIDC token from the socket's JSON response.
+ * JWT shape: three base64url segments separated by dots (the signature segment
+ * MAY be empty for an unsigned token). This is the literal shape of a raw JWT
+ * body — header.payload.signature — not a validation of the token's contents.
  *
- * Accepts a string `value` or a string `token` and nothing else. Any other
- * shape throws `FlyOidcShapeError` naming the keys received — it does NOT fall
- * back to some other field.
+ * DUPLICATED in `panel/scripts/fly-oidc-probe.mjs` (`isJwtShaped`). The probe
+ * ships as a single standalone file into the runtime image (`/app/
+ * fly-oidc-probe.mjs`, see `Dockerfile.panel`) with no `lib/` beside it, so it
+ * cannot import this. Both copies MUST stay identical; the parity corpus in
+ * `panel/tests/unit/fly-oidc-probe.test.ts` fails if they drift.
+ */
+const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
+
+/**
+ * Extracts the OIDC token from the socket's response body.
  *
- * This is the F5 fix. The previous chain was
- * `parsed.value ?? parsed.token ?? parsed.aud`, plus a `data.trim()` fallback
- * for unparseable bodies. `aud` is the audience (`sts.amazonaws.com`), not a
- * token: forwarding it to STS as a web-identity token produced a misleading
- * auth error instead of a clear parse failure. Because the real socket shape is
- * unverified until a live Machine probe (SR1/OQ1), the failure mode must name
- * what it actually received.
+ * The Fly Machine OIDC socket (`POST /v1/tokens/oidc`) returns a HTTP 200 with
+ * `content-type: application/json` whose body is a **raw JWT** — three
+ * base64url segments separated by dots — NOT a JSON object (verified live on
+ * 2026-10-14, Machine 845de5f2e502e8, release panel-v1.1.0 / Fly v13; see D-07
+ * in workstream/decisions-panel-fly-oidc.md). So this function accepts, in
+ * order:
+ *
+ *   1. A trimmed body that is itself JWT-shaped → returned verbatim.
+ *   2. A JSON object with a string `value` or `token` field → that field.
+ *      (The 2026-09-11 note recorded this shape; kept for compatibility.)
+ *   3. A JSON-encoded string that is itself JWT-shaped → the decoded string.
+ *
+ * Anything else — an empty body, `{}`, an HTML error page, a two-segment
+ * string, a non-string `value`/`token` — throws `FlyOidcShapeError`. As before,
+ * the error message names only the keys received (never any value) and NEVER
+ * includes the body or any token text, so no token material can leak into a log
+ * line.
+ *
+ * This supersedes the F5 fix's JSON-only contract. The audience is still never
+ * forwarded to STS as a token: `{aud:...}` has no `value`/`token` string and is
+ * not JWT-shaped, so it rejects.
  *
  * Verify the real shape with:
  *   curl --unix-socket /.fly/api -X POST http://localhost/v1/tokens/oidc \
  *        --data '{"aud":"sts.amazonaws.com"}'
  */
 export function extractOidcToken(rawBody: string): string {
+  const trimmed = typeof rawBody === "string" ? rawBody.trim() : "";
+
+  // 1. Raw JWT body — the real Fly shape as of 2026-10-14 (D-07).
+  if (JWT_SHAPE.test(trimmed)) return trimmed;
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawBody);
+    parsed = JSON.parse(trimmed);
   } catch {
-    // Unparseable body: no key names to report. Do NOT forward the raw body.
-    throw new FlyOidcShapeError([], "response body was not valid JSON");
+    // Not JWT-shaped and not JSON: no key names to report. Do NOT forward the
+    // raw body.
+    throw new FlyOidcShapeError([], "response body was neither a JWT nor valid JSON");
+  }
+
+  // 3. A JSON-encoded string that is itself JWT-shaped.
+  if (typeof parsed === "string") {
+    if (JWT_SHAPE.test(parsed.trim())) return parsed.trim();
+    throw new FlyOidcShapeError([], "response body was a JSON string but not JWT-shaped");
   }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new FlyOidcShapeError([], "response body was not a JSON object");
   }
 
+  // 2. JSON object carrying the token in a string `value`/`token` field.
   const obj = parsed as Record<string, unknown>;
   if (typeof obj.value === "string") return obj.value;
   if (typeof obj.token === "string") return obj.token;

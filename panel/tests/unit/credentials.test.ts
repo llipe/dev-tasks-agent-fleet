@@ -175,13 +175,13 @@ describe("extractOidcToken — accepts value|token only (AC3, CT-8)", () => {
     expect(() => extractOidcToken("{}")).toThrow(FlyOidcShapeError);
   });
 
-  it("throws FlyOidcShapeError on a non-JSON body (no data.trim() fallback)", () => {
+  it("throws FlyOidcShapeError on a non-JSON, non-JWT body (no raw-body fallback)", () => {
     expect(() => extractOidcToken("not-json-at-all")).toThrow(FlyOidcShapeError);
     try {
       extractOidcToken("not-json-at-all");
     } catch (err) {
       expect((err as FlyOidcShapeError).receivedKeys).toEqual([]);
-      expect((err as Error).message).toContain("not valid JSON");
+      expect((err as Error).message).toContain("neither a JWT nor valid JSON");
     }
   });
 
@@ -199,6 +199,68 @@ describe("extractOidcToken — accepts value|token only (AC3, CT-8)", () => {
     } catch (err) {
       expect((err as FlyOidcShapeError).code).toBe("CREDENTIALS_UNAVAILABLE");
       expect((err as FlyOidcShapeError).status).toBe(500);
+    }
+  });
+});
+
+// --- raw-JWT body (#280 follow-up, D-07) ------------------------------------
+//
+// Live evidence (2026-10-14, Machine 845de5f2e502e8, release panel-v1.1.0 / Fly
+// v13): POST /v1/tokens/oidc returns HTTP 200 with `content-type:
+// application/json` but the body is NOT valid JSON — it is a raw JWT (three
+// base64url segments separated by dots). The JSON-only `extractOidcToken` threw
+// `FlyOidcShapeError` on this, breaking the deployed panel. The fix accepts a
+// bare JWT body while keeping the JSON `value`/`token` path intact.
+describe("extractOidcToken — accepts a raw JWT body (#280 D-07)", () => {
+  // A realistic three-segment JWT (header.payload.signature), base64url, no
+  // padding. Never a real token.
+  const RAW_JWT =
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9." +
+    "eyJhdWQiOiJzdHMuYW1hem9uYXdzLmNvbSIsInN1YiI6Im9yZzphcHA6bWFjaGluZSJ9." +
+    "c2lnbmF0dXJlLXNlZ21lbnQtYmFzZTY0dXJsLWVuY29kZWQtZGF0YQ";
+
+  it("returns a trimmed raw JWT body verbatim", () => {
+    expect(extractOidcToken(RAW_JWT)).toBe(RAW_JWT);
+  });
+
+  it("trims surrounding whitespace/newlines before matching the JWT shape", () => {
+    expect(extractOidcToken(`\n  ${RAW_JWT}\n`)).toBe(RAW_JWT);
+  });
+
+  it("accepts a JWT with an empty signature segment (two dots, trailing empty)", () => {
+    const unsigned = "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhIn0.";
+    expect(extractOidcToken(unsigned)).toBe(unsigned);
+  });
+
+  it("accepts a JSON-encoded string that is itself JWT-shaped", () => {
+    expect(extractOidcToken(JSON.stringify(RAW_JWT))).toBe(RAW_JWT);
+  });
+
+  it("still rejects a two-segment string (not a JWT) with FlyOidcShapeError", () => {
+    expect(() => extractOidcToken("only.two")).toThrow(FlyOidcShapeError);
+  });
+
+  it("still rejects an HTML error page with FlyOidcShapeError", () => {
+    expect(() => extractOidcToken("<html><body>502 Bad Gateway</body></html>")).toThrow(
+      FlyOidcShapeError,
+    );
+  });
+
+  it("still rejects an empty body with FlyOidcShapeError", () => {
+    expect(() => extractOidcToken("")).toThrow(FlyOidcShapeError);
+    expect(() => extractOidcToken("   ")).toThrow(FlyOidcShapeError);
+  });
+
+  it("never includes the token text in the error message for a near-miss shape", () => {
+    // A JSON-encoded string that is NOT JWT-shaped must reject without echoing
+    // the decoded value.
+    const notJwt = "some.plausible.looking but spaced value";
+    try {
+      extractOidcToken(JSON.stringify(notJwt));
+      throw new Error("expected FlyOidcShapeError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(FlyOidcShapeError);
+      expect((err as Error).message).not.toContain(notJwt);
     }
   });
 });

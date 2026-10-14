@@ -13,6 +13,14 @@ import { fileURLToPath } from "node:url";
 //      `status=<code> token=<present|absent>`.
 // The .mjs helper has no type declarations; allowJs lets TS infer them.
 import { classifyProbe, statusIsOk, tokenIsPresent } from "../../scripts/fly-oidc-probe.mjs";
+import { extractOidcToken } from "@/lib/aws/credentials";
+
+// A realistic three-segment JWT (header.payload.signature), base64url, no
+// padding. Never a real token.
+const RAW_JWT =
+  "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9." +
+  "eyJhdWQiOiJzdHMuYW1hem9uYXdzLmNvbSIsInN1YiI6Im9yZzphcHA6bWFjaGluZSJ9." +
+  "c2lnbmF0dXJlLXNlZ21lbnQtYmFzZTY0dXJsLWVuY29kZWQtZGF0YQ";
 
 describe("tokenIsPresent — mirrors extractOidcToken's acceptance rule", () => {
   it("accepts a string `value` key", () => {
@@ -21,6 +29,18 @@ describe("tokenIsPresent — mirrors extractOidcToken's acceptance rule", () => 
 
   it("accepts a string `token` key", () => {
     expect(tokenIsPresent(JSON.stringify({ token: "a.b.c" }))).toBe(true);
+  });
+
+  it("accepts a raw JWT body (#280 D-07 — the real Fly shape)", () => {
+    expect(tokenIsPresent(RAW_JWT)).toBe(true);
+  });
+
+  it("accepts a raw JWT body with surrounding whitespace", () => {
+    expect(tokenIsPresent(`\n  ${RAW_JWT}\n`)).toBe(true);
+  });
+
+  it("accepts a JSON-encoded string that is itself JWT-shaped", () => {
+    expect(tokenIsPresent(JSON.stringify(RAW_JWT))).toBe(true);
   });
 
   it("rejects a non-string value/token", () => {
@@ -32,9 +52,17 @@ describe("tokenIsPresent — mirrors extractOidcToken's acceptance rule", () => 
     expect(tokenIsPresent(JSON.stringify({ aud: "sts.amazonaws.com" }))).toBe(false);
   });
 
+  it("rejects a two-segment string (not a JWT)", () => {
+    expect(tokenIsPresent("only.two")).toBe(false);
+  });
+
+  it("rejects an HTML error page", () => {
+    expect(tokenIsPresent("<html><body>502 Bad Gateway</body></html>")).toBe(false);
+  });
+
   it("rejects a non-object JSON body (array / scalar)", () => {
     expect(tokenIsPresent(JSON.stringify(["a.b.c"]))).toBe(false);
-    expect(tokenIsPresent(JSON.stringify("a.b.c"))).toBe(false);
+    expect(tokenIsPresent(JSON.stringify("not a jwt"))).toBe(false);
     expect(tokenIsPresent(JSON.stringify(null))).toBe(false);
   });
 
@@ -43,6 +71,41 @@ describe("tokenIsPresent — mirrors extractOidcToken's acceptance rule", () => 
     expect(tokenIsPresent("")).toBe(false);
     // The runtime guard also tolerates a non-string; cast to exercise it.
     expect((tokenIsPresent as (b: unknown) => boolean)(undefined)).toBe(false);
+  });
+});
+
+// The probe (a standalone .mjs shipped into the image, no lib/ beside it) and
+// credentials.ts duplicate the JWT-shape rule. This test proves they cannot
+// drift: the SAME corpus must be accepted/rejected by BOTH. (#280 D-07.)
+describe("probe/credentials parity — identical accept/reject corpus (#280 D-07)", () => {
+  const ACCEPT: ReadonlyArray<readonly [string, string]> = [
+    ["raw JWT", RAW_JWT],
+    ["raw JWT with whitespace", `\n ${RAW_JWT} \n`],
+    ["JSON {value}", JSON.stringify({ value: RAW_JWT })],
+    ["JSON {token}", JSON.stringify({ token: RAW_JWT })],
+    ["JSON-encoded JWT string", JSON.stringify(RAW_JWT)],
+    ["JWT with empty signature", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhIn0."],
+  ];
+
+  const REJECT: ReadonlyArray<readonly [string, string]> = [
+    ["empty", ""],
+    ["whitespace only", "   "],
+    ["empty object", "{}"],
+    ["audience-only", JSON.stringify({ aud: "sts.amazonaws.com" })],
+    ["HTML error page", "<html><body>502 Bad Gateway</body></html>"],
+    ["two-segment string", "only.two"],
+    ["non-string value", JSON.stringify({ value: 123 })],
+    ["JSON array", JSON.stringify(["a.b.c"])],
+  ];
+
+  it.each(ACCEPT)("both ACCEPT: %s", (_label, body) => {
+    expect(tokenIsPresent(body)).toBe(true);
+    expect(extractOidcToken(body)).toBeTypeOf("string");
+  });
+
+  it.each(REJECT)("both REJECT: %s", (_label, body) => {
+    expect(tokenIsPresent(body)).toBe(false);
+    expect(() => extractOidcToken(body)).toThrow();
   });
 });
 

@@ -24,9 +24,11 @@
  * stdout is `status=<code> token=<present|absent>`. Token *presence* is
  * reported; the token itself never leaves this process.
  *
- * TOKEN-PRESENCE RULE. Identical to `extractOidcToken` in credentials.ts: a
- * parsed JSON object with a string `value` or a string `token` key means the
- * token is present. Anything else (non-200, non-JSON, wrong shape) means absent.
+ * TOKEN-PRESENCE RULE. Identical to `extractOidcToken` in credentials.ts: the
+ * socket returns a raw JWT body (three base64url segments separated by dots —
+ * the real Fly shape confirmed 2026-10-14, D-07), OR a JSON object with a
+ * string `value`/`token` key, OR a JSON-encoded JWT string. Anything else
+ * (non-200, HTML error page, two-segment string, wrong shape) means absent.
  *
  * EXIT CODES. 0 only when HTTP status is 2xx AND a token is present; 1
  * otherwise. deploy-panel.sh maps any non-zero probe to its own exit 3.
@@ -42,27 +44,56 @@ const OIDC_PATH = "/v1/tokens/oidc";
 const STS_AUDIENCE = "sts.amazonaws.com";
 
 /**
- * Is the token present in the socket's JSON response body?
+ * JWT shape: three base64url segments separated by dots (the signature segment
+ * MAY be empty). This is the literal shape of a raw JWT body, not a validation
+ * of its contents.
  *
- * Mirrors `extractOidcToken` (credentials.ts) EXACTLY: a JSON object with a
- * string `value` or a string `token` key → present. Any other shape — array,
- * non-object, missing/non-string key, unparseable body — → absent. This never
- * returns or logs the token value, only the boolean presence.
+ * DUPLICATED from `extractOidcToken`'s `JWT_SHAPE` in
+ * `panel/lib/aws/credentials.ts`. This probe ships as a single standalone file
+ * into the runtime image (`/app/fly-oidc-probe.mjs`, see `Dockerfile.panel`)
+ * with no `lib/` beside it, so it cannot import from lib/. Both copies MUST
+ * stay identical; the parity corpus in
+ * `panel/tests/unit/fly-oidc-probe.test.ts` fails if they drift.
+ *
+ * @param {string} s
+ * @returns {boolean}
+ */
+function isJwtShaped(s) {
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.test(s);
+}
+
+/**
+ * Is the token present in the socket's response body?
+ *
+ * Mirrors `extractOidcToken` (credentials.ts) EXACTLY: a trimmed raw JWT body,
+ * a JSON object with a string `value` or `token` key, or a JSON-encoded
+ * JWT-shaped string → present. Any other shape — HTML page, two-segment string,
+ * array, non-object, missing/non-string key, unparseable body → absent. This
+ * never returns or logs the token value, only the boolean presence.
  *
  * @param {string} rawBody
  * @returns {boolean}
  */
 export function tokenIsPresent(rawBody) {
   if (typeof rawBody !== "string" || rawBody.length === 0) return false;
+  const trimmed = rawBody.trim();
+  if (trimmed.length === 0) return false;
+
+  // 1. Raw JWT body — the real Fly shape as of 2026-10-14 (D-07).
+  if (isJwtShaped(trimmed)) return true;
+
   let parsed;
   try {
-    parsed = JSON.parse(rawBody);
+    parsed = JSON.parse(trimmed);
   } catch {
     return false;
   }
+  // 3. A JSON-encoded string that is itself JWT-shaped.
+  if (typeof parsed === "string") return isJwtShaped(parsed.trim());
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return false;
   }
+  // 2. JSON object carrying the token in a string `value`/`token` field.
   return typeof parsed.value === "string" || typeof parsed.token === "string";
 }
 
