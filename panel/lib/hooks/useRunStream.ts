@@ -124,8 +124,21 @@ export function useRunStream({
   // frame; receiving any frame therefore also implies "opened". A 401 arrives
   // as `onerror` with this still false and readyState === CLOSED.
   const openedRef = useRef(false);
+  // issue 217 (react-hooks/refs): keep the latest injected factory in a ref, but
+  // assign it in an effect — never during render. `connect()` only runs from
+  // effects/handlers (after this sync effect commits), so it always reads the
+  // current factory.
   const factoryRef = useRef(eventSourceFactory);
-  factoryRef.current = eventSourceFactory;
+  useEffect(() => {
+    factoryRef.current = eventSourceFactory;
+  }, [eventSourceFactory]);
+
+  // issue 217 (react-hooks/immutability): the mid-stream-drop reconnect calls
+  // `connect()` from inside `connect`'s own definition, which the rule flags as
+  // use-before-declaration. Hop through a ref holding the latest `connect` so
+  // the recursive reconnect targets the current closure without a forward
+  // self-reference. Behavior is identical.
+  const connectRef = useRef<(() => void) | null>(null);
 
   const connect = useCallback(() => {
     if (closedRef.current) return;
@@ -192,9 +205,15 @@ export function useRunStream({
       // (S-110 AC4/SC-6). Existing seq dedupe (SeqCursor) prevents duplicates.
       es.close();
       setConnected(false);
-      connect();
+      connectRef.current?.();
     };
   }, [runId, timeZone]);
+
+  // Keep connectRef pointing at the latest connect for the recursive reconnect
+  // above (issue 217 react-hooks/immutability) — assigned in an effect, not render.
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     closedRef.current = false;

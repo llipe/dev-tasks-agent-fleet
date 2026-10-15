@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 import { KLabel } from "@/components/KLabel";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import { groupNotifications } from "@/lib/domain/notification-view";
 import { formatRelative } from "@/lib/format";
 import type { NotificationRow } from "@/lib/supabase/types";
@@ -31,7 +32,10 @@ export interface NotificationsFeedProps {
 export function NotificationsFeed({ rows, unread, total }: NotificationsFeedProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const nowMs = useMemo(() => Date.now(), []);
+  // Capture "now" once on mount via a lazy useState initializer rather than
+  // `useMemo(() => Date.now(), [])` (react-hooks/purity bans the impure call in
+  // a memo). Behavior is identical: a single instant frozen for this mount. (issue 217)
+  const [nowMs] = useState(() => renderInstantMs());
   const groups = useMemo(() => groupNotifications(rows, nowMs), [rows, nowMs]);
   const [busy, setBusy] = useState(false);
 

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { createServerClient } from "@/lib/supabase/server";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import {
   getRunById,
   getRunSteps,
@@ -141,7 +142,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
   ]);
 
   // A single injected instant so the summary status + banner agree on one clock.
-  const nowMs = Date.now();
+  const nowMs = renderInstantMs(); // read via helper (react-hooks/purity, issue 217)
   const stepInputs = steps.map(toStepInput);
 
   const summary = buildSummary(toSummaryInput(resolved), nowMs);

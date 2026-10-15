@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { useActionState, useState, type FormEvent } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "../Button";
@@ -99,20 +99,22 @@ export function AddRepositoryForm() {
   );
   const [clientError, setClientError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const seen = useRef<AddRepositoryResult | null>(null);
+  const [seenState, setSeenState] = useState<AddRepositoryResult | null>(null);
 
   // Clear the (uncontrolled) fields after a SUCCESSFUL add, by remounting the
   // field group under a fresh key — mirrors LoginForm's post-failure password
-  // reset, applied on the opposite (success) branch here.
-  useEffect(() => {
-    if (state && state !== seen.current) {
-      seen.current = state;
-      if (state.ok) {
-        setAttempt((n) => n + 1);
-        setClientError(null);
-      }
+  // reset, applied on the opposite (success) branch here. Reacting to the new
+  // action result is done with the React "adjust state on change during render"
+  // pattern (an identity-tracked `seenState`) rather than a setState-in-effect
+  // (react-hooks/set-state-in-effect, issue 217). Behavior is identical — each new
+  // successful result bumps the remount key once and clears the client error.
+  if (state && state !== seenState) {
+    setSeenState(state);
+    if (state.ok) {
+      setAttempt((n) => n + 1);
+      setClientError(null);
     }
-  }, [state]);
+  }
 
   const serverError = state && !state.ok ? state.message : null;
 

@@ -102,7 +102,8 @@ sets `USER nextjs`) and `panel/scripts/docker-entrypoint.sh` runs:
    fails startup).
 2. Always `exec setpriv --reuid=1001 --regid=1001 --init-groups node panel/server.js` — so node is
    **PID 1** running as uid 1001, and `--init-groups` gives it the `nodejs` group that now owns the
-   socket. `setpriv` is from util-linux in `node:22-slim`; **nothing is installed**.
+   socket. `setpriv` is from util-linux in `node:26-slim` (#217); **nothing is installed** for it
+   (corepack, which `node:26-slim` no longer bundles, is installed via npm in the build stages only).
 
 Off Fly (local `docker run`, CI) the socket is absent, the grant is skipped, and the server still
 drops to uid 1001 — verified by the CI image smoke test (`.github/workflows/ci.yml`, `panel-quality`).

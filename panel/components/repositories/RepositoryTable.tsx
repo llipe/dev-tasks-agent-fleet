@@ -110,17 +110,25 @@ function ArchiveAction({ row }: { row: RepositoryRow }) {
     archiveRepository,
     null,
   );
-  const seen = useRef<ArchiveRepositoryResult | null>(null);
+
+  // A successful archive closes the dialog. Derive that during render — the
+  // dialog is open only while the user opened it AND no successful result has
+  // arrived — rather than calling setOpen() inside an effect
+  // (react-hooks/set-state-in-effect, issue 217). The remaining external side effect
+  // (router.refresh() to re-fetch the server list) stays in an effect, since it
+  // syncs an external system; it fires once per new successful result via an
+  // identity-tracked ref. Behavior is identical: on success the dialog closes
+  // and the list refreshes exactly once.
+  const succeeded = state?.ok === true;
+  const isOpen = open && !succeeded;
+  const refreshedFor = useRef<ArchiveRepositoryResult | null>(null);
 
   useEffect(() => {
-    if (state && state !== seen.current) {
-      seen.current = state;
-      if (state.ok) {
-        setOpen(false);
-        router.refresh();
-      }
+    if (succeeded && state !== refreshedFor.current) {
+      refreshedFor.current = state;
+      router.refresh();
     }
-  }, [state, router]);
+  }, [succeeded, state, router]);
 
   const error = state && !state.ok ? state.message : null;
 
@@ -130,7 +138,7 @@ function ArchiveAction({ row }: { row: RepositoryRow }) {
         Archive
       </Button>
 
-      {open && (
+      {isOpen && (
         <div className={styles.overlay}>
           <div
             className={styles.dialog}

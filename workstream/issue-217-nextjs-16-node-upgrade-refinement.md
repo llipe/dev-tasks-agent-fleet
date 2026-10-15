@@ -4,6 +4,7 @@
 
 | Version | Date       | Summary            | Author           |
 | ------- | ---------- | ------------------ | ---------------- |
+| 1.1     | 2026-10-15 | Folded the verifier Design Mode findings: D-13 retarget scope, D-14 exact `@types/node` 26.6.5, D-15 5s fail-closed `getClaims()` timeout (AC2), D-16 route-level image smoke test + `node -v` assertion (AC5) | product-engineer |
 | 1.0     | 2026-10-15 | Initial refinement. Supersedes the 2026-09-15 issue body (16.3.5 / Node 24) and the 2026-10-13 scope comment (16.4.0) | product-engineer |
 
 ## Summary
@@ -60,10 +61,10 @@
 ## Acceptance Criteria
 
 - [ ] AC1: `next` and `eslint-config-next` are 16.4.1. The companion pins match the scope. `.nvmrc` ×2, `ci.yml`, and `Dockerfile.panel` read 26. Both `engines.node` fields read `>=24 <27`. Validation: diff review plus `node -v` in CI logs.
-- [ ] AC2: `panel/middleware.ts` no longer exists. `panel/proxy.ts` gates identically: an unauthenticated UI request → 302 `/login`, an unauthenticated SSE request → 401, an authenticated session works, and an unauthenticated `/api/internal/**` request reaches the handler, which returns 401 without the secret. The existing gate suites (`middleware-gate`, `auth-route-policy`, `auth-no-getsession`, `internal-secret`) pass with only target or name changes. Validation: unit/component tests plus E2E `auth.spec.ts`.
+- [ ] AC2: `panel/middleware.ts` no longer exists. `panel/proxy.ts` gates identically: an unauthenticated UI request → 302 `/login`, an unauthenticated SSE request → 401, an authenticated session works, and an unauthenticated `/api/internal/**` request reaches the handler, which returns 401 without the secret. A hung `getClaims()` fails closed within 5s (D-15). The existing gate suites (`middleware-gate`, `auth-route-policy`, `auth-no-getsession`, `internal-secret`) pass with only target or name changes. Validation: unit/component tests plus E2E `auth.spec.ts`.
 - [ ] AC3: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit) and `pnpm --filter panel run test:e2e` pass on Node 26. `make validate` passes on both branches. Validation: local plus CI.
 - [ ] AC4: The ESLint config uses native flat config (no `FlatCompat`). Lint passes with **zero** disabled or downgraded rules relative to `eslint-config-next` 16's recommended set. SD2 is still enforced (`eslint-server-import.test.ts`). Validation: lint plus config diff.
-- [ ] AC5: The CI image smoke test passes on `node:26-slim`: the build succeeds, PID 1 runs as uid 1001, the server answers on `:8080`, and a missing `/.fly/api` does not block start. Validation: the CI `panel-quality` job.
+- [ ] AC5: The CI image smoke test passes on `node:26-slim`: the build succeeds, PID 1 runs as uid 1001, the server answers on `:8080`, and a missing `/.fly/api` does not block start; route checks `/`→302, `/login`→200, SSE→401, internal POST→401 (D-16); CI logs `node -v` = v26. Validation: the CI `panel-quality` job.
 - [ ] AC6: The panel audit shows **no `next` advisory**, and no new high/critical advisory. Validation: `pnpm --filter panel run audit`.
 - [ ] AC7: The CDK workspace member installs and its tests pass on Node 26. Validation: `pnpm --filter ./agents/dependency-update/agentcore/cdk test`.
 - [ ] AC8: ADR-008 exists. `technical-guidelines.md`, `panel/README.md`, and the runbooks reference `proxy.ts` and Node 26. Validation: doc review.

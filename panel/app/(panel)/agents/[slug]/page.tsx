@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createServerClient } from "@/lib/supabase/server";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import {
   getAgentBySlug,
   getAllRunsByAgentSlug,
@@ -167,7 +168,7 @@ export default async function AgentRunHistoryPage({
 
   // A single injected instant for every relative time + status derivation on
   // this render, so nothing reads an ambient clock mid-render.
-  const nowMs = Date.now();
+  const nowMs = renderInstantMs(); // read via helper (react-hooks/purity, issue 217)
 
   const headerRunInputs: RunRowInput[] = allRunsForHeader.map((r) => toRunInput(r, 0, 0));
 

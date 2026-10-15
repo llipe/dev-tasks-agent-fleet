@@ -138,7 +138,9 @@ recorded reason (see `TESTING.md`).
   security-relevant decision logic (route classification, open-redirect guard, and the
   anti-enumeration error mapping) and carry exhaustive unit suites.
 
-- **Authorization chokepoint — the middleware gate (S-117).** `panel/middleware.ts` is the
+- **Authorization chokepoint — the proxy gate (S-117; renamed in #217, ADR-008).** `panel/proxy.ts`
+  (renamed from `middleware.ts` for Next 16, now on the **Node.js runtime** instead of Edge, with a
+  5 s fail-closed `getClaims()` timeout) is the
   single place authorization is decided, so a new page or route handler cannot forget to add
   a check (the same "one enforceable control" posture as the SD2 `server-only` guard). It runs
   on every non-static request — the matcher excludes `_next/static`, `_next/image`, the favicon,
@@ -331,7 +333,7 @@ read Supabase on purpose (SD2). `import "server-only"` remains the hard build-ti
 The panel now requires a **Supabase password login** (auth wave, S-116…S-122).
 The v1 "no auth, keep it private" decision (D16) has been **reversed**: the
 security boundary that protects the invoke surface is now **authentication** — a
-fail-closed `middleware.ts` gate, the `/login` screen, POST logout, and a `401`
+fail-closed `proxy.ts` gate, the `/login` screen, POST logout, and a `401`
 on the SSE route. That boundary is mechanized as a **release gate** that proves
 it by observation on the deployed app.
 

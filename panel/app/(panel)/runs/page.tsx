@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { createServerClient } from "@/lib/supabase/server";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import {
   getEnabledRepositories,
   getFilteredRuns,
@@ -120,7 +121,7 @@ export default async function AllRunsPage({
 
   // A single injected instant for every relative time + status derivation on
   // this render.
-  const nowMs = Date.now();
+  const nowMs = renderInstantMs(); // read via helper (react-hooks/purity, issue 217)
 
   const tableRunInputs: RunRowInput[] = filtered.rows.map((r) => {
     const p = progress.get(r.id) ?? { done: 0, total: 0 };

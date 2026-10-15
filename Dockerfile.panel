@@ -25,7 +25,7 @@
 # image carries no build toolchain and no dev dependencies.
 # ---------------------------------------------------------------------------
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=26
 ARG PNPM_VERSION=10.11.0
 
 # --- Stage 1: dependencies -------------------------------------------------
@@ -33,7 +33,10 @@ FROM node:${NODE_VERSION}-slim AS deps
 ARG PNPM_VERSION
 ENV PNPM_HOME="/pnpm" \
     PATH="/pnpm:$PATH"
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# node:26-slim no longer bundles corepack (removed from Node >=25), so install
+# it explicitly before enabling the pinned pnpm (#217 D-06). npm ships in the
+# image.
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /repo
 
 # Copy only the manifests first so the dependency layer caches independently of
@@ -54,7 +57,10 @@ ARG PNPM_VERSION
 ENV PNPM_HOME="/pnpm" \
     PATH="/pnpm:$PATH" \
     NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# node:26-slim no longer bundles corepack (removed from Node >=25), so install
+# it explicitly before enabling the pinned pnpm (#217 D-06). npm ships in the
+# image.
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /repo
 
 COPY --from=deps /repo/node_modules ./node_modules
@@ -91,7 +97,8 @@ COPY --from=build --chown=nextjs:nodejs /repo/panel/.next/static ./panel/.next/s
 # socket (/.fly/api, created root-owned 0755 at Machine boot) to `nodejs`, which
 # is the only way the non-root server can obtain an OIDC token. Off Fly the
 # socket is absent and the grant is skipped; the server still drops to 1001.
-# `setpriv` is from util-linux in node:22-slim — no package is installed. See
+# `setpriv` is from util-linux in node:26-slim (util-linux 2.41.5) — no package
+# is installed. See
 # panel/scripts/docker-entrypoint.sh and docs/runbooks/panel-deployment.md.
 COPY --chmod=0755 panel/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 

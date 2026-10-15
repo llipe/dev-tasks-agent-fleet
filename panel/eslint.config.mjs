@@ -1,16 +1,17 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+// Native flat config for eslint-config-next 16 (issue 217 D-04). The former
+// `FlatCompat` / `@eslint/eslintrc` bridge is gone: v16 ships flat-config arrays
+// directly. `eslint-config-next/core-web-vitals` already composes the base Next
+// config (typescript-eslint, react, react-hooks v7, import, jsx-a11y, the Next
+// parser) plus the Core Web Vitals rules; `eslint-config-next/typescript` layers
+// the TS-specific recommended rules. Spreading both reproduces the previous
+// `compat.extends("next/core-web-vitals", "next/typescript")` exactly, with no
+// rule disabled or downgraded (D-08).
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextCoreWebVitals,
+  ...nextTypescript,
   {
     ignores: [
       ".next/**",

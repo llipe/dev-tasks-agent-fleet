@@ -11,6 +11,8 @@
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { renderInstantMs } from "@/lib/time/render-instant";
+
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
@@ -60,7 +62,7 @@ export default function GalleryPage() {
     notFound();
   }
 
-  const now = Date.now();
+  const now = renderInstantMs(); // read via helper (react-hooks/purity, issue 217)
 
   return (
     <main style={{ padding: "var(--space-8)", maxWidth: "960px" }}>

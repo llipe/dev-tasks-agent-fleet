@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { AgentSummary } from "@/lib/domain/dashboard";
@@ -40,10 +40,13 @@ export function Ledger({ agents, nowMs, invokeHref, onFocusFilter }: LedgerProps
   const [selected, setSelected] = useState(0);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Keep the selection in range as the filtered list shrinks/grows.
-  useEffect(() => {
-    setSelected((s) => Math.min(s, Math.max(0, agents.length - 1)));
-  }, [agents.length]);
+  // Keep the selection in range as the filtered list shrinks/grows. Derived
+  // during render instead of via a setState-in-effect (react-hooks/
+  // set-state-in-effect, issue 217): the clamp is pure data derivation, so compute it
+  // here rather than firing a cascading render in an effect. Behavior is
+  // identical — the effective selection is never past the last row.
+  const maxIndex = Math.max(0, agents.length - 1);
+  const selectedIndex = Math.min(selected, maxIndex);
 
   const activate = useCallback(
     (index: number) => {
@@ -61,21 +64,21 @@ export function Ledger({ agents, nowMs, invokeHref, onFocusFilter }: LedgerProps
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setSelected((s) => {
-          const next = Math.min(s + 1, agents.length - 1); // clamp, no wrap
+        setSelected(() => {
+          const next = Math.min(selectedIndex + 1, agents.length - 1); // clamp, no wrap
           rowRefs.current[next]?.focus();
           return next;
         });
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        setSelected((s) => {
-          const next = Math.max(s - 1, 0); // clamp, no wrap
+        setSelected(() => {
+          const next = Math.max(selectedIndex - 1, 0); // clamp, no wrap
           rowRefs.current[next]?.focus();
           return next;
         });
       } else if (event.key === "Enter") {
         event.preventDefault();
-        activate(selected);
+        activate(selectedIndex);
       } else if (event.key === "/") {
         // `/` focuses the filter (superset of §6.5). The parent's global
         // handler also binds it; guarding here avoids inserting a slash when a
@@ -84,7 +87,7 @@ export function Ledger({ agents, nowMs, invokeHref, onFocusFilter }: LedgerProps
         onFocusFilter?.();
       }
     },
-    [agents.length, selected, activate, onFocusFilter],
+    [agents.length, selectedIndex, activate, onFocusFilter],
   );
 
   return (
@@ -92,10 +95,12 @@ export function Ledger({ agents, nowMs, invokeHref, onFocusFilter }: LedgerProps
       className={styles.ledger}
       role="listbox"
       aria-label="Agents ledger"
-      aria-activedescendant={agents[selected] ? `ledger-row-${agents[selected].id}` : undefined}
+      aria-activedescendant={
+        agents[selectedIndex] ? `ledger-row-${agents[selectedIndex].id}` : undefined
+      }
     >
       {agents.map((agent, index) => {
-        const isSelected = index === selected;
+        const isSelected = index === selectedIndex;
         return (
           <div
             key={agent.id}
