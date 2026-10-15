@@ -85,8 +85,21 @@ Every finding fixed; no rule disabled or downgraded. `react-hooks` v7 (brought b
 ## Checklist
 
 - [x] Conventional Commit title
-- [ ] `make validate` green (both branches)
-- [ ] E2E green on Node 26
-- [ ] verifier Audit Mode posted
-- [ ] technical-writer drift check
-- [ ] ADR-008 added
+- [x] `make validate` green (both branches, Node 26)
+- [x] E2E green on Node 26 (26/26, production-build webServer)
+- [x] verifier Audit Mode posted (High fidelity; 2 Minor non-blocking drift)
+- [x] technical-writer drift check (ADR-008 + 4 docs updated; TESTING.md Node facts routed as AF-02)
+- [x] ADR-008 added
+
+### Non-obvious Next 16 / Node 26 breakages fixed
+
+- `node:26-slim` dropped the bundled `corepack` (Node ≥25) → `npm i -g corepack@latest` in the Docker build stages.
+- Next 16 forbids a route-segment `runtime` export in a proxy file (proxy is implicitly Node) → removed it.
+- `tsconfig.json` took Next 16's mandatory `jsx: react-jsx` + `.next/dev/types` include.
+- E2E webServer switched from `next dev` to `next build && next start`: Next 16 + Turbopack dev attaches client React handlers after the DOM is interactive, so Playwright clicked `"use client"` controls before hydration (8 interactivity scenarios). Production hydration is deterministic and matches the Fly image; no assertion weakened.
+
+### Known limitations / drift (non-blocking)
+
+- **AF-01** — `agentcore/cdk` jest test fails identically on Node 24 **and** 26 (cwd-sensitivity in the `@aws/agentcore-cdk` L3 construct, not in CI; install + `tsc` build pass on 26) → not a Node-26 regression, does not trigger the D-06 fallback. Routed to `product-engineer`.
+- **AF-02** — `TESTING.md` still carries stale Node `>=22 <25` facts; no test *command* changed (D-10), so left for `technical-writer`.
+- **AC9** is post-merge/human-only (release tag + live invoke, sub-tasks 1.20–1.21).
