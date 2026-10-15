@@ -206,7 +206,7 @@ If the entrypoint's grant itself failed, its warning (`warn: could not grant gro
 
 `flyctl machine exec` exits 0 even when the remote command fails, so read the output. Change record: `infra/changes/20261014-fly-oidc-issuer-trust/`.
 
-**Retired:** the IAM provider `oidc.fly.io/personal` no longer backs any trust policy. Delete it in a separate, approved change (`aws iam delete-open-id-connect-provider --open-id-connect-provider-arn arn:aws:iam::755641879575:oidc-provider/oidc.fly.io/personal`) once nothing else references it.
+**Retired:** the IAM provider `oidc.fly.io/personal` was deleted on 2026-10-15 (change record `infra/changes/20261015-retire-fly-oidc-personal/`, recreate with its `rollback.sh` if ever needed). The only Fly provider is `oidc.fly.io/felipe-mallea`.
 
 ---
 
