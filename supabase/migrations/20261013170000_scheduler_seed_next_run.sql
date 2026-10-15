@@ -25,7 +25,29 @@ set search_path = public, scheduler
 as $$
 begin
   -- Only seed when there is no cursor and the schedule is eligible to fire.
-  if new.next_run_at is null and new.is_enabled and new.state = 'active' then
+  -- Guard the cadence domain FIRST: a BEFORE trigger runs ahead of the
+  -- chk_schedule_cadence CHECK, so an invalid row (e.g. every_n_hours with
+  -- interval < 1) would otherwise reach compute_next_run_at and loop forever.
+  -- When the cadence is out of domain we leave next_run_at null and let the
+  -- CHECK reject the row (R-S: never hang on bad input).
+  if new.next_run_at is null and new.is_enabled and new.state = 'active'
+     and (
+          (new.cadence_kind = 'hourly'
+             and new.cadence_minute between 0 and 59)
+       or (new.cadence_kind = 'daily'
+             and new.cadence_minute between 0 and 59
+             and new.cadence_hour between 0 and 23)
+       or (new.cadence_kind = 'weekly'
+             and new.cadence_minute between 0 and 59
+             and new.cadence_hour between 0 and 23
+             and new.cadence_weekday between 0 and 6)
+       or (new.cadence_kind = 'every_n_hours'
+             and coalesce(new.cadence_interval_hours, 0) >= 1)
+       or (new.cadence_kind = 'advanced'
+             and new.cadence_cron is not null
+             and length(trim(new.cadence_cron)) > 0)
+     )
+  then
     new.next_run_at := scheduler.compute_next_run_at(
       new.cadence_kind,
       new.cadence_minute,
