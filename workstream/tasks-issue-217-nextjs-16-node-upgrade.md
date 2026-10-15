@@ -43,8 +43,8 @@
   - [x] 1.17 Verify Acceptance Criterion AC5 and AC6: the CI smoke test passes; the panel audit has no `next` advisory and no new high/critical advisory
   - [x] 1.18 Verify Acceptance Criterion AC8: ADR-008 and the doc references
   - [x] 1.19 AC-to-test mapping recorded in the PR body (AC1→diff/CI, AC2→gate suites+E2E+manual, AC3→validate+E2E, AC4→lint+SD2, AC5→smoke, AC6→audit, AC7→CDK, AC8→review, AC9→release)
-  - [ ] 1.20 **Post-merge (human-only tag):** `scripts/release-panel.sh` → approve the production deployment → `deploy-panel.sh` exit 0 (auth gate checks 1–5 plus OIDC probe `status=200 token=present`) (D-09)
-  - [ ] 1.21 Verify Acceptance Criterion AC9: an invoke from the deployed panel reaches `running`; record the run id on #217 and close it
+  - [x] 1.20 **Post-merge (human-only tag):** `scripts/release-panel.sh` → approve the production deployment → `deploy-panel.sh` exit 0 (auth gate checks 1–5 plus OIDC probe `status=200 token=present`) (D-09)
+  - [x] 1.21 Verify Acceptance Criterion AC9: an invoke from the deployed panel reaches `running`; record the run id on #217 and close it
 
 ## Decisions Consumed
 

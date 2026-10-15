@@ -43,7 +43,7 @@ agent (S-125–S-141), which mirrors the sibling's layout, Makefile, and
 `pyproject.toml` conventions.
 
 Root `package.json` (`private: true`, `packageManager: pnpm@10.11.0`,
-`engines.node: ">=22 <25"`) declares thin aggregate scripts that all delegate
+`engines.node: ">=24 <27"`) declares thin aggregate scripts that all delegate
 via `pnpm --filter panel run ...` — see Commands below. The repo-root
 `Makefile` is the actual cross-language aggregate: it runs a Python branch
 (`*-py`, looping over both agent package dirs in `AGENT_DIRS`) and a JS/TS
@@ -137,7 +137,7 @@ runs but no AWS call is made.
 | -------------------- | -------------------------------------------------------- | ---------------------------------------------------- | ----------------------- |
 | `dependency-update` | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (`.github/workflows/ci.yml`, `python-quality` job) | `PYTHON_3_14` (AgentCore); Docker build base `python:3.13-slim` |
 | `security-analyst`  | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (same job; `agent` matrix axis added at PRD close) | AgentCore container built from `python:3.13-slim` (Dockerfile pins CodeQL 2.27.0, Gitleaks 8.30.1, Trivy 0.74.0, Node 22, `semgrep`/`checkov` via pip) |
-| `panel`             | Node `>=22 <25` per `package.json` `engines`; the pnpm-managed install **hard-rejects** an ambient Node outside that range (`ERR_PNPM_UNSUPPORTED_ENGINE` reproduced live against Node 26 — see Harness defects) | Node **22** pinned (`actions/setup-node@v4`, `panel-quality` job) | Fly.io deploy (pre-deploy scaffold; see `docs/technical-guidelines.md` §13) |
+| `panel`             | Node `>=24 <27` per `package.json` `engines`; the pnpm-managed install **hard-rejects** an ambient Node outside that range (`ERR_PNPM_UNSUPPORTED_ENGINE` reproduced live against Node 26 — see Harness defects) | Node **22** pinned (`actions/setup-node@v4`, `panel-quality` job) | Fly.io deploy (pre-deploy scaffold; see `docs/technical-guidelines.md` §13) |
 | `agentcore-cdk-app` | Node (unpinned locally)                                  | not in CI yet                                        | n/a — build/deploy tooling |
 
 ## Commands
@@ -286,7 +286,7 @@ suite. RLS is asserted deny-all for the anon role in
 
 ## Harness defects to track
 
-1. **Local/CI Node major-version mismatch (`panel`).** `panel/package.json` declares `engines.node: ">=22 <25"`; an ambient Node outside that range (e.g. 26) makes `pnpm install --frozen-lockfile` hard-fail with `ERR_PNPM_UNSUPPORTED_ENGINE` before any test can run — reproduced live during the 2026-09-15 PRD rollup. Expected state: a repo-root `.nvmrc`/Volta/mise pin, or a pre-flight check, so an ad-hoc contributor shell does not silently fail on the `panel` workspace.
+1. **Local/CI Node major-version mismatch (`panel`).** `panel/package.json` declares `engines.node: ">=24 <27"`; an ambient Node outside that range (e.g. 26) makes `pnpm install --frozen-lockfile` hard-fail with `ERR_PNPM_UNSUPPORTED_ENGINE` before any test can run — reproduced live during the 2026-09-15 PRD rollup. Expected state: a repo-root `.nvmrc`/Volta/mise pin, or a pre-flight check, so an ad-hoc contributor shell does not silently fail on the `panel` workspace.
 2. **`dependency-update` — `main.py` and `agent_reporter.py` remain untested/coverage-excluded.** See `docs/technical-guidelines.md` §11/§18 for the ranked gap detail; unchanged by this pass.
 3. **`dependency-update` — security-negative server-side rejection cases remain a gap** (see above); unchanged by this pass.
 4. **`security-analyst` — mocked-subprocess tests cannot see real scanner output shapes.** Eight defects shipped through a green suite and were caught only by real AgentCore invocations during S-141 (wrong CodeQL `--language` id, `/dev/stdout` data loss for CodeQL SARIF and Gitleaks reports, empty/missing-key outputs from Gitleaks/Trivy, absolute vs relative `file_path`, `CWE-079` vs `CWE-79`). Recommended follow-up (from the PRD-close QA rollup): an opt-in `tests/smoke/` layer marked `real_binaries`, run in CI inside the built Docker image against a checked-in fixture repo, asserting per runner that the output file materializes, ≥1 normalized finding has `severity`/`cwe` populated, and `file_path` is repo-relative — plus a clean-repo case per runner. Est. ~200 lines of tests + ~40 lines of CI; would have caught 7 of the 8.
