@@ -25,7 +25,7 @@
 # image carries no build toolchain and no dev dependencies.
 # ---------------------------------------------------------------------------
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=26
 ARG PNPM_VERSION=10.11.0
 
 # --- Stage 1: dependencies -------------------------------------------------
@@ -91,7 +91,8 @@ COPY --from=build --chown=nextjs:nodejs /repo/panel/.next/static ./panel/.next/s
 # socket (/.fly/api, created root-owned 0755 at Machine boot) to `nodejs`, which
 # is the only way the non-root server can obtain an OIDC token. Off Fly the
 # socket is absent and the grant is skipped; the server still drops to 1001.
-# `setpriv` is from util-linux in node:22-slim — no package is installed. See
+# `setpriv` is from util-linux in node:26-slim (util-linux 2.41.5) — no package
+# is installed. See
 # panel/scripts/docker-entrypoint.sh and docs/runbooks/panel-deployment.md.
 COPY --chmod=0755 panel/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 
