@@ -121,19 +121,25 @@ export default defineConfig({
    *   paths. The `?? "" ` fallbacks guarantee this never throws at config-load
    *   when a value is not yet resolved.
    *
-   * The dev server is used deliberately rather than `next build && next start`:
-   * these scenarios assert runtime behavior, and `next dev` exercises the same
-   * runtime the scenarios drive. (Historical note: a production `next build`
+   * The server runs a **production build** (`next build && next start`) rather
+   * than `next dev`. Under Next 16 + Turbopack the dev server attaches client
+   * React event handlers noticeably later than the DOM is interactive, so
+   * Playwright (whose actionability check only waits for visible+enabled, not
+   * React hydration) can click a `"use client"` control — the password SHOW/HIDE
+   * toggle, the Invoke button, the live-tail SSE mounts — before its `onClick`
+   * is wired, and the click is a no-op. The production build hydrates
+   * deterministically, matches what actually ships (the Fly image runs
+   * `next start`), and makes every interactivity assertion stable without
+   * weakening any of them (#217). (Historical note: a production `next build`
    * once failed Next's route-export type validation on a non-standard export in
    * the S-110 SSE route (`parseAfterSeq`); S-115 moved that export into
-   * `lib/sse/cursor.ts`, so `next build` is now green — but this suite still runs
-   * against `next dev` because that is what the scenarios need.)
+   * `lib/sse/cursor.ts`, so `next build` is green.)
    */
   webServer: {
-    command: "pnpm exec next dev --port 3100",
+    command: "pnpm exec next build && pnpm exec next start --port 3100",
     port: 3100,
     reuseExistingServer: !isCI,
-    timeout: 180_000,
+    timeout: 300_000,
     stdout: "pipe",
     stderr: "pipe",
     env: {
