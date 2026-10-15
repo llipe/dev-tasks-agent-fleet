@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 import {
   DEFAULT_COLLAPSED,
+  SIDEBAR_STORAGE_KEY,
   readSidebarCollapsed,
   writeSidebarCollapsed,
 } from "@/lib/ui/sidebar-state";
 import { detectPlatform, isSidebarToggleShortcut, isTypingTarget } from "@/lib/ui/shortcuts";
+import { useLocalStorageState } from "@/lib/hooks/useLocalStorageState";
 
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -51,18 +53,18 @@ export function AppShell({
    */
   authenticated?: boolean;
 }) {
-  const [collapsed, setCollapsed] = useState<boolean>(DEFAULT_COLLAPSED);
-
-  // Reconcile from storage once, after mount — never during render.
-  useEffect(() => {
-    const stored = readSidebarCollapsed(typeof window === "undefined" ? null : window.localStorage);
-    if (stored !== DEFAULT_COLLAPSED) setCollapsed(stored);
-  }, []);
-
-  // Persist on every change (best-effort; a throwing store is swallowed).
-  useEffect(() => {
-    writeSidebarCollapsed(typeof window === "undefined" ? null : window.localStorage, collapsed);
-  }, [collapsed]);
+  // Sidebar collapse is a localStorage-backed preference reconciled
+  // hydration-safely via useSyncExternalStore (issue 217): server + first client
+  // render use DEFAULT_COLLAPSED, then React reads the stored value and
+  // re-renders — the same post-hydration reconcile the former mount effect did,
+  // but without a setState-in-effect (react-hooks/set-state-in-effect).
+  // `setCollapsed` persists through writeSidebarCollapsed.
+  const [collapsed, setCollapsed] = useLocalStorageState<boolean>({
+    default: DEFAULT_COLLAPSED,
+    read: readSidebarCollapsed,
+    write: writeSidebarCollapsed,
+    storageKey: SIDEBAR_STORAGE_KEY,
+  });
 
   // Cmd+\ / Ctrl+\ toggle, ignored while a text field has focus.
   useEffect(() => {
@@ -76,7 +78,7 @@ export function AppShell({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [setCollapsed]);
 
   return (
     <div className={styles.shell}>

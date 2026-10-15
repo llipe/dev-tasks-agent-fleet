@@ -1,6 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { randomUUID } from "node:crypto";
 import { probeLocalDb, localRestConfig, withDb } from "./db";
 import {
   deleteSchedule,

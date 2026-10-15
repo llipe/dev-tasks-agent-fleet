@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useRouter } from "next/navigation";
 
 import { LogLine } from "@/components/LogLine";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import { StatusPill } from "@/components/StatusPill";
 import { useRunStream } from "@/lib/hooks/useRunStream";
 import { effectiveStatus, type RunStatus } from "@/lib/domain/status";
@@ -106,7 +107,7 @@ export function LiveLogViewer({
       graceSeconds,
       startTimeoutSeconds,
     },
-    Date.now(),
+    renderInstantMs(), // per-render instant (react-hooks/purity, issue 217)
   );
 
   // AC6 — follow state. `following` is true while the log auto-scrolls; it

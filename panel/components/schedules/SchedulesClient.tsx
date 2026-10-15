@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/Button";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import { KLabel } from "@/components/KLabel";
 import { NewScheduleIcon } from "@/components/icons";
 import { buildScheduleCellModel } from "@/lib/domain/schedule-row";
@@ -42,7 +43,9 @@ export interface SchedulesClientProps {
 export function SchedulesClient({ rows, agents, repositories, agentFilter }: SchedulesClientProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const nowMs = useMemo(() => Date.now(), []);
+  // Capture "now" once on mount via a lazy useState initializer rather than an
+  // impure `useMemo(() => Date.now(), [])` (react-hooks/purity). Same behavior. (issue 217)
+  const [nowMs] = useState(() => renderInstantMs());
 
   const [dialog, setDialog] = useState<
     { mode: "new" } | { mode: "edit"; row: VScheduleRow } | null

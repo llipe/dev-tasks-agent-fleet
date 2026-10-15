@@ -1,7 +1,7 @@
 /**
  * Middleware cookie-threading Supabase auth client (S-117, spec §7.2).
  *
- * The middleware (`middleware.ts`) is the only place the panel can refresh the
+ * The gate (`proxy.ts`, renamed from `middleware.ts` in issue 217) is the only place the panel can refresh the
  * auth token, because Next.js Server Components cannot write cookies. To make a
  * refresh actually reach the browser, the refreshed `Set-Cookie` must land on a
  * SINGLE `NextResponse` object that the middleware then returns — while the same

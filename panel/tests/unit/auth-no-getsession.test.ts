@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
  * authorization helper, add its path here.
  */
 
-const AUTHZ_FILES = ["middleware.ts", join("lib", "supabase", "auth-middleware.ts")];
+const AUTHZ_FILES = ["proxy.ts", join("lib", "supabase", "auth-middleware.ts")];
 
 const AUTHZ_DIRS = [join("lib", "auth")];
 

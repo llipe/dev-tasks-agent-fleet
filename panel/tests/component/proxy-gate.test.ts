@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { createMiddleware, config } from "@/middleware";
+import { createMiddleware, config } from "@/proxy";
 import type { MiddlewareAuthClient, MiddlewareClientFactory } from "@/lib/supabase/auth-middleware";
 
 /**
- * S-117 middleware gate — Layer 2 behavior with an INJECTED fake auth client
- * (spec §7.2, §14.2). No live Supabase: the gate accepts an injectable client
+ * S-117 proxy gate (issue 217: renamed from middleware.ts to proxy.ts, Node runtime)
+ * — Layer 2 behavior with an INJECTED fake auth client (spec §7.2, §14.2). No live Supabase: the gate accepts an injectable client
  * factory (the same dependency-injection posture as `lib/sse/relay.ts`), so the
  * 302-vs-401 split, cookie preservation, and fail-closed behavior are all
  * exercised deterministically.
@@ -281,5 +281,80 @@ describe("middleware auth gate — concurrent near-expiry refresh (no thrash)", 
       expect(res.status).toBe(200);
       expect(res.cookies.get("sb-access-token")).toBeTruthy();
     }
+  });
+});
+
+describe("proxy auth gate — fail-closed getClaims() timeout (issue 217 D-15)", () => {
+  // The Edge → Node runtime move (ADR-008) removes the platform's implicit
+  // per-request time budget. A hung getClaims() must therefore be raced against
+  // a bounded timeout and fail CLOSED — deny exactly like an auth error. The
+  // timeout is injectable (2nd arg to createMiddleware) so these are fast and
+  // deterministic with a tiny bound; production uses 5000ms.
+
+  /** A factory whose getClaims() never settles — models a hung Auth server. */
+  function hungFactory(onCall?: () => void): MiddlewareClientFactory {
+    return () =>
+      ({
+        auth: {
+          getClaims: () => {
+            onCall?.();
+            return new Promise(() => {
+              /* never resolves */
+            });
+          },
+        },
+      }) as unknown as MiddlewareAuthClient;
+  }
+
+  it("a never-resolving getClaims on a UI route fails closed → 302 /login within the bound", async () => {
+    const mw = createMiddleware(hungFactory(), 20);
+    const res = await mw(req("/"));
+    expect(res.status).toBe(302);
+    expect(parseLocation(res).pathname).toBe("/login");
+  });
+
+  it("a never-resolving getClaims on an API route fails closed → 401 JSON within the bound", async () => {
+    const mw = createMiddleware(hungFactory(), 20);
+    const res = await mw(req("/api/runs/x/events/stream"));
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("a never-resolving getClaims on the SSE path fails closed → 401", async () => {
+    const mw = createMiddleware(hungFactory(), 20);
+    const res = await mw(req("/api/runs/11111111-1111-1111-1111-111111111111/events/stream"));
+    expect(res.status).toBe(401);
+  });
+
+  it("the internal route branch is unaffected by the timeout (never calls getClaims)", async () => {
+    let called = false;
+    const mw = createMiddleware(
+      hungFactory(() => {
+        called = true;
+      }),
+      20,
+    );
+    const res = await mw(req("/api/internal/schedules/abc/fire"));
+    // Internal class is a pass-through (NextResponse.next), never a 401/302 and
+    // never a session check — the handler enforces the shared secret.
+    expect(res.status).toBe(200);
+    expect(called).toBe(false);
+  });
+
+  it("clears the timer on a fast resolve (no open handle, no deny)", async () => {
+    // A healthy getClaims resolving well within the bound must pass through, and
+    // the timeout timer must be cleared so no handle leaks. We assert the
+    // success behavior; a leaked timer would otherwise keep the event loop
+    // alive and surface as an unhandled-timeout warning under Vitest.
+    const mw = createMiddleware(fakeFactory(VALID_SESSION), 10_000);
+    const res = await mw(req("/"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("clears the timer on a settled error (fail-closed, no open handle)", async () => {
+    const mw = createMiddleware(fakeFactory(AUTH_ERROR), 10_000);
+    const res = await mw(req("/"));
+    expect(res.status).toBe(302);
   });
 });

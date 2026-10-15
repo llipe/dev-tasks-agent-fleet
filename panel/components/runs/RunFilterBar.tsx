@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -78,10 +78,17 @@ export function RunFilterBar({ basePath, filter, statusCounts, repositories }: R
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The server round-trip may change `filter.search` (e.g. a "Clear filters"
-  // navigation, or a back/forward nav) — keep the local input in sync.
-  useEffect(() => {
+  // navigation, or a back/forward nav) — keep the local input in sync. Done with
+  // the React "adjust state when a prop changes" pattern (setState during render
+  // against a tracked previous prop) rather than a setState-in-effect
+  // (react-hooks/set-state-in-effect, issue 217). Behavior is identical — an external
+  // change to `filter.search` resets the input — but without the extra cascading
+  // render an effect would cause. See https://react.dev/learn/you-might-not-need-an-effect
+  const [prevFilterSearch, setPrevFilterSearch] = useState(filter.search ?? null);
+  if ((filter.search ?? null) !== prevFilterSearch) {
+    setPrevFilterSearch(filter.search ?? null);
     setSearchValue(filter.search ?? "");
-  }, [filter.search]);
+  }
 
   function cancelPendingDebounce() {
     if (debounceRef.current != null) {

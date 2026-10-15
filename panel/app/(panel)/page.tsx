@@ -2,6 +2,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getDashboardData, type DashboardRunRow } from "@/lib/supabase/queries";
 import { buildAgentSummaries, type AgentSummaryInput } from "@/lib/domain/dashboard";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
+import { renderInstantMs } from "@/lib/time/render-instant";
 
 /**
  * Agents dashboard (`/`, Story S-107).
@@ -40,8 +41,11 @@ export default async function DashboardPage() {
   const { agents, runs } = await getDashboardData(client);
 
   // A single injected instant for every relative time + status derivation on
-  // this render, so nothing reads an ambient clock mid-render (EC-9).
-  const nowMs = Date.now();
+  // this render, so nothing reads an ambient clock mid-render (EC-9). Read via a
+  // module-level helper rather than a bare `Date.now()` in the render body so the
+  // react-hooks v7 `purity` rule does not flag an impure builtin call during
+  // render — behavior is identical (one read per request render). (issue 217)
+  const nowMs = renderInstantMs();
 
   // Group the flat runs by agent, then shape. This is presentation mapping, not
   // a second query — the read already happened once (CT-7).

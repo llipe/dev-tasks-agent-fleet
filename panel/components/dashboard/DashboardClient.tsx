@@ -4,8 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentSummary } from "@/lib/domain/dashboard";
 import { filterAgentSummaries } from "@/lib/domain/dashboard";
-import { DEFAULT_DENSITY, readDensity, writeDensity, type Density } from "@/lib/ui/density-state";
+import {
+  DEFAULT_DENSITY,
+  DENSITY_STORAGE_KEY,
+  readDensity,
+  writeDensity,
+  type Density,
+} from "@/lib/ui/density-state";
 import { isTypingTarget } from "@/lib/ui/shortcuts";
+import { useLocalStorageState } from "@/lib/hooks/useLocalStorageState";
 import { KLabel } from "@/components/KLabel";
 
 import { AgentFilter } from "./AgentFilter";
@@ -42,25 +49,23 @@ export interface DashboardClientProps {
 }
 
 export function DashboardClient({ agents, nowMs, invokeRouteAvailable }: DashboardClientProps) {
-  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
+  // Density is a localStorage-backed preference reconciled hydration-safely via
+  // useSyncExternalStore (issue 217): the server + first client render use
+  // DEFAULT_DENSITY, then React reads the stored value and re-renders — the same
+  // reconcile the former mount effect did, but without a setState-in-effect
+  // (react-hooks/set-state-in-effect). `setDensity` persists through writeDensity.
+  const [density, setDensity] = useLocalStorageState<Density>({
+    default: DEFAULT_DENSITY,
+    read: readDensity,
+    write: writeDensity,
+    storageKey: DENSITY_STORAGE_KEY,
+  });
   const [query, setQuery] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
 
   // Maps a slug to its invoke route, or null while the route is unbuilt (S-113).
   const invokeHref = (slug: string): string | null =>
     invokeRouteAvailable ? `/agents/${slug}/invoke` : null;
-
-  // Reconcile density from storage once, after mount — never during render.
-  useEffect(() => {
-    const stored = readDensity(typeof window === "undefined" ? null : window.localStorage);
-    if (stored !== DEFAULT_DENSITY) setDensity(stored);
-  }, []);
-
-  // Persist density on change (best-effort; the filter is intentionally NOT
-  // persisted — a remembered filter would hide agents on the next load).
-  useEffect(() => {
-    writeDensity(typeof window === "undefined" ? null : window.localStorage, density);
-  }, [density]);
 
   // Global `/` focuses the filter (superset of §6.5's ledger-only binding,
   // since the filter is a common header element). It must not steal a `/`
