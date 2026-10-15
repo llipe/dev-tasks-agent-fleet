@@ -220,21 +220,24 @@ jobs:
       - name: Build panel image (smoke test)
         run: docker build -f Dockerfile.panel -t dt-panel:ci .
 
-      - name: Smoke test — server on :8080 and PID 1 is uid 1001 (#280)
+      - name: Smoke test — server on :8080, routes gate, PID 1 is uid 1001 (#280, #217 D-16)
         run: |
           set -euo pipefail
           # No /.fly/api is mounted — exercises the socket-absent path (AC3).
+          # The fake env is enough for the proxy gate + /login to render; the
+          # invalid Supabase URL only matters for data reads, not the gate.
           CID=$(docker run -d -p 8080:8080 \
             -e SUPABASE_URL=http://example.invalid \
             -e SUPABASE_SERVICE_ROLE_KEY=ci-smoke \
+            -e NEXT_PUBLIC_SUPABASE_URL=http://example.invalid \
+            -e NEXT_PUBLIC_SUPABASE_ANON_KEY=ci-smoke \
             dt-panel:ci)
           cleanup() { docker rm -f "$CID" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
 
           # Wait for the server to bind and answer on :8080. Any HTTP response
-          # (even a 500 from the deliberately-invalid Supabase URL) proves the
-          # server started and is serving; a never-answering port means it did
-          # not start (AC3).
+          # proves the server started and is serving; a never-answering port
+          # means it did not start (AC3).
           ready=""
           for _ in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/ || true)
@@ -251,6 +254,21 @@ jobs:
             exit 1
           fi
 
+          # Route-level gate assertions (#217 D-16): the proxy must gate
+          # identically on the Node runtime. Any other code fails the job.
+          assert_code() {
+            method="$1"; path="$2"; want="$3"
+            got=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" "http://localhost:8080${path}")
+            echo "${method} ${path} -> ${got} (want ${want})"
+            [ "$got" = "$want" ] || { echo "FAIL: ${method} ${path} expected ${want}, got ${got}" >&2; docker logs "$CID" >&2 || true; exit 1; }
+          }
+          # Unauth UI root → 302 /login; /login itself renders 200 (no network);
+          # unauth SSE → 401; unauth internal POST → 401 (secret-gated handler).
+          assert_code GET "/" 302
+          assert_code GET "/login" 200
+          assert_code GET "/api/runs/00000000-0000-0000-0000-000000000000/events/stream" 401
+          assert_code POST "/api/internal/schedules/00000000-0000-0000-0000-000000000000/fire" 401
+
           # PID 1 must be uid 1001 / gid 1001 — the entrypoint dropped privileges
           # via setpriv and node is PID 1 (AC2). A root PID 1 fails the gate.
           uid_line=$(docker exec "$CID" grep '^Uid:' /proc/1/status)
@@ -261,4 +279,4 @@ jobs:
             || { echo "FAIL: PID 1 is not uid 1001 (server running as root?)" >&2; exit 1; }
           echo "$gid_line" | grep -qE '^Gid:[[:space:]]+1001[[:space:]]+1001' \
             || { echo "FAIL: PID 1 is not gid 1001" >&2; exit 1; }
-          echo "OK: server on :8080, PID 1 is uid/gid 1001"
+          echo "OK: server on :8080, routes gate correctly, PID 1 is uid/gid 1001"
