@@ -108,7 +108,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-161/S-162 schedule list
     expect(row.consecutive_failures).toBe(0);
   });
 
-  it("update rewrites cadence and nulls next_run_at (tick recomputes)", async () => {
+  it("update rewrites cadence and re-seeds next_run_at (seed trigger bootstraps the cursor)", async () => {
     const id = await insertSchedule(client, writeInput());
     made.push(id);
     await withDb((c) => c.query(`update schedules set next_run_at=now() where id=$1`, [id]));
@@ -121,7 +121,10 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-161/S-162 schedule list
     const row = (await getSchedules(client)).find((s) => s.id === id)!;
     expect(row.cadence_kind).toBe("weekly");
     expect(row.cadence_weekday).toBe(1);
-    expect(row.next_run_at).toBeNull();
+    // updateSchedule nulls next_run_at; the BEFORE-UPDATE seed trigger immediately
+    // recomputes it (active+enabled) so the schedule is never left un-fireable
+    // (the live step-6 bug this fix closes).
+    expect(row.next_run_at).not.toBeNull();
   });
 
   it("getScheduleCountByAgent counts the agent's schedules", async () => {
