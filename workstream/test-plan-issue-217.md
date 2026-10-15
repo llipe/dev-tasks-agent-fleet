@@ -16,6 +16,13 @@ which are the observable deliverables of this issue.
 The highest-risk surface is the **auth chokepoint's Edge → Node runtime move** (D-03).
 The security-negative set in §4 is built around that move and is **mandatory**.
 
+## Changelog
+
+| Version | Date       | Summary | Author |
+| ------- | ---------- | ------- | ------ |
+| 1.1     | 2026-10-15 | Findings dispositioned: F-01→D-13, F-02→task 1.6b, F-04→task 1.8 fix ledger, F-05→D-15 (in scope, 5s fail-closed `getClaims()` timeout), F-06→D-16 (route-level smoke test, in scope), F-08→D-14 (`@types/node` 26.6.5); F-03/F-07 no-action | product-engineer |
+| 1.0     | 2026-10-15 | Initial Design Mode plan | verifier |
+
 ---
 
 ## 1. Source Input Summary
