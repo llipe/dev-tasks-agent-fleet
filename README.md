@@ -49,7 +49,7 @@ The project is delivered in three phases:
 ├── docs/                    # Product context, technical guidelines, PRDs, specs, ADRs, runbooks
 │   ├── product-context.md
 │   ├── technical-guidelines.md
-│   ├── adr/                 # Architecture decision records (ADR-001…ADR-007)
+│   ├── adr/                 # Architecture decision records (ADR-001…ADR-008)
 │   ├── runbooks/             # Operator procedures requiring live AWS/Supabase/Fly access
 │   ├── requirements/         # PRDs
 │   ├── prototype/            # High-fidelity Nocturne prototype (source for DESIGN.md)
@@ -91,7 +91,7 @@ Panel-specific details (scripts, conventions, env vars) live in [`panel/README.m
 
 - **Python `>=3.13`** — the agent's dev/local runtime. CI runs a **3.13 + 3.14** matrix
   (3.14 is the AgentCore production runtime).
-- **Node.js `>=22` and pnpm `10.11.0`** — for the Phase 2 `panel` package (workspace member).
+- **Node.js `>=24 <27` (Node 26 pinned via `.nvmrc`) and pnpm `10.11.0`** — for the Phase 2 `panel` package (workspace member).
 - **`make`** — the canonical command surface.
 - For local agent runs and deployment (see the agent README): the
   [AgentCore CLI](agents/dependency-update/README.md), Docker (ARM64), and the `gh` CLI.
@@ -174,7 +174,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs two jobs on eve
 
 - **`python-quality`** — the Python gate as explicit steps (lint → format-check → typecheck →
   test+coverage → audit) on a **Python 3.13 + 3.14** matrix.
-- **`panel-quality`** — the JS/TS gate for the `panel` package (Node 22 + pnpm): lint →
+- **`panel-quality`** — the JS/TS gate for the `panel` package (Node 26 + pnpm): lint →
   format:check → typecheck → test:coverage → audit, plus a unit test of the auth release-gate
   parser (`panel-auth-check.mjs`) and a `shellcheck` of `scripts/verify-panel-auth.sh`.
 
@@ -193,7 +193,7 @@ login boundary and rejects a test signup. See
 | [`docs/product-context.md`](docs/product-context.md) | Problem statement, users, goals, roadmap, constraints |
 | [`docs/technical-guidelines.md`](docs/technical-guidelines.md) | Stack, architecture patterns, data model, security, deployment (canonical current-state doc — see its changelog for the full delivery history) |
 | [`docs/roadmap.md`](docs/roadmap.md) | One-page index of every PRD's phases/waves — status, delivering issues/PRs, and what's missing |
-| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant), ADR-007 (auth release gate replaces the privacy gate — login is now the panel's security boundary) |
+| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant), ADR-007 (auth release gate replaces the privacy gate — login is now the panel's security boundary), ADR-008 (`middleware.ts` → `proxy.ts` auth chokepoint on the Node.js runtime + 5 s fail-closed `getClaims()` timeout) |
 | [`docs/runbooks/`](docs/runbooks/) | Operator procedures requiring live AWS/Supabase/Fly access — [`panel-deployment.md`](docs/runbooks/panel-deployment.md) (Fly deploy, OIDC probe, auth release gate, go-public, **publishable-key credential cutover**), [`issue-77-deployment-e2e.md`](docs/runbooks/issue-77-deployment-e2e.md) (agent deploy + E2E, historical), [`issue-94-reaper-verification.md`](docs/runbooks/issue-94-reaper-verification.md) (`pg_cron` reaper scheduling + stale-run verification), [`issue-89-live-verification.md`](docs/runbooks/issue-89-live-verification.md) (invocation payload shape), [`issue-115-baseline-adoption.md`](docs/runbooks/issue-115-baseline-adoption.md) (Supabase CLI migration adoption), [`issue-116-english-sql-surface.md`](docs/runbooks/issue-116-english-sql-surface.md), [`issue-121-ac10-reaper-paused.md`](docs/runbooks/issue-121-ac10-reaper-paused.md) |
 | [`docs/requirements/`](docs/requirements/) | PRDs — [`prd-dependency-update-agent.md`](docs/requirements/prd-dependency-update-agent.md) (Phase 1), [`prd-agent-fleet-panel-v2.md`](docs/requirements/prd-agent-fleet-panel-v2.md) (Phase 2), [`prd-panel-password-auth.md`](docs/requirements/prd-panel-password-auth.md) (the shipped auth wave), [`prd-panel-auth-and-rls.md`](docs/requirements/prd-panel-auth-and-rls.md) (deferred RLS hardening), [`prd-agent-fleet-panel-v3-ui-depth.md`](docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md), [`prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md) (Phase 3, done) |
 | [`docs/prototype/`](docs/prototype/) | High-fidelity Nocturne HTML prototype — the source `/DESIGN.md` was extracted from |
