@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are tracked in their own table below. This page indexes the PRDs, GitHub issues, and merged PRs. If it disagrees with them, they are correct and this page gets fixed.
 
@@ -26,7 +26,8 @@ One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are
 | --- | --- | --- | --- | --- |
 | CI audit gates + run-detail follow-ups | Unblock the pnpm and pip-audit CI gates (PyJWT 2.15.1, transitive overrides, redeploy both agents); bound the audit-report findings table; refresh run detail when a run finishes | Done | #252 / PR #254, #245 / PR #255, #244 / PR #256 (all merged into `integration/run-detail-followups-and-audit`); consolidated PR #257; plan `workstream/tasks-issue-252-245-244-audit-gates-and-run-detail.md`; redeploy change record `infra/changes/20261013-redeploy-agents-pyjwt/` | — (follow-ups tracked separately: #280 panel Fly OIDC, R-01 CT-3 classification) |
 | Panel Fly OIDC fix | Deployed panel cannot invoke agents (non-root `nextjs` gets EACCES on root-only `/.fly/api`): root entrypoint grants group write then drops to uid 1001; OIDC token probe in `deploy-panel.sh`. Runs before #217 | Done | #280; PRs #295, #297; panel-v1.1.0/v1.1.1; infra change `20261014-fly-oidc-issuer-trust` | — (retire IAM provider `oidc.fly.io/personal` in a later change) |
-| Next.js 16 upgrade | Next 15.5.25 → 16.4.0 and Node LTS bump; clears the two moderate `next` advisories handed over by #252. Runs after #280 | Not started | #217 | Entire scope; needs refinement against 16.4.0 |
+| Next.js 16 upgrade | Next 15.5.25 → 16.4.1, Node 26 (engines `>=24 <27`), `middleware.ts` → `proxy.ts` on the Node runtime (ADR-008), native ESLint flat config with all findings fixed; clears the two moderate `next` advisories handed over by #252 | Not started | #217; plan `workstream/tasks-issue-217-nextjs-16-node-upgrade.md` | Entire scope. Toolchain majors (TS 7, ESLint 10, Vitest 5, plugin-react 6) follow in #299 |
+| Toolchain majors | TypeScript 7, ESLint 10, Vitest 5 + coverage-v8, `@vitejs/plugin-react` 6; clears the dev-only vitest/tinypool advisories | Not started | #299 | Entire scope; blocked by #217 |
 
 ## Not yet on a PRD
 
