@@ -53,8 +53,12 @@ function fromCli(): Record<string, string> {
 /** The repo root is four levels above `panel/` (panel/tests/e2e/fixtures). */
 function repoRoot(): string {
   // fileURLToPath decodes percent-encoding (the repo path may contain spaces).
-  // This file is panel/tests/e2e/fixtures/local-env.ts → five segments up.
-  return fileURLToPath(new URL("../../../../../", import.meta.url));
+  // This file is panel/tests/e2e/fixtures/local-env.ts → the repo root is FOUR
+  // segments up (fixtures → e2e → tests → panel → <repo root>). (Five-up landed
+  // on the repo's PARENT dir, which has no supabase/ — so `supabase status`
+  // there derived a bogus container name from the parent dir. Only bit locally;
+  // CI short-circuits via the preset env before the CLI runs.)
+  return fileURLToPath(new URL("../../../../", import.meta.url));
 }
 
 export function resolveLocalSupabaseEnv(): LocalSupabaseEnv {
