@@ -1,11 +1,14 @@
 # Roadmap
 
-Last updated: 2026-10-15
+Last updated: 2026-10-17
 
 One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are tracked in their own table below. This page indexes the PRDs, GitHub issues, and merged PRs. If it disagrees with them, they are correct and this page gets fixed.
 
 | PRD | Phase/Wave | Scope (one line) | Status | Issues/PRs | What's missing |
 | --- | --- | --- | --- | --- | --- |
+| [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave A — Contract and claim | `bug-fix` agent scaffold + image (Node, Python, Claude Code CLI), `agents` seed + params schema, selection, applicability gate, claim, disposition, reporting, `invoke-runtime` IAM entry | Not started | — | Entire wave. PRD v1.0 drafted, awaiting approval |
+| [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave B — Fix loop and validation | Confined `claude -p` run, change caps and forbidden paths, wrapper-run gates, red-to-green, Draft PR + `pull_request` artifact | Not started | — | Entire wave. Depends on Wave A |
+| [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave C — Recovery and live | Stale-claim sweep, schedule seed, deploy runbook, live verification on a fixture repo (fixable + unfixable bug) | Not started | — | Entire wave. Depends on Wave B and scheduler Waves C–E on `integration/agent-scheduler` |
 | [prd-agent-scheduler](requirements/prd-agent-scheduler.md) | Wave A — Foundation | `schedules` + `notifications` schema/enums/RLS, `buildRunInsert` trigger descriptor, `pg_net` + Vault + settings + runbook | Done (on integration) | #261–#263 (S-149…S-151), PRs #277/#278/#279 | Delivered on `integration/agent-scheduler`; test-first, verified against the live local stack |
 | [prd-agent-scheduler](requirements/prd-agent-scheduler.md) | Wave B — Trigger (A1) | `compute_next_run_at` (DST + cron) + RPC, fire endpoint + shared-secret internal class, `fire_due_schedules` tick + G4 cap + G2 no-catch-up | Done (on integration) | #264–#266 (S-152…S-154), PRs #281/#282/#283 | Delivered on `integration/agent-scheduler`; 41 scheduler L2.5 tests pass. Depends on Wave A |
 | [prd-agent-scheduler](requirements/prd-agent-scheduler.md) | Wave C — Guardrails | G1 overlap suppression, G5 open-PR backoff (phased a+c) + manual clear, G3 circuit breaker (auto-pause) | Done (PRs open) | #267–#269 (S-155…S-157), PRs #284/#285/#286 | On story branches, stacked; 48 scheduler L2.5 tests pass. Pending merge to `integration/agent-scheduler` |
