@@ -4,7 +4,7 @@
 
 | Version | Date       | Summary                                                                                                                                                                                         | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-10-18 | Initial stories S-165–S-188 (24) for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1 and [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v1.0. | product-engineer |
+| 1.0     | 2026-10-18 | Initial stories S-180–S-203 (24, numbered S-180–S-203 because S-165–S-179 are held by `[PRD-webhook-triggers]`, issues #309–#324) for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1 and [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v1.0. | product-engineer |
 
 ## Overview
 
@@ -12,69 +12,69 @@
 
 **Two additions the stories make to the specification** (recorded in spec changelog 1.1 when this document is approved):
 
-1. **`FIX_PIPELINE_ENABLED`** (runtime env, default `0` until S-184). Without it, a Wave A deploy would claim bugs and immediately dispose them. When off, the run ends `succeeded` / `not_applicable` after applicability with the event "fix pipeline not enabled", **before** the claim. The sweep still runs.
-2. **Canary mode** (S-174). The spec's Wave A canary needs a probe inside the deployed runtime. A `canary` param (`credentials`, `idle_survival`, `cli_flags`) is accepted **only** when the canary deployment sets `ALLOW_CANARY=1`; the production deployment never sets it.
+1. **`FIX_PIPELINE_ENABLED`** (runtime env, default `0` until S-199). Without it, a Wave A deploy would claim bugs and immediately dispose them. When off, the run ends `succeeded` / `not_applicable` after applicability with the event "fix pipeline not enabled", **before** the claim. The sweep still runs.
+2. **Canary mode** (S-189). The spec's Wave A canary needs a probe inside the deployed runtime. A `canary` param (`credentials`, `idle_survival`, `cli_flags`) is accepted **only** when the canary deployment sets `ALLOW_CANARY=1`; the production deployment never sets it.
 
-**Test-first:** within each story the failing tests are written before the code they exercise; S-175 provides the fake-CLI harness first.
+**Test-first:** within each story the failing tests are written before the code they exercise; S-190 provides the fake-CLI harness first.
 
 **Commands** for this Python package (per `TESTING.md` precedent, run from `agents/bug-fix/app/bugFix/`): `make lint`, `make format-check`, `make typecheck`, `make test`, `make audit`, `make validate`. "Standard gates" below means `lint`, `format-check`, `typecheck`, `test`, `audit` all passing.
 
 ```mermaid
 flowchart LR
-    S165[S-165 scaffold] --> S166[S-166 image]
-    S165 --> S167[S-167 seed + params]
-    S165 --> S168[S-168 GitHub client]
-    S168 --> S169[S-169 selection + applicability]
-    S168 --> S170[S-170 claim + disposition]
-    S170 --> S171[S-171 sweep]
-    S169 --> S172[S-172 orchestrator A]
+    S165[S-180 scaffold] --> S166[S-181 image]
+    S165 --> S167[S-182 seed + params]
+    S165 --> S168[S-183 GitHub client]
+    S168 --> S169[S-184 selection + applicability]
+    S168 --> S170[S-185 claim + disposition]
+    S170 --> S171[S-186 sweep]
+    S169 --> S172[S-187 orchestrator A]
     S170 --> S172
     S171 --> S172
-    S166 --> S173[S-173 infra pass + deploy]
+    S166 --> S173[S-188 infra pass + deploy]
     S167 --> S173
     S172 --> S173
-    S173 --> S174[S-174 canary]
-    S174 --> S175[S-175 fake CLI]
-    S175 --> S176[S-176 CLI runner]
-    S176 --> S177[S-177 stream parser]
-    S169 --> S178[S-178 installer]
-    S176 --> S179[S-179 task list]
-    S165 --> S180[S-180 measure]
-    S178 --> S181[S-181 gates]
-    S180 --> S182[S-182 red-to-green]
+    S173 --> S174[S-189 canary]
+    S174 --> S175[S-190 fake CLI]
+    S175 --> S176[S-191 CLI runner]
+    S176 --> S177[S-192 stream parser]
+    S169 --> S178[S-193 installer]
+    S176 --> S179[S-194 task list]
+    S165 --> S180[S-195 measure]
+    S178 --> S181[S-196 gates]
+    S180 --> S182[S-197 red-to-green]
     S181 --> S182
-    S180 --> S183[S-183 pull request]
-    S177 --> S184[S-184 pipeline]
+    S180 --> S183[S-198 pull request]
+    S177 --> S184[S-199 pipeline]
     S179 --> S184
     S182 --> S184
     S183 --> S184
-    S184 --> S185[S-185 disposition + ceilings]
-    S185 --> S186[S-186 live verification]
-    S186 --> S187[S-187 first schedule]
-    S187 --> S188[S-188 docs close-out]
+    S184 --> S185[S-200 disposition + ceilings]
+    S185 --> S186[S-201 live verification]
+    S186 --> S187[S-202 first schedule]
+    S187 --> S188[S-203 docs close-out]
 ```
 
 ## Execution plan
 
 | Order | Stories                         | Wave | Note                                                                      |
 | ----- | ------------------------------- | ---- | ------------------------------------------------------------------------- |
-| 1     | S-165                           | A    | Foundation                                                                |
-| 2     | S-166, S-167, S-168 (parallel)  | A    | Independent after S-165                                                   |
-| 3     | S-169, S-170 (parallel)         | A    | Both need S-168                                                           |
-| 4     | S-171, S-172                    | A    | S-171 needs S-170; S-172 needs S-169–S-171                                |
-| 5     | S-173                           | A    | **Operator prerequisites** (App Issues r/w, `OPERATOR_GITHUB_LOGIN`, Bedrock access) |
-| 6     | S-174                           | A    | Canary and credential spike; **gate for Wave B and for any schedule**     |
-| 7     | S-175 → S-176 → S-177           | B    | CLI boundary, test-first                                                  |
-| 8     | S-178, S-179, S-180 (parallel)  | B    |                                                                           |
-| 9     | S-181, S-183 → S-182            | B    |                                                                           |
-| 10    | S-184 → S-185                   | B    | Wiring, then every failure path                                           |
-| 11    | S-186 → S-187 → S-188           | C    | Live, enable, close out                                                   |
+| 1     | S-180                           | A    | Foundation                                                                |
+| 2     | S-181, S-182, S-183 (parallel)  | A    | Independent after S-180                                                   |
+| 3     | S-184, S-185 (parallel)         | A    | Both need S-183                                                           |
+| 4     | S-186, S-187                    | A    | S-186 needs S-185; S-187 needs S-184–S-186                                |
+| 5     | S-188                           | A    | **Operator prerequisites** (App Issues r/w, `OPERATOR_GITHUB_LOGIN`, Bedrock access) |
+| 6     | S-189                           | A    | Canary and credential spike; **gate for Wave B and for any schedule**     |
+| 7     | S-190 → S-191 → S-192           | B    | CLI boundary, test-first                                                  |
+| 8     | S-193, S-194, S-195 (parallel)  | B    |                                                                           |
+| 9     | S-196, S-198 → S-197            | B    |                                                                           |
+| 10    | S-199 → S-200                   | B    | Wiring, then every failure path                                           |
+| 11    | S-201 → S-202 → S-203           | C    | Live, enable, close out                                                   |
 
 ---
 
 # Wave A — Contract and claim
 
-### Story S-165: Package scaffold, configuration, clock invariant, and CI
+### Story S-180: Package scaffold, configuration, clock invariant, and CI
 
 **Priority:** Critical
 **Estimated Size:** M
@@ -145,11 +145,11 @@ None: no schema change (opt-out: no data-model change).
 
 ---
 
-### Story S-166: Container image, pinned Claude Code CLI, managed settings
+### Story S-181: Container image, pinned Claude Code CLI, managed settings
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-165
+**Dependencies:** S-180
 
 #### User Story
 
@@ -213,11 +213,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-167: Agent registration, params schema, payload validation
+### Story S-182: Agent registration, params schema, payload validation
 
 **Priority:** High
 **Estimated Size:** S
-**Dependencies:** S-165
+**Dependencies:** S-180
 
 #### User Story
 
@@ -284,11 +284,11 @@ Block 5 of the seed, in the sibling shape (D-26). Params and defaults are fixed 
 
 ---
 
-### Story S-168: GitHub REST client and permission preflight
+### Story S-183: GitHub REST client and permission preflight
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-165
+**Dependencies:** S-180
 
 #### User Story
 
@@ -310,7 +310,7 @@ The existing App lacks Issues write (D-25). The client is also the one place tha
 
 #### Business Rules
 
-- Read-only calls first; the client exposes mutating methods only through `claim.py` (S-170).
+- Read-only calls first; the client exposes mutating methods only through `claim.py` (S-185).
 
 #### Technical Notes
 
@@ -350,11 +350,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-169: Selection, linked-PR index, and applicability gate
+### Story S-184: Selection, linked-PR index, and applicability gate
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-168
+**Dependencies:** S-183
 
 #### User Story
 
@@ -418,11 +418,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-170: Claim, claim marker, and disposition protocol
+### Story S-185: Claim, claim marker, and disposition protocol
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-168
+**Dependencies:** S-183
 
 #### User Story
 
@@ -449,7 +449,7 @@ D-07 (claim), D-08 (disposition), D-36 (marker and bot-author check). Pure proto
 
 #### Technical Notes
 
-- Spec §8.3, §8.4. Uses the S-168 client; mutating methods live here only.
+- Spec §8.3, §8.4. Uses the S-183 client; mutating methods live here only.
 
 #### Testing Requirements
 
@@ -484,11 +484,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-171: Stale-claim sweep
+### Story S-186: Stale-claim sweep
 
 **Priority:** High
 **Estimated Size:** M
-**Dependencies:** S-170
+**Dependencies:** S-185
 
 #### User Story
 
@@ -502,7 +502,7 @@ D-16 with the safety constraint that only the agent's own bot-authored claims ar
 
 #### Acceptance Criteria
 
-- [ ] The sweep lists open `status: in-progress` issues, reads their comments, and keeps those with a valid claim (S-170 `parse_claim`).
+- [ ] The sweep lists open `status: in-progress` issues, reads their comments, and keeps those with a valid claim (S-185 `parse_claim`).
 - [ ] For each, `v_runs.effective_status` and `run_artifacts` (type `pull_request`) are read in two batched PostgREST calls; a claim is stale when the status is `failed`, `timed_out`, `failed_to_start`, or `canceled` and no PR artifact exists (spec §5.3).
 - [ ] Stale claims receive `dispose(reason="STALE_CLAIM")`; the run's own current claim is never swept.
 - [ ] Issues without the marker, with a marker by a non-App author, and with a run still `queued`/`running` are untouched (AC-13).
@@ -551,11 +551,11 @@ None (opt-out: reads existing tables and view only).
 
 ---
 
-### Story S-172: Orchestrator through applicability, reporting, and outcome mapping
+### Story S-187: Orchestrator through applicability, reporting, and outcome mapping
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-169, S-170, S-171
+**Dependencies:** S-184, S-185, S-186
 
 #### User Story
 
@@ -619,11 +619,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-173: Operator prerequisites, infra pass, and Wave A deploy
+### Story S-188: Operator prerequisites, infra pass, and Wave A deploy
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-166, S-167, S-172
+**Dependencies:** S-181, S-182, S-187
 
 #### User Story
 
@@ -691,11 +691,11 @@ D-25, spec §7. This story runs through `infra-engineer`, one approved step at a
 
 ---
 
-### Story S-174: Canary mode and the Wave A canary run
+### Story S-189: Canary mode and the Wave A canary run
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-173
+**Dependencies:** S-188
 
 #### User Story
 
@@ -714,7 +714,7 @@ Spec §12.4 and §14. Answers PRD §18 Q1–Q6. Needs a canary-only probe surfac
 - [ ] `idle_survival`: a silent 20-minute step under the heartbeat completes on the deployed runtime.
 - [ ] `cli_flags`: against a fixture repo, records whether `CLAUDE.md` and `developer` load under `--settings disableAllHooks`, `--strict-mcp-config`, and the managed file; the max-turns result subtype and exit code; presence of `num_turns` and `is_error`; whether `plan` produces a task list under `-p`; the minimal Bedrock actions needed.
 - [ ] Results are recorded in the runbook and as `D-40+` rows in the decision log; spec §12.4 and PRD §18 are updated.
-- [ ] Decision gate: if a child process can read the secrets, a credential-isolation story is created and **blocks S-187**.
+- [ ] Decision gate: if a child process can read the secrets, a credential-isolation story is created and **blocks S-202**.
 
 #### Business Rules
 
@@ -723,7 +723,7 @@ Spec §12.4 and §14. Answers PRD §18 Q1–Q6. Needs a canary-only probe surfac
 
 #### Technical Notes
 
-- Spec §12.4, D-27, D-28 **U** items. Uses the real image from S-166.
+- Spec §12.4, D-27, D-28 **U** items. Uses the real image from S-181.
 
 #### Testing Requirements
 
@@ -761,11 +761,11 @@ None (opt-out: no data-model change).
 
 # Wave B — Fix loop and validation
 
-### Story S-175: Fake `claude` CLI harness and stream-json fixtures
+### Story S-190: Fake `claude` CLI harness and stream-json fixtures
 
 **Priority:** High
 **Estimated Size:** S
-**Dependencies:** S-174
+**Dependencies:** S-189
 
 #### User Story
 
@@ -775,7 +775,7 @@ So that the CLI boundary can be tested without Bedrock and written test-first.
 
 #### Context
 
-D-38. Fixtures are built from the real shapes the canary recorded (S-174), not from assumptions.
+D-38. Fixtures are built from the real shapes the canary recorded (S-189), not from assumptions.
 
 #### Acceptance Criteria
 
@@ -795,7 +795,7 @@ D-38. Fixtures are built from the real shapes the canary recorded (S-174), not f
 #### Testing Requirements
 
 - **Unit Tests:** the fake's own scenarios behave as specified (it is test infrastructure, so it has tests).
-- **Integration Tests:** consumed by S-176 onward.
+- **Integration Tests:** consumed by S-191 onward.
 - **Manual/UI Testing:** none.
 - **Edge-Case Matrix:** scenario file missing; two scenarios requested; stdin larger than 64 KB.
 - **Acceptance-Criteria Mapping:** AC1–AC4 → `test_fake_claude.py`.
@@ -824,11 +824,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-176: CLI runner — argv, environment allow-list, settings, termination
+### Story S-191: CLI runner — argv, environment allow-list, settings, termination
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-175
+**Dependencies:** S-190
 
 #### User Story
 
@@ -838,7 +838,7 @@ So that a hostile issue or repository cannot reach credentials the CLI does not 
 
 #### Context
 
-D-11, D-28, D-29. The credential boundary the CLI itself can see; the deeper role-credential question is S-174's.
+D-11, D-28, D-29. The credential boundary the CLI itself can see; the deeper role-credential question is S-189's.
 
 #### Acceptance Criteria
 
@@ -860,7 +860,7 @@ D-11, D-28, D-29. The credential boundary the CLI itself can see; the deeper rol
 #### Testing Requirements
 
 - **Unit Tests:** env allow-list; argv builder; stdin builder; allow-list builder per stack.
-- **Integration Tests:** component tests with the S-175 fake: argv/env/stdin as received; hang scenario triggers the ladder; hostile issue text.
+- **Integration Tests:** component tests with the S-190 fake: argv/env/stdin as received; hang scenario triggers the ladder; hostile issue text.
 - **Manual/UI Testing:** none (canary covered live behavior).
 - **Edge-Case Matrix:** repo path with spaces; issue body with `--model evil`, NUL bytes, 2 MB; temp dir cleanup on exception; CLI missing.
 - **Acceptance-Criteria Mapping:** AC1 → `test_env_allowlist`; AC3 → `test_argv`; AC4 → `test_hostile_stdin`; AC5 → `test_termination_ladder`.
@@ -890,11 +890,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-177: Stream-json parser, per-turn events, metrics, limit detection
+### Story S-192: Stream-json parser, per-turn events, metrics, limit detection
 
 **Priority:** High
 **Estimated Size:** M
-**Dependencies:** S-176
+**Dependencies:** S-191
 
 #### User Story
 
@@ -920,11 +920,11 @@ D-39, D-22, D-28. Parsing must tolerate format drift and classify ceilings versu
 
 #### Technical Notes
 
-- Spec §9.1; shapes from S-175 fixtures.
+- Spec §9.1; shapes from S-190 fixtures.
 
 #### Testing Requirements
 
-- **Unit Tests:** parser over every S-175 scenario; truncation; scrubbing; classification table.
+- **Unit Tests:** parser over every S-190 scenario; truncation; scrubbing; classification table.
 - **Integration Tests:** component test: fake CLI to events and metrics in the reporter.
 - **Manual/UI Testing:** a canary-recorded stream renders sensibly in the panel live tail.
 - **Edge-Case Matrix:** partial last line; invalid JSON line; 10,000 turns; result line missing; duplicate result.
@@ -955,11 +955,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-178: Dependency installer
+### Story S-193: Dependency installer
 
 **Priority:** High
 **Estimated Size:** M
-**Dependencies:** S-169
+**Dependencies:** S-184
 
 #### User Story
 
@@ -1019,11 +1019,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-179: Task list — issue checklist, `plan` pass, prompts
+### Story S-194: Task list — issue checklist, `plan` pass, prompts
 
 **Priority:** High
 **Estimated Size:** M
-**Dependencies:** S-176
+**Dependencies:** S-191
 
 #### User Story
 
@@ -1049,7 +1049,7 @@ D-31. The refined issue normally carries a checklist; otherwise the `plan` pass 
 
 #### Technical Notes
 
-- Spec §8.5. The `plan` pass depends on the S-174 `plan_under_p` finding; if unusable, this story ships the failure path only and records the follow-up.
+- Spec §8.5. The `plan` pass depends on the S-189 `plan_under_p` finding; if unusable, this story ships the failure path only and records the follow-up.
 
 #### Testing Requirements
 
@@ -1084,11 +1084,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-180: Measure — classification, caps, forbidden paths, commit message
+### Story S-195: Measure — classification, caps, forbidden paths, commit message
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-165
+**Dependencies:** S-180
 
 #### User Story
 
@@ -1149,11 +1149,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-181: Gate runner and audit baseline
+### Story S-196: Gate runner and audit baseline
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-178
+**Dependencies:** S-193
 
 #### User Story
 
@@ -1179,7 +1179,7 @@ D-14. Block on four gates, record `audit`, tolerate an audit that is already red
 
 #### Technical Notes
 
-- Spec §8.7. Resolved commands from S-169.
+- Spec §8.7. Resolved commands from S-184.
 
 #### Testing Requirements
 
@@ -1214,11 +1214,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-182: Red-to-green verification
+### Story S-197: Red-to-green verification
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-180, S-181
+**Dependencies:** S-195, S-196
 
 #### User Story
 
@@ -1244,7 +1244,7 @@ D-15, D-34. Reverse-apply the non-test patch, run only the changed tests, restor
 
 #### Technical Notes
 
-- Spec §8.7. Changed tests identified by the S-180 classification.
+- Spec §8.7. Changed tests identified by the S-195 classification.
 
 #### Testing Requirements
 
@@ -1279,11 +1279,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-183: Pull request — branch, commit, push, Draft PR, body, artifact
+### Story S-198: Pull request — branch, commit, push, Draft PR, body, artifact
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-180
+**Dependencies:** S-195
 
 #### User Story
 
@@ -1345,11 +1345,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-184: Pipeline wiring — fix to Draft PR, and enable the pipeline
+### Story S-199: Pipeline wiring — fix to Draft PR, and enable the pipeline
 
 **Priority:** Critical
 **Estimated Size:** L
-**Dependencies:** S-177, S-179, S-182, S-183
+**Dependencies:** S-192, S-194, S-197, S-198
 
 #### User Story
 
@@ -1366,8 +1366,8 @@ Wires steps 6–13 of spec §4.1 for the success path and flips `FIX_PIPELINE_EN
 - [ ] With the flag on, the run executes claim → install → (plan) → fix → measure → validate → red_to_green → open_pr and ends `succeeded` / `fixed` on the fake-CLI success scenario, with the claim comment, labels, assignee, branch, Draft PR, `pull_request` artifact, metrics, and events all asserted (AC-3, AC-10).
 - [ ] Step order, step names, and heartbeat coverage match spec §4.1.
 - [ ] `runs.metrics` contains turns, tokens, cost, files, lines, gates, red_to_green, denials (FR-27).
-- [ ] `FIX_PIPELINE_ENABLED` defaults to `1` in code and `agentcore.json` from this story on; with `0` the S-172 behavior is unchanged (test retained).
-- [ ] The component test runs the whole flow against fake GitHub, a bare git remote, fake `gh`, the S-175 fake CLI, and a fake Supabase.
+- [ ] `FIX_PIPELINE_ENABLED` defaults to `1` in code and `agentcore.json` from this story on; with `0` the S-187 behavior is unchanged (test retained).
+- [ ] The component test runs the whole flow against fake GitHub, a bare git remote, fake `gh`, the S-190 fake CLI, and a fake Supabase.
 
 #### Business Rules
 
@@ -1375,7 +1375,7 @@ Wires steps 6–13 of spec §4.1 for the success path and flips `FIX_PIPELINE_EN
 
 #### Technical Notes
 
-- Spec §4.1, §8.9. Failure paths are S-185; here only the success path plus the unchanged flag-off path.
+- Spec §4.1, §8.9. Failure paths are S-200; here only the success path plus the unchanged flag-off path.
 
 #### Testing Requirements
 
@@ -1410,11 +1410,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-185: Disposition wiring — every failure path, ceilings, deadline
+### Story S-200: Disposition wiring — every failure path, ceilings, deadline
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-184
+**Dependencies:** S-199
 
 #### User Story
 
@@ -1479,11 +1479,11 @@ None (opt-out: no data-model change).
 
 # Wave C — Recovery and live
 
-### Story S-186: Live verification on a fixture repository
+### Story S-201: Live verification on a fixture repository
 
 **Priority:** Critical
 **Estimated Size:** M
-**Dependencies:** S-185
+**Dependencies:** S-200
 
 #### User Story
 
@@ -1510,7 +1510,7 @@ AC-16, AC-6 live, AC-13 live. Fixture repo owned by the operator with dev-tasks 
 
 #### Technical Notes
 
-- Deployed runtime from S-173 with the Wave B image; schedule not yet created.
+- Deployed runtime from S-188 with the Wave B image; schedule not yet created.
 
 #### Testing Requirements
 
@@ -1545,11 +1545,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-187: First schedule and enablement criteria
+### Story S-202: First schedule and enablement criteria
 
 **Priority:** High
 **Estimated Size:** S
-**Dependencies:** S-186
+**Dependencies:** S-201
 
 #### User Story
 
@@ -1559,11 +1559,11 @@ So that unattended operation starts small and observable.
 
 #### Context
 
-D-01, D-21, D-27. Requires scheduler Waves C–E merged for G1/G3/G5 and the S-174 credential decision.
+D-01, D-21, D-27. Requires scheduler Waves C–E merged for G1/G3/G5 and the S-189 credential decision.
 
 #### Acceptance Criteria
 
-- [ ] Precondition check recorded: scheduler Waves C–E merged to `integration/agent-scheduler`/`main`; S-174 gate decision recorded (and the isolation story done if it was required).
+- [ ] Precondition check recorded: scheduler Waves C–E merged to `integration/agent-scheduler`/`main`; S-189 gate decision recorded (and the isolation story done if it was required).
 - [ ] One schedule is created through the panel for one operator-owned repo with `bug-fix`; its cadence and params are recorded in the runbook.
 - [ ] Over at least two ticks: G1 suppresses an overlapping tick; after a `fixed` run G5 blocks the next tick until "PR handled" is clicked; a `needs_review` run does not advance the G3 counter (AC-12, AC-15).
 - [ ] Enablement criteria for further repos are written: owned repo, dev-tasks installed, four gates, trusted reporters, reviewed metrics.
@@ -1610,11 +1610,11 @@ None (opt-out: no data-model change).
 
 ---
 
-### Story S-188: Documentation close-out
+### Story S-203: Documentation close-out
 
 **Priority:** Medium
 **Estimated Size:** S
-**Dependencies:** S-187
+**Dependencies:** S-202
 
 #### User Story
 
@@ -1689,85 +1689,85 @@ None (opt-out: documentation only).
 
 | PRD Requirement                                                           | Story ID(s)              | Status     |
 | ------------------------------------------------------------------------- | ------------------------ | ---------- |
-| FR-1 params and registration                                               | S-167                    | ✅ Covered |
-| FR-2 oldest ready bug, no open linked PR                                   | S-169                    | ✅ Covered |
-| FR-3 explicit issue still needs labels                                     | S-169                    | ✅ Covered |
-| FR-4 none → `no_findings`                                                  | S-169, S-172             | ✅ Covered |
-| FR-5 gate before claim                                                     | S-169, S-172             | ✅ Covered |
-| FR-6 applicability (developer.md + four gates)                             | S-169                    | ✅ Covered |
-| FR-7 claim with marker                                                     | S-170                    | ✅ Covered |
-| FR-8 no bot assignee                                                       | S-170                    | ✅ Covered |
-| FR-9 wrapper owns credentials                                              | S-176, S-184             | ✅ Covered |
-| FR-10 issue text as quoted data                                            | S-176                    | ✅ Covered |
-| FR-11 CLAUDE.md + developer, hooks/MCP off                                 | S-166, S-176             | ✅ Covered |
-| FR-12 budgets and ceilings                                                 | S-177, S-185             | ✅ Covered |
-| FR-13 caps                                                                 | S-180                    | ✅ Covered |
-| FR-14 forbidden paths                                                      | S-180                    | ✅ Covered |
-| FR-15 test required                                                        | S-180                    | ✅ Covered |
-| FR-16 per-file rationale                                                   | S-179, S-183             | ✅ Covered |
-| FR-17 wrapper-run gates                                                    | S-181                    | ✅ Covered |
-| FR-18 audit recorded                                                       | S-181                    | ✅ Covered |
-| FR-19 red-to-green                                                         | S-182                    | ✅ Covered |
-| FR-20 Draft PR with body                                                   | S-183                    | ✅ Covered |
-| FR-21 `pull_request` artifact                                              | S-183                    | ✅ Covered |
-| FR-22 disposition                                                          | S-170, S-185             | ✅ Covered |
-| FR-23 `finally` and backstop                                               | S-172, S-185             | ✅ Covered |
-| FR-24 stale-claim sweep                                                    | S-171                    | ✅ Covered |
-| FR-25 reporting steps and events                                           | S-172, S-177             | ✅ Covered |
-| FR-26 outcome mapping                                                      | S-172, S-185             | ✅ Covered |
-| FR-27 metrics                                                              | S-177, S-184             | ✅ Covered |
-| FR-28 permission preflight                                                 | S-168                    | ✅ Covered |
-| FR-29 dependency install                                                   | S-178                    | ✅ Covered |
-| FR-30 task list                                                            | S-179                    | ✅ Covered |
-| FR-31 run deadline                                                         | S-165, S-185             | ✅ Covered |
-| AC-1 selection                                                             | S-169                    | ✅ Covered |
-| AC-2 explicit gate                                                         | S-169                    | ✅ Covered |
-| AC-3 claim                                                                 | S-170, S-184             | ✅ Covered |
-| AC-4 not applicable                                                        | S-169, S-186             | ✅ Covered |
-| AC-5 confinement                                                           | S-176                    | ✅ Covered |
-| AC-6 prompt injection                                                      | S-176, S-186             | ✅ Covered |
-| AC-7 caps                                                                  | S-180                    | ✅ Covered |
-| AC-8 regression test                                                       | S-180, S-182             | ✅ Covered |
-| AC-9 gates                                                                 | S-181                    | ✅ Covered |
-| AC-10 PR                                                                   | S-183, S-184             | ✅ Covered |
-| AC-11 disposition                                                          | S-185                    | ✅ Covered |
-| AC-12 G3                                                                   | S-185, S-187             | ✅ Covered |
-| AC-13 sweep                                                                | S-171, S-186             | ✅ Covered |
-| AC-14 budget                                                               | S-185                    | ✅ Covered |
-| AC-15 G5                                                                   | S-187                    | ✅ Covered |
-| AC-16 live                                                                 | S-186                    | ✅ Covered |
-| AC-17 preflight                                                            | S-168, S-173             | ✅ Covered |
-| AC-18 deadline                                                             | S-165, S-185             | ✅ Covered |
-| AC-19 repo config                                                          | S-166, S-176             | ✅ Covered |
-| AC-20 install                                                              | S-178                    | ✅ Covered |
-| Goal 1 refined bugs become PRs unattended                                  | S-184, S-186, S-187      | ✅ Covered |
-| Goal 2 small, specific, proven                                             | S-180, S-181, S-182      | ✅ Covered |
-| Goal 3 safe unattended                                                     | S-166, S-174, S-176      | ✅ Covered |
-| Goal 4 never stall the queue                                               | S-171, S-185             | ✅ Covered |
-| Goal 5 reuse, not rebuild                                                  | S-167, S-172             | ✅ Covered |
-| Business rules (gate, lock, no merge, one PR/repo, conventions)            | S-169, S-170, S-183, S-187 | ✅ Covered |
-| Data: `agents` row                                                         | S-167                    | ✅ Covered |
-| Data: `runs.metrics`                                                       | S-177, S-184             | ✅ Covered |
-| Data: `pull_request` artifact                                              | S-183                    | ✅ Covered |
-| Security: model-directed code execution, trust anchor, spike               | S-174, S-187             | ✅ Covered |
-| Dependency: GitHub App Issues r/w                                          | S-173                    | ✅ Covered |
-| Dependency: invoke-policy IAM entry (#280)                                 | S-173                    | ✅ Covered |
-| Dependency: Bedrock access and roles                                       | S-173                    | ✅ Covered |
-| Dependency: scheduler Waves C–E merged                                     | S-187                    | ✅ Covered |
-| Runbook in the same PR (FR-49a)                                            | S-173, S-186, S-187      | ✅ Covered |
-| Foundation docs, ADR, glossary append                                      | S-188                    | ✅ Covered |
+| FR-1 params and registration                                               | S-182                    | ✅ Covered |
+| FR-2 oldest ready bug, no open linked PR                                   | S-184                    | ✅ Covered |
+| FR-3 explicit issue still needs labels                                     | S-184                    | ✅ Covered |
+| FR-4 none → `no_findings`                                                  | S-184, S-187             | ✅ Covered |
+| FR-5 gate before claim                                                     | S-184, S-187             | ✅ Covered |
+| FR-6 applicability (developer.md + four gates)                             | S-184                    | ✅ Covered |
+| FR-7 claim with marker                                                     | S-185                    | ✅ Covered |
+| FR-8 no bot assignee                                                       | S-185                    | ✅ Covered |
+| FR-9 wrapper owns credentials                                              | S-191, S-199             | ✅ Covered |
+| FR-10 issue text as quoted data                                            | S-191                    | ✅ Covered |
+| FR-11 CLAUDE.md + developer, hooks/MCP off                                 | S-181, S-191             | ✅ Covered |
+| FR-12 budgets and ceilings                                                 | S-192, S-200             | ✅ Covered |
+| FR-13 caps                                                                 | S-195                    | ✅ Covered |
+| FR-14 forbidden paths                                                      | S-195                    | ✅ Covered |
+| FR-15 test required                                                        | S-195                    | ✅ Covered |
+| FR-16 per-file rationale                                                   | S-194, S-198             | ✅ Covered |
+| FR-17 wrapper-run gates                                                    | S-196                    | ✅ Covered |
+| FR-18 audit recorded                                                       | S-196                    | ✅ Covered |
+| FR-19 red-to-green                                                         | S-197                    | ✅ Covered |
+| FR-20 Draft PR with body                                                   | S-198                    | ✅ Covered |
+| FR-21 `pull_request` artifact                                              | S-198                    | ✅ Covered |
+| FR-22 disposition                                                          | S-185, S-200             | ✅ Covered |
+| FR-23 `finally` and backstop                                               | S-187, S-200             | ✅ Covered |
+| FR-24 stale-claim sweep                                                    | S-186                    | ✅ Covered |
+| FR-25 reporting steps and events                                           | S-187, S-192             | ✅ Covered |
+| FR-26 outcome mapping                                                      | S-187, S-200             | ✅ Covered |
+| FR-27 metrics                                                              | S-192, S-199             | ✅ Covered |
+| FR-28 permission preflight                                                 | S-183                    | ✅ Covered |
+| FR-29 dependency install                                                   | S-193                    | ✅ Covered |
+| FR-30 task list                                                            | S-194                    | ✅ Covered |
+| FR-31 run deadline                                                         | S-180, S-200             | ✅ Covered |
+| AC-1 selection                                                             | S-184                    | ✅ Covered |
+| AC-2 explicit gate                                                         | S-184                    | ✅ Covered |
+| AC-3 claim                                                                 | S-185, S-199             | ✅ Covered |
+| AC-4 not applicable                                                        | S-184, S-201             | ✅ Covered |
+| AC-5 confinement                                                           | S-191                    | ✅ Covered |
+| AC-6 prompt injection                                                      | S-191, S-201             | ✅ Covered |
+| AC-7 caps                                                                  | S-195                    | ✅ Covered |
+| AC-8 regression test                                                       | S-195, S-197             | ✅ Covered |
+| AC-9 gates                                                                 | S-196                    | ✅ Covered |
+| AC-10 PR                                                                   | S-198, S-199             | ✅ Covered |
+| AC-11 disposition                                                          | S-200                    | ✅ Covered |
+| AC-12 G3                                                                   | S-200, S-202             | ✅ Covered |
+| AC-13 sweep                                                                | S-186, S-201             | ✅ Covered |
+| AC-14 budget                                                               | S-200                    | ✅ Covered |
+| AC-15 G5                                                                   | S-202                    | ✅ Covered |
+| AC-16 live                                                                 | S-201                    | ✅ Covered |
+| AC-17 preflight                                                            | S-183, S-188             | ✅ Covered |
+| AC-18 deadline                                                             | S-180, S-200             | ✅ Covered |
+| AC-19 repo config                                                          | S-181, S-191             | ✅ Covered |
+| AC-20 install                                                              | S-193                    | ✅ Covered |
+| Goal 1 refined bugs become PRs unattended                                  | S-199, S-201, S-202      | ✅ Covered |
+| Goal 2 small, specific, proven                                             | S-195, S-196, S-197      | ✅ Covered |
+| Goal 3 safe unattended                                                     | S-181, S-189, S-191      | ✅ Covered |
+| Goal 4 never stall the queue                                               | S-186, S-200             | ✅ Covered |
+| Goal 5 reuse, not rebuild                                                  | S-182, S-187             | ✅ Covered |
+| Business rules (gate, lock, no merge, one PR/repo, conventions)            | S-184, S-185, S-198, S-202 | ✅ Covered |
+| Data: `agents` row                                                         | S-182                    | ✅ Covered |
+| Data: `runs.metrics`                                                       | S-192, S-199             | ✅ Covered |
+| Data: `pull_request` artifact                                              | S-198                    | ✅ Covered |
+| Security: model-directed code execution, trust anchor, spike               | S-189, S-202             | ✅ Covered |
+| Dependency: GitHub App Issues r/w                                          | S-188                    | ✅ Covered |
+| Dependency: invoke-policy IAM entry (#280)                                 | S-188                    | ✅ Covered |
+| Dependency: Bedrock access and roles                                       | S-188                    | ✅ Covered |
+| Dependency: scheduler Waves C–E merged                                     | S-202                    | ✅ Covered |
+| Runbook in the same PR (FR-49a)                                            | S-188, S-201, S-202      | ✅ Covered |
+| Foundation docs, ADR, glossary append                                      | S-203                    | ✅ Covered |
 
 ### Gaps (if any)
 
-None. Two items are covered by additions to the specification rather than the PRD: the `FIX_PIPELINE_ENABLED` flag (S-172, S-184) and canary mode (S-174). Both are listed in the Overview for approval.
+None. Two items are covered by additions to the specification rather than the PRD: the `FIX_PIPELINE_ENABLED` flag (S-187, S-199) and canary mode (S-189). Both are listed in the Overview for approval.
 
 ### Non-Goals Validation
 
-- [x] Bot as assignee — Confirmed NOT in any story (S-170 asserts it is never set)
-- [x] Automatic retry — Confirmed NOT in any story (S-185 states none)
-- [x] Agent merge or leaving Draft — Confirmed NOT in any story (S-183 asserts no merge symbol)
-- [x] Agent-run `verifier` / `qa-engineer` — Confirmed NOT in any story (recorded as not-run in S-183)
+- [x] Bot as assignee — Confirmed NOT in any story (S-185 asserts it is never set)
+- [x] Automatic retry — Confirmed NOT in any story (S-200 states none)
+- [x] Agent merge or leaving Draft — Confirmed NOT in any story (S-198 asserts no merge symbol)
+- [x] Agent-run `verifier` / `qa-engineer` — Confirmed NOT in any story (recorded as not-run in S-198)
 - [x] Several bugs per run — Confirmed NOT in any story
-- [x] Bundled `developer.md` fallback — Confirmed NOT in any story (S-169 ends `not_applicable`)
+- [x] Bundled `developer.md` fallback — Confirmed NOT in any story (S-184 ends `not_applicable`)
 - [x] Stacks beyond JS/TS and Python — Confirmed NOT in any story
 - [x] G5-b auto-detect and webhook trigger — Confirmed NOT in any story (fast-follows)
