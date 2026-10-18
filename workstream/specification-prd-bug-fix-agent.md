@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                                                                                                                                                                                                                 | Author           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-18 | Initial specification for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1. Produced from the HOW-phase `activity-grill` session (D-25–D-39 in `workstream/decisions-bug-fix-agent.md`). Resolves PRD §18 Q1–Q8; surfaces one PRD inconsistency (§7.3 below). | product-engineer |
+| 1.1     | 2026-10-18 | Story-level additions: (1) runtime flag `FIX_PIPELINE_ENABLED` (default off until the pipeline is wired) so a Wave A deploy cannot claim bugs; (2) canary mode, a `canary` param accepted only when `ALLOW_CANARY=1` on a canary deployment, to run the §12.4 credential spike and the CLI probes. Story IDs are S-180–S-203 (`user-stories-prd-bug-fix-agent.md`). | product-engineer |
 
 Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-24 are the WHAT phase, D-25–D-39 the HOW phase.
 
@@ -465,6 +466,11 @@ Test-first applies: the fake-CLI fixtures and the security-negative cases are wr
 | C    | Live verification (AC-16); runbook finalization; first schedule on one repo you own; enable only after the §12.4 spike is recorded                                                              |
 
 Prerequisites (operator, before Wave A deploy): GitHub App Issues r/w accepted; `OPERATOR_GITHUB_LOGIN` chosen; Bedrock model access confirmed; scheduler Waves C–E merged for G1/G3/G5. Rollback: set `agents.is_enabled = false`; pause schedules; revert the invoke-policy entry; a deployed image can be redeployed to the previous version with the AgentCore CLI. Per FR-49a the runbook (`docs/runbooks/bug-fix-deployment.md`) ships in the same PR as the deploy script or workflow changes.
+
+### 15.1 Story-level additions (v1.1)
+
+- `FIX_PIPELINE_ENABLED` (env, default `0` until S-199). When off, the run ends `succeeded` / `not_applicable` after applicability with the event "fix pipeline not enabled", before the claim. The sweep still runs.
+- Canary mode: param `canary` ∈ {`credentials`, `idle_survival`, `cli_flags`}, accepted only with `ALLOW_CANARY=1`; the production deployment never sets it (S-189).
 
 ## 16. Dependencies & Risks
 
