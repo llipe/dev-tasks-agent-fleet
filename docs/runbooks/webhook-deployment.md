@@ -3,7 +3,7 @@ name: runbook-webhook-deployment
 trigger: Enabling webhook triggers against the live Supabase project, adding a GitHub webhook endpoint, or rotating an endpoint's signing secret
 owner: operator (repository owner)
 last_verified: never — written with S-166; steps run against the local stack only so far
-related: ["supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql"]
+related: ["supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
 ---
 
 # Runbook — Webhook triggers deployment
@@ -13,9 +13,10 @@ related: ["supabase/migrations/20261019181000_webhook_vault_config.sql", "supaba
 > [`prd-webhook-triggers`](../requirements/prd-webhook-triggers.md) and
 > [`specification-prd-webhook-triggers`](../../workstream/specification-prd-webhook-triggers.md).
 >
-> **Scope as of S-166:** the database prerequisites and the per-endpoint secret
-> (steps 1–4). Later stories add the retention cron (S-167), the release-gate probe
-> (S-175), and live verification. Nothing here runs in CI.
+> **Scope as of S-167:** the database prerequisites, the per-endpoint secret
+> (steps 1–4), and the delivery retention cron (step 1 registers it; see
+> Verification). Later stories add the release-gate probe (S-175) and live
+> verification. Nothing here runs in CI.
 >
 > **Blast radius:** step 1 changes the live schema (additive). Steps 2–4 write to
 > live configuration and Vault. A wrong `bot_login` disables the self-trigger guard
@@ -107,6 +108,26 @@ select has_function_privilege('anon',          'public.webhook_endpoint_secret(u
        has_function_privilege('authenticated', 'public.webhook_endpoint_secret(uuid)', 'execute') as authed;
 
 select key, value from webhook.config;
+
+-- the retention prune is scheduled daily (S-167) and has run successfully
+select jobname, schedule, active from cron.job where jobname = 'webhook-prune-deliveries';
+select status, return_message, start_time
+  from cron.job_run_details
+ where jobid = (select jobid from cron.job where jobname = 'webhook-prune-deliveries')
+ order by start_time desc limit 3;
+```
+
+### Retention tuning
+
+`delivery_retention_days` (default 30) is the prune horizon. Invalid or non-positive
+values fall back to 30, so a bad setting can't wipe the log. The job deletes at most
+5000 rows a day, oldest first. If `select count(*) from webhook_deliveries where
+created_at < now() - interval '30 days'` keeps growing, raise the batch
+(`select webhook.prune_deliveries(20000);` once, by hand) and look for an
+`unauthorized` flood (rotate the URL token, per "Rotating a secret").
+
+```sql
+update webhook.config set value = '14', updated_at = now() where key = 'delivery_retention_days';
 ```
 
 From S-169 onward: GitHub's **Recent Deliveries** shows `2xx` for a ping, and the
@@ -117,6 +138,7 @@ panel's delivery log shows the event.
 - Stop deliveries at once: `update webhook_endpoints set is_enabled = false where id = '<id>';`
   The route then answers `404`. Also remove or disable the webhook in GitHub.
 - Remove a secret: `select webhook.delete_endpoint_secret('<id>');`
+- Stop the retention prune: `select cron.unschedule('webhook-prune-deliveries');`
 - Schema rollback (destructive; drops all endpoints, rules and deliveries): see the
   headers of the two migrations. Get explicit approval first.
 
