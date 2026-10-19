@@ -239,6 +239,102 @@ export interface NotificationRow {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Webhook Triggers Phase 1 (S-165, #309). Hand-written to match
+// `supabase/migrations/20261019180000_webhook_schema.sql`. The endpoint signing
+// secret is deliberately absent: it lives only in Vault (S-166, D-W4) and must
+// never appear in a row type the panel can pass to the client.
+// ---------------------------------------------------------------------------
+
+export type WebhookSource = "github" | "generic";
+export type WebhookOutcome =
+  | "received"
+  | "unauthorized"
+  | "duplicate"
+  | "ignored"
+  | "no_match"
+  | "route_rejected"
+  | "skipped"
+  | "fired";
+export type WebhookRepoMode = "fixed" | "payload_field";
+
+/** Condition operators of the bounded routing language (D-W7, S-170). */
+export type WebhookConditionOp =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "prefix"
+  | "suffix"
+  | "in"
+  | "exists"
+  | "matches_event";
+
+/** One `{field, op, value}` predicate; a rule's conditions are ANDed. */
+export interface WebhookCondition {
+  field: string;
+  op: WebhookConditionOp;
+  value?: string | string[];
+}
+
+/** `webhook_rules.params`: static values plus declared-key payload interpolation (D-W9). */
+export interface WebhookRuleParams {
+  static?: Record<string, Json>;
+  from_payload?: Record<string, string>;
+}
+
+export interface WebhookEndpointRow {
+  id: string;
+  name: string;
+  url_token: string;
+  source: WebhookSource;
+  signature_header: string;
+  delivery_id_header: string;
+  event_allowlist: string[];
+  ignore_bot_author: boolean;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookRuleRow {
+  id: string;
+  endpoint_id: string;
+  position: number;
+  name: string;
+  event_types: string[];
+  conditions: WebhookCondition[];
+  is_default: boolean;
+  agent_id: string;
+  repo_mode: WebhookRepoMode;
+  repository_id: string | null;
+  repo_payload_field: string | null;
+  params: WebhookRuleParams;
+  consecutive_failures: number;
+  auto_disable_threshold: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One inbound attempt. `delivery_id` is the presented header value (kept on every
+ * row for grouping); `dedup_key` is set only once the signature verified (D-W16).
+ */
+export interface WebhookDeliveryRow {
+  id: string;
+  endpoint_id: string;
+  delivery_id: string | null;
+  dedup_key: string | null;
+  event_type: string | null;
+  outcome: WebhookOutcome;
+  matched_rule_id: string | null;
+  run_id: string | null;
+  reason: string | null;
+  received_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * `v_schedules` — the schedules list view (S-161). `schedules.*` plus joined
  * agent/repository display columns and the last produced run's reaper-correct
