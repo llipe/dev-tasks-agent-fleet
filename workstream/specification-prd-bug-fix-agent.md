@@ -6,6 +6,7 @@
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-18 | Initial specification for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1. Produced from the HOW-phase `activity-grill` session (D-25–D-39 in `workstream/decisions-bug-fix-agent.md`). Resolves PRD §18 Q1–Q8; surfaces one PRD inconsistency (§7.3 below). | product-engineer |
 | 1.1     | 2026-10-18 | Story-level additions: (1) runtime flag `FIX_PIPELINE_ENABLED` (default off until the pipeline is wired) so a Wave A deploy cannot claim bugs; (2) canary mode, a `canary` param accepted only when `ALLOW_CANARY=1` on a canary deployment, to run the §12.4 credential spike and the CLI probes. Story IDs are S-180–S-203 (`user-stories-prd-bug-fix-agent.md`). | product-engineer |
+| 1.2     | 2026-10-19 | Provider change (D-40–D-42): Anthropic API directly, no Bedrock. Rewrote §9.2; removed Bedrock IAM from §7.2 and Bedrock variables from the §9.1 CLI environment; the dedicated `ANTHROPIC_API_KEY` is the CLI's only secret, with a spend limit (§11.4, §12.2, §12.4, §14, §15, §17 Q6, diagrams, vocabulary). | product-engineer |
 
 Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-24 are the WHAT phase, D-25–D-39 the HOW phase.
 
@@ -13,7 +14,7 @@ Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-
 
 ## 1. Executive Summary
 
-`bug-fix` is a Python wrapper inside an AgentCore Container runtime that drives a headless Claude Code (`claude -p`, Sonnet on Bedrock) over a cloned target repository. The wrapper owns every credential, every GitHub mutation, every measurement and every gate; the CLI only reads, edits and runs tests inside a prepared checkout (D-05, D-11). The wrapper selects and claims one ready bug, prepares the checkout, runs the CLI under a run-level deadline, measures the result against the size caps, re-runs the repository's gates, proves the regression test is red on the base code, and opens a Draft PR — or applies a disposition and leaves a reason (D-08, D-14, D-15, D-30).
+`bug-fix` is a Python wrapper inside an AgentCore Container runtime that drives a headless Claude Code (`claude -p`, Sonnet via the Anthropic API) over a cloned target repository. The wrapper owns every credential, every GitHub mutation, every measurement and every gate; the CLI only reads, edits and runs tests inside a prepared checkout (D-05, D-11). The wrapper selects and claims one ready bug, prepares the checkout, runs the CLI under a run-level deadline, measures the result against the size caps, re-runs the repository's gates, proves the regression test is red on the base code, and opens a Draft PR — or applies a disposition and leaves a reason (D-08, D-14, D-15, D-30).
 
 ## 2. Reference Documents
 
@@ -23,7 +24,7 @@ Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-
 - `docs/technical-guidelines.md` §3 (state reporting, two clocks), §7–§8 (data, integration), §11 (testing); `docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md` (superseded for this agent's CLI step only, §11.3 below).
 - `docs/requirements/prd-agent-scheduler.md` §7.3 (G1, G3, G5).
 - `TESTING.md`, `infra/environments.yaml`, `infra/agentcore-invoke-policy.json`, issue #280 (invoke policy needs runtime and endpoint ARNs).
-- Claude Code documentation (headless, permissions, settings, Bedrock) as summarized in D-28.
+- Claude Code documentation (headless, permissions, settings) as summarized in D-28; provider parts superseded by D-40/D-41.
 
 ## 3. Affected Repositories
 
@@ -35,14 +36,14 @@ Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-
 
 ## 4. System Architecture
 
-The agent is one container with two trust zones: the wrapper (holds credentials) and the CLI subprocess (holds none, runs model-directed code).
+The agent is one container with two trust zones: the wrapper (holds credentials) and the CLI subprocess (holds only the dedicated model API key, runs model-directed code).
 
 ```mermaid
 flowchart LR
     SCH[pg_cron scheduler<br/>or panel invoke] -->|InvokeAgentRuntime<br/>run_id, repo, params| W
     subgraph RT[AgentCore runtime: bug-fix container ARM64]
         W[Wrapper main.py<br/>credentials, GitHub, gates,<br/>caps, reporter]
-        CLI[claude -p subprocess<br/>no tokens, scrubbed env,<br/>throwaway HOME,<br/>managed-settings.json]
+        CLI[claude -p subprocess<br/>model key only, scrubbed env,<br/>throwaway HOME,<br/>managed-settings.json]
         WS[(Workspace<br/>cloned target repo)]
         W -->|spawn, stdin: quoted issue| CLI
         CLI -->|edit, test| WS
@@ -50,7 +51,7 @@ flowchart LR
     end
     W -->|REST + gh| GH[GitHub: issues, PRs, branches]
     W -->|PostgREST| DB[(Supabase: runs, run_events,<br/>run_steps, run_artifacts)]
-    CLI -->|InvokeModel| BR[Bedrock: Sonnet]
+    CLI -->|HTTPS| AN[Anthropic API: Sonnet]
     W -->|secrets at start| SM[Secrets Manager]
 ```
 
@@ -230,7 +231,7 @@ Required permissions: Contents r/w, Pull requests r/w, Metadata read, **Issues r
 
 | Item                                 | Change                                                                                                                                                  |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime role                         | Secrets Manager read for the Supabase key and the App PEM (as siblings); `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`, `bedrock:ListInferenceProfiles`, `bedrock:GetInferenceProfile` (D-28). |
+| Runtime role                         | Secrets Manager read for the Supabase key and the App PEM (as siblings) and for `agent-fleet/prod/ANTHROPIC_API_KEY` (D-42). **No Bedrock permissions** (D-40). |
 | Panel `invoke-runtime` policy        | Add the new runtime ARN **and** `.../runtime-endpoint/DEFAULT` (both required, #280) to `infra/agentcore-invoke-policy.json` and the live policy.      |
 | `infra/environments.yaml`            | Add `bug-fix` under `agentcore.runtimes` (`project_dir`, `runtime_id`, `ecr_repository`).                                                               |
 
@@ -349,14 +350,14 @@ stateDiagram-v2
 ### 9.1 Claude Code CLI
 
 - Install: `npm install -g @anthropic-ai/claude-code@<pinned>` (Node 22, optional native deps, linux-arm64), `DISABLE_UPDATES=1`. The pinned version is an image build ARG and recorded in the runbook (D-28).
-- Environment given to the CLI (allow-list, §12.2): `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, the container's AWS credential variables and endpoint as the SDK needs them (see §12.4), `ANTHROPIC_MODEL=$MODEL_ID`, `ANTHROPIC_DEFAULT_HAIKU_MODEL` only if set in the runtime env, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `HOME` and `CLAUDE_CONFIG_DIR` in a per-run temp directory, `PATH`.
+- Environment given to the CLI (allow-list, §12.2): `ANTHROPIC_API_KEY` (the dedicated key, D-42), `ANTHROPIC_MODEL=$MODEL_ID`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `HOME` and `CLAUDE_CONFIG_DIR` in a per-run temp directory, `PATH`.
 - Output: stream-json lines. Each assistant turn → one `run_event` (D-39); the final `result` line → `metrics`. `permission_denials` > 0 emits a `warn` event naming the denied tools.
 - Termination: SIGINT, 10 s, then SIGTERM, then SIGKILL on `cli_timeout_seconds` or deadline; exit 143 is a limit, not a crash.
 - Limits recognized as ceilings: result subtype for max turns (**U**, canary), wall-clock kill, deadline.
 
-### 9.2 Bedrock
+### 9.2 Anthropic API
 
-`MODEL_ID` default `us.anthropic.claude-sonnet-4-6` (D-04). Account/region model access is a prerequisite checked by the Wave A canary.
+Direct Anthropic API, no Bedrock (D-40). `MODEL_ID` default `claude-sonnet-5-5`, overridable per deploy. The key is dedicated to this agent, lives in Secrets Manager as `agent-fleet/prod/ANTHROPIC_API_KEY` (env `ANTHROPIC_KEY_SECRET_ID`), is fetched once at start, registered with the scrubber, and is set only in the CLI process environment (D-42). The CLI environment carries **no** AWS credential variables: the wrapper builds it from the allow-list and also strips `AWS_CONTAINER_CREDENTIALS_*`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (D-41). Egress to `api.anthropic.com` uses the runtime's `PUBLIC` network mode. The key's Console workspace has a monthly spend limit; its value and the rotation procedure are in the runbook.
 
 ### 9.3 Supabase and GitHub
 
@@ -393,7 +394,7 @@ None. The panel's invoke form and `/schedules` pick up the `agents` row and `par
 
 ### 11.4 Cost
 
-One Sonnet run per tick at most per repo (G1, G5). `runs.metrics` records tokens and cost per run. `--max-budget-usd` is not set in v1; turns and wall-clock bound spend (D-22).
+One Sonnet run per tick at most per repo (G1, G5). `runs.metrics` records tokens and cost per run. `--max-budget-usd` is not set in v1; turns and wall-clock bound each run (D-22), and the dedicated key's monthly spend limit bounds the total, including any spend from a leaked key (D-42).
 
 ## 12. Security Implementation
 
@@ -406,7 +407,8 @@ Untrusted inputs: issue title/body/comments; the target repository's contents (c
 | Control                                                                                                    | Strength                                                          |
 | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Human `status: ready` gate + repos limited to those the operator owns (D-27)                               | **The boundary** in v1                                            |
-| Wrapper holds all GitHub/Supabase secrets; CLI env is an allow-list; throwaway `HOME`                       | Strong against env disclosure; **not** against role credentials   |
+| Wrapper holds all GitHub/Supabase secrets; CLI env is an allow-list with no AWS variables; throwaway `HOME` | Strong against env disclosure; **not** against role credentials   |
+| Dedicated Anthropic key with a monthly spend limit; the CLI's only secret (D-42)                             | Bounds a leak to capped spend; the key **is** readable by model code |
 | `dontAsk` + explicit allow-list; deny `git push`, `gh`, `WebFetch`, `WebSearch`                             | Hardening only: deny rules are documented as not a boundary       |
 | Hooks and MCP disabled by CLI flag and by `/etc/claude-code/managed-settings.json` (D-29)                   | Strong for those two paths                                        |
 | Forbidden paths and size caps measured by the wrapper; model output never trusted (D-09, D-14)              | Strong (bounds what reaches a PR)                                 |
@@ -419,7 +421,7 @@ Untrusted inputs: issue title/body/comments; the target repository's contents (c
 
 ### 12.4 Residual risk and the Wave A spike (D-27)
 
-Residual risk, stated plainly: a model-authored test can run any command the container user can run. If AgentCore exposes the runtime role's credentials to child processes, a hostile issue that survives human readying could read the Supabase service-role key and the App private key from Secrets Manager. v1 accepts this under the trust anchor. **Wave A spike (blocking for enabling any schedule):** from a child process in the deployed runtime, attempt to (a) read the role's credentials from the environment and the container credential endpoint, (b) call `secretsmanager:GetSecretValue` for the two secrets. Record the result in the runbook. If (b) succeeds, the credential-isolation fast-follow (role split or sandbox runtime) is scheduled before the agent is enabled on any repo with untrusted reporters. The Bedrock credentials the CLI needs are by definition the same reachable class (§9.1).
+Residual risk, stated plainly: a model-authored test can run any command the container user can run. If AgentCore exposes the runtime role's credentials to child processes, a hostile issue that survives human readying could read the Supabase service-role key and the App private key from Secrets Manager. v1 accepts this under the trust anchor. **Wave A spike (blocking for enabling any schedule):** from a child process in the deployed runtime, attempt to (a) read the role's credentials from the environment and the container credential endpoint, (b) call `secretsmanager:GetSecretValue` for the two secrets. Record the result in the runbook. If (b) succeeds, the credential-isolation fast-follow (role split or sandbox runtime) is scheduled before the agent is enabled on any repo with untrusted reporters. The CLI itself needs no AWS credentials (D-41), so a positive spike result means the platform exposes them regardless of what the wrapper passes. The dedicated Anthropic key is knowingly readable by model code; its spend limit is the mitigation (D-42).
 
 ### 12.5 Other
 
@@ -450,7 +452,7 @@ Per `TESTING.md` (D-38): pytest, Python 3.13 + 3.14 CI matrix entry `bug-fix`, `
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1 Unit             | selection and ordering; linked-PR index; marker build/parse and bot-author check; classification and caps; commit-message validation; clock invariant; `RunDeadline`; outcome mapping; stream-json parser; scrubber coverage of events |
 | 2 Component        | full pipeline with GitHub REST, `gh`, git remote, Supabase reporter, and `subprocess.run` faked; **fake `claude` executable** emitting canned stream-json for: success, max-turns, permission denial, crash, hang past timeout, hostile issue text, empty result |
-| Security-negative  | CLI env contains no token, key, or `AWS_*` secrets beyond the §9.1 allow-list; injected issue text cannot add flags; forbidden paths; over-cap diff; foreign or unmarked claims untouched by the sweep; `git push`/`gh` denied recorded; scratch files excluded from the commit |
+| Security-negative  | CLI env contains exactly the §9.1 allow-list: no GitHub token, no Supabase key, no `AWS_*` variable, and `ANTHROPIC_API_KEY` as its only secret; injected issue text cannot add flags; forbidden paths; over-cap diff; foreign or unmarked claims untouched by the sweep; `git push`/`gh` denied recorded; scratch files excluded from the commit |
 | Image smoke (CI)   | image builds ARM64; `claude --version` equals the pinned version; managed settings file present; non-root user                                                      |
 | Canary (Wave A)    | the **U** items of D-28 and D-31: CLAUDE.md and `developer` load under the flags; `plan` under `-p`; max-turns exit code/subtype; `num_turns`/`is_error`; silent 20-minute step on the deployed runtime; role-credential spike (§12.4) |
 | Live (Wave C)      | AC-16: a fixture repo with a fixable and an unfixable bug on the deployed runtime                                                                                  |
@@ -465,7 +467,7 @@ Test-first applies: the fake-CLI fixtures and the security-negative cases are wr
 | B    | `cli_runner`, `taskfile`, `installer`, `measure`, `gates`, `red_green`, `pull_request`, prompts, managed settings                                                                                |
 | C    | Live verification (AC-16); runbook finalization; first schedule on one repo you own; enable only after the §12.4 spike is recorded                                                              |
 
-Prerequisites (operator, before Wave A deploy): GitHub App Issues r/w accepted; `OPERATOR_GITHUB_LOGIN` chosen; Bedrock model access confirmed; scheduler Waves C–E merged for G1/G3/G5. Rollback: set `agents.is_enabled = false`; pause schedules; revert the invoke-policy entry; a deployed image can be redeployed to the previous version with the AgentCore CLI. Per FR-49a the runbook (`docs/runbooks/bug-fix-deployment.md`) ships in the same PR as the deploy script or workflow changes.
+Prerequisites (operator, before Wave A deploy): GitHub App Issues r/w accepted; `OPERATOR_GITHUB_LOGIN` chosen; dedicated Anthropic key created with a spend limit and stored in Secrets Manager; scheduler Waves C–E merged for G1/G3/G5. Rollback: set `agents.is_enabled = false`; pause schedules; revert the invoke-policy entry; a deployed image can be redeployed to the previous version with the AgentCore CLI. Per FR-49a the runbook (`docs/runbooks/bug-fix-deployment.md`) ships in the same PR as the deploy script or workflow changes.
 
 ### 15.1 Story-level additions (v1.1)
 
@@ -495,7 +497,7 @@ Resolved by the Wave A canary, not by further design:
 3. Whether `plan` produces a usable task list under `-p` (D-31 **U**).
 4. Whether a child process can reach the role credentials (§12.4).
 5. Whether a 20-minute silent step survives the 900 s idle timeout with a 120 s heartbeat.
-6. The exact Bedrock IAM actions the CLI requires (D-28 lists four; confirm minimal).
+6. The spend-limit value for the dedicated key, set from observed per-run cost (D-42).
 
 ## Decisions (HOW phase)
 
@@ -516,6 +518,9 @@ Resolved by the Wave A canary, not by further design:
 | D-37 | Linked-PR detection by branch prefix and closing keywords, one list call.                                              |
 | D-38 | Test strategy with a fake CLI and a security-negative category.                                                        |
 | D-39 | `stream-json`, one scrubbed event per turn, denials surfaced.                                                          |
+| D-40 | Anthropic API directly, no Bedrock; `MODEL_ID` default `claude-sonnet-5-5`.                                            |
+| D-41 | CLI auth by `ANTHROPIC_API_KEY`; no AWS credentials in the CLI env.                                                    |
+| D-42 | Dedicated key with a monthly spend limit, Secrets Manager, CLI-only.                                                   |
 
 ## Vocabulary
 
@@ -525,6 +530,6 @@ Resolved by the Wave A canary, not by further design:
 | claim             | proposed           | bug-fix         | The three-part act of taking an issue: assign the configured login, replace `status: ready` with `status: in-progress`, and post a marked claim comment. | lock, take, checkout                |
 | disposition       | proposed           | bug-fix         | The issue-side outcome applied when a claimed run ends without a PR: a diagnosis comment and `status: needs-refinement`.                     | triage                              |
 | stale-claim sweep | proposed           | bug-fix         | The start-of-run recovery that applies the disposition to claims whose run is terminal without a PR.                                         | none                                |
-| wrapper           | proposed           | bug-fix         | The Python process in the container that owns every credential and GitHub mutation and measures the CLI's result; the CLI subprocess holds none. | orchestrator, harness               |
+| wrapper           | proposed           | bug-fix         | The Python process in the container that owns every credential and GitHub mutation and measures the CLI's result; the CLI subprocess holds only the dedicated model API key. | orchestrator, harness               |
 | run deadline      | proposed           | bug-fix         | The instant `start + MAX_LIFETIME − DISPOSITION_RESERVE` after which no step starts; each step's timeout is the lesser of its cap and the time remaining. | none                                |
 | claim marker      | proposed           | bug-fix         | The hidden `bug-fix-agent:v1 run=<id>` comment line, valid only when authored by the App's own bot account, that identifies an agent claim.  | none                                |

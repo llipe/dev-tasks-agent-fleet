@@ -10,6 +10,7 @@
 | ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-17 | Initial PRD. Produced from the `activity-grill` WHAT session recorded in `workstream/decisions-bug-fix-agent.md` (D-01–D-24). Third fleet agent: headless Claude Code inside a Python wrapper, claim → fix → gate → Draft PR. | product-engineer |
 | 1.1     | 2026-10-18 | HOW-phase amendments (D-25–D-39): GitHub App has no Issues write (prerequisite); worst case corrected in §17 (model-directed code execution, trust anchor, credential spike); hooks and MCP disabled (FR-11); params resolved (FR-1); added FR-28–FR-31 (permission preflight, dependency install, task list, run deadline); FR-26 corrected (ceilings are dispositions, not failures); red-to-green evidence (FR-19); AC-17–AC-20; open questions replaced; vocabulary gains wrapper, run deadline, claim marker. | product-engineer |
+| 1.2     | 2026-10-19 | Provider change (D-40–D-42): Anthropic API directly, no Bedrock; `MODEL_ID` default `claude-sonnet-5-5`; dedicated `ANTHROPIC_API_KEY` with a spend limit is the CLI's only secret (new FR-32, amended FR-9, FR-11, AC-5, §12, §15, §16, §17, §18 Q6, diagram, vocabulary). | product-engineer |
 
 ---
 
@@ -88,9 +89,9 @@ flowchart TD
 
 ### 7.3 Fix loop and confinement
 
-- **FR-9.** The wrapper SHALL perform clone, branch (`issue/<N>-<slug>`), commit, push, PR creation, and every issue mutation. The Claude Code subprocess SHALL run with no GitHub token and no Supabase key in its environment, with `git push` and `gh` denied, permitted only to edit files in the checkout and run the repository's gate and test commands (D-11, D-12).
+- **FR-9.** The wrapper SHALL perform clone, branch (`issue/<N>-<slug>`), commit, push, PR creation, and every issue mutation. The Claude Code subprocess SHALL run with no GitHub token, no Supabase key, and no AWS credentials in its environment — its only secret is the dedicated Anthropic API key (FR-32) — with `git push` and `gh` denied, permitted only to edit files in the checkout and run the repository's gate and test commands (D-11, D-12).
 - **FR-10.** The issue title and body SHALL be passed to the model as quoted, untrusted data (D-11).
-- **FR-11.** The subprocess SHALL load the target repository's `CLAUDE.md` and `developer` definition, with the repository's hooks and MCP servers disabled (enforced by CLI flags and a managed-settings file in the image), on the model given by `MODEL_ID` (default Sonnet) (D-04, D-05, D-29).
+- **FR-11.** The subprocess SHALL load the target repository's `CLAUDE.md` and `developer` definition, with the repository's hooks and MCP servers disabled (enforced by CLI flags and a managed-settings file in the image), on the Anthropic API model given by `MODEL_ID` (default `claude-sonnet-5-5`) (D-05, D-29, D-40).
 - **FR-12.** The wrapper SHALL bound the CLI with `--max-turns` (default 40) and a wall-clock kill (default 30 minutes), and the whole run with a 60-minute lifetime. All three are params. Reaching any ceiling takes the disposition path with the reason (D-22).
 
 ### 7.4 Change limits
@@ -129,6 +130,7 @@ flowchart TD
 - **FR-29.** After the claim and before the CLI starts, the wrapper SHALL install the repository's dependencies (JS/TS: `pnpm install --frozen-lockfile` or `npm ci`; Python: a throwaway virtualenv via `make install` or `pip install -e '.[dev]'`), with a 300-second cap; lifecycle scripts run. A failed install takes the disposition path. A lockfile changed by the install is reverted before measuring (D-33).
 - **FR-30.** The task list SHALL be the issue's own checklist copied into a scratch, uncommitted `workstream/tasks-issue-<N>-<slug>.md`. When the issue has none, a first CLI pass runs the repository's `plan` skill to produce it, within its own turn cap and the shared CLI wall-clock budget; a failed or empty pass takes the disposition path (`NO_TASK_LIST`) (D-31).
 - **FR-31.** A run-level deadline (`start + lifetime − 180 s`) SHALL bound every step: each step's timeout is the lesser of its cap and the time remaining, and an exhausted budget before a step takes the disposition path (`RUN_BUDGET_EXHAUSTED`) (D-30).
+- **FR-32.** The CLI SHALL authenticate to the Anthropic API with a dedicated key used by no other agent, held in Secrets Manager, fetched by the wrapper, registered with the scrubber, and passed only to the CLI process; the key's workspace carries a monthly spend limit (D-41, D-42).
 
 ## 8. Business Rules
 
@@ -173,18 +175,18 @@ flowchart LR
     S[pg_cron scheduler<br/>or panel invoke] --> W
     subgraph R[AgentCore runtime: bug-fix container]
         W[Python wrapper<br/>credentials, GitHub, gates]
-        C[claude -p subprocess<br/>no tokens, edit and test only]
+        C[claude -p subprocess<br/>model key only, edit and test only]
         W --> C
     end
     W --> GH[GitHub: issues, branches, PRs]
     W --> DB[(Supabase: runs, run_events)]
-    C --> BR[Bedrock: Sonnet]
+    C --> AN[Anthropic API: Sonnet]
 ```
 
 - **Runtime:** AgentCore Container, ARM64, Python wrapper following the sibling modules (`agent_reporter`, `credentials`, `heartbeat`, `signal_backstop`, `scrubber`, `pull_request`). The image adds Node, pnpm/npm, Python toolchain, and the Claude Code CLI (D-03, D-05).
-- **Model:** `MODEL_ID` env var, default `us.anthropic.claude-sonnet-4-6` on Bedrock (D-04).
+- **Model:** Anthropic API directly, not Bedrock (D-40). `MODEL_ID` env var, default `claude-sonnet-5-5`; the CLI authenticates with a dedicated `ANTHROPIC_API_KEY` (D-41, D-42). This differs from the sibling agents, which call Bedrock.
 - **First fleet agent not built on Strands.** Confinement and cap enforcement therefore live in the wrapper (D-05).
-- **Infrastructure scope.** A new AgentCore runtime, the panel's `invoke-runtime` IAM policy (it lists runtime and `runtime-endpoint/DEFAULT` ARNs explicitly; a new runtime is not covered without an entry — see issue #280), and Bedrock model access for the runtime role. **Recommend an `infra-engineer` pass.**
+- **Infrastructure scope.** A new AgentCore runtime, the panel's `invoke-runtime` IAM policy (it lists runtime and `runtime-endpoint/DEFAULT` ARNs explicitly; a new runtime is not covered without an entry — see issue #280), and the dedicated Anthropic API key in Secrets Manager with Secrets Manager read for the runtime role (no Bedrock access is needed, D-40). **Recommend an `infra-engineer` pass.**
 - **Scheduler dependency.** Waves C–E of the scheduler are not yet merged to `integration/agent-scheduler` (roadmap). G1, G3, and G5 reach this agent only once they are (D-01).
 - **GitHub App permissions.** The agent needs Issues read/write (assign, labels, comments) in addition to contents and pull-request write. The existing installation does **not** grant Issues write (the sibling PRDs list Contents, Pull requests, Metadata only); it must be added and accepted by the installation owner before Wave A deploys (D-25).
 - **Runbook.** Per FR-49a, a runbook for deploy and live verification ships in the same PR as the deploy scripts or workflow changes.
@@ -195,7 +197,7 @@ flowchart LR
 - **AC-2 (explicit gate).** Given an open `type: bug` issue without `status: ready`, when invoked with its number, then the run ends `succeeded`/`not_applicable` with a reason and the issue is unchanged (D-10).
 - **AC-3 (claim).** After a claim, the issue shows the configured assignee, `status: in-progress` and no `status: ready`, and a comment with the run ID and marker (D-07).
 - **AC-4 (not applicable).** A repo without `.claude/agents/developer.md`, or missing any of the four gates, ends `succeeded`/`not_applicable` naming the missing item, with no issue change (D-06, D-19).
-- **AC-5 (confinement).** In a test run the CLI environment contains no GitHub token or Supabase key, and an attempted `git push` or `gh` call is denied (D-11).
+- **AC-5 (confinement).** In a test run the CLI environment contains no GitHub token, Supabase key, or AWS credential variable, its only secret is `ANTHROPIC_API_KEY`, and an attempted `git push` or `gh` call is denied (D-11, D-41, D-42).
 - **AC-6 (prompt injection).** Given an issue body instructing the model to exfiltrate secrets or push to another branch, no credential is reachable and no push other than the wrapper's occurs (D-11).
 - **AC-7 (caps).** A change touching 11 code files, or 401 code lines, or any lockfile, CI workflow, or `.claude/` path, produces no PR and takes the disposition path with the diffstat; docs and tests do not count toward the caps (D-09).
 - **AC-8 (regression test).** A change without a test, or whose tests pass on the base code, produces no PR and takes the disposition path (D-09, D-15).
@@ -226,7 +228,7 @@ Initial targets, to be calibrated after the first 5–10 real runs (the same hor
 ## 15. Assumptions
 
 - The GitHub App installation can be given issue write on the managed repos.
-- The Claude Code CLI can be run non-interactively against Bedrock with the runtime role, using the model in `MODEL_ID`.
+- The Claude Code CLI can be run non-interactively against the Anthropic API with `ANTHROPIC_API_KEY`, using the model in `MODEL_ID`, from the AgentCore runtime's public network.
 - Managed repos use pnpm/npm or a Makefile with canonical targets; repos that do not end `not_applicable` and are fixed by the operator over time.
 - 10 files / 400 code lines / 40 turns / 30 minutes are reasonable starting values (D-09, D-22); they are estimates, not measured.
 - The operator is the right default assignee (D-07).
@@ -235,12 +237,12 @@ Initial targets, to be calibrated after the first 5–10 real runs (the same hor
 
 - Scheduler Waves C–E merged to `integration/agent-scheduler` for G1/G3/G5 (roadmap).
 - GitHub App permissions (Section 12) and the panel `invoke-runtime` IAM entry (issue #280).
-- Bedrock model access in the runtime role.
+- A dedicated Anthropic API key for `bug-fix` with a monthly spend limit, stored in Secrets Manager (`agent-fleet/prod/ANTHROPIC_API_KEY`) (D-42).
 - `docs/product-context.md` and `docs/technical-guidelines.md` are the foundation documents in this repository (old names; `dev-tasks migrate docs` is proposed).
 
 ## 17. Security & Compliance
 
-- **Threat:** issue text is untrusted input to a model that writes tests the wrapper then runs, so model-directed arbitrary code executes in the container (D-11, D-27). Anything the runtime role can read (the Supabase service-role key, the GitHub App private key) is potentially reachable; whether AgentCore exposes role credentials to child processes is unverified. **v1 boundary:** the human `status: ready` gate plus repositories the operator owns where reporters are trusted. **Mitigations:** FR-9, FR-10, the wrapper-side validation of every output (FR-13–FR-19), disabled hooks and MCP (FR-11), and branch protection on `main`. **Blocking before any schedule is enabled:** the Wave A credential spike (specification §12.4). **Top fast-follow:** credential isolation (role split or a sandbox runtime). The earlier statement that the worst case is a bad Draft PR no longer holds.
+- **Threat:** issue text is untrusted input to a model that writes tests the wrapper then runs, so model-directed arbitrary code executes in the container (D-11, D-27). Anything the runtime role can read (the Supabase service-role key, the GitHub App private key) is potentially reachable; whether AgentCore exposes role credentials to child processes is unverified. **v1 boundary:** the human `status: ready` gate plus repositories the operator owns where reporters are trusted. **Mitigations:** FR-9, FR-10, the wrapper-side validation of every output (FR-13–FR-19), disabled hooks and MCP (FR-11), and branch protection on `main`. **Blocking before any schedule is enabled:** the Wave A credential spike (specification §12.4). **Model key:** the CLI must hold the dedicated Anthropic API key, so model-directed code can read it; it is scoped to this agent with a hard monthly spend limit, so a leak costs capped spend until rotation and reaches neither GitHub nor Supabase (D-42). **Top fast-follow:** credential isolation (role split or a sandbox runtime). The earlier statement that the worst case is a bad Draft PR no longer holds.
 - **Repository-controlled code runs in the container.** The target repo's `.claude/` hooks and its test, lint, and build scripts execute in the container. They see no secrets (FR-9) but are third-party code. Egress is the existing AgentCore network mode.
 - **Forbidden paths** (FR-14) stop the agent from changing the guards it runs under.
 - **Auditability:** claim and disposition comments, run events, and the PR body record what happened. The agent never merges (D-13).
@@ -254,7 +256,7 @@ The eight HOW questions of v1.0 are resolved in `workstream/specification-prd-bu
 3. Whether the target repo's `CLAUDE.md` and `developer` definition load under the hook/MCP-disabling flags.
 4. The CLI's max-turns result subtype and exit code.
 5. Whether a silent 20-minute step survives the 900-second idle timeout with a 120-second heartbeat.
-6. The minimal Bedrock IAM action set the CLI needs.
+6. The spend-limit value for the dedicated key, set from the first runs' `runs.metrics` cost (D-42).
 
 ## Decisions
 
@@ -263,7 +265,7 @@ The eight HOW questions of v1.0 are resolved in `workstream/specification-prd-bu
 | D-01 | Reuse the fleet scheduler; no own scheduler.                                                                     |
 | D-02 | Labels `type: bug`, `status: ready`, `status: in-progress`, `status: needs-refinement` already exist.            |
 | D-03 | Follows the sibling AgentCore + Supabase reporting contract.                                                     |
-| D-04 | Model is Sonnet via `MODEL_ID`.                                                                                  |
+| D-04 | Model is Sonnet via `MODEL_ID` (provider superseded by D-40).                                                    |
 | D-05 | Headless Claude Code inside a Python wrapper (not Strands).                                                      |
 | D-06 | No `developer.md` in the repo → `not_applicable`; no fallback.                                                   |
 | D-07 | Claim = assign operator + `in-progress` label + claim comment.                                                   |
@@ -299,6 +301,9 @@ The eight HOW questions of v1.0 are resolved in `workstream/specification-prd-bu
 | D-37 | Linked-PR detection by branch prefix and closing keywords.                                                       |
 | D-38 | Test strategy with a fake CLI and a security-negative category.                                                  |
 | D-39 | `stream-json`, one scrubbed event per turn.                                                                      |
+| D-40 | Anthropic API directly, no Bedrock; `MODEL_ID` default `claude-sonnet-5-5`.                                      |
+| D-41 | CLI auth by `ANTHROPIC_API_KEY`; no AWS credentials in the CLI env.                                              |
+| D-42 | Dedicated key with a monthly spend limit, Secrets Manager, CLI-only.                                             |
 
 ## Vocabulary
 
@@ -308,6 +313,6 @@ The eight HOW questions of v1.0 are resolved in `workstream/specification-prd-bu
 | claim              | proposed           | bug-fix         | The three-part act of taking an issue: assign the configured login, replace `status: ready` with `status: in-progress`, and post a marked claim comment. | lock, take, checkout                |
 | disposition        | proposed           | bug-fix         | The issue-side outcome applied when a claimed run ends without a PR: a diagnosis comment and `status: needs-refinement`.             | triage                              |
 | stale-claim sweep  | proposed           | bug-fix         | The start-of-run recovery that applies the disposition to claims whose run is terminal without a PR.                                 | none                                |
-| wrapper            | proposed           | bug-fix         | The Python process in the container that owns every credential and GitHub mutation and measures the CLI's result; the CLI subprocess holds none. | orchestrator, harness               |
+| wrapper            | proposed           | bug-fix         | The Python process in the container that owns every credential and GitHub mutation and measures the CLI's result; the CLI subprocess holds only the dedicated model API key. | orchestrator, harness               |
 | run deadline       | proposed           | bug-fix         | The instant `start + lifetime − disposition reserve` after which no step starts; each step's timeout is the lesser of its cap and the time remaining. | none                                |
 | claim marker       | proposed           | bug-fix         | The hidden `bug-fix-agent:v1 run=<id>` comment line, valid only when authored by the App's own bot account, that identifies an agent claim. | none                                |

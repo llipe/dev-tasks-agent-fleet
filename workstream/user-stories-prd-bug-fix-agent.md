@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                                                                                                                         | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-18 | Initial stories S-180–S-203 (24, numbered S-180–S-203 because S-165–S-179 are held by `[PRD-webhook-triggers]`, issues #309–#324) for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1 and [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v1.0. | product-engineer |
+| 1.1     | 2026-10-19 | Provider change (D-40–D-42): Anthropic API directly, no Bedrock. S-180 env gains `ANTHROPIC_KEY_SECRET_ID` and the `MODEL_ID` default; S-188 replaces Bedrock access/IAM with the dedicated key and spend limit; S-189 drops the Bedrock probe and checks the child sees no AWS variables; S-190, S-191 wording and env assertion; FR-32 added to coverage. | product-engineer |
 
 ## Overview
 
@@ -62,7 +63,7 @@ flowchart LR
 | 2     | S-181, S-182, S-183 (parallel)  | A    | Independent after S-180                                                   |
 | 3     | S-184, S-185 (parallel)         | A    | Both need S-183                                                           |
 | 4     | S-186, S-187                    | A    | S-186 needs S-185; S-187 needs S-184–S-186                                |
-| 5     | S-188                           | A    | **Operator prerequisites** (App Issues r/w, `OPERATOR_GITHUB_LOGIN`, Bedrock access) |
+| 5     | S-188                           | A    | **Operator prerequisites** (App Issues r/w, `OPERATOR_GITHUB_LOGIN`, dedicated Anthropic key) |
 | 6     | S-189                           | A    | Canary and credential spike; **gate for Wave B and for any schedule**     |
 | 7     | S-190 → S-191 → S-192           | B    | CLI boundary, test-first                                                  |
 | 8     | S-193, S-194, S-195 (parallel)  | B    |                                                                           |
@@ -92,7 +93,7 @@ The siblings enforce their timeout clocks at startup (ADR-006). This agent needs
 
 #### Acceptance Criteria
 
-- [ ] `agents/bug-fix/` exists with `agentcore/agentcore.json` (runtime `bug_fix`, Container, `PYTHON_3_14`, `maxLifetime` 3600, `idleRuntimeSessionTimeout` 900, env `MODEL_ID`, `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `OPERATOR_GITHUB_LOGIN`, `FIX_PIPELINE_ENABLED=0`) and `app/bugFix/` with `Makefile` exposing the canonical targets.
+- [ ] `agents/bug-fix/` exists with `agentcore/agentcore.json` (runtime `bug_fix`, Container, `PYTHON_3_14`, `maxLifetime` 3600, `idleRuntimeSessionTimeout` 900, env `MODEL_ID` (default `claude-sonnet-5-5`), `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID`, `OPERATOR_GITHUB_LOGIN`, `FIX_PIPELINE_ENABLED=0`) and `app/bugFix/` with `Makefile` exposing the canonical targets.
 - [ ] `config.assert_clock_invariant()` raises `ClockConsistencyError` unless `0 < HEARTBEAT <= IDLE/2`, `CLONE+INSTALL+CLI+RESERVE <= MAX_LIFETIME`, `MAX_LIFETIME <= REAPER_THRESHOLD`, `GATE_TIMEOUT <= CLI_TIMEOUT`; a test calls it against the shipped constants (AC-18).
 - [ ] `RunDeadline` returns `remaining()` monotonically; `step_timeout(cap)` is `min(cap, remaining)`; with no time left it signals budget exhaustion (FR-31).
 - [ ] `agent_reporter.py` is byte-identical to the sibling copy (a test compares hashes).
@@ -159,7 +160,7 @@ So that a target repository cannot re-enable hooks, MCP servers, or tools the ag
 
 #### Context
 
-D-29 disables repo hooks and MCP; D-28 pins the CLI. The image must be reproducible and verifiable in CI without Bedrock.
+D-29 disables repo hooks and MCP; D-28 pins the CLI. The image must be reproducible and verifiable in CI without calling the Anthropic API.
 
 #### Acceptance Criteria
 
@@ -638,8 +639,9 @@ D-25, spec §7. This story runs through `infra-engineer`, one approved step at a
 #### Acceptance Criteria
 
 - [ ] **GitHub App:** Issues read/write added and accepted by the installation owner; verified by a successful run of `preflight` against a target repo (manual step, evidenced in the change record).
-- [ ] `OPERATOR_GITHUB_LOGIN` chosen and set in the runtime env; Bedrock model access for `MODEL_ID` confirmed in the account/region.
-- [ ] The runtime role has the four Bedrock actions in D-28 and the same Secrets Manager reads as the siblings.
+- [ ] `OPERATOR_GITHUB_LOGIN` chosen and set in the runtime env.
+- [ ] A dedicated Anthropic API key for `bug-fix` is created in its own Console workspace with a monthly spend limit, stored as `agent-fleet/prod/ANTHROPIC_API_KEY`, and verified by one model call with `MODEL_ID` (D-42).
+- [ ] The runtime role has the siblings' Secrets Manager reads plus `agent-fleet/prod/ANTHROPIC_API_KEY`, and **no** Bedrock permissions (D-40).
 - [ ] `infra/agentcore-invoke-policy.json` lists the new runtime ARN **and** its `/runtime-endpoint/DEFAULT`; the live policy is updated and verified by a panel invoke reaching `running`.
 - [ ] `infra/environments.yaml` gains `bug-fix`; the seed `runtime_arn` is set after the first deploy.
 - [ ] The Wave A image is deployed with `FIX_PIPELINE_ENABLED=0`; a manual invoke from the panel on a fixture repo ends `succeeded` with the "not enabled" event or `no_findings`.
@@ -710,10 +712,10 @@ Spec §12.4 and §14. Answers PRD §18 Q1–Q6. Needs a canary-only probe surfac
 #### Acceptance Criteria
 
 - [ ] A `canary` param (`credentials`, `idle_survival`, `cli_flags`) is accepted only when `ALLOW_CANARY=1`; the production deployment never sets it and a test asserts the param is rejected without it.
-- [ ] `credentials`: from a **child process**, attempts to read role credentials from the environment and the container credential endpoint, and to call `secretsmanager:GetSecretValue` for the Supabase and App-key secrets; results (reachable yes/no per item) are written to a run_event without secret values.
+- [ ] `credentials`: from a **child process**, attempts to read role credentials from the environment and the container credential endpoint, and to call `secretsmanager:GetSecretValue` for the Supabase and App-key secrets, and confirms the child sees no AWS credential variables in its environment; results (reachable yes/no per item) are written to a run_event without secret values.
 - [ ] `idle_survival`: a silent 20-minute step under the heartbeat completes on the deployed runtime.
-- [ ] `cli_flags`: against a fixture repo, records whether `CLAUDE.md` and `developer` load under `--settings disableAllHooks`, `--strict-mcp-config`, and the managed file; the max-turns result subtype and exit code; presence of `num_turns` and `is_error`; whether `plan` produces a task list under `-p`; the minimal Bedrock actions needed.
-- [ ] Results are recorded in the runbook and as `D-40+` rows in the decision log; spec §12.4 and PRD §18 are updated.
+- [ ] `cli_flags`: against a fixture repo, records whether `CLAUDE.md` and `developer` load under `--settings disableAllHooks`, `--strict-mcp-config`, and the managed file; the max-turns result subtype and exit code; presence of `num_turns` and `is_error`; whether `plan` produces a task list under `-p`; that the CLI reaches `api.anthropic.com` with `ANTHROPIC_API_KEY` and `MODEL_ID`.
+- [ ] Results are recorded in the runbook and as new `D-NN` rows in the decision log; spec §12.4 and PRD §18 are updated.
 - [ ] Decision gate: if a child process can read the secrets, a credential-isolation story is created and **blocks S-202**.
 
 #### Business Rules
@@ -730,7 +732,7 @@ Spec §12.4 and §14. Answers PRD §18 Q1–Q6. Needs a canary-only probe surfac
 - **Unit Tests:** canary param gating; result redaction.
 - **Integration Tests:** component test of each canary with a fake child; live run on the deployed runtime.
 - **Manual/UI Testing:** invoke each canary from the panel; read the events.
-- **Edge-Case Matrix:** `ALLOW_CANARY` unset; Bedrock access denied; secret read denied (the good outcome); CLI missing.
+- **Edge-Case Matrix:** `ALLOW_CANARY` unset; invalid or revoked Anthropic key; secret read denied (the good outcome); CLI missing.
 - **Acceptance-Criteria Mapping:** AC1 → `test_canary_gate`; AC2–AC4 → live evidence in the runbook; AC5 → doc diff; AC6 → issue link.
 - **Execution Commands:** `make validate`; panel invokes.
 
@@ -771,7 +773,7 @@ None (opt-out: no data-model change).
 
 As a developer of the agent,
 I want a fake `claude` executable that emits recorded outputs,
-So that the CLI boundary can be tested without Bedrock and written test-first.
+So that the CLI boundary can be tested without calling the Anthropic API and written test-first.
 
 #### Context
 
@@ -779,7 +781,7 @@ D-38. Fixtures are built from the real shapes the canary recorded (S-189), not f
 
 #### Acceptance Criteria
 
-- [ ] `tests/fakes/claude` is an executable script selected by a scenario file; scenarios: success, max-turns, permission denial, crash (non-zero, no result), hang (ignores SIGTERM), empty result, hostile issue text, oversize output.
+- [ ] `tests/fakes/claude` is an executable script selected by a scenario file; scenarios: success, max-turns, permission denial, crash (non-zero, no result), hang (ignores SIGTERM), empty result, hostile issue text, oversize output, invalid API key.
 - [ ] Fixtures reproduce the canary-recorded result shape (subtype names, fields, exit codes).
 - [ ] A helper installs the fake on `PATH` for a test and asserts argv, stdin, and environment it received.
 - [ ] The fake writes the files the scenario specifies into the workspace (edits, tests) so downstream measure and gate tests have real diffs.
@@ -842,7 +844,8 @@ D-11, D-28, D-29. The credential boundary the CLI itself can see; the deeper rol
 
 #### Acceptance Criteria
 
-- [ ] The environment is built from an **allow-list** (spec §9.1) and never from `os.environ`; a test enumerates the exact keys and asserts no `GITHUB_*`, `GH_*`, `SUPABASE_*`, token, or private-key variable is present (AC-5).
+- [ ] The environment is built from an **allow-list** (spec §9.1) and never from `os.environ`; a test enumerates the exact keys and asserts no `GITHUB_*`, `GH_*`, `SUPABASE_*`, `AWS_*`, token, or private-key variable is present, and that `ANTHROPIC_API_KEY` is the only secret (AC-5, D-41, D-42).
+- [ ] `ANTHROPIC_API_KEY` is the dedicated key fetched by the wrapper from `ANTHROPIC_KEY_SECRET_ID`, registered with the scrubber, and set only in the CLI process environment, never in the wrapper's own `os.environ` (FR-32).
 - [ ] `HOME` and `CLAUDE_CONFIG_DIR` are a per-run temp directory deleted afterward; `DISABLE_UPDATES=1`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`, telemetry and auto-memory off.
 - [ ] argv includes `--permission-mode dontAsk --permission-prompts none`, `--tools`, the per-repo `--allowedTools`, `--disallowedTools` (`WebFetch`, `WebSearch`, `Bash(git push *)`, `Bash(gh *)`), `--settings '{"disableAllHooks":true}'`, `--strict-mcp-config --mcp-config /etc/claude-code/mcp-empty.json`, `--append-system-prompt-file`, `--max-turns`, `--model`, `--output-format stream-json --verbose`, `--no-session-persistence` (FR-9, FR-11).
 - [ ] Issue title and body go on stdin only, quoted as data, truncated at 64 KB with a marker; a body containing flag-like text cannot alter argv (AC-6).
@@ -1680,9 +1683,9 @@ None (opt-out: documentation only).
 
 ### Summary
 
-- **Total PRD Requirements:** 31 FR + 20 AC + 5 goals + 5 business-rule groups + 3 data requirements + 6 security/dependency items = **70**
+- **Total PRD Requirements:** 32 FR + 20 AC + 5 goals + 5 business-rule groups + 3 data requirements + 6 security/dependency items = **71**
 - **Total User Stories:** 24
-- **Coverage:** 100% (70/70)
+- **Coverage:** 100% (71/71)
 - **Status:** Complete
 
 ### Requirement Mapping
@@ -1720,6 +1723,7 @@ None (opt-out: documentation only).
 | FR-29 dependency install                                                   | S-193                    | ✅ Covered |
 | FR-30 task list                                                            | S-194                    | ✅ Covered |
 | FR-31 run deadline                                                         | S-180, S-200             | ✅ Covered |
+| FR-32 dedicated Anthropic key, CLI-only, spend limit                       | S-188, S-191             | ✅ Covered |
 | AC-1 selection                                                             | S-184                    | ✅ Covered |
 | AC-2 explicit gate                                                         | S-184                    | ✅ Covered |
 | AC-3 claim                                                                 | S-185, S-199             | ✅ Covered |
@@ -1752,7 +1756,7 @@ None (opt-out: documentation only).
 | Security: model-directed code execution, trust anchor, spike               | S-189, S-202             | ✅ Covered |
 | Dependency: GitHub App Issues r/w                                          | S-188                    | ✅ Covered |
 | Dependency: invoke-policy IAM entry (#280)                                 | S-188                    | ✅ Covered |
-| Dependency: Bedrock access and roles                                       | S-188                    | ✅ Covered |
+| Dependency: dedicated Anthropic key with spend limit (FR-32)              | S-188, S-191             | ✅ Covered |
 | Dependency: scheduler Waves C–E merged                                     | S-202                    | ✅ Covered |
 | Runbook in the same PR (FR-49a)                                            | S-188, S-201, S-202      | ✅ Covered |
 | Foundation docs, ADR, glossary append                                      | S-203                    | ✅ Covered |
