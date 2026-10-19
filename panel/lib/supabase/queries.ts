@@ -1230,3 +1230,27 @@ export async function markAllNotificationsRead(client: SupabaseClient): Promise<
     throw new DatabaseError("markAllNotificationsRead", result.error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Webhook Triggers (S-166, #310)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read an endpoint's signing secret from Vault through the service_role-only
+ * `public.webhook_endpoint_secret` RPC (D-W4). Server-only: the returned value
+ * must never be logged, put in a row type, or sent to the client (AC9).
+ *
+ * Fails closed: an absent, empty, or non-string value returns `null`, which the
+ * inbound route (S-169) treats as `401` (test plan EC-21). An RPC error throws a
+ * `DatabaseError` whose message never carries the Postgres detail.
+ */
+export async function getEndpointSecret(
+  client: SupabaseClient,
+  endpointId: string,
+): Promise<string | null> {
+  const result = await client.rpc("webhook_endpoint_secret", { p_endpoint_id: endpointId });
+  if (result.error) {
+    throw new DatabaseError("getEndpointSecret", result.error);
+  }
+  return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
