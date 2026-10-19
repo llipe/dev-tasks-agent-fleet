@@ -23,6 +23,7 @@ import {
 } from "@aws-sdk/client-bedrock-agentcore";
 import { awsCredentials, credentialSource } from "./credentials";
 import { CredentialsUnavailableError, INVOCATION_FAILED, InvocationFailedError } from "./errors";
+import { describeAwsError, formatAwsErrorSuffix } from "./aws-error";
 
 export interface InvokeTarget {
   /** `agents.runtime_arn` — the InvokeAgentRuntime target. */
@@ -78,12 +79,19 @@ export async function invokeAgentRuntime(
     await client.send(command as never);
   } catch (err) {
     // A credential failure surfaced from the provider stays a 500; anything
-    // else from the invoke call is a 502.
+    // else from the invoke call is a 502. Either way, log ONLY the allowlisted
+    // AWS error fields (name/http/requestId) — never the SDK message, the
+    // payload, or any credential material (#306). For the credential path the
+    // useful SDK name lives one hop down, on the wrapper's `cause`.
     if (err instanceof CredentialsUnavailableError) {
-      logger.error(`[invoke] credentials unavailable code=${err.code}`);
+      logger.error(
+        `[invoke] credentials unavailable code=${err.code}${formatAwsErrorSuffix(describeAwsError(err))}`,
+      );
       throw err;
     }
-    logger.error(`[invoke] InvokeAgentRuntime failed code=${INVOCATION_FAILED}`);
+    logger.error(
+      `[invoke] InvokeAgentRuntime failed code=${INVOCATION_FAILED}${formatAwsErrorSuffix(describeAwsError(err))}`,
+    );
     throw new InvocationFailedError("InvokeAgentRuntime failed.", { cause: err });
   }
 }

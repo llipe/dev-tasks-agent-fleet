@@ -28,6 +28,7 @@ vi.mock("@/lib/aws/invoke", () => aws);
 vi.mock("@/lib/aws/credentials", () => ({ credentialSource: () => "local-chain" }));
 
 import { POST } from "@/app/api/internal/schedules/[id]/fire/route";
+import { InvocationFailedError } from "@/lib/aws/errors";
 
 const SCHEMA = {
   type: "object",
@@ -187,5 +188,47 @@ describe("fire endpoint — invalid params (counts toward G3)", () => {
       "sch-1",
       "INVALID_PARAMS",
     );
+  });
+});
+
+describe("fire endpoint — AWS error name on the invocation_failed event (#306)", () => {
+  it("adds aws_error/http/request_id, never the SDK message or params", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sdkErr = Object.assign(new Error("not authorized: SENTINEL-DO-NOT-LOG"), {
+      name: "AccessDeniedException",
+      $metadata: { httpStatusCode: 403, requestId: "req-fire" },
+    });
+    aws.invokeAgentRuntime.mockRejectedValue(
+      new InvocationFailedError("InvokeAgentRuntime failed.", { cause: sdkErr }),
+    );
+
+    const res = await fire(SECRET);
+    expect(res.status).toBe(502);
+
+    const lines = error.mock.calls.map((c) => String(c[0]));
+    const failed = lines.find((l) => l.includes('"event":"invocation_failed"'));
+    expect(failed).toBeDefined();
+    const parsed = JSON.parse(failed!);
+    expect(parsed.error_code).toBe("INVOCATION_FAILED");
+    expect(parsed.aws_error).toBe("AccessDeniedException");
+    expect(parsed.http).toBe(403);
+    expect(parsed.request_id).toBe("req-fire");
+
+    const all = lines.join(" ");
+    expect(all).not.toContain("SENTINEL-DO-NOT-LOG");
+    expect(all).not.toContain("fix_mode");
+    error.mockRestore();
+  });
+
+  it("logs aws_error=unknown for a non-AWS invoke failure", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    aws.invokeAgentRuntime.mockRejectedValue(new Error("plain non-aws failure"));
+    await fire(SECRET);
+    const failed = error.mock.calls
+      .map((c) => String(c[0]))
+      .find((l) => l.includes('"event":"invocation_failed"'));
+    expect(failed).toBeDefined();
+    expect(JSON.parse(failed!).aws_error).toBe("unknown");
+    error.mockRestore();
   });
 });

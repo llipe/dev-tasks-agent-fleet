@@ -25,6 +25,7 @@ import { authorizeInternalRequest } from "@/lib/auth/internal-secret";
 import { createServerClient } from "@/lib/supabase/server";
 import { getUndeliveredNotifications, markNotificationsEmailed } from "@/lib/supabase/queries";
 import { renderDigest, sendDigestEmail, SES_SEND_FAILED } from "@/lib/aws/ses";
+import { describeAwsError } from "@/lib/aws/aws-error";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,7 +34,14 @@ export const runtime = "nodejs";
 
 /** Secret-free structured log line (never logs the secret, recipient, or body). */
 function logDigest(
-  fields: { event: string; count?: number; error_code?: string },
+  fields: {
+    event: string;
+    count?: number;
+    error_code?: string;
+    aws_error?: string;
+    http?: number;
+    request_id?: string;
+  },
   logger: Pick<Console, "info" | "error"> = console,
 ): void {
   const line = JSON.stringify({ at: "notification_digest", ...fields });
@@ -84,7 +92,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     await sendDigestEmail({ rendered, sender, recipient });
   } catch (err) {
     const code = (err as { code?: string } | null)?.code ?? SES_SEND_FAILED;
-    logDigest({ event: "send_failed", count: rows.length, error_code: code });
+    logDigest({
+      event: "send_failed",
+      count: rows.length,
+      error_code: code,
+      // Allowlisted AWS error fields only (#306) — the SES error name lives one
+      // hop down on the SesSendFailedError `cause`. Never the recipient,
+      // sender, message body, or the SES message text.
+      ...describeAwsError(err),
+    });
     // emailed_at stays null -> retried next day. 502 (downstream failure).
     return NextResponse.json({ error: { code } }, { status: 502 });
   }

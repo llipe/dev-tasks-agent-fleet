@@ -41,6 +41,7 @@ import { invokeAgentRuntime } from "@/lib/aws/invoke";
 import { authorizeInternalRequest } from "@/lib/auth/internal-secret";
 import { asTypedError, INVOCATION_FAILED } from "@/lib/errors";
 import { credentialSource } from "@/lib/aws/credentials";
+import { describeAwsError } from "@/lib/aws/aws-error";
 import type { AnySchema } from "ajv";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,15 @@ export const runtime = "nodejs";
 
 /** Structured, secret-free fire log line. Never logs the shared secret. */
 function logFire(
-  fields: { schedule_id: string; run_id?: string; event: string; error_code?: string },
+  fields: {
+    schedule_id: string;
+    run_id?: string;
+    event: string;
+    error_code?: string;
+    aws_error?: string;
+    http?: number;
+    request_id?: string;
+  },
   logger: Pick<Console, "info" | "error"> = console,
 ): void {
   const line = JSON.stringify({
@@ -183,7 +192,14 @@ export async function POST(
       // The run stays queued; the reaper is the backstop.
     }
     await recordScheduleFireFailure(client, id, errorCode);
-    logFire({ schedule_id: id, run_id: runId, event: "invocation_failed", error_code: errorCode });
+    logFire({
+      schedule_id: id,
+      run_id: runId,
+      event: "invocation_failed",
+      error_code: errorCode,
+      // Allowlisted AWS error fields only (#306) — never the SDK message.
+      ...describeAwsError(invokeErr),
+    });
     return NextResponse.json({ error: { code: errorCode }, run_id: runId }, { status });
   }
 

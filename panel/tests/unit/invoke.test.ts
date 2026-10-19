@@ -102,3 +102,57 @@ describe("invokeAgentRuntime (AC6, §13)", () => {
     expect(capture).toHaveLength(1);
   });
 });
+
+describe("invokeAgentRuntime — AWS error name on failure (issue #306)", () => {
+  it("appends aws_error/http/request_id to the InvokeAgentRuntime failure log line", async () => {
+    const logger = makeLogger();
+    const sdkErr = Object.assign(new Error("not authorized to InvokeAgentRuntime: SENTINEL"), {
+      name: "AccessDeniedException",
+      $metadata: { httpStatusCode: 403, requestId: "req-abc" },
+    });
+    const send = vi.fn().mockRejectedValue(sdkErr);
+    await expect(
+      invokeAgentRuntime(target, { payload: {}, logger, clientFactory: () => ({ send }) }),
+    ).rejects.toBeInstanceOf(InvocationFailedError);
+
+    const line = logger.error.mock.calls[0]![0] as string;
+    expect(line).toContain("code=INVOCATION_FAILED");
+    expect(line).toContain("aws_error=AccessDeniedException");
+    expect(line).toContain("http=403");
+    expect(line).toContain("request_id=req-abc");
+    // Security-negative: the SDK message must never reach the log line.
+    expect(line).not.toContain("SENTINEL");
+  });
+
+  it("appends the STS error name (via cause) to the credentials-unavailable log line", async () => {
+    const logger = makeLogger();
+    const sts = Object.assign(new Error("token expired: SENTINEL"), {
+      name: "InvalidIdentityTokenException",
+      $metadata: { httpStatusCode: 400, requestId: "req-sts" },
+    });
+    const credErr = new CredentialsUnavailableError("AssumeRoleWithWebIdentity failed.", {
+      cause: sts,
+    });
+    const send = vi.fn().mockRejectedValue(credErr);
+    await expect(
+      invokeAgentRuntime(target, { payload: {}, logger, clientFactory: () => ({ send }) }),
+    ).rejects.toBeInstanceOf(CredentialsUnavailableError);
+
+    const line = logger.error.mock.calls[0]![0] as string;
+    expect(line).toContain("credentials unavailable");
+    expect(line).toContain("aws_error=InvalidIdentityTokenException");
+    expect(line).toContain("http=400");
+    expect(line).toContain("request_id=req-sts");
+    expect(line).not.toContain("SENTINEL");
+  });
+
+  it("logs aws_error=unknown for a non-AWS failure and does not throw while logging", async () => {
+    const logger = makeLogger();
+    const send = vi.fn().mockRejectedValue(new Error("plain failure"));
+    await expect(
+      invokeAgentRuntime(target, { payload: {}, logger, clientFactory: () => ({ send }) }),
+    ).rejects.toBeInstanceOf(InvocationFailedError);
+    const line = logger.error.mock.calls[0]![0] as string;
+    expect(line).toContain("aws_error=unknown");
+  });
+});

@@ -42,6 +42,7 @@ import {
   DATABASE_ERROR,
 } from "@/lib/errors";
 import { credentialSource } from "@/lib/aws/credentials";
+import { describeAwsError } from "@/lib/aws/aws-error";
 import type { AnySchema } from "ajv";
 
 // Inline route-segment config — never read stale run state.
@@ -62,6 +63,9 @@ function logInvoke(
     repository_full_name: string | null;
     event: string;
     error_code?: string;
+    aws_error?: string;
+    http?: number;
+    request_id?: string;
   },
   logger: Pick<Console, "info" | "error"> = console,
 ): void {
@@ -238,6 +242,9 @@ export async function POST(
         repository_full_name: repositoryFullName,
         event: "invocation_failed",
         error_code: errorCode,
+        // Allowlisted AWS error fields only (#306) — name/http/requestId. Never
+        // the SDK message, the payload, or any credential material.
+        ...describeAwsError(invokeErr),
       });
 
       // A credential failure (500) keeps its status; an invocation failure is
