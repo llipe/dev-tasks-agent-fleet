@@ -43,4 +43,4 @@
 - **9 of 9 ACs** have at least one positive and one negative or edge test. No AC is uncovered.
 - **8 of 8 invariants** are covered by at least one test.
 - Every RT tactic has a default seed and replay instructions (test plan §6).
-- Open boundary items B-1 to B-4 are listed in test plan §8. B-4 must be decided before S-169.
+- Open boundary items B-1 to B-3 are listed in test plan §8. B-4 was decided on 2026-10-19 (D-W16).
