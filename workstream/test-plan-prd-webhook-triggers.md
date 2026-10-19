@@ -18,6 +18,7 @@
 | Version | Date       | Summary                                                   | Author   |
 | ------- | ---------- | --------------------------------------------------------- | -------- |
 | 1.0     | 2026-10-19 | Initial plan from spec v1.1, stories v1.0, task list v1.0. | verifier |
+| 1.1     | 2026-10-19 | B-4 decided (D-W16); EC-20, CT-8, I-3 updated; R-3 added. | verifier |
 
 ## 1. Source input summary
 
@@ -48,7 +49,7 @@
 **Invariants the tests rely on:**
 - Signatures are verified before any parsing or routing (I-1).
 - Every non-401/404/413 delivery leaves exactly one delivery row with a reason (I-2).
-- A delivery creates at most one run per `(endpoint, delivery_id)` (I-3).
+- A delivery creates at most one run per `(endpoint, dedup_key)`, and only verified deliveries claim a key (I-3).
 - Repositories are never created from a payload (I-4).
 - Params can only fill keys the agent schema declares (I-5).
 - The schedule and webhook triggers share one invoke path, and the schedule fire route's behavior is unchanged (I-6).
@@ -84,7 +85,7 @@ Each contract gets a valid case, a missing-field case, a type-mismatch case and 
 | CT-5 | Rule params (`static` + `from_payload`) checked against `agents.params_schema` | AC5 / D-W9 | Declared keys resolve and validate | A required schema key is absent at fire time → `route_rejected` | A payload value of the wrong type for the key → `route_rejected` | An undeclared `from_payload` key is rejected at save and dropped at fire, and is never sent to the agent |
 | CT-6 | `runs` insert through `buildRunInsert` with the webhook descriptor | AC1 / D-W5 | `trigger_type='webhook'`, `triggered_by='webhook:<endpoint>:<rule>'`, all three timeout snapshots | Missing timeout → `RunSnapshotError` | A malformed `webhook:` identity fails to type-check | The manual and schedule descriptors produce byte-identical rows to before (I-6) |
 | CT-7 | Fire-route contract after the refactor (S-172) | I-6 | Existing L1 and L2.5 fire suites pass, with the pass count equal to the baseline from task 8.1 | — | — | No new response fields or status codes |
-| CT-8 | `webhook_deliveries` uniqueness and FK | AC2 / D-W4 | One row per `(endpoint_id, delivery_id)` | — | — | A duplicate insert adds no row. Deleting a run nulls `run_id` and keeps the row |
+| CT-8 | `webhook_deliveries` uniqueness and FK | AC2 / D-W4 | One claimed row per `(endpoint_id, dedup_key)`; any number of `unauthorized` rows may share a `delivery_id` | — | — | A duplicate verified insert adds no claimed row. Deleting a run nulls `run_id` and keeps the row |
 | CT-9 | RLS deny-all on the three new tables | AC9 / D-W4 | service_role can read | — | — | anon reads 0 rows from each table. The guard seeds rows first so the check cannot pass on empty tables |
 | CT-10 | Vault secret wrappers | AC9 / D-W4 | Set then read returns the same value | A missing secret reads as null, and the route fails closed with 401 | — | No table or view exposes the secret to anon or to the panel's row types |
 | CT-11 | Release-gate parser (`checkWebhookRejected`) | AC8 / FR24 | 401 → pass | `WEBHOOK_PROBE_TOKEN` unset → the gate fails with a clear message | 2xx, 404 or 5xx → the gate fails | — |
@@ -123,7 +124,7 @@ Each case is tied to an AC and gives a concrete example. The layer is shown in b
 ### 5.4 Idempotency
 - **EC-18** (AC2) [L2.5] There is no delivery header and the same body is sent twice → body-hash dedup returns `duplicate`. The same body sent to two different endpoints is not a duplicate, because the key is per endpoint.
 - **EC-19** (AC6) [L2.5] The notify sweep runs three times over the same terminal webhook run → one `run_failed` row.
-- **EC-20** (AC2) [L2.5] A GitHub-style redelivery (same id, re-sent later) of a delivery that was earlier `unauthorized` → still `duplicate`. Rotating the secret does not allow a replay to fire. This is listed for confirmation as B-4 in §8.
+- **EC-20** (AC2) [L2.5] A forged POST reusing a real delivery id arrives first → recorded `unauthorized`, no key claimed. The genuine signed POST with that id then fires. Both rows show up together when filtering the log by delivery id. A replay of a delivery that already verified stays `duplicate`, even after a secret rotation (D-W16).
 
 ### 5.5 Failure modes
 - **EC-21** (AC9) [L2.5] The Vault read returns null for the endpoint secret → 401 (fail closed). The log says `secret_not_configured` and shows no value.
@@ -187,7 +188,8 @@ Write each group before the matching story's `[I]` tasks:
 - **B-1 (skip response shape):** a guardrail skip after resolution returns `202 {skipped, reason}`, as assumed in CT-2. Confirm.
 - **B-2 (unknown condition keys):** the plan rejects them at save (CT-4). Confirm, or relax CT-4.
 - **B-3 (disabled endpoint):** returns 404 with no row (EC-11), so a disabled endpoint leaves no trace in the delivery log. If the operator wants to see deliveries sent to a disabled endpoint, the behavior should be 202 `ignored` with a row instead.
-- **B-4 (redelivery of a once-unauthorized delivery):** the plan treats any seen delivery id as a duplicate, including one first seen as `unauthorized` (EC-20). That means a forged first attempt that reuses a real delivery id could block the real delivery. The safer rule is to dedup only on deliveries whose signature verified, which means inserting an `unauthorized` row without claiming the dedup key. **This is a real design choice and must be decided before S-169.** The plan recommends the safer rule.
+- **B-4 — decided 2026-10-19 (D-W16):** every delivery is recorded, including `unauthorized`, for tracking and troubleshooting. Only deliveries whose signature verified claim the dedup key. Covered by EC-14, EC-18, EC-20, RT-5.
+- **R-3 (unauthorized-row volume):** because `unauthorized` rows claim no key, anyone holding the endpoint URL can add rows without limit. Mitigations already in place: the unguessable URL token, the 5 MiB body cap, structured rows with no body stored, and the 30-day prune. If the token leaks, rotate it. A per-endpoint rate cap on `unauthorized` recording is a candidate fast-follow, not in v1.
 - **B-5 (DB failure after verify):** returns 5xx so GitHub retries (EC-23). GitHub will then redeliver with the same id. That is safe only if nothing was recorded, so the dedup insert and the outcome must not be split across a failure. This is covered by RT-5.
 - **R-1 (latency):** GitHub's 10 s timeout and the synchronous invoke (task 8.8). EC-15 makes this observable. The fallback is to respond after insert.
 - **R-2 (fire-route refactor):** I-6 is verified by the baseline pass count (CT-7), not only by "tests still pass". A test deleted by mistake during the refactor would otherwise go unnoticed.
@@ -197,5 +199,5 @@ Write each group before the matching story's `[I]` tasks:
 - **Mode / phase:** Design, Phase 3 complete (test design).
 - **Artifacts:** this plan and `traceability-matrix-prd-webhook-triggers.md`.
 - **AC coverage:** 9 of 9 ACs have at least one positive and one negative or edge test (see the matrix). Invariants I-1 to I-8 are each covered by at least one test.
-- **Blocking gaps:** none for planning. B-4 must be decided before S-169 is implemented. B-1, B-2 and B-3 are confirmations.
+- **Blocking gaps:** none. B-4 decided (D-W16). B-1, B-2 and B-3 are confirmations.
 - **Handoff:** `developer` implements test-first in the §7 order. After implementation, `verifier` Audit Mode checks the delivered behavior against this plan and fills in the matrix.

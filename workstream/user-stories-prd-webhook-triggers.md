@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                        | Author           |
 | ------- | ---------- | -------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-15 | Initial stories for Phase 1 (webhook mechanism) from spec v1.1 / PRD v0.1. S-165–S-179 across waves A–E. | product-engineer |
+| 1.1     | 2026-10-19 | B-4 decided (D-W16): S-165 schema gains `dedup_key`; S-169 records every delivery but dedups only verified ones. | product-engineer |
 
 Source: `docs/requirements/prd-webhook-triggers.md` (v0.1), `workstream/specification-prd-webhook-triggers.md` (v1.1), `workstream/decisions-webhook-triggers.md` (D-W1…D-W15).
 
@@ -35,7 +36,7 @@ Schema-only, mirroring the scheduler's S-149 (enums, `set_updated_at`, deny-all 
 - [ ] Enums `webhook_source('github','generic')` and `webhook_outcome('received','unauthorized','duplicate','ignored','no_match','route_rejected','skipped','fired')` created.
 - [ ] `webhook_endpoints` (url_token unique+indexed, source, signature_header, delivery_id_header, event_allowlist, ignore_bot_author default true, is_enabled, timestamps) created.
 - [ ] `webhook_rules` (endpoint_id FK, position, event_types, conditions jsonb, is_default, agent_id FK, repo_mode, repository_id FK nullable, repo_payload_field nullable, params jsonb, consecutive_failures, auto_disable_threshold default 3, is_enabled, timestamps) with `(endpoint_id, position)` unique and the repo_mode CHECK.
-- [ ] `webhook_deliveries` (endpoint_id FK, delivery_id, event_type, outcome, matched_rule_id FK nullable, run_id FK `on delete set null`, reason, received_at, timestamps) with `(endpoint_id, delivery_id)` unique and `(endpoint_id, created_at desc)` index.
+- [ ] `webhook_deliveries` (endpoint_id FK, delivery_id nullable, dedup_key nullable, event_type, outcome, matched_rule_id FK nullable, run_id FK `on delete set null`, reason, received_at, timestamps) with `(endpoint_id, dedup_key)` unique, a non-unique `(endpoint_id, delivery_id)` index, and an `(endpoint_id, created_at desc)` index (D-W16).
 - [ ] All three tables `enable row level security` with no permissive policy (deny-all), picked up by the enumerated `rls-deny-all` test.
 - [ ] `set_updated_at` triggers on endpoints + rules.
 
@@ -43,7 +44,7 @@ Schema-only, mirroring the scheduler's S-149 (enums, `set_updated_at`, deny-all 
 Mirror `supabase/migrations/20261013160000_scheduler_schema.sql` conventions (D-W4). FK cascade to `agents`/`repositories`; `run_id` set-null so prune (S-167) never touches `runs`.
 
 #### Testing Requirements
-- **Integration (L2.5):** schema applies on `db reset`; deny-all RLS from anon; unique constraints reject dup `position` and dup `(endpoint_id, delivery_id)`; repo_mode CHECK rejects the invalid combos.
+- **Integration (L2.5):** schema applies on `db reset`; deny-all RLS from anon; unique constraints reject dup `position` and dup `(endpoint_id, dedup_key)`; two rows with the same `delivery_id` and null `dedup_key` are allowed; repo_mode CHECK rejects the invalid combos.
 - **AC mapping:** each AC → an L2.5 case.
 - **Commands:** `supabase db reset` + `pnpm --filter panel test:integration`.
 
@@ -155,7 +156,7 @@ As a GitHub webhook, I want my signed delivery verified, size-checked, deduped, 
 - [ ] Route is **public** (route policy classifies `/api/webhooks/**` like `/api/internal/**` — through the middleware without the session gate); Node runtime, `force-dynamic`, no cache.
 - [ ] Reads raw body via `request.text()`; body over the size cap → `413` (before full processing); unknown/disabled token → `404` (no record).
 - [ ] Invalid/missing signature → record `unauthorized`, `401`.
-- [ ] Duplicate `(endpoint_id, delivery_id)` (or body-hash key) → record/return `duplicate` `200` no-op.
+- [ ] Every delivery is recorded, including `unauthorized` ones (for tracking). Only a verified delivery claims the dedup key (delivery id, else body hash); a repeat of a claimed key → record/return `duplicate` `200` no-op. A forged request reusing a real delivery id never blocks the genuine one (D-W16).
 - [ ] A valid, new, allowlisted-or-not delivery is recorded `received` (routing lands in S-171); non-allowlisted event → `ignored` `202`.
 - [ ] Structured, secret-free log line (`at: "webhook_delivery"`).
 

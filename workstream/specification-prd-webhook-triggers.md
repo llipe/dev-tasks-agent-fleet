@@ -6,6 +6,7 @@
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-15 | Initial specification for Phase 1 (webhook mechanism) from PRD v0.1.    | product-engineer |
 | 1.1     | 2026-10-15 | Resolve OQ-1 (keep declared-key interpolation), OQ-2 (prune policy in v1), OQ-3 (define the generic-sender signature scheme), OQ-4 (G3 per-rule, settled). Add §9.1 signature scheme, delivery retention to data model + rollout. | product-engineer |
+| 1.2     | 2026-10-19 | Record B-4 (D-W16): every delivery is recorded, including `unauthorized`, but only verified deliveries claim the dedup key (`dedup_key` column, unique per endpoint). | product-engineer |
 
 ---
 
@@ -125,7 +126,8 @@ erDiagram
   webhook_deliveries {
     uuid id PK
     uuid endpoint_id FK
-    text delivery_id "dedup key, unique per endpoint"
+    text delivery_id "presented header value, nullable, not unique (tracking)"
+    text dedup_key "set only after the signature verifies; unique per endpoint (D-W16)"
     text event_type
     webhook_outcome outcome "received|ignored|no_match|route_rejected|skipped|fired|unauthorized|duplicate"
     uuid matched_rule_id FK "nullable"
@@ -144,7 +146,8 @@ Constraints and indexes:
 - `webhook_endpoints.url_token` **unique**, indexed — the lookup key for the inbound route.
 - `webhook_rules (endpoint_id, position)` **unique** — ordering is explicit, first-match by `position`.
 - `webhook_rules` CHECK: `repo_mode='fixed' ⇒ repository_id not null`; `repo_mode='payload_field' ⇒ repo_payload_field not null`.
-- `webhook_deliveries (endpoint_id, delivery_id)` **unique** — the dedup guarantee (FR3); a conflicting insert is caught and returned as a `duplicate` 200 no-op.
+- `webhook_deliveries (endpoint_id, dedup_key)` **unique** — the dedup guarantee (FR3). `dedup_key` is set only for deliveries whose signature verified; `unauthorized` rows leave it null, and Postgres treats nulls as distinct, so they never claim a key. A conflicting insert is returned as a `duplicate` 200 no-op (D-W16).
+- `idx_webhook_deliveries_delivery_id on (endpoint_id, delivery_id)` (non-unique) — groups every attempt that presented the same delivery id, verified or not, for troubleshooting (D-W16).
 - `idx_webhook_deliveries_endpoint_created on (endpoint_id, created_at desc)` — the delivery-log feed (FR23).
 - Deny-all RLS on all three; the panel reads server-side with the service-role key (SD2).
 
@@ -173,7 +176,7 @@ Processing order (each step records to `webhook_deliveries` and never logs secre
 1. Resolve endpoint by `token`; unknown/disabled token → `404` (no record — an unknown token is not a delivery to us).
 2. Read **raw body** via `request.text()`; enforce the size cap → over cap → `413` (FR4).
 3. **Verify HMAC** of raw body against the endpoint's Vault secret, constant-time, fail-closed; invalid/missing → record `unauthorized`, return `401` (FR2/AC2).
-4. Read delivery id header; if `(endpoint_id, delivery_id)` already present → record/return `duplicate` `200` no-op (FR3/AC2).
+4. Compute the dedup key (delivery id header, else body hash) and insert the row with it; if `(endpoint_id, dedup_key)` already exists → record/return `duplicate` `200` no-op (FR3/AC2). Step 3 failures were already recorded with a null `dedup_key`, so a forged request can never block a later genuine delivery with the same id (D-W16).
 5. Parse JSON; read event type header; not in `event_allowlist` → record `ignored`, return `202` (FR5/AC3).
 6. Apply the **bot-author guard** then **ordered rules** (first-match); no match + no default → record `no_match`, return `202` (FR9/FR15/AC4).
 7. **Resolve** `(agent, repository, params)`; allowlist miss or schema-invalid → record `route_rejected`, return `202` (FR12–FR14/AC5).
@@ -375,7 +378,7 @@ pill, feed, and schema-form tokens/components — no new design primitives expec
 - **Verify-before-work**, raw-byte HMAC, constant-time, fail-closed (FR2/FR6, §7).
 - **Hostile payload**: bounded path/condition evaluator, no regex/code (R2); repo constrained to the
   allowlist (FR13); params schema-validated (FR14); payload fields rendered as text only (FR23).
-- **Replay**: unique `(endpoint_id, delivery_id)` (FR3).
+- **Replay**: unique `(endpoint_id, dedup_key)`, claimed only by verified deliveries (FR3, D-W16). Every attempt, including `unauthorized`, is still recorded for tracking.
 - **DoS**: size cap (413) + fast ack + async invoke + G3/G4 bound run volume (R1/R4).
 - **Loop prevention**: bot-author guard shipped in Phase 1 even before any agent posts back (FR19/R3).
 - **Secrets**: per-endpoint Vault secret, show-once, never logged; delivery rows carry only
@@ -466,6 +469,7 @@ No open technical questions remain for Phase 1.
 | D-W13 | `/webhooks` UI reuses schema-form, table/pill/feed patterns; new sidebar item. |
 | D-W14 | Delivery retention: daily `webhook.prune_deliveries()` cron, configurable horizon (default 30d), batched; `run_id` FK `on delete set null`. (OQ-2) |
 | D-W15 | Generic-sender scheme: header names configurable; signature fixed to HMAC-SHA256 `sha256=<hex>`; body-hash dedup fallback; alternates deferred. (OQ-3, §9.1) |
+| D-W16 | Dedup claimed only by verified deliveries; every delivery recorded for tracking. (B-4) |
 
 ## 19. Vocabulary
 

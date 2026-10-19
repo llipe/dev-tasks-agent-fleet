@@ -16,6 +16,7 @@
 | Version | Date       | Summary                                    | Author           |
 | ------- | ---------- | ------------------------------------------ | ---------------- |
 | 1.0     | 2026-10-19 | Initial task list for all 15 stories (S-165–S-179). | product-engineer |
+| 1.1     | 2026-10-19 | B-4 decided (D-W16): tasks 1.1, 1.2, 5.3, 5.6 updated for the verified-only `dedup_key`. | product-engineer |
 
 ## Conventions
 
@@ -57,8 +58,8 @@
 ## Wave A — Schema foundation + retention
 
 - [ ] 1.0 Implement Story S-165 (#309): webhook_endpoints / webhook_rules / webhook_deliveries schema, enums, RLS · branch `story/S-165-webhook-schema`
-  - [ ] 1.1 `[T]` [panel] L2.5 `panel/tests/integration/webhook-schema.test.ts`: migration applies on `db reset`; anon deny-all on all three tables (non-vacuous seeded guard); `(endpoint_id, position)` and `(endpoint_id, delivery_id)` uniques reject duplicates; repo_mode CHECK rejects `fixed`+null repo and `payload_field`+null field; deleting a run nulls `webhook_deliveries.run_id` (D-W4)
-  - [ ] 1.2 `[I]` [supabase] Migration `<ts>_webhook_schema.sql`: enums `webhook_source`, `webhook_outcome`; the three tables with all columns/indexes/constraints from spec §5; `set_updated_at` triggers; `enable row level security` on each (D-W4)
+  - [ ] 1.1 `[T]` [panel] L2.5 `panel/tests/integration/webhook-schema.test.ts`: migration applies on `db reset`; anon deny-all on all three tables (non-vacuous seeded guard); `(endpoint_id, position)` and `(endpoint_id, dedup_key)` uniques reject duplicates; two rows sharing a `delivery_id` with null `dedup_key` are both accepted (D-W16); repo_mode CHECK rejects `fixed`+null repo and `payload_field`+null field; deleting a run nulls `webhook_deliveries.run_id` (D-W4)
+  - [ ] 1.2 `[I]` [supabase] Migration `<ts>_webhook_schema.sql`: enums `webhook_source`, `webhook_outcome`; the three tables with all columns/indexes/constraints from spec §5, including nullable `dedup_key` with the `(endpoint_id, dedup_key)` unique and the non-unique `(endpoint_id, delivery_id)` index (D-W16); `set_updated_at` triggers; `enable row level security` on each (D-W4)
   - [ ] 1.3 `[I]` [panel] Row types in `panel/lib/supabase/types.ts` (`WebhookEndpointRow`, `WebhookRuleRow`, `WebhookDeliveryRow`, `WebhookOutcome`, `WebhookCondition`)
   - [ ] 1.4 [supabase] Document rollback in the migration header (additive; drop tables + enums)
   - [ ] 1.5 [supabase] Seed: one disabled sample endpoint + rule in `supabase/seed.sql` targeting `security-analyst`, so local dev and E2E have a fixture
@@ -99,10 +100,10 @@
 - [ ] 5.0 Implement Story S-169 (#314): POST /api/webhooks/[token] verify + dedup + record · branch `story/S-169-webhook-route`
   - [ ] 5.1 `[T]` [panel] L1 route-policy: `/api/webhooks/x` → session-bypass class; `/api/webhooksx` stays `api` (D-W2)
   - [ ] 5.2 `[T]` [panel] L1 `panel/tests/unit/webhook-route.test.ts` (mocked queries): ordering is token → size → signature → dedup → allowlist; 404 unknown/disabled token writes no row; 401 writes `unauthorized`; 413 over cap; duplicate → 200 with no second row; non-allowlisted → 202 `ignored`; log lines contain no secret or signature (D-W3, D-W11)
-  - [ ] 5.3 `[T]` [panel] L2.5 `panel/tests/integration/webhook-route.test.ts`: a real signed POST against the local DB records `received`; replaying the same `X-GitHub-Delivery` yields one row; concurrent duplicate inserts resolve to one row via the unique index
+  - [ ] 5.3 `[T]` [panel] L2.5 `panel/tests/integration/webhook-route.test.ts`: a real signed POST against the local DB records `received`; replaying the same `X-GitHub-Delivery` yields one `received` row and one `duplicate` response; concurrent duplicate inserts resolve to one claimed key via the unique index; a forged POST with a real delivery id is recorded `unauthorized` and the genuine signed POST with that id still fires (D-W16)
   - [ ] 5.4 `[I]` [panel] `route-policy.ts`: classify `/api/webhooks/**` as `internal` (session-bypass; the handler is the authorization). `proxy.ts` needs no change; confirm it never short-circuits 200 for this class (D-W2)
   - [ ] 5.5 `[I]` [panel] `panel/app/api/webhooks/[token]/route.ts`: Node runtime, `force-dynamic`, no cache; reject on `Content-Length` > cap, then read the stream with a byte limit (a missing `Content-Length` must not bypass the cap); default cap 5 MiB constant `WEBHOOK_MAX_BODY_BYTES` (D-W3)
-  - [ ] 5.6 `[I]` [panel] Verify with S-168, dedup via `insert … on conflict do nothing` on `(endpoint_id, delivery_id)`, event allowlist, structured `at: "webhook_delivery"` log (D-W11)
+  - [ ] 5.6 `[I]` [panel] Verify with S-168, record `unauthorized` rows with `delivery_id` set and `dedup_key` null; for verified deliveries set `dedup_key` and insert with `on conflict (endpoint_id, dedup_key) do nothing` (D-W16), event allowlist, structured `at: "webhook_delivery"` log (D-W11)
   - [ ] 5.7 `[I]` [panel] `queries.ts`: `getEndpointByToken`, `insertDelivery`, `updateDeliveryOutcome`
   - [ ] 5.8 Edge cases: empty body, non-JSON body after valid signature (record `ignored` with reason `invalid_json`), header case variants, token with path traversal characters
   - [ ] 5.9 Verify AC: public-but-gated, 413/404/401/200/202 shapes, recording, secret-free logs
@@ -249,6 +250,7 @@
 | D-W13 | `/webhooks` UI reuses schema form, table/pill/feed patterns; sidebar item. |
 | D-W14 | Daily prune cron, 30-day default horizon, batched, run FK set-null. |
 | D-W15 | Header names configurable; signature fixed to HMAC-SHA256 `sha256=<hex>`; body-hash dedup fallback. |
+| D-W16 | Every delivery recorded for tracking; only verified deliveries claim the dedup key. |
 
 ## Verifier Design-Mode recommendation
 
