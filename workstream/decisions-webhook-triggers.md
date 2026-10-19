@@ -1,0 +1,25 @@
+# Decisions — Webhook Triggers (HOW phase)
+
+Source: PRD `docs/requirements/prd-webhook-triggers.md` v0.1. The user directed the spec to be
+written directly from the approved-draft PRD, so the HOW-phase `activity-grill` interview was
+short-circuited: the PRD's recorded decisions (A–F + loop guard + App-scope delta) are carried
+in as the HOW decisions below, grounded against the real scheduler codebase. Genuinely-open
+technical choices are left in the spec's Open Questions, not guessed.
+
+| ID    | Decision (short form) |
+| ----- | --------------------- |
+| D-W1  | Signature auth is a NEW HMAC-SHA256-over-raw-body component, modeled on `lib/auth/internal-secret.ts`'s constant-time, fail-closed, secret-free-logging posture — but per-endpoint secret from Vault, not one global env secret. GitHub scheme `X-Hub-Signature-256: sha256=<hex>` is the default; a configurable header name supports generic senders. |
+| D-W2  | Inbound route is `POST /api/webhooks/[token]`, classified **public** by the route policy (GitHub must reach it, unauthenticated-until-verified) — the signature is the authorization, exactly as `/api/internal/**` is public-but-secret-gated. The release gate extends to assert unsigned → 401 on this class. |
+| D-W3  | Raw-body access: the handler reads `await request.text()` (never `.json()` first) so HMAC is over exact bytes (FR6); parse only after verify. Node.js runtime, `force-dynamic`, no cache — same route-segment config as the fire route. |
+| D-W4  | Three new tables mirror the scheduler schema conventions: `webhook_endpoints`, `webhook_rules`, `webhook_deliveries`; deny-all RLS from creation; `set_updated_at` trigger; helper functions (if any) under a new `webhook` schema. Per-endpoint signing secret stored in Vault via the existing `scheduler.set_secret`-style wrapper (generalized), never a plaintext column. |
+| D-W5  | `TriggerDescriptor` gains a third variant `{ triggerType: "webhook"; triggeredBy: `webhook:${string}` }` where the string is `<endpoint_id>:<rule_id>`; `buildRunInsert` already passes `triggerType`/`triggeredBy` through unchanged, so no insert-path change beyond the type. |
+| D-W6  | Routing fires through the EXISTING invoke path by factoring the fire route's steps 4–9 (resolve agent/repo → validateParams → buildAgentPayload → buildRunInsert → insertQueuedRun → invokeAgentRuntime → markRunFailedToStart) into a shared `invokeResolvedRun()` core the webhook handler and the schedule fire route both call. No second invoke code path (FR16). |
+| D-W7  | Condition language is a pure, bounded evaluator `evaluateConditions(payload, conditions)` in `lib/domain/webhook-routing.ts`: JSON-path-lite selector (dotted keys + array index, max depth N), ops `equals|not_equals|contains|prefix|suffix|in|exists|matches_event`, string length caps, NO regex/code. Exhaustively unit-testable, pure over inputs (same testability posture as `checkSchedulerSecret`). |
+| D-W8  | Repo resolution: a payload-derived repo is matched to `repositories` by `full_name` (enabled, non-archived) via a new `getRepositoryByFullName` query; miss → `route_rejected`, never auto-create (FR13). |
+| D-W9  | Params: v1 allows static params PLUS payload-field interpolation into DECLARED keys only, then `validateParams` against the agent `params_schema` before any run (FR12/FR14). **Confirmed by user (OQ-1): keep.** |
+| D-W10 | Guardrail reuse: G1 overlap / G4 cap / G5 open-PR run inside `invokeResolvedRun()` so webhook and schedule share them; G3 circuit breaker is keyed per routing RULE (a new `webhook_rules.consecutive_failures` + threshold, mirroring `schedules`) — **confirmed by user (OQ-4): per-rule**; G2 catch-up is n/a for edge-triggered webhooks. |
+| D-W11 | Delivery recording is synchronous and always-on: a `webhook_deliveries` row is written at receive and updated through verify→route→outcome, so a non-firing delivery is debuggable (G5). Fast 2xx ack after verify+record+enqueue; invoke is the existing async path (FR7). |
+| D-W12 | Self-trigger guard (FR19): a first-class, always-available condition `author is not <bot-login>`, plus an endpoint-level `ignore_bot_author` default-on toggle, evaluated before rules; the bot login comes from config (the GitHub App's bot identity). |
+| D-W13 | `/webhooks` UI reuses the schema-driven params form from invoke/schedule for the route's params, the DESIGN.md table/pill/feed patterns from the Schedules + Notifications screens, and a new sidebar nav item after Schedules. |
+| D-W14 | Delivery retention (OQ-2, user: prune now): daily `webhook.prune_deliveries()` `pg_cron` job, configurable horizon (`webhook.config.delivery_retention_days`, default 30), batched deletes; the `fired` delivery's `run_id` FK is `on delete set null` so prune never cascades into `runs`. |
+| D-W15 | Generic-sender signature scheme (OQ-3, user: define + document): `signature_header` + `delivery_id_header` operator-configurable; signature shape FIXED to HMAC-SHA256 `sha256=<lowercase-hex>`; body-hash dedup fallback when no delivery header; base64/bare-hex/SHA1 deferred to a fast-follow (no schema change to add later). See spec §9.1. |
