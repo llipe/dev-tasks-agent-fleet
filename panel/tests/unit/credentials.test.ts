@@ -57,6 +57,7 @@ import {
   extractOidcToken,
 } from "@/lib/aws/credentials";
 import { CredentialsUnavailableError, FlyOidcShapeError } from "@/lib/aws/errors";
+import { describeAwsError } from "@/lib/aws/aws-error";
 
 // --- helpers ----------------------------------------------------------------
 
@@ -415,6 +416,28 @@ describe("failure modes surface CREDENTIALS_UNAVAILABLE, never a generic error (
     mockSocketResponse({ statusCode: 200, body: JSON.stringify({ value: "the-jwt" }) });
     stsSendMock.mockResolvedValue({ Credentials: { AccessKeyId: "only-akid" } });
     await expect(awsCredentials()).rejects.toThrow(/incomplete credentials/);
+  });
+
+  it("preserves the STS error as `cause` so the SDK name is loggable via describeAwsError (#306)", async () => {
+    mockSocketResponse({ statusCode: 200, body: JSON.stringify({ value: "the-jwt" }) });
+    const stsErr = Object.assign(new Error("not authorized: SENTINEL-DO-NOT-LOG"), {
+      name: "InvalidIdentityTokenException",
+      $metadata: { httpStatusCode: 400, requestId: "req-sts-1" },
+    });
+    stsSendMock.mockRejectedValue(stsErr);
+
+    const err = await awsCredentials().catch((e) => e);
+    expect(err).toBeInstanceOf(CredentialsUnavailableError);
+    // The original STS error is retained as `cause` (for the server log only).
+    expect((err as { cause?: unknown }).cause).toBe(stsErr);
+    // And the allowlisted projection surfaces the SDK name, never the message.
+    const fields = describeAwsError(err);
+    expect(fields).toEqual({
+      aws_error: "InvalidIdentityTokenException",
+      http: 400,
+      request_id: "req-sts-1",
+    });
+    expect(JSON.stringify(fields)).not.toContain("SENTINEL-DO-NOT-LOG");
   });
 });
 

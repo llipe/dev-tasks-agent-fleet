@@ -281,3 +281,56 @@ describe("POST invoke — bad body", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST invoke — structured event carries the AWS error name (#306)", () => {
+  function sdkError() {
+    return Object.assign(new Error("not authorized: SENTINEL-DO-NOT-LOG"), {
+      name: "AccessDeniedException",
+      $metadata: { httpStatusCode: 403, requestId: "req-306" },
+    });
+  }
+
+  it("adds aws_error/http/request_id to the invocation_failed event, never the message or payload", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    aws.invokeAgentRuntime.mockRejectedValue(
+      new InvocationFailedError("InvokeAgentRuntime failed.", { cause: sdkError() }),
+    );
+
+    const res = await POST(
+      req({ repository_id: "repo-1", params: { fix_mode: "audit_only" } }),
+      ctx,
+    );
+    expect(res.status).toBe(502);
+
+    const lines = error.mock.calls.map((c) => String(c[0]));
+    const failed = lines.find((l) => l.includes('"event":"invocation_failed"'));
+    expect(failed).toBeDefined();
+    const parsed = JSON.parse(failed!);
+    expect(parsed.error_code).toBe("INVOCATION_FAILED");
+    expect(parsed.aws_error).toBe("AccessDeniedException");
+    expect(parsed.http).toBe(403);
+    expect(parsed.request_id).toBe("req-306");
+
+    // Security-negative: no captured log line carries the SDK message or the
+    // payload field, and the HTTP body stays generic.
+    const all = lines.join(" ");
+    expect(all).not.toContain("SENTINEL-DO-NOT-LOG");
+    expect(all).not.toContain("fix_mode");
+    const body = await res.json();
+    expect(body.error.message).not.toContain("SENTINEL-DO-NOT-LOG");
+    expect(body.error.message).not.toContain("AccessDeniedException");
+    error.mockRestore();
+  });
+
+  it("logs aws_error=unknown for a non-AWS invoke failure", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    aws.invokeAgentRuntime.mockRejectedValue(new Error("plain non-aws failure"));
+    await POST(req({ repository_id: "repo-1", params: { fix_mode: "audit_only" } }), ctx);
+    const failed = error.mock.calls
+      .map((c) => String(c[0]))
+      .find((l) => l.includes('"event":"invocation_failed"'));
+    expect(failed).toBeDefined();
+    expect(JSON.parse(failed!).aws_error).toBe("unknown");
+    error.mockRestore();
+  });
+});
