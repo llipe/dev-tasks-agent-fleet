@@ -12,11 +12,15 @@
 - `panel/app/api/internal/schedules/[id]/fire/route.ts` - `invocation_failed` structured event
 - `panel/app/api/internal/notifications/digest/route.ts` - `send_failed` structured event
 - `panel/tests/unit/aws-error.test.ts` - new
-- existing tests: `invoke-route*.test.ts`, `credentials.test.ts`, `ses.test.ts`, digest/fire route tests
+- `panel/tests/unit/digest-route.test.ts` - new (digest route had no unit test; covers the SES `send_failed` event + security-negative)
+- existing tests: `invoke-route*.test.ts`, `credentials.test.ts`, `invoke.test.ts`, `fire-route.test.ts`
+- `docs/technical-guidelines.md` - §5 error-taxonomy sentence extended + changelog row 1.51
+- `docs/adr/ADR-009-allowlisted-aws-error-logging.md` - new ADR (accompanies the §5 change)
+- `README.md` - ADR index updated to ADR-009
 
 ## Tasks
 
-- [ ] 1.0 Implement Issue #306 - https://github.com/llipe/dev-tasks-agent-fleet/issues/306: log the AWS error name on INVOCATION_FAILED / CREDENTIALS_UNAVAILABLE / SES_SEND_FAILED
+- [x] 1.0 Implement Issue #306 - https://github.com/llipe/dev-tasks-agent-fleet/issues/306: log the AWS error name on INVOCATION_FAILED / CREDENTIALS_UNAVAILABLE / SES_SEND_FAILED
 
   - [x] 1.1 [panel] Test-first: `tests/unit/aws-error.test.ts` for a pure `describeAwsError(err)`. An SDK-shaped error `{ name: "AccessDeniedException", $metadata: { httpStatusCode: 403, requestId: "r-1" } }` → `{ aws_error: "AccessDeniedException", http: 403, request_id: "r-1" }`. A plain `Error` or non-object → `{ aws_error: "unknown" }`, and the helper never throws. It follows `cause` one level (for errors the panel wraps). The output never contains `message`
   - [x] 1.2 [panel] Implement `panel/lib/aws/aws-error.ts`. Allowlist only: the `name` string (bounded to `[A-Za-z0-9_.:-]`, max 100 chars), an integer `httpStatusCode`, and the `requestId` string (bounded charset)
@@ -26,8 +30,8 @@
   - [x] 1.6 [panel] Add `aws_error`, `http`, `request_id` to the structured JSON events: `invoke_route` / `schedule_fire` `invocation_failed`, and `notification_digest` `send_failed`. The UI-facing `error_message` on the run and every HTTP response body stay **unchanged**
   - [x] 1.7 [panel] Security-negative tests: in the invoke, fire, and digest route tests, throw an SDK-shaped error whose `message` contains a sentinel (`SENTINEL-DO-NOT-LOG`) and whose payload, token, or recipient contain sentinels. Assert that **no** captured log line contains any sentinel, and that `aws_error=` is present
   - [x] 1.8 [panel] Unit test: a non-AWS error logs `aws_error=unknown` and the log path does not throw
-  - [ ] 1.9 Verify AC1–AC6 of #306 (plus the SES addition): map each AC to a test in the PR body
-  - [ ] 1.10 Run Tests: `source ~/.nvm/nvm.sh && nvm use 26`, then `pnpm --filter panel run validate` and `make validate`
+  - [x] 1.9 Verify AC1–AC6 of #306 (plus the SES addition): map each AC to a test in the PR body
+  - [x] 1.10 Run Tests: `source ~/.nvm/nvm.sh && nvm use 26`, then `pnpm --filter panel run validate` and `make validate`
 
 ## Decisions Consumed
 
