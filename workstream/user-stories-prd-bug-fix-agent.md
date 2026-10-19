@@ -6,6 +6,7 @@
 | ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-18 | Initial stories S-180–S-203 (24, numbered S-180–S-203 because S-165–S-179 are held by `[PRD-webhook-triggers]`, issues #309–#324) for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1 and [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v1.0. | product-engineer |
 | 1.1     | 2026-10-19 | Provider change (D-40–D-42): Anthropic API directly, no Bedrock. S-180 env gains `ANTHROPIC_KEY_SECRET_ID` and the `MODEL_ID` default; S-188 replaces Bedrock access/IAM with the dedicated key and spend limit; S-189 drops the Bedrock probe and checks the child sees no AWS variables; S-190, S-191 wording and env assertion; FR-32 added to coverage. | product-engineer |
+| 1.2     | 2026-10-19 | Verifier findings F-1–F-5, approved by the user (D-44–D-48): S-182 AC2/AC3 (no `canary` in schema; unwrap per ADR-005), S-183 AC3 (granted-permission check), S-186 AC2 + new read-error AC + technical note (`db_read.py`), S-189 AC1 (canary is a top-level key). | product-engineer |
 
 ## Overview
 
@@ -14,7 +15,7 @@
 **Two additions the stories make to the specification** (recorded in spec changelog 1.1 when this document is approved):
 
 1. **`FIX_PIPELINE_ENABLED`** (runtime env, default `0` until S-199). Without it, a Wave A deploy would claim bugs and immediately dispose them. When off, the run ends `succeeded` / `not_applicable` after applicability with the event "fix pipeline not enabled", **before** the claim. The sweep still runs.
-2. **Canary mode** (S-189). The spec's Wave A canary needs a probe inside the deployed runtime. A `canary` param (`credentials`, `idle_survival`, `cli_flags`) is accepted **only** when the canary deployment sets `ALLOW_CANARY=1`; the production deployment never sets it.
+2. **Canary mode** (S-189). The spec's Wave A canary needs a probe inside the deployed runtime. A top-level payload key `canary` (`credentials`, `idle_survival`, `cli_flags`), outside `params` and absent from `params_schema`, is honored **only** when the canary deployment sets `ALLOW_CANARY=1`; the production deployment never sets it (D-44).
 
 **Test-first:** within each story the failing tests are written before the code they exercise; S-190 provides the fake-CLI harness first.
 
@@ -233,8 +234,8 @@ Block 5 of the seed, in the sibling shape (D-26). Params and defaults are fixed 
 #### Acceptance Criteria
 
 - [ ] `supabase/seed.sql` block 5 inserts `bug-fix` (`name` "Bug Fix", `version` 0.1.0, `requires_repository` true, `max_runtime_seconds` 3600, `grace_seconds` 150, `start_timeout_seconds` 300, `default_params`, `params_schema`) with `on conflict (slug) do update`, idempotent on re-run.
-- [ ] `params_schema` has `additionalProperties:false` and the seven params with the ranges in spec §5.1.
-- [ ] `validate_payload` / `apply_defaults` / `classify_invalid_payload` reject unknown params, out-of-range values, and double-wrapped payloads with `INVALID_PARAMS`.
+- [ ] `params_schema` has `additionalProperties:false` and the seven params with the ranges in spec §5.1; it has no `canary` entry (D-44).
+- [ ] `unwrap_payload` (ported from the siblings) unwraps the AgentCore CLI's repeated `prompt` wrapper per ADR-005; `validate_payload` / `apply_defaults` / `classify_invalid_payload` reject unknown params, out-of-range values, and a payload that is still a lone `prompt` wrapper after unwrapping, with `INVALID_PARAMS` (D-45).
 - [ ] `resolve_assignee(params, env)` returns the param, else `OPERATOR_GITHUB_LOGIN`, else raises `INVALID_PARAMS` (D-35).
 - [ ] A test asserts `max_runtime_seconds` in the seed equals `MAX_LIFETIME`.
 
@@ -305,7 +306,7 @@ The existing App lacks Issues write (D-25). The client is also the one place tha
 
 - [ ] `github_api.py` implements the calls in spec §6.2 (list/filter issues excluding PRs, labels add/remove, assignees, comments, open pulls, `GET /app`) with pagination.
 - [ ] Rate-limit (403 with remaining 0, 429) and 5xx retry 3 times with 2 s, 4 s, 8 s backoff; other 4xx do not retry.
-- [ ] `preflight()` reads one issue page and one label page; a 403/404 raises `GitHubPermissionDenied` and the run ends `failed` / `GITHUB_PERMISSION_DENIED` before any mutation (FR-28, AC-17).
+- [ ] `preflight()` checks the installation token's granted `permissions` (returned by the ported `credentials.mint_installation_token`) for `issues: write`, `pull_requests: write`, `contents: write`, then reads one issue page and one label page; a missing permission or a 403/404 raises `GitHubPermissionDenied` naming what is missing, and the run ends `failed` / `GITHUB_PERMISSION_DENIED` before any mutation (FR-28, AC-17, D-46).
 - [ ] The App slug is obtained from `GET /app` using the App JWT and cached for the run.
 - [ ] No token appears in logs, exceptions, or events (scrubber test).
 
@@ -504,10 +505,11 @@ D-16 with the safety constraint that only the agent's own bot-authored claims ar
 #### Acceptance Criteria
 
 - [ ] The sweep lists open `status: in-progress` issues, reads their comments, and keeps those with a valid claim (S-185 `parse_claim`).
-- [ ] For each, `v_runs.effective_status` and `run_artifacts` (type `pull_request`) are read in two batched PostgREST calls; a claim is stale when the status is `failed`, `timed_out`, `failed_to_start`, or `canceled` and no PR artifact exists (spec §5.3).
+- [ ] For each, `v_runs.effective_status` and `run_artifacts` (type `pull_request`) are read in two batched calls through `db_read.py`, which raises on any failure; a claim is stale when the issue is still `in-progress`, the run is not the current run, the status is terminal (`succeeded`, `failed`, `timed_out`, `failed_to_start`, `canceled`), and no PR artifact exists (spec §5.3, D-47, D-48).
 - [ ] Stale claims receive `dispose(reason="STALE_CLAIM")`; the run's own current claim is never swept.
 - [ ] Issues without the marker, with a marker by a non-App author, and with a run still `queued`/`running` are untouched (AC-13).
 - [ ] A per-issue error is logged as a warning and does not stop the sweep or the run.
+- [ ] A read error for an issue (non-2xx, network error, malformed body) skips that issue with a `warn` event; nothing is disposed on uncertainty (D-48).
 
 #### Business Rules
 
@@ -516,7 +518,7 @@ D-16 with the safety constraint that only the agent's own bot-authored claims ar
 
 #### Technical Notes
 
-- Spec §5.3, §8. PostgREST via the reporter's client; use `effective_status`, not `status`.
+- Spec §5.3, §8. Reads go through the new `db_read.py` (the byte-identical reporter has no read path and swallows failures); use `effective_status`, not `status` (D-48).
 
 #### Testing Requirements
 
@@ -711,7 +713,7 @@ Spec §12.4 and §14. Answers PRD §18 Q1–Q6. Needs a canary-only probe surfac
 
 #### Acceptance Criteria
 
-- [ ] A `canary` param (`credentials`, `idle_survival`, `cli_flags`) is accepted only when `ALLOW_CANARY=1`; the production deployment never sets it and a test asserts the param is rejected without it.
+- [ ] A top-level payload key `canary` (`credentials`, `idle_survival`, `cli_flags`), outside `params`, is honored only when `ALLOW_CANARY=1`; without it, its presence ends the run `failed` / `INVALID_PARAMS` before any GitHub call, and a test asserts this; the production deployment never sets `ALLOW_CANARY`; canary runs are started with the AgentCore CLI and a payload file (D-44).
 - [ ] `credentials`: from a **child process**, attempts to read role credentials from the environment and the container credential endpoint, and to call `secretsmanager:GetSecretValue` for the Supabase and App-key secrets, and confirms the child sees no AWS credential variables in its environment; results (reachable yes/no per item) are written to a run_event without secret values.
 - [ ] `idle_survival`: a silent 20-minute step under the heartbeat completes on the deployed runtime.
 - [ ] `cli_flags`: against a fixture repo, records whether `CLAUDE.md` and `developer` load under `--settings disableAllHooks`, `--strict-mcp-config`, and the managed file; the max-turns result subtype and exit code; presence of `num_turns` and `is_error`; whether `plan` produces a task list under `-p`; that the CLI reaches `api.anthropic.com` with `ANTHROPIC_API_KEY` and `MODEL_ID`.

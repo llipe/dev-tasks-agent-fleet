@@ -11,6 +11,7 @@
 | 1.0     | 2026-10-17 | Initial PRD. Produced from the `activity-grill` WHAT session recorded in `workstream/decisions-bug-fix-agent.md` (D-01–D-24). Third fleet agent: headless Claude Code inside a Python wrapper, claim → fix → gate → Draft PR. | product-engineer |
 | 1.1     | 2026-10-18 | HOW-phase amendments (D-25–D-39): GitHub App has no Issues write (prerequisite); worst case corrected in §17 (model-directed code execution, trust anchor, credential spike); hooks and MCP disabled (FR-11); params resolved (FR-1); added FR-28–FR-31 (permission preflight, dependency install, task list, run deadline); FR-26 corrected (ceilings are dispositions, not failures); red-to-green evidence (FR-19); AC-17–AC-20; open questions replaced; vocabulary gains wrapper, run deadline, claim marker. | product-engineer |
 | 1.2     | 2026-10-19 | Provider change (D-40–D-42): Anthropic API directly, no Bedrock; `MODEL_ID` default `claude-sonnet-5-5`; dedicated `ANTHROPIC_API_KEY` with a spend limit is the CLI's only secret (new FR-32, amended FR-9, FR-11, AC-5, §12, §15, §16, §17, §18 Q6, diagram, vocabulary). | product-engineer |
+| 1.3     | 2026-10-19 | Verifier Design Mode findings F-1–F-5, approved by the user (D-44–D-48): FR-24 stale rule covers any terminal run without a PR and skips on read errors; FR-28 and AC-17 check the token's granted write permissions. | product-engineer |
 
 ---
 
@@ -116,7 +117,7 @@ flowchart TD
 
 - **FR-22.** When a claimed run ends without a PR for any reason in FR-12, FR-13–FR-15, FR-17, FR-19, or because the model gives up, the wrapper SHALL post a diagnosis comment (what was tried, why it stopped, the diffstat when a cap was hit), replace `status: in-progress` with `status: needs-refinement`, and keep the assignee. It SHALL NOT retry automatically (D-08).
 - **FR-23.** The wrapper's `finally` path and the existing signal backstop SHALL apply the disposition for every failure it can observe (D-08, D-16).
-- **FR-24.** **Stale-claim sweep.** At the start of every run the agent SHALL find `status: in-progress` issues carrying its own claim marker (FR-7) whose run ID is terminal (`failed`, `timed_out`, `failed_to_start`, `canceled`) in Supabase with no PR artifact, and apply the disposition to each. It SHALL NOT touch issues without its marker, issues claimed by a human, or runs still non-terminal (D-16).
+- **FR-24.** **Stale-claim sweep.** At the start of every run the agent SHALL find `status: in-progress` issues carrying its own claim marker (FR-7) whose run is not the current run, is terminal in Supabase (`succeeded`, `failed`, `timed_out`, `failed_to_start`, `canceled`), and has no PR artifact, and apply the disposition to each. It SHALL NOT touch issues without its marker, issues claimed by a human, or runs still non-terminal; a failed read skips the issue rather than disposing it (D-16, D-47, D-48).
 
 ### 7.8 Reporting and outcomes
 
@@ -126,7 +127,7 @@ flowchart TD
 
 ### 7.9 Preparation, task list, and run budget
 
-- **FR-28.** At the start of every run the agent SHALL probe its GitHub permissions (read issues and labels). A denial ends the run `failed` / `GITHUB_PERMISSION_DENIED` before anything is claimed (D-25).
+- **FR-28.** At the start of every run the agent SHALL check its GitHub permissions: the installation token's granted permissions MUST include `issues: write`, `pull_requests: write`, and `contents: write`, and a read of the repository's issues and labels MUST succeed. Any failure ends the run `failed` / `GITHUB_PERMISSION_DENIED`, naming what is missing, before anything is claimed (D-25, D-46).
 - **FR-29.** After the claim and before the CLI starts, the wrapper SHALL install the repository's dependencies (JS/TS: `pnpm install --frozen-lockfile` or `npm ci`; Python: a throwaway virtualenv via `make install` or `pip install -e '.[dev]'`), with a 300-second cap; lifecycle scripts run. A failed install takes the disposition path. A lockfile changed by the install is reverted before measuring (D-33).
 - **FR-30.** The task list SHALL be the issue's own checklist copied into a scratch, uncommitted `workstream/tasks-issue-<N>-<slug>.md`. When the issue has none, a first CLI pass runs the repository's `plan` skill to produce it, within its own turn cap and the shared CLI wall-clock budget; a failed or empty pass takes the disposition path (`NO_TASK_LIST`) (D-31).
 - **FR-31.** A run-level deadline (`start + lifetime − 180 s`) SHALL bound every step: each step's timeout is the lesser of its cap and the time remaining, and an exhausted budget before a step takes the disposition path (`RUN_BUDGET_EXHAUSTED`) (D-30).
@@ -208,7 +209,7 @@ flowchart LR
 - **AC-13 (sweep).** Given an `in-progress` issue with the agent's marker whose run is `timed_out` and has no PR, the next run applies the disposition to it first. An `in-progress` issue without the marker, and one whose run is still `running`, are untouched (D-16).
 - **AC-14 (budget).** A run hitting 40 turns, 30 minutes of CLI time, or the 60-minute lifetime stops and takes the disposition path with the reason (D-22).
 - **AC-15 (G5).** After a successful run, the schedule does not fire again for that repo until the operator clears it in the panel (D-21).
-- **AC-17 (preflight).** With the App lacking Issues write, a run ends `failed` / `GITHUB_PERMISSION_DENIED` before assigning, labeling, or commenting on anything (D-25).
+- **AC-17 (preflight).** With the App lacking Issues write (token permissions without `issues: write`), a run ends `failed` / `GITHUB_PERMISSION_DENIED` naming the permission, before assigning, labeling, or commenting on anything (D-25, D-46).
 - **AC-18 (deadline).** A step that would start with no time left before the disposition reserve instead takes the disposition path with `RUN_BUDGET_EXHAUSTED`; startup refuses an inconsistent clock configuration (D-30).
 - **AC-19 (repo config).** A target repo whose `.claude/settings.json` defines a hook or `.mcp.json` defines a server has neither run during a fix pass (D-29).
 - **AC-20 (install).** A repo whose dependencies fail to install ends in the disposition `INSTALL_FAILED` with the issue left `needs-refinement`, and a lockfile changed by a successful install does not appear in the PR (D-33).
@@ -304,6 +305,11 @@ The eight HOW questions of v1.0 are resolved in `workstream/specification-prd-bu
 | D-40 | Anthropic API directly, no Bedrock; `MODEL_ID` default `claude-sonnet-5-5`.                                      |
 | D-41 | CLI auth by `ANTHROPIC_API_KEY`; no AWS credentials in the CLI env.                                              |
 | D-42 | Dedicated key with a monthly spend limit, Secrets Manager, CLI-only.                                             |
+| D-44 | Canary selector is a top-level payload key, gated by `ALLOW_CANARY=1`; not in `params_schema`.                  |
+| D-45 | Unwrap the CLI's repeated `prompt` wrapper like the siblings (ADR-005).                                          |
+| D-46 | Preflight checks the token's granted permissions (`issues`, `pull_requests`, `contents` write).                  |
+| D-47 | Stale claim = any terminal run without a PR, issue still `in-progress`.                                          |
+| D-48 | Sweep reads through a separate PostgREST client that raises; read errors skip.                                   |
 
 ## Vocabulary
 

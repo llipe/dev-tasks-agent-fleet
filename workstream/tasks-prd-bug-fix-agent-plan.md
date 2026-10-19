@@ -17,6 +17,7 @@
 | Version | Date       | Summary                                        | Author           |
 | ------- | ---------- | ---------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-19 | Initial Wave A task list (S-180–S-189).        | product-engineer |
+| 1.1     | 2026-10-19 | Verifier findings F-1–F-5 applied (D-44–D-48): tasks 3.1, 3.5, 4.4a, 4.6, 7.1, 7.1a, 7.4, 10.1; `db_read.py` added to Relevant Files. | product-engineer |
 
 ## Conventions
 
@@ -40,6 +41,7 @@
 - `agents/bug-fix/app/bugFix/selection.py`, `toolchain.py` — selection, linked-PR index, applicability
 - `agents/bug-fix/app/bugFix/claim.py` — claim, marker, disposition
 - `agents/bug-fix/app/bugFix/sweep.py` — stale-claim sweep
+- `agents/bug-fix/app/bugFix/db_read.py` — PostgREST read client for the sweep (raises)
 - `agents/bug-fix/app/bugFix/canary.py` — gated canary probes
 - `agents/bug-fix/app/bugFix/tests/{unit,component,fakes,fixtures}/` — L1/L2 tests, fake GitHub server, repo fixtures
 - `panel/tests/integration/` — L2.5 seed and sweep-read tests
@@ -83,11 +85,11 @@
 
 - [ ] 3.0 Implement Story S-182 (#328 — https://github.com/llipe/dev-tasks-agent-fleet/issues/328): Agent registration, params schema, payload validation
   > Branch `story/S-182-agent-registration`. Depends on: S-180. **Seed apply to the cloud project needs user confirmation.**
-  - [ ] 3.1 [agents/bug-fix] `[T]` L1 `tests/unit/test_payload.py`: unknown params, out-of-range values (`issue_number` 0/negative, `max_turns` 4/101, caps outside spec §5.1 ranges), empty `assignee`, double-wrapped payload → `INVALID_PARAMS` (D-26)
+  - [ ] 3.1 [agents/bug-fix] `[T]` L1 `tests/unit/test_payload.py`: unknown params, out-of-range values (`issue_number` 0/negative, `max_turns` 4/101, caps outside spec §5.1 ranges), empty `assignee` → `INVALID_PARAMS`; the CLI's repeated `prompt` wrapper is unwrapped (ADR-005) and only a payload still a lone wrapper after unwrapping is rejected; `params_schema` has no `canary` entry (D-26, D-44, D-45)
   - [ ] 3.2 [agents/bug-fix] `[T]` L1 `resolve_assignee` order: param → `OPERATOR_GITHUB_LOGIN` → `INVALID_PARAMS` (D-35)
   - [ ] 3.3 [panel] `[T]` L2.5 seed test: `supabase db reset` twice → exactly one `bug-fix` row, values unchanged; `max_runtime_seconds` equals `MAX_LIFETIME` (3600)
   - [ ] 3.4 [supabase] `[I]` `supabase/seed.sql` block 5: `bug-fix` row (name "Bug Fix", version 0.1.0, `requires_repository` true, 3600/150/300, `default_params`, `params_schema` with `additionalProperties:false` and the seven params) with `on conflict (slug) do update` (D-09, D-22, D-31, D-35)
-  - [ ] 3.5 [agents/bug-fix] `[I]` `main.py` helpers: `unwrap_payload`, `validate_payload`, `apply_defaults`, `classify_invalid_payload`, `resolve_assignee` (D-26, D-35)
+  - [ ] 3.5 [agents/bug-fix] `[I]` `main.py` helpers: `unwrap_payload` ported from the siblings (ADR-005), `validate_payload`, `apply_defaults`, `classify_invalid_payload`, `resolve_assignee` (D-26, D-35, D-45)
   - [ ] 3.6 [supabase] Migration lifecycle (data row, no DDL): rollback note `delete from agents where slug='bug-fix'`; **request user confirmation**; apply to the cloud project; verify with `select slug, max_runtime_seconds from agents where slug='bug-fix'`
   - [ ] 3.7 `[V]` Verify AC: seed idempotent; schema shape; validation rejects; assignee order; parity test
   - [ ] 3.8 `[V]` Manual: panel invoke form renders the schema for `bug-fix`
@@ -99,8 +101,9 @@
   - [ ] 4.2 [agents/bug-fix] `[T]` L1 `tests/unit/test_github_api.py`: retry ladder 2/4/8 s with fake sleep on 403-remaining-0, 429, 5xx; no retry on other 4xx; secondary-rate-limit 403 distinguished from permission 403; pagination with and without `Link`; PR filtering by `pull_request` key
   - [ ] 4.3 [agents/bug-fix] `[T]` L2 `tests/component/test_preflight.py`: 403 on issues → run `failed` / `GITHUB_PERMISSION_DENIED` with zero mutating calls (AC-17)
   - [ ] 4.4 [agents/bug-fix] `[T]` L1 scrubber test: installation token absent from logs, exceptions, events
+  - [ ] 4.4a [agents/bug-fix] `[T]` L1/L2 granted-permission check: token permissions missing `issues: write` (or `pull_requests`/`contents` write) → `GITHUB_PERMISSION_DENIED` naming it, zero mutations (AC-17, D-46)
   - [ ] 4.5 [agents/bug-fix] `[I]` `github_api.py`: every call in spec §6.2, pagination, retries, `GitHubPermissionDenied`; `GET /app` slug cached per run (D-25, D-36)
-  - [ ] 4.6 [agents/bug-fix] `[I]` `preflight()` (one issues page, one labels page) and the `GITHUB_PERMISSION_DENIED` error code in the return payload (D-25)
+  - [ ] 4.6 [agents/bug-fix] `[I]` `credentials.mint_installation_token` returns the granted `permissions` with the token (the one change to the sibling copy); `preflight()` checks them, then reads one issues page and one labels page; `GITHUB_PERMISSION_DENIED` names what is missing (D-25, D-46)
   - [ ] 4.7 `[V]` Verify AC: §6.2 coverage; retry semantics; preflight fails before any mutation; slug cached; no token leakage
   - [ ] 4.8 `[V]` Edge cases: empty pages, token expiry mid-pagination
   - [ ] 4.9 Run `make validate`; record `coverage_gate`; `verifier` audit; PR
@@ -131,10 +134,11 @@
 
 - [ ] 7.0 Implement Story S-186 (#332 — https://github.com/llipe/dev-tasks-agent-fleet/issues/332): Stale-claim sweep
   > Branch `story/S-186-stale-claim-sweep`. Depends on: S-185.
-  - [ ] 7.1 [agents/bug-fix] `[T]` L1 `tests/unit/test_sweep.py`: decision matrix over `effective_status` (`failed`, `timed_out`, `failed_to_start`, `canceled`, `queued`, `running`) × PR artifact present × marker valid (D-16, D-36)
+  - [ ] 7.1 [agents/bug-fix] `[T]` L1 `tests/unit/test_sweep.py`: decision matrix over `effective_status` (`succeeded`, `failed`, `timed_out`, `failed_to_start`, `canceled`, `queued`, `running`) × PR artifact present × marker valid × current run; a `succeeded` run without a PR is stale (D-16, D-36, D-47)
+  - [ ] 7.1a [agents/bug-fix] `[T]` L1 `tests/unit/test_db_read.py`: `db_read.py` raises on non-2xx, network error, and malformed body; sweep skips the issue with a `warn` event on any read error (D-48)
   - [ ] 7.2 [agents/bug-fix] `[T]` L2 `tests/component/test_sweep_flow.py` (fake GitHub + fake PostgREST): stale claim disposed with `STALE_CLAIM`; own current claim never swept; unmarked, foreign-author, and live-run claims untouched; per-issue error isolated as a warning (AC-13)
   - [ ] 7.3 [panel] `[T]` L2.5 read test: batched `v_runs?id=in.(…)&select=id,effective_status` and `run_artifacts?run_id=in.(…)&type=eq.pull_request` against seeded runs (spec §5.3)
-  - [ ] 7.4 [agents/bug-fix] `[I]` `sweep.py`: list `in-progress` issues, parse claims, two batched reads, dispose stale ones (D-16)
+  - [ ] 7.4 [agents/bug-fix] `[I]` `db_read.py` (PostgREST GET, raises) and `sweep.py`: list `in-progress` issues, parse claims, two batched reads through `db_read.py`, dispose stale ones, skip on read error (D-16, D-47, D-48)
   - [ ] 7.5 `[V]` Verify AC: all five story ACs
   - [ ] 7.6 `[V]` Edge cases: run ID absent from Supabase, 200 in-progress issues (pagination), two claim comments (latest wins), `running` past the reaper threshold
   - [ ] 7.7 Run `make validate` and `pnpm run test:integration`; record `coverage_gate`; `verifier` audit; PR
@@ -169,7 +173,7 @@
 
 - [ ] 10.0 Implement Story S-189 (#335 — https://github.com/llipe/dev-tasks-agent-fleet/issues/335): Canary mode and the Wave A canary run
   > Branch `story/S-189-canary`. Depends on: S-188. **Gate for Wave B and for any schedule.**
-  - [ ] 10.1 [agents/bug-fix] `[T]` L1 `tests/unit/test_canary.py`: `canary` param rejected unless `ALLOW_CANARY=1`; results redact secret values, tokens, and the Anthropic key (spec §15.1, D-27)
+  - [ ] 10.1 [agents/bug-fix] `[T]` L1 `tests/unit/test_canary.py`: top-level `canary` key honored only with `ALLOW_CANARY=1`, otherwise `INVALID_PARAMS` before any GitHub call; results redact secret values, tokens, and the Anthropic key (spec §15.1, D-27, D-44)
   - [ ] 10.2 [agents/bug-fix] `[T]` L2 each probe with a fake child process
   - [ ] 10.3 [agents/bug-fix] `[I]` `canary.py` `credentials`: from a child process, try role credentials (env and container endpoint), `GetSecretValue` for the Supabase and App-key secrets; confirm the child sees no AWS variables (D-27, D-41)
   - [ ] 10.4 [agents/bug-fix] `[I]` `canary.py` `idle_survival`: silent 20-minute heartbeated step (D-30)
@@ -217,3 +221,8 @@
 | D-41 | CLI auth by `ANTHROPIC_API_KEY`; no AWS vars. |
 | D-42 | Dedicated key with spend limit. |
 | D-43 | `MODEL_ID` default `claude-sonnet-5-5`. |
+| D-44 | Canary is a top-level payload key gated by `ALLOW_CANARY=1`. |
+| D-45 | Unwrap the CLI prompt wrapper like the siblings. |
+| D-46 | Preflight checks granted token permissions. |
+| D-47 | Stale claim = any terminal run without a PR. |
+| D-48 | Sweep reads via `db_read.py`; read errors skip. |

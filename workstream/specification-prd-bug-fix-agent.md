@@ -7,6 +7,7 @@
 | 1.0     | 2026-10-18 | Initial specification for [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1. Produced from the HOW-phase `activity-grill` session (D-25–D-39 in `workstream/decisions-bug-fix-agent.md`). Resolves PRD §18 Q1–Q8; surfaces one PRD inconsistency (§7.3 below). | product-engineer |
 | 1.1     | 2026-10-18 | Story-level additions: (1) runtime flag `FIX_PIPELINE_ENABLED` (default off until the pipeline is wired) so a Wave A deploy cannot claim bugs; (2) canary mode, a `canary` param accepted only when `ALLOW_CANARY=1` on a canary deployment, to run the §12.4 credential spike and the CLI probes. Story IDs are S-180–S-203 (`user-stories-prd-bug-fix-agent.md`). | product-engineer |
 | 1.2     | 2026-10-19 | Provider change (D-40–D-42): Anthropic API directly, no Bedrock. Rewrote §9.2; removed Bedrock IAM from §7.2 and Bedrock variables from the §9.1 CLI environment; the dedicated `ANTHROPIC_API_KEY` is the CLI's only secret, with a spend limit (§11.4, §12.2, §12.4, §14, §15, §17 Q6, diagrams, vocabulary). | product-engineer |
+| 1.3     | 2026-10-19 | Verifier findings F-1–F-5, approved by the user (D-44–D-48): canary is a top-level payload key (§6.1, §15.1); payload unwrap per ADR-005 (§6.1); preflight checks granted token permissions (§4.2, §6.2); stale-claim rule covers any terminal run without a PR (§5.3); new `db_read.py` read client (§4.2, §5.3); `credentials.py` returns permissions. PRD reference updated to v1.3. | product-engineer |
 
 Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-24 are the WHAT phase, D-25–D-39 the HOW phase.
 
@@ -18,7 +19,7 @@ Decision IDs (`D-NN`) below refer to the `bug-fix-agent` decision log. D-01–D-
 
 ## 2. Reference Documents
 
-- PRD: [`docs/requirements/prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.1.
+- PRD: [`docs/requirements/prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.3.
 - Decision log: `workstream/decisions-bug-fix-agent.md`.
 - Sibling agents (patterns reused): `agents/security-analyst/`, `agents/dependency-update/`.
 - `docs/technical-guidelines.md` §3 (state reporting, two clocks), §7–§8 (data, integration), §11 (testing); `docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md` (superseded for this agent's CLI step only, §11.3 below).
@@ -82,9 +83,11 @@ Steps 7–9 and 11–12 run under the heartbeat generator (§11.2).
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `main.py`                                                                  | `@app.entrypoint`, payload unwrap/validate, step orchestration, `determine_outcome`, return payload                                      | pattern of siblings     |
 | `config.py`                                                                | env reads, constants, `assert_clock_invariant()`, `RunDeadline`                                                                        | pattern + new invariant |
-| `credentials.py`, `scrubber.py`, `heartbeat.py`, `signal_backstop.py`      | as siblings                                                                                                                            | copied                  |
+| `scrubber.py`, `heartbeat.py`, `signal_backstop.py`                         | as siblings                                                                                                                            | copied                  |
+| `credentials.py`                                                           | as siblings, plus `mint_installation_token` returns the granted `permissions` with the token (D-46)                                    | ported + one change     |
 | `agent_reporter.py`                                                        | vendored byte-identical (D13)                                                                                                          | copied                  |
-| `github_api.py`                                                            | REST client: issues, labels, comments, assignees, pulls, `GET /app`; permission preflight                                              | new                     |
+| `github_api.py`                                                            | REST client: issues, labels, comments, assignees, pulls, `GET /app`; permission preflight from the token's granted permissions plus a read probe (D-46) | new                     |
+| `db_read.py`                                                               | minimal PostgREST GET client for the sweep; raises on any non-2xx, network error, or malformed body (D-48)                          | new                     |
 | `selection.py`                                                             | eligibility, ordering, linked-PR index (D-37)                                                                                          | new                     |
 | `claim.py`                                                                 | claim, marker build/parse, disposition comment/labels (D-36)                                                                           | new                     |
 | `sweep.py`                                                                 | stale-claim sweep (D-16)                                                                                                               | new                     |
@@ -155,13 +158,13 @@ The run lifetime is not a param: it is `maxLifetime` and the seed `max_runtime_s
 
 ### 5.3 Reads (sweep, D-16)
 
-`v_runs?id=in.(<uuids>)&select=id,effective_status` and `run_artifacts?run_id=in.(<uuids>)&type=eq.pull_request&select=run_id`. A claim is stale when `effective_status ∈ {failed, timed_out, failed_to_start, canceled}` and no `pull_request` artifact exists. `effective_status` (not `status`) is used so a run the reaper will mark `timed_out` is recognized immediately.
+`v_runs?id=in.(<uuids>)&select=id,effective_status` and `run_artifacts?run_id=in.(<uuids>)&type=eq.pull_request&select=run_id`, both through `db_read.py`, which raises on any failure (D-48); `agent_reporter.py` cannot read and stays byte-identical. A claim is stale when it is valid (D-36), the issue is still `in-progress`, its run is not the current run, the run's `effective_status` is terminal (`succeeded`, `failed`, `timed_out`, `failed_to_start`, `canceled`), and no `pull_request` artifact exists (D-47). This also recovers a disposition that failed on a `succeeded`/`needs_review` run. A read error for an issue skips it with a `warn` event; the sweep never disposes on uncertainty. `effective_status` (not `status`) is used so a run the reaper will mark `timed_out` is recognized immediately.
 
 ## 6. API Design
 
 ### 6.1 Invocation payload and return
 
-Payload (built by `panel/lib/domain/payload.ts`, unchanged): `{ run_id, repository_org, repository_name, params }`, wrapped as the siblings (`unwrap_payload`, `validate_payload`, `apply_defaults`, `classify_invalid_payload`). Invalid params → `failed` / `INVALID_PARAMS`.
+Payload (built by `panel/lib/domain/payload.ts`, unchanged): `{ run_id, repository_org, repository_name, params }`. `unwrap_payload` is ported from the siblings and unwraps the AgentCore CLI's repeated `prompt` wrapper per ADR-005; only a payload that is still a lone `prompt` wrapper after unwrapping, or does not parse, is rejected (D-45). Then `validate_payload`, `apply_defaults`, `classify_invalid_payload`. Invalid params → `failed` / `INVALID_PARAMS`. An optional top-level key `canary` (outside `params`, not in `params_schema`) is honored only with `ALLOW_CANARY=1`; otherwise its presence → `failed` / `INVALID_PARAMS` before any GitHub call (D-44).
 
 Return payload (terminal chunk): `{ status, outcome, error_code, issue_number, pr_url, disposition_reason, metrics }`, built by `build_return_payload`.
 
@@ -170,7 +173,7 @@ Return payload (terminal chunk): `{ status, outcome, error_code, issue_number, p
 | Purpose            | Call                                                                                  | Permission           |
 | ------------------ | ------------------------------------------------------------------------------------- | -------------------- |
 | App identity       | `GET /app` (App JWT)                                                                  | App JWT              |
-| Preflight          | `GET /repos/{r}/issues?per_page=1`, `GET /repos/{r}/labels?per_page=1`                | Issues read          |
+| Preflight          | Granted `permissions` from the installation-token response (`issues`, `pull_requests`, `contents`: `write`); then `GET /repos/{r}/issues?per_page=1`, `GET /repos/{r}/labels?per_page=1` | Token response; Issues read |
 | List ready bugs    | `GET /repos/{r}/issues?state=open&labels=type: bug,status: ready&sort=created&direction=asc` (paginated; PRs filtered out) | Issues read          |
 | Open PR index      | `GET /repos/{r}/pulls?state=open` (paginated)                                          | Pull requests read   |
 | In-progress claims | `GET /repos/{r}/issues?state=open&labels=status: in-progress`; `GET .../issues/{n}/comments` | Issues read          |
@@ -472,7 +475,7 @@ Prerequisites (operator, before Wave A deploy): GitHub App Issues r/w accepted; 
 ### 15.1 Story-level additions (v1.1)
 
 - `FIX_PIPELINE_ENABLED` (env, default `0` until S-199). When off, the run ends `succeeded` / `not_applicable` after applicability with the event "fix pipeline not enabled", before the claim. The sweep still runs.
-- Canary mode: param `canary` ∈ {`credentials`, `idle_survival`, `cli_flags`}, accepted only with `ALLOW_CANARY=1`; the production deployment never sets it (S-189).
+- Canary mode: top-level payload key `canary` ∈ {`credentials`, `idle_survival`, `cli_flags`}, outside `params` and absent from `params_schema`; honored only with `ALLOW_CANARY=1`, otherwise `INVALID_PARAMS`; started with the AgentCore CLI and a payload file, never from the panel; the production deployment never sets `ALLOW_CANARY` (S-189, D-44).
 
 ## 16. Dependencies & Risks
 
@@ -521,6 +524,11 @@ Resolved by the Wave A canary, not by further design:
 | D-40 | Anthropic API directly, no Bedrock; `MODEL_ID` default `claude-sonnet-5-5`.                                            |
 | D-41 | CLI auth by `ANTHROPIC_API_KEY`; no AWS credentials in the CLI env.                                                    |
 | D-42 | Dedicated key with a monthly spend limit, Secrets Manager, CLI-only.                                                   |
+| D-44 | Canary selector is a top-level payload key, gated by `ALLOW_CANARY=1`; not in `params_schema`.                        |
+| D-45 | Unwrap the CLI's repeated `prompt` wrapper like the siblings (ADR-005).                                                |
+| D-46 | Preflight checks the token's granted permissions plus a read probe.                                                    |
+| D-47 | Stale claim = any terminal run without a PR, issue still `in-progress`.                                                |
+| D-48 | Sweep reads through `db_read.py`, which raises; read errors skip.                                                      |
 
 ## Vocabulary
 
