@@ -178,6 +178,7 @@ export type CadenceKind = "hourly" | "daily" | "weekly" | "every_n_hours" | "adv
 export type NotificationKind =
   | "run_failed"
   | "schedule_auto_paused"
+  | "webhook_rule_auto_disabled"
   | "pr_opened"
   | "run_succeeded";
 
@@ -228,6 +229,8 @@ export interface NotificationRow {
   id: string;
   kind: NotificationKind;
   schedule_id: string | null;
+  /** S-173/S-174: the webhook rule behind the run (null for schedules, or once the rule is deleted). */
+  webhook_rule_id: string | null;
   agent_id: string | null;
   repository_id: string | null;
   run_id: string | null;
