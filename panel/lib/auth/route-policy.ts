@@ -21,6 +21,7 @@ export type RoutePolicy = "public" | "ui" | "api" | "internal";
  * | `/login`            | `public`   |
  * | `/api/auth/logout`  | `public`   | (S-120 — session-ending, must be reachable)
  * | `/api/internal/**`  | `internal` | (S-153 — shared-secret, NOT session-gated)
+ * | `/api/webhooks/**`  | `internal` | (S-169 — HMAC-signed, NOT session-gated)
  * | `/api/**`           | `api`      |
  * | everything else     | `ui`       | (incl. `/dev/**`, unknown paths — fail-closed)
  *
@@ -53,6 +54,15 @@ export function classifyRoute(pathname: string): RoutePolicy {
   // or `/api/internal/...`) so every internal endpoint is covered, while a
   // sibling like `/api/internalish` stays `api`.
   if (pathname === "/api/internal" || pathname.startsWith("/api/internal/")) {
+    return "internal";
+  }
+
+  // Inbound webhooks (S-169, D-W2). GitHub (or another HMAC-signing sender)
+  // holds no session, so the same rule applies as for the scheduler surface:
+  // the gate skips the session check and the handler's fail-closed HMAC
+  // signature verification is the authorization. Prefix-matched so
+  // `/api/webhooksx` stays `api`; the `/webhooks` UI page stays `ui`.
+  if (pathname === "/api/webhooks" || pathname.startsWith("/api/webhooks/")) {
     return "internal";
   }
 

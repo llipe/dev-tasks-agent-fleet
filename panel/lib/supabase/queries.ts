@@ -29,6 +29,7 @@ import type {
   ScheduleRow,
   VRunRow,
   VScheduleRow,
+  WebhookOutcome,
 } from "@/lib/supabase/types";
 
 /** SD11 — the bounded initial `run_events` read cap. The SSE relay (S-110) */
@@ -1253,4 +1254,91 @@ export async function getEndpointSecret(
     throw new DatabaseError("getEndpointSecret", result.error);
   }
   return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
+
+/** The endpoint fields the inbound route needs (S-169). Never includes the secret. */
+export interface WebhookEndpointForReceive {
+  id: string;
+  is_enabled: boolean;
+  signature_header: string;
+  delivery_id_header: string;
+  event_allowlist: string[];
+}
+
+/** Look up an endpoint by its URL token (S-169). Returns null when unknown. */
+export async function getWebhookEndpointByToken(
+  client: SupabaseClient,
+  token: string,
+): Promise<WebhookEndpointForReceive | null> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select("id, is_enabled, signature_header, delivery_id_header, event_allowlist")
+    .eq("url_token", token)
+    .maybeSingle();
+  if (result.error) {
+    throw new DatabaseError("getWebhookEndpointByToken", result.error);
+  }
+  return (result.data as WebhookEndpointForReceive | null) ?? null;
+}
+
+/**
+ * Insert a verified delivery that claims `dedup_key` (D-W16). Uses
+ * `ON CONFLICT (endpoint_id, dedup_key) DO NOTHING`, so a concurrent or replayed
+ * delivery inserts nothing and this returns `null` (EC-14).
+ */
+export async function claimWebhookDelivery(
+  client: SupabaseClient,
+  row: {
+    endpoint_id: string;
+    delivery_id: string | null;
+    event_type: string | null;
+    dedup_key: string;
+  },
+): Promise<string | null> {
+  const result = await client
+    .from("webhook_deliveries")
+    .upsert(
+      { ...row, outcome: "received" },
+      { onConflict: "endpoint_id,dedup_key", ignoreDuplicates: true },
+    )
+    .select("id");
+  if (result.error) {
+    throw new DatabaseError("claimWebhookDelivery", result.error);
+  }
+  const rows = (result.data ?? []) as { id: string }[];
+  return rows[0]?.id ?? null;
+}
+
+/** Insert a delivery row that claims no dedup key (`unauthorized` / `duplicate`, D-W16). */
+export async function insertUnclaimedWebhookDelivery(
+  client: SupabaseClient,
+  row: {
+    endpoint_id: string;
+    delivery_id: string | null;
+    event_type: string | null;
+    outcome: WebhookOutcome;
+    reason: string | null;
+  },
+): Promise<string> {
+  const result = await client.from("webhook_deliveries").insert(row).select("id").single();
+  if (result.error) {
+    throw new DatabaseError("insertUnclaimedWebhookDelivery", result.error);
+  }
+  return (result.data as { id: string }).id;
+}
+
+/** Set a delivery's outcome and reason (S-169 ignore paths; S-171+ routing outcomes). */
+export async function setWebhookDeliveryOutcome(
+  client: SupabaseClient,
+  rowId: string,
+  outcome: WebhookOutcome,
+  reason: string | null,
+): Promise<void> {
+  const result = await client
+    .from("webhook_deliveries")
+    .update({ outcome, reason })
+    .eq("id", rowId);
+  if (result.error) {
+    throw new DatabaseError("setWebhookDeliveryOutcome", result.error);
+  }
 }
