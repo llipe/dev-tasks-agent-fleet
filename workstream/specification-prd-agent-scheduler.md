@@ -11,7 +11,7 @@
 | Version | Date       | Summary                                                                 | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
 | 1.1     | 2026-10-13 | **UI sections finalized.** The Claude Design prototype was delivered and reviewed (`docs/prototype/Agent Scheduler.dc.html`, same Nocturne `_ds` bundle as every existing screen) and folded into `DESIGN.md` v1.11 (§5.7 Schedules + §5.7.1/§5.7.2/§5.7.3, §5.8 Notifications, §4.1 nav-state, §10 icons). §7 (SD-UI-*) flipped from PENDING PROTOTYPE to **FINAL**, each decision pinned to its DESIGN.md section. No non-UI change. | product-engineer |
-| 1.0     | 2026-10-13 | Initial spec from PRD v1.0. UI sections (SD-UI-*) are grounded in the current Nocturne system but marked **PENDING PROTOTYPE** — they will be pinned to pixel-exact `DESIGN.md` §5 references once the Claude Design prototype (`workstream/claude-design-prompt-agent-scheduler.md`) is delivered and folded into `DESIGN.md`. All non-UI sections are final. | product-engineer |
+| 1.0     | 2026-10-13 | Initial spec from PRD v1.0. UI sections (SD-UI-*) are grounded in the current Nocturne system but marked **PENDING PROTOTYPE** — they will be pinned to pixel-exact `DESIGN.md` §5 references once the Claude Design prototype (`workstream/archive/claude-design-prompt-agent-scheduler.md`) is delivered and folded into `DESIGN.md`. All non-UI sections are final. | product-engineer |
 
 ---
 

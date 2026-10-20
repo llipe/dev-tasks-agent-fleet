@@ -117,7 +117,7 @@ The runbook's E2E commands would fail validation as written. The PRD's `reposito
 
 ### S3 — UI surfaces
 
-No implemented UI. Six prototype screens at `docs/prototype/*.dc.html` with a `_ds/` design-system directory and a `support.js`. These were already analyzed into `/DESIGN.md` v1.0 (see `workstream/research-ui-prototype-analysis-2025-01-27.md` — a prior research artifact covering the same prototype).
+No implemented UI. Six prototype screens at `docs/prototype/*.dc.html` with a `_ds/` design-system directory and a `support.js`. These were already analyzed into `/DESIGN.md` v1.0 (see `workstream/archive/research-ui-prototype-analysis-2025-01-27.md` — a prior research artifact covering the same prototype).
 
 `/DESIGN.md` is complete enough to implement from without re-reading the HTML: tokens (§2), component inventory (§3, twelve components with props in §11.2), layout grids including exact `grid-template-columns` for both tables (§4.3, §4.4), and status→visual mapping (§8.1).
 
@@ -171,7 +171,7 @@ See Relationships section below.
 
 | Artifact | Relevance |
 |---|---|
-| `workstream/research-ui-prototype-analysis-2025-01-27.md` | Prior research on the same prototype; its output became `/DESIGN.md` v1.0. Overlaps S3 — not re-derived here |
+| `workstream/archive/research-ui-prototype-analysis-2025-01-27.md` | Prior research on the same prototype; its output became `/DESIGN.md` v1.0. Overlaps S3 — not re-derived here |
 | `docs/adr/ADR-001-llm-fix-agent-escape-hatch.md` | LLM fix loop + `verify_no_mandate_violation`. Panel-relevant only in that a `MANDATE_VIOLATION` run is `failed`/`needs_review` with no PR artifact |
 | `docs/adr/ADR-002-open-pr-step-and-pr-artifact.md` | `open_pr` step + `pull_request` artifact — the artifact the run detail must surface, including on `failed` runs |
 | `workstream/specification-prd-dependency-update-agent.md` | Phase 1 spec. The `§6.2` return-payload contract referenced by `build_return_payload` |

@@ -11,7 +11,7 @@ It pins the GitHub App JWT contract (RS256 header, string `iss`, integer
 `iat`/`exp`, and the exact 600-second validity window) so the audit-driven
 PyJWT 2.15.1 upgrade cannot silently change what the agent signs.
 
-See `workstream/test-plan-issue-252-245-244.md` CT-1/CT-2/CT-3 and task 1.5a.
+See `workstream/archive/test-plan-issue-252-245-244.md` CT-1/CT-2/CT-3 and task 1.5a.
 """
 
 from __future__ import annotations

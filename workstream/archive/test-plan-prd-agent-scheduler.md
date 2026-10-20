@@ -2,7 +2,7 @@
 
 > Pre-implementation, black-box-first compliance test plan derived from
 > [`prd-agent-scheduler`](../docs/requirements/prd-agent-scheduler.md) (FR1–FR26, AC1–AC15),
-> [`specification-prd-agent-scheduler`](specification-prd-agent-scheduler.md) (SD-*), and the
+> [`specification-prd-agent-scheduler`](../specification-prd-agent-scheduler.md) (SD-*), and the
 > stories ([`user-stories-prd-agent-scheduler`](user-stories-prd-agent-scheduler.md), S-149…S-164,
 > GitHub #261–#276). Companion: [`traceability-matrix-prd-agent-scheduler`](traceability-matrix-prd-agent-scheduler.md).
 >
