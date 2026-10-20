@@ -165,6 +165,56 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-172 webhook fires a run
     expect(again).toEqual({ status: 200, json: { duplicate: true } });
     expect(aws.invokeAgentRuntime).toHaveBeenCalledTimes(1);
   });
+
+  // S-173: guardrails through the real route.
+  it("skips a second delivery while the first run is still active (G1, AC6)", async () => {
+    aws.invokeAgentRuntime.mockResolvedValue(undefined);
+    const first = await post("g1-a");
+    const second = await post("g1-b");
+    expect(first.json).toMatchObject({ status: "queued" });
+    expect(second).toEqual({ status: 202, json: { skipped: true, reason: "overlap" } });
+    expect(aws.invokeAgentRuntime).toHaveBeenCalledTimes(1);
+    const rows = await withDb((c) =>
+      c
+        .query<{
+          outcome: string;
+          reason: string | null;
+        }>(
+          `select outcome::text as outcome, reason from webhook_deliveries where endpoint_id = $1 order by created_at, id`,
+          [endpointId],
+        )
+        .then((r) => r.rows),
+    );
+    expect(rows).toEqual([
+      { outcome: "fired", reason: null },
+      { outcome: "skipped", reason: "overlap" },
+    ]);
+  });
+
+  it("disables the rule after 3 consecutive start failures, then stops matching (G3)", async () => {
+    aws.invokeAgentRuntime.mockRejectedValue(
+      Object.assign(new Error("boom"), { code: "INVOCATION_FAILED", status: 502 }),
+    );
+    for (const id of ["g3-a", "g3-b", "g3-c"]) {
+      expect((await post(id)).json).toMatchObject({ status: "failed_to_start" });
+    }
+    const rule = await withDb((c) =>
+      c
+        .query<{ enabled: boolean; notes: number }>(
+          `select r.is_enabled as enabled,
+                  (select count(*)::int from notifications where webhook_rule_id = r.id) as notes
+             from webhook_rules r where r.id = $1`,
+          [ruleId],
+        )
+        .then((r) => r.rows[0]!),
+    );
+    expect(rule).toEqual({ enabled: false, notes: 1 });
+    expect(await post("g3-d")).toEqual({
+      status: 202,
+      json: { skipped: true, reason: "no_match" },
+    });
+    await withDb((c) => c.query(`delete from notifications where webhook_rule_id = $1`, [ruleId]));
+  });
 });
 
 if (!probe.available) {

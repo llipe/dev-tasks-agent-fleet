@@ -1444,3 +1444,36 @@ export async function recordWebhookDeliveryFired(
     throw new DatabaseError("recordWebhookDeliveryFired", result.error);
   }
 }
+
+/** S-173: the webhook guardrail decision (null = allowed, else the skip reason). */
+export async function checkWebhookGuardrail(
+  client: SupabaseClient,
+  agentId: string,
+  repositoryId: string | null,
+): Promise<string | null> {
+  const result = await client.rpc("webhook_guardrail", {
+    p_agent_id: agentId,
+    p_repository_id: repositoryId,
+  });
+  if (result.error) {
+    throw new DatabaseError("checkWebhookGuardrail", result.error);
+  }
+  return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
+
+/** S-173: G3 per rule — count a start failure, or reset on success. */
+export async function recordWebhookRuleResult(
+  client: SupabaseClient,
+  ruleId: string,
+  ok: boolean,
+  errorCode: string | null,
+): Promise<void> {
+  const result = await client.rpc("webhook_record_rule_result", {
+    p_rule_id: ruleId,
+    p_ok: ok,
+    p_error: errorCode,
+  });
+  if (result.error) {
+    throw new DatabaseError("recordWebhookRuleResult", result.error);
+  }
+}
