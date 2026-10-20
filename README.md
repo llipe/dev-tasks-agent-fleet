@@ -134,7 +134,7 @@ get the same behavior locally and in CI. Each branch is also runnable on its own
 | `make format-check` | Verify formatting — `ruff format --check .` (Python) + `prettier --check` (panel) |
 | `make typecheck`    | Type analysis — `mypy .` (Python) + `tsc --noEmit` (panel)          |
 | `make test`         | Run the full test suite — `python -m pytest` (Python) + `vitest run` (panel) |
-| `make audit`        | Dependency vulnerability scan — `pip-audit . --strict` (Python) + `pnpm audit` (panel) |
+| `make audit`        | Dependency vulnerability scan — `pip-audit . --strict` (Python) + `pnpm audit` (panel). `security-analyst` temporarily ignores CVE-2026-59951 until 2026-10-26 (#355/#360; see `TESTING.md`) |
 | `make validate`     | **Aggregate quality gate** — Python branch + JS/TS branch, both must pass (fail-fast) |
 
 `make validate` is the gate to run before opening or updating a PR — it mirrors exactly

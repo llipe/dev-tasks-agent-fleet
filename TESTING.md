@@ -176,6 +176,7 @@ thin `pnpm --filter panel run <script>` wrappers, so `pnpm run test` /
 | `dependency-update` | Audit                         | `make audit` → `pip-audit . --strict`                                                    |
 | `dependency-update` | **Aggregate gate**            | `make validate` → lint + format-check + typecheck + test-cov + audit (fail-fast)          |
 | `security-analyst`  | All of the above              | Identical `Makefile` targets (`make test`, `test-unit`, `test-component`, `lint`, `format-check`, `typecheck`, `test-cov`, `audit`, `validate`) run from `agents/security-analyst/app/securityAnalyst/` |
+| `security-analyst`  | Audit (temporary exception)   | `make audit` → `audit-exception-check` then `pip-audit . --strict --ignore-vuln CVE-2026-59951`. It's a time-boxed exception (#355) because semgrep pins `mcp==1.29.0`. The check fails closed after `AUDIT_EXCEPTION_EXPIRES` (20261026, UTC) or if the value is malformed. It's covered offline by `tests/component/test_audit_exception.py`; removal is tracked in #360 |
 | `agentcore-cdk-app` | Run test / build / format     | `pnpm test` (→ `jest`) / `pnpm run build` (→ `tsc`) / `pnpm run format:check` (from its own package dir) |
 
 ### Repo-root aggregate (`Makefile`)
@@ -189,7 +190,7 @@ aggregate fails if either branch fails. `make validate` = `validate-py` +
 ### Gate reachability
 
 - **Aggregate test command:** `make test` (repo root) reaches `dependency-update` and `security-analyst` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
-- **CI gate:** `.github/workflows/ci.yml` runs two jobs on every push/PR to `main`: `python-quality` (3.13 + 3.14 matrix — lint → format-check → typecheck → `pytest --cov` → `pip-audit`) and `panel-quality` (Node 22 — boots the Supabase stack with `REQUIRE_LOCAL_DB=1`, lint → format:check → typecheck → the S-122 auth-gate parser test + shellcheck → `test:coverage` (incl. gated Layer 2.5) → Playwright E2E → audit). Neither job has a `paths:` filter excluding its package.
+- **CI gate:** `.github/workflows/ci.yml` runs two jobs on every push/PR to `main`: `python-quality` (3.13 + 3.14 matrix — lint → format-check → typecheck → `pytest --cov` → `make audit`, so each agent's Makefile is the single source of its `pip-audit` flags) and `panel-quality` (Node 22 — boots the Supabase stack with `REQUIRE_LOCAL_DB=1`, lint → format:check → typecheck → the S-122 auth-gate parser test + shellcheck → `test:coverage` (incl. gated Layer 2.5) → Playwright E2E → audit). Neither job has a `paths:` filter excluding its package.
 - **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); both Python agents deploy via the AgentCore CLI/CDK. None invokes the aggregate gate automatically.
 
 ## Coverage
