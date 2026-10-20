@@ -130,8 +130,16 @@ created_at < now() - interval '30 days'` keeps growing, raise the batch
 update webhook.config set value = '14', updated_at = now() where key = 'delivery_retention_days';
 ```
 
-From S-169 onward: GitHub's **Recent Deliveries** shows `2xx` for a ping, and the
-panel's delivery log shows the event.
+From S-169 onward: GitHub's **Recent Deliveries** shows `202` for the initial `ping` (not on
+the allowlist, so it's recorded as `ignored`, which is expected). A `401` there means the
+secret in GitHub doesn't match Vault, and a `404` means the token is wrong or the endpoint is
+disabled. Check the outcome per attempt:
+
+```sql
+select received_at, delivery_id, event_type, outcome, reason
+  from webhook_deliveries where endpoint_id = '<endpoint id>'
+ order by received_at desc limit 20;
+```
 
 ## Rollback
 
