@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createServerClient } from "@/lib/supabase/server";
 import {
+  checkWebhookGuardrail,
   claimWebhookDelivery,
   getAgentById,
   getEndpointSecret,
@@ -32,6 +33,7 @@ import {
   insertUnclaimedWebhookDelivery,
   markRunFailedToStart,
   recordWebhookDeliveryFired,
+  recordWebhookRuleResult,
   setWebhookDeliveryOutcome,
   setWebhookDeliveryRoute,
 } from "@/lib/supabase/queries";
@@ -100,6 +102,12 @@ function dispatchDeps(client: SupabaseClient): DispatchDeps {
             ),
           recordFired: (rowId, runId, ruleId, reason) =>
             recordWebhookDeliveryFired(client, rowId, runId, ruleId, reason),
+          checkGuardrail: (agentId, repositoryId) =>
+            checkWebhookGuardrail(client, agentId, repositoryId),
+          recordSkipped: (rowId, reason, ruleId) =>
+            setWebhookDeliveryRoute(client, rowId, "skipped", reason, ruleId),
+          recordRuleResult: (ruleId, ok, errorCode) =>
+            recordWebhookRuleResult(client, ruleId, ok, errorCode),
           log: (fields) => console.info(JSON.stringify(fields)),
         },
         rule,
