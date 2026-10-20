@@ -19,6 +19,7 @@
 | 1.11    | 2026-10-13 | Added the **findings disclosure** to the **§5.3 Run Detail** audit-report block (issue #245). A large `audit_report` previously pushed the steps panel, log toolbar, and log viewer off screen, breaking §4.2's "no outer scroll" contract. The findings table is now wrapped in a native `<details>`/`<summary>`: the summary line is the always-visible `<summary>`, the table is the collapsible body. Default state is server-rendered via the `open` attribute — open at **10 rendered rows or fewer** (counting `view.rows.length`, not the agent-reported `total_findings`), closed above. When open, the body is a scroll container capped at `max-height: 40vh; overflow-y: auto` (the cap sits on the body container, not on `<details>`, so the summary stays visible). Paired with a **`min-height: 240px` log-section floor** on `RunDetailLogSection`'s `.section`, so the steps panel/toolbar/viewer never collapse to zero; the 40vh cap yields first on short viewports. The empty state and the key/value fallback have no table and therefore no disclosure. The `<summary>` keeps a visible `:focus-visible` ring. The component stays server-safe (no `"use client"`) and metadata stays escaped text. No new token or component variant — reuses §2 typography and the existing `--space-*`/`--radius-md`/`--color-accent-400` tokens. | developer |
 | 1.12    | 2026-10-20 | Added **§5.9 Webhooks (`/webhooks`)** (Webhook Triggers Phase 1, Story S-176 / issue #321, D-W13). Documents the endpoint list (Status / Endpoint / Events / Rules / Payload URL / Actions on the §5.7 semantic-table-on-grid), the New/Edit endpoint dialog (source segmented control fixed after creation; generic-only header fields; event checkboxes + an "Other events" field; bot-author and enabled toggles), the **show-once signing-secret dialog** (closes only on an explicit "I've stored it", no Escape/backdrop close, secret never re-displayed), and the delete and rotate `alertdialog`s. **§4.1** nav-state note: **Webhooks** is live after Schedules (six of eight items live); this also corrects the previous note, which said "four of six" while listing five. **§10** gains `WebhooksLogo`, `Copy` and `ArrowsClockwise`. No new visual token or component variant: every surface reuses the §5.7 table, the §3.4 pill mechanism, `Tag`, `Toggle`, `Button`, `KLabel` and the §5.7.2 dialog shell. First-pass layout without a dedicated `ux-engineer` prototype, flagged as with §5.6. | developer |
 | 1.13    | 2026-10-20 | Added **§5.9.4 Endpoint page** (`/webhooks/[id]`) and **§5.9.5 Rule dialog** (Story S-177 / issue #322, D-W7/D-W13): the numbered rule list in match order with the first-match note, the default rule in its own section, per-row text summary (events, conditions, agent, repository source) with ↑/↓ reorder, enable/disable, edit and delete; and the rule dialog's When / Run / Guardrails groups (event checkboxes from the endpoint allowlist, AND-ed condition rows, agent select, repository from a payload path or fixed, the reused `FieldRow` param grid, "fill from the payload" rows, threshold and toggles). Validation runs on the server before anything is stored; errors render inline and a summary sits next to Save. Endpoint names in the §5.9 list now link to the endpoint page. No new token or component variant. | developer |
+| 1.14    | 2026-10-20 | Added **§5.9.6 Delivery log** (Story S-178 / issue #323, D-W11/D-W13, FR23) on the endpoint page: a newest-first semantic table (Received relative + absolute UTC · Event · Delivery ID · Signature · Rule · Outcome pill + plain-language reason + `Open run ▸` for `fired`), keyset-paged with **Older ▸ / ◂ Newest** links, the configured retention stated in the header, and the dashed empty state. Untrusted header and reason values render as text only. No new token or component variant: the §5.7 table grid, the §3.4 pill mechanism and the §5.8 muted reason line. | developer |
 
 ---
 
@@ -838,6 +839,34 @@ Three groups separated by a top rule, each with an uppercase 10px `--faint` lege
 - **Footer**: the server's summary ("Fix the highlighted fields.") in `--st-fail` on
   the left, so it stays visible however far the form is scrolled; Cancel; and the
   primary **Save rule** / `Saving…`. Field errors render under their group.
+
+
+#### 5.9.6 Delivery log
+
+On the endpoint page, below the rules. A `Deliveries` heading (`500 16px heading`)
+with the note "Every request to this URL, newest first. Kept for N days." (N is the
+configured retention, `webhook.config`). A semantic `<table aria-label="Deliveries">`
+on the §5.7 grid (`150px 150px minmax(160px,1fr) 110px minmax(140px,0.8fr)
+minmax(260px,1.4fr)`, rows top-aligned):
+
+- **Received**: §7.1 relative time (mono) over the absolute `YYYY-MM-DD HH:MM:SS UTC`
+  (`--faint`).
+- **Event** and **Delivery ID**: the sender's header values in mono, ellipsized, `—`
+  when absent. They are untrusted and always rendered as text, never markup or links.
+- **Signature**: `verified` (`--faint`) or `signature failed` (`--st-fail`).
+- **Rule**: the matched rule's name, `deleted rule` when it is gone, `—` when none.
+- **Outcome**: a §3.4 pill (`fired` `--st-ok`; `skipped` / `rejected` `--st-timeout`;
+  `unauthorized` `--st-fail`; `ignored` / `no match` `--faint`; `duplicate` /
+  `received` `--muted`), plus `Open run ▸` (mono `--color-accent-300`) for `fired`
+  only. Below it, a plain-language reason in 12px `--muted`: known codes are
+  translated (e.g. "A run is already running for this agent and repository.",
+  "Signature doesn't match this endpoint's secret."); unknown text is shown as-is,
+  capped at 200 characters.
+
+Paging is keyset (`created_at, id`), 50 per page: a right-aligned `Older ▸` link
+carries an opaque `?before=` cursor, and `◂ Newest` returns to the first page. A
+malformed cursor silently shows the first page. Empty state: the dashed panel, "No
+deliveries yet. Every request to this endpoint lands here, including rejected ones."
 
 ---
 

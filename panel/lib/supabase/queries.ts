@@ -29,6 +29,7 @@ import type {
   ScheduleRow,
   VRunRow,
   VScheduleRow,
+  WebhookDeliveryRow,
   WebhookEndpointRow,
   WebhookOutcome,
   WebhookSource,
@@ -1705,4 +1706,60 @@ export async function reorderWebhookRules(
   if (result.error) {
     throw new DatabaseError("reorderWebhookRules", result.error);
   }
+}
+
+// ---------------------------------------------------------------------------
+// S-178 (#323) — the delivery log feed: newest first, keyset on (created_at, id).
+// ---------------------------------------------------------------------------
+
+export interface DeliveryCursor {
+  createdAt: string;
+  id: string;
+}
+
+export const DELIVERY_PAGE_SIZE = 50;
+
+export async function getWebhookDeliveriesPage(
+  client: SupabaseClient,
+  endpointId: string,
+  opts: { limit?: number; before?: DeliveryCursor } = {},
+): Promise<{ rows: WebhookDeliveryRow[]; nextCursor: DeliveryCursor | null }> {
+  const limit = Math.min(Math.max(opts.limit ?? DELIVERY_PAGE_SIZE, 1), 200);
+  let query = client
+    .from("webhook_deliveries")
+    .select(
+      "id, endpoint_id, delivery_id, dedup_key, event_type, outcome, matched_rule_id, run_id, reason, received_at, created_at, updated_at",
+    )
+    .eq("endpoint_id", endpointId);
+  if (opts.before) {
+    // Quoted values: timestamps contain ':' and '+'. The cursor is validated by the caller.
+    const ts = `"${opts.before.createdAt}"`;
+    query = query.or(`created_at.lt.${ts},and(created_at.eq.${ts},id.lt.${opts.before.id})`);
+  }
+  const result = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+  if (result.error) {
+    throw new DatabaseError("getWebhookDeliveriesPage", result.error);
+  }
+  const all = (result.data ?? []) as WebhookDeliveryRow[];
+  const rows = all.slice(0, limit);
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    nextCursor: all.length > limit && last ? { createdAt: last.created_at, id: last.id } : null,
+  };
+}
+
+/** S-178: the configured delivery retention (webhook.config), for the log's note. */
+export async function getWebhookDeliveryRetentionDays(client: SupabaseClient): Promise<number> {
+  const result = await client.rpc("webhook_delivery_retention_days");
+  if (result.error || typeof result.data !== "number") {
+    throw new DatabaseError(
+      "getWebhookDeliveryRetentionDays",
+      result.error ?? { message: "no value" },
+    );
+  }
+  return result.data;
 }
