@@ -77,12 +77,14 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-169 inbound webhook rou
     });
   });
 
-  it("records a signed, allowlisted delivery as received and claims its key (AC1 front half)", async () => {
+  // With no rules on this endpoint, a verified delivery is claimed and then
+  // routed to no_match (S-171).
+  it("claims a signed, allowlisted delivery's key and routes it (no rules → no_match)", async () => {
     const body = '{"action":"opened"}';
     const res = await post(body, signed(body, "d-1"));
-    expect(res).toEqual({ status: 202, json: { received: true } });
+    expect(res).toEqual({ status: 202, json: { skipped: true, reason: "no_match" } });
     expect(await rows()).toEqual([
-      { delivery_id: "d-1", dedup_key: "id:d-1", outcome: "received", reason: null },
+      { delivery_id: "d-1", dedup_key: "id:d-1", outcome: "no_match", reason: null },
     ]);
   });
 
@@ -92,7 +94,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-169 inbound webhook rou
     const again = await post(body, signed(body, "d-2"));
     expect(again).toEqual({ status: 200, json: { duplicate: true } });
     const r = await rows();
-    expect(r.map((x) => x.outcome)).toEqual(["received", "duplicate"]);
+    expect(r.map((x) => x.outcome)).toEqual(["no_match", "duplicate"]);
     expect(r.filter((x) => x.dedup_key !== null)).toHaveLength(1);
   });
 
@@ -120,7 +122,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-169 inbound webhook rou
     const forged = await post(body, signed(body, "real-id", "pull_request", "attacker"));
     const genuine = await post(body, signed(body, "real-id"));
     expect([forged.status, genuine.status]).toEqual([401, 202]);
-    expect((await rows()).map((x) => x.outcome)).toEqual(["unauthorized", "received"]);
+    expect((await rows()).map((x) => x.outcome)).toEqual(["unauthorized", "no_match"]);
   });
 
   it("claims exactly once when the same delivery arrives concurrently (EC-14)", async () => {

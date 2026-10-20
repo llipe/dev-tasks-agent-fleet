@@ -30,6 +30,7 @@ import type {
   VRunRow,
   VScheduleRow,
   WebhookOutcome,
+  WebhookRuleRow,
 } from "@/lib/supabase/types";
 
 /** SD11 — the bounded initial `run_events` read cap. The SSE relay (S-110) */
@@ -1341,4 +1342,88 @@ export async function setWebhookDeliveryOutcome(
   if (result.error) {
     throw new DatabaseError("setWebhookDeliveryOutcome", result.error);
   }
+}
+
+/**
+ * Resolve a payload-named repository against the allowlist (S-171, D-W8).
+ * Case-insensitive exact match on `full_name` (GitHub names are
+ * case-insensitive; EC-7), enabled and not archived only. Wildcards in the
+ * input are escaped, so `ilike` acts as an exact match. `full_name` is unique
+ * per installation, not globally: if more than one enabled repository matches,
+ * this returns null rather than picking one. Never creates a row (I-4).
+ */
+export async function getRepositoryByFullName(
+  client: SupabaseClient,
+  fullName: string,
+): Promise<RepositoryRow | null> {
+  const result = await client
+    .from("repositories")
+    .select("*")
+    .ilike("full_name", escapeIlikeWildcards(fullName))
+    .eq("is_enabled", true)
+    .is("archived_at", null)
+    .limit(2);
+  if (result.error) {
+    throw new DatabaseError("getRepositoryByFullName", result.error);
+  }
+  const rows = (result.data ?? []) as RepositoryRow[];
+  return rows.length === 1 ? rows[0]! : null;
+}
+
+/** The routing fields of an endpoint's rules, for routeDelivery + resolveRoute (S-171). */
+export async function getWebhookRulesForEndpoint(
+  client: SupabaseClient,
+  endpointId: string,
+): Promise<WebhookRuleRow[]> {
+  const result = await client
+    .from("webhook_rules")
+    .select("*")
+    .eq("endpoint_id", endpointId)
+    .order("position", { ascending: true });
+  if (result.error) {
+    throw new DatabaseError("getWebhookRulesForEndpoint", result.error);
+  }
+  return (result.data ?? []) as WebhookRuleRow[];
+}
+
+/** The bot login for the self-trigger guard (FR19), from webhook.config via a service-role RPC. */
+export async function getWebhookBotLogin(client: SupabaseClient): Promise<string | null> {
+  const result = await client.rpc("webhook_bot_login");
+  if (result.error) {
+    throw new DatabaseError("getWebhookBotLogin", result.error);
+  }
+  return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
+
+/** Record a routing outcome and the matched rule on a delivery (S-171). */
+export async function setWebhookDeliveryRoute(
+  client: SupabaseClient,
+  rowId: string,
+  outcome: WebhookOutcome,
+  reason: string | null,
+  matchedRuleId: string | null,
+): Promise<void> {
+  const result = await client
+    .from("webhook_deliveries")
+    .update({ outcome, reason, matched_rule_id: matchedRuleId })
+    .eq("id", rowId);
+  if (result.error) {
+    throw new DatabaseError("setWebhookDeliveryRoute", result.error);
+  }
+}
+
+/** The endpoint's routing toggle for the bot-author guard (S-171). */
+export async function getWebhookEndpointRouting(
+  client: SupabaseClient,
+  endpointId: string,
+): Promise<{ ignore_bot_author: boolean }> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select("ignore_bot_author")
+    .eq("id", endpointId)
+    .single();
+  if (result.error) {
+    throw new DatabaseError("getWebhookEndpointRouting", result.error);
+  }
+  return result.data as { ignore_bot_author: boolean };
 }
