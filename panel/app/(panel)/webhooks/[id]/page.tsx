@@ -1,7 +1,8 @@
 /**
  * S-177 (#322) — an endpoint's page `/webhooks/[id]` (DESIGN.md §5.9.4): its
- * settings summary and the ordered rule editor. S-178 adds the delivery log
- * below. Server component (SD2); reads the endpoint, its rules, and the
+ * settings summary, the ordered rule editor, and (S-178) the delivery log,
+ * paged newest-first with an untrusted `?before=` keyset cursor that is
+ * validated strictly before it reaches the query. Server component (SD2); reads the endpoint, its rules, and the
  * enabled agents and repositories that rules may target. Never cached.
  */
 
@@ -13,9 +14,14 @@ import { createServerClient } from "@/lib/supabase/server";
 import {
   getEnabledAgents,
   getEnabledRepositories,
+  getWebhookDeliveriesPage,
+  getWebhookDeliveryRetentionDays,
   getWebhookEndpointById,
   getWebhookRulesForEndpoint,
 } from "@/lib/supabase/queries";
+import { DeliveryLog } from "@/components/webhooks/DeliveryLog";
+import { decodeDeliveryCursor, encodeDeliveryCursor } from "@/lib/domain/delivery-view";
+import { renderInstantMs } from "@/lib/time/render-instant";
 import { RuleEditor } from "@/components/webhooks/RuleEditor";
 import type { AgentOption, RepositoryOption } from "@/components/schedules/ScheduleDialog";
 import { requestOrigin, webhookUrl } from "@/lib/webhooks/request-origin";
@@ -28,19 +34,29 @@ export const fetchCache = "force-no-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function WebhookEndpointPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function WebhookEndpointPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ before?: string | string[] }>;
+}) {
+  const [{ id }, { before }] = await Promise.all([params, searchParams]);
+  const cursor = decodeDeliveryCursor(typeof before === "string" ? before : undefined);
   if (!UUID.test(id)) notFound();
   const client = createServerClient();
   const endpoint = await getWebhookEndpointById(client, id);
   if (!endpoint) notFound();
 
-  const [rules, agents, repositories, h] = await Promise.all([
+  const [rules, agents, repositories, h, deliveries, retentionDays] = await Promise.all([
     getWebhookRulesForEndpoint(client, id),
     getEnabledAgents(client),
     getEnabledRepositories(client),
     headers(),
+    getWebhookDeliveriesPage(client, id, { before: cursor ?? undefined }),
+    getWebhookDeliveryRetentionDays(client),
   ]);
+  const ruleNames = new Map(rules.map((r) => [r.id, r.name]));
 
   const agentOptions: AgentOption[] = agents.map((a) => ({
     id: a.id,
@@ -77,6 +93,19 @@ export default async function WebhookEndpointPage({ params }: { params: Promise<
         rules={rules}
         agents={agentOptions}
         repositories={repositoryOptions}
+      />
+
+      <DeliveryLog
+        rows={deliveries.rows}
+        ruleNames={ruleNames}
+        olderHref={
+          deliveries.nextCursor
+            ? `/webhooks/${id}?before=${encodeDeliveryCursor(deliveries.nextCursor)}`
+            : null
+        }
+        newestHref={cursor ? `/webhooks/${id}` : null}
+        retentionDays={retentionDays}
+        nowMs={renderInstantMs()}
       />
     </main>
   );
