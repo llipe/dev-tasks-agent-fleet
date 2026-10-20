@@ -156,3 +156,52 @@ describe("invokeAgentRuntime — AWS error name on failure (issue #306)", () => 
     expect(line).toContain("aws_error=unknown");
   });
 });
+
+// S-172 (#317, task 8.8): the webhook path bounds the invoke so GitHub's 10 s
+// delivery timeout is never hit. Optional: callers that don't pass timeoutMs
+// keep the old unbounded behavior.
+describe("invokeAgentRuntime — optional timeout (S-172)", () => {
+  const target = { runtimeArn: "arn:aws:bedrock-agentcore:us-east-1:1:runtime/x" };
+  const quiet = { info: vi.fn(), error: vi.fn() };
+
+  it("passes an AbortSignal to send() when timeoutMs is set", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await invokeAgentRuntime(target, {
+      payload: {},
+      logger: quiet,
+      timeoutMs: 8000,
+      clientFactory: () => ({ send }),
+    });
+    expect(send.mock.calls[0]![1]).toEqual({ abortSignal: expect.any(AbortSignal) });
+  });
+
+  it("passes no options when timeoutMs is unset (unchanged behavior)", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await invokeAgentRuntime(target, {
+      payload: {},
+      logger: quiet,
+      clientFactory: () => ({ send }),
+    });
+    expect(send.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("aborts a hung send() and surfaces InvocationFailedError", async () => {
+    const send = vi.fn(
+      (_cmd: unknown, opts?: { abortSignal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          opts?.abortSignal?.addEventListener("abort", () =>
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        }),
+    );
+    const started = Date.now();
+    const err = await invokeAgentRuntime(target, {
+      payload: {},
+      logger: quiet,
+      timeoutMs: 50,
+      clientFactory: () => ({ send }) as never,
+    }).catch((e: unknown) => e);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(err).toMatchObject({ code: "INVOCATION_FAILED", status: 502 });
+  });
+});
