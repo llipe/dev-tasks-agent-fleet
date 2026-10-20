@@ -1,11 +1,15 @@
 # Roadmap
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are tracked in their own table below. This page indexes the PRDs, GitHub issues, and merged PRs. If it disagrees with them, they are correct and this page gets fixed.
 
 | PRD | Phase/Wave | Scope (one line) | Status | Issues/PRs | What's missing |
 | --- | --- | --- | --- | --- | --- |
+| [prd-code-review-agent](requirements/prd-code-review-agent.md) | Wave A — Eval and model | Golden set of bug-introducing PRs, offline eval harness, non-Anthropic Bedrock candidates (GPT-5.6 Sol, DeepSeek V4 Pro) with Claude as control, default `MODEL_ID` chosen | Not started | — | Entire wave. PRD v0.1 is a draft; WHAT-phase grilling pending (§18) |
+| [prd-code-review-agent](requirements/prd-code-review-agent.md) | Wave B — Agent core, shadow | `code-review` scaffold, ready-for-review queue on green CI, context assembly, read-only tools, rubric, wrapper-validated findings, `COMMENT` review + neutral `fleet/code-review` check run, infra pass | Not started | — | Entire wave. Prerequisite: GitHub App Checks write |
+| [prd-code-review-agent](requirements/prd-code-review-agent.md) | Wave C — Measurement | `review_findings` table, re-review, reaction feedback, `/code-review dismiss`, panel precision view | Not started | — | Entire wave |
+| [prd-code-review-agent](requirements/prd-code-review-agent.md) | Wave D — Enforcing | `mode=enforcing`, required-check runbook, per-repo enablement on measured precision | Not started | — | Entire wave. Gated on shadow precision |
 | [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave A — Contract and claim | `bug-fix` scaffold + image (Node, Python, pinned Claude Code CLI, managed settings), `agents` seed + params schema, GitHub client + permission preflight, selection + applicability, claim/disposition protocol, stale-claim sweep, orchestrator (flag-gated, no claim), infra pass + deploy, canary + credential spike | Not started | #326–#335 (S-180–S-189) | Entire wave. PRD v1.1, spec and stories published; awaiting implementation. Prerequisite: GitHub App Issues r/w (not granted today) |
 | [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave B — Fix loop and validation | Fake-CLI harness, confined CLI runner, stream parser, installer, task list, measure (caps), gates + audit baseline, red-to-green, Draft PR, pipeline wiring, every disposition path | Not started | #336–#346 (S-190–S-200) | Entire wave. Depends on Wave A canary results (#335) |
 | [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave C — Live and enabled | Live verification on a fixture repo (fixable, unfixable, hostile issue, killed run), first schedule on one owned repo with G1/G3/G5 observed, docs close-out (ADR, foundation docs, glossary) | Not started | #347–#349 (S-201–S-203) | Entire wave. Depends on Wave B and scheduler Waves C–E merged; the #335 credential decision gates #348 |
