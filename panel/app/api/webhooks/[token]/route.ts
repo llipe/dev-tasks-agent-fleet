@@ -14,15 +14,25 @@
  */
 
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createServerClient } from "@/lib/supabase/server";
 import {
   claimWebhookDelivery,
+  getAgentById,
   getEndpointSecret,
+  getRepositoryByFullName,
+  getRepositoryById,
+  getWebhookBotLogin,
   getWebhookEndpointByToken,
+  getWebhookEndpointRouting,
+  getWebhookRulesForEndpoint,
   insertUnclaimedWebhookDelivery,
   setWebhookDeliveryOutcome,
+  setWebhookDeliveryRoute,
 } from "@/lib/supabase/queries";
+import { resolveRoute, type ResolveDeps } from "@/lib/domain/webhook-resolve";
+import { dispatchDelivery, type DispatchDeps } from "@/lib/webhooks/dispatch";
 import { readBodyWithLimit } from "@/lib/webhooks/read-body";
 import { receiveWebhook, WEBHOOK_MAX_BODY_BYTES, type ReceiveDeps } from "@/lib/webhooks/receive";
 
@@ -31,8 +41,7 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
 
-function deps(): ReceiveDeps {
-  const client = createServerClient();
+function deps(client: SupabaseClient): ReceiveDeps {
   return {
     getEndpoint: (token) => getWebhookEndpointByToken(client, token),
     getSecret: (endpointId) => getEndpointSecret(client, endpointId),
@@ -44,18 +53,41 @@ function deps(): ReceiveDeps {
   };
 }
 
+function dispatchDeps(client: SupabaseClient): DispatchDeps {
+  const resolveDeps: ResolveDeps = {
+    getAgent: (id) => getAgentById(client, id),
+    getRepositoryById: (id) => getRepositoryById(client, id),
+    getRepositoryByFullName: (name) => getRepositoryByFullName(client, name),
+  };
+  return {
+    getEndpointRouting: (endpointId) => getWebhookEndpointRouting(client, endpointId),
+    getBotLogin: () => getWebhookBotLogin(client),
+    getRules: (endpointId) => getWebhookRulesForEndpoint(client, endpointId),
+    resolve: (rule, payload) => resolveRoute(resolveDeps, rule, payload),
+    setRoute: (rowId, outcome, reason, ruleId) =>
+      setWebhookDeliveryRoute(client, rowId, outcome, reason, ruleId),
+    // S-172 replaces this with the shared invoke core.
+    onResolved: async () => ({ status: 202, body: { received: true, resolved: true } }),
+  };
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ token: string }> },
 ): Promise<NextResponse> {
   const { token } = await context.params;
   try {
-    const result = await receiveWebhook(deps(), {
+    const client = createServerClient();
+    const result = await receiveWebhook(deps(client), {
       token,
       headers: request.headers,
       readBody: () => readBodyWithLimit(request, WEBHOOK_MAX_BODY_BYTES),
     });
-    return NextResponse.json(result.body, { status: result.status });
+    if (!result.delivery) {
+      return NextResponse.json(result.body, { status: result.status });
+    }
+    const routed = await dispatchDelivery(dispatchDeps(client), result.delivery);
+    return NextResponse.json(routed.body, { status: routed.status });
   } catch (err) {
     // Never log the error message: it may carry Postgres detail. The name is
     // enough to correlate; GitHub retries the 5xx with the same delivery id.
