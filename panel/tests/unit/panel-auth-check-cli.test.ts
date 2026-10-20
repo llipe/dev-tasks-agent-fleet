@@ -32,6 +32,7 @@ const OK = {
   sseProbe: { status: 401 },
   signupProbe: { rejected: true },
   internalProbe: { status: 401 },
+  webhookProbe: { status: 401 },
 };
 
 beforeAll(() => {
@@ -88,6 +89,22 @@ describe("panel-auth-check CLI — exit-code contract (release gate)", () => {
     const r = run(protected200Input);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/200/);
+  });
+
+  it("exits 1 when an unsigned webhook delivery is accepted (S-175)", () => {
+    const p = join(dir, "webhook-202.json");
+    writeFileSync(p, JSON.stringify({ ...OK, webhookProbe: { status: 202 } }));
+    const r = run(p);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/webhook/i);
+  });
+
+  it("exits 1 when WEBHOOK_PROBE_TOKEN was not configured (S-175)", () => {
+    const p = join(dir, "webhook-unset.json");
+    writeFileSync(p, JSON.stringify({ ...OK, webhookProbe: { unset: true } }));
+    const r = run(p);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/WEBHOOK_PROBE_TOKEN/);
   });
 
   it("is fail-closed: unreadable/garbage input exits non-zero", () => {
