@@ -29,7 +29,9 @@ import type {
   ScheduleRow,
   VRunRow,
   VScheduleRow,
+  WebhookEndpointRow,
   WebhookOutcome,
+  WebhookSource,
   WebhookRuleRow,
 } from "@/lib/supabase/types";
 
@@ -1475,5 +1477,141 @@ export async function recordWebhookRuleResult(
   });
   if (result.error) {
     throw new DatabaseError("recordWebhookRuleResult", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// S-176 (#321) — /webhooks endpoint admin. None of these return a secret.
+// ---------------------------------------------------------------------------
+
+/** An endpoint as the list shows it: the row plus its rule count. No secret. */
+export interface WebhookEndpointListRow extends WebhookEndpointRow {
+  rule_count: number;
+}
+
+export interface WebhookEndpointSettings {
+  name: string;
+  eventAllowlist: string[];
+  ignoreBotAuthor: boolean;
+  signatureHeader: string;
+  deliveryIdHeader: string;
+}
+
+export interface WebhookEndpointCreateInput extends WebhookEndpointSettings {
+  source: WebhookSource;
+  urlToken: string;
+  secret: string;
+}
+
+export async function getWebhookEndpointsForList(
+  client: SupabaseClient,
+): Promise<WebhookEndpointListRow[]> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select(
+      "id, name, url_token, source, signature_header, delivery_id_header, event_allowlist, ignore_bot_author, is_enabled, created_at, updated_at, webhook_rules(count)",
+    )
+    .order("created_at", { ascending: true });
+  if (result.error) {
+    throw new DatabaseError("getWebhookEndpointsForList", result.error);
+  }
+  return (result.data ?? []).map((row) => {
+    const { webhook_rules: rules, ...rest } = row as WebhookEndpointRow & {
+      webhook_rules?: { count: number }[];
+    };
+    return { ...rest, rule_count: rules?.[0]?.count ?? 0 };
+  });
+}
+
+export async function getWebhookEndpointById(
+  client: SupabaseClient,
+  id: string,
+): Promise<WebhookEndpointRow | null> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select(
+      "id, name, url_token, source, signature_header, delivery_id_header, event_allowlist, ignore_bot_author, is_enabled, created_at, updated_at",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  return unwrap<WebhookEndpointRow>("getWebhookEndpointById", result);
+}
+
+/** Insert the endpoint and its Vault secret in one transaction. Returns the id. */
+export async function createWebhookEndpoint(
+  client: SupabaseClient,
+  input: WebhookEndpointCreateInput,
+): Promise<string> {
+  const result = await client.rpc("webhook_create_endpoint", {
+    p_name: input.name,
+    p_source: input.source,
+    p_event_allowlist: input.eventAllowlist,
+    p_ignore_bot_author: input.ignoreBotAuthor,
+    p_signature_header: input.signatureHeader,
+    p_delivery_id_header: input.deliveryIdHeader,
+    p_url_token: input.urlToken,
+    p_secret: input.secret,
+  });
+  if (result.error || typeof result.data !== "string") {
+    throw new DatabaseError("createWebhookEndpoint", result.error ?? { message: "no id returned" });
+  }
+  return result.data;
+}
+
+/** Settings only: never the token or the secret. */
+export async function updateWebhookEndpoint(
+  client: SupabaseClient,
+  id: string,
+  input: WebhookEndpointSettings & { isEnabled: boolean },
+): Promise<void> {
+  const result = await client
+    .from("webhook_endpoints")
+    .update({
+      name: input.name,
+      event_allowlist: input.eventAllowlist,
+      ignore_bot_author: input.ignoreBotAuthor,
+      signature_header: input.signatureHeader,
+      delivery_id_header: input.deliveryIdHeader,
+      is_enabled: input.isEnabled,
+    })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("updateWebhookEndpoint", result.error);
+  }
+}
+
+export async function setWebhookEndpointEnabled(
+  client: SupabaseClient,
+  id: string,
+  isEnabled: boolean,
+): Promise<void> {
+  const result = await client
+    .from("webhook_endpoints")
+    .update({ is_enabled: isEnabled })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("setWebhookEndpointEnabled", result.error);
+  }
+}
+
+export async function rotateWebhookEndpointSecret(
+  client: SupabaseClient,
+  id: string,
+  secret: string,
+): Promise<void> {
+  const result = await client.rpc("webhook_rotate_endpoint_secret", {
+    p_endpoint_id: id,
+    p_secret: secret,
+  });
+  if (result.error) {
+    throw new DatabaseError("rotateWebhookEndpointSecret", result.error);
+  }
+}
+
+/** Vault secret first, then the row; rules and deliveries cascade. */
+export async function deleteWebhookEndpoint(client: SupabaseClient, id: string): Promise<void> {
+  const result = await client.rpc("webhook_delete_endpoint", { p_endpoint_id: id });
+  if (result.error) {
+    throw new DatabaseError("deleteWebhookEndpoint", result.error);
   }
 }
