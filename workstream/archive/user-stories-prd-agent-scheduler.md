@@ -1,6 +1,6 @@
 # User Stories — Agent Scheduler
 
-> Derived from [`specification-prd-agent-scheduler.md`](specification-prd-agent-scheduler.md)
+> Derived from [`specification-prd-agent-scheduler.md`](../specification-prd-agent-scheduler.md)
 > and [`prd-agent-scheduler.md`](../docs/requirements/prd-agent-scheduler.md). Stories are
 > ordered for dependency-correct delivery (foundation → trigger → guardrails →
 > notifications → UI). Each story lists its spec decisions, PRD FR/AC coverage, test

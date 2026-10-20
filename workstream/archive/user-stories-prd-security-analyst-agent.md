@@ -4,7 +4,7 @@
 
 | Version | Date       | Summary         | Author              |
 | ------- | ---------- | --------------- | ------------------- |
-| 1.0     | 2026-09-14 | Initial version. 17 stories (S-125 through S-141, continuing the repo's global story numbering after S-124) generated from [`prd-security-analyst-agent.md`](../docs/requirements/prd-security-analyst-agent.md) v1.2 and [`specification-prd-security-analyst-agent.md`](specification-prd-security-analyst-agent.md) v1.2. | product-engineer |
+| 1.0     | 2026-09-14 | Initial version. 17 stories (S-125 through S-141, continuing the repo's global story numbering after S-124) generated from [`prd-security-analyst-agent.md`](../docs/requirements/prd-security-analyst-agent.md) v1.2 and [`specification-prd-security-analyst-agent.md`](../specification-prd-security-analyst-agent.md) v1.2. | product-engineer |
 
 > **Sizing note.** This PRD's scope (5 scanner integrations, a new finding pipeline with no analog in the sibling agent, plus deployment) is materially larger than a typical single-agent feature. Stories are sequenced to prove the pipe end-to-end early (S-125, S-135) before the most speculative/riskiest integration (CodeQL, S-132) rather than saving integration risk for last.
 > **Command conventions.** This is a Python agent project (`agents/security-analyst/app/securityAnalyst/`), not the JS/TS panel — canonical commands are the project's own `Makefile` targets (`make lint`, `make format-check`, `make typecheck`, `make test-unit`, `make test-component`, `make test-cov`, `make audit`, `make validate`), mirroring `agents/dependency-update/`'s Makefile exactly (spec §14.5).

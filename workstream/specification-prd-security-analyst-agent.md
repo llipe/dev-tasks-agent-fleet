@@ -15,7 +15,7 @@
 
 This spec details a five-tool security scanner agent (`security-analyst`) that reuses `dependency-update`'s proven scaffolding, reporting, credential, PR, and testing conventions near-verbatim, and introduces new design only where the PRD's tool surface genuinely differs: a five-way scanner dispatcher, a cross-tool finding schema with fingerprint-based deduplication, a three-bucket classifier, a re-scan gate that is the agent's core trust mechanism, and a per-finding-scoped LLM escape hatch (narrower in blast radius than the sibling agent's per-run one).
 
-Two corrections against the PRD, both sourced from direct codebase inspection (`workstream/research-security-analyst-agent-spec-inputs-2026-09-14.md`), are folded in throughout this spec rather than left implicit:
+Two corrections against the PRD, both sourced from direct codebase inspection (`workstream/archive/research-security-analyst-agent-spec-inputs-2026-09-14.md`), are folded in throughout this spec rather than left implicit:
 
 1. **Seed file location.** The PRD's requirement 49 cites `docs/reference/002_seed.sql`. That file is a stub — the canonical, applied seed is `supabase/seed.sql`. §5.2 targets the correct file.
 2. **Clock invariant precedent.** `dependency-update` already solved the exact class of defect a longer-running, multi-tool agent is most exposed to — silent AgentCore idle-reclamation mid-step (ADR-006, issue #98). §9's timeout design is not new invention; it is `config.assert_clock_invariant()` and `heartbeat.run_with_heartbeat()` recomputed for this agent's five-scanner, higher-`maxLifetime` shape, and every long step (`scan`, `rescan`) is wrapped the same way `validate`/`llm_fix` are in the sibling agent.
@@ -30,7 +30,7 @@ Two corrections against the PRD, both sourced from direct codebase inspection (`
 | [`prd-agent-fleet-panel-v2.md`](../docs/requirements/prd-agent-fleet-panel-v2.md) | Parent PRD — control plane, `runs` lifecycle, reaper. Inherited D1-D15. |
 | [`prd-dependency-update-agent.md`](../docs/requirements/prd-dependency-update-agent.md) | Sibling agent's PRD — architectural precedent this spec reuses throughout. |
 | [`specification-prd-dependency-update-agent.md`](specification-prd-dependency-update-agent.md) | Sibling agent's **spec** — the structural and code-detail template this document follows section-for-section. |
-| [`research-security-analyst-agent-spec-inputs-2026-09-14.md`](research-security-analyst-agent-spec-inputs-2026-09-14.md) | Codebase research this spec is grounded in. Every "reuse verbatim" claim below traces to a file:line citation there. |
+| [`research-security-analyst-agent-spec-inputs-2026-09-14.md`](archive/research-security-analyst-agent-spec-inputs-2026-09-14.md) | Codebase research this spec is grounded in. Every "reuse verbatim" claim below traces to a file:line citation there. |
 | [`ADR-006-long-step-keepalive-and-clock-invariant.md`](../docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md) | The heartbeat/clock-invariant mechanism this agent's §9 extends. |
 | [`technical-guidelines.md`](../docs/technical-guidelines.md) | Fleet-wide conventions (data model, integration/timeouts). |
 

@@ -29,7 +29,7 @@ The dominant technical risk is not the UI. It is the two cross-language boundari
 | [`docs/technical-guidelines.md`](../docs/technical-guidelines.md) v1.3 | §2 stack, §3 patterns, §4 API standards, §5 auth, §6 security, §7 data, §11 testing, §12 quality, §16 dependencies |
 | [`docs/product-context.md`](../docs/product-context.md) v1.1 | §6 roadmap, §9 constraints |
 | [`/DESIGN.md`](../DESIGN.md) v1.0 | All — visual source of truth |
-| [`workstream/research-phase2-panel-spec-inputs-2026-08-27.md`](research-phase2-panel-spec-inputs-2026-08-27.md) | All slices; commit `411b027` |
+| [`workstream/research-phase2-panel-spec-inputs-2026-08-27.md`](../research-phase2-panel-spec-inputs-2026-08-27.md) | All slices; commit `411b027` |
 | [`TESTING.md`](../TESTING.md) | Layer taxonomy, canonical scripts, reachability rules |
 | [`supabase/migrations/20260902200101_initial_schema.sql`](../supabase/migrations/20260902200101_initial_schema.sql) | Lines 11-23 enums, 81-99 agents, 212-213 publication, 234-251 `v_runs`, 332-338 RLS. **Canonical since S-102** — byte-identical to the former `docs/reference/001_schema.sql`, so every `001_schema.sql:<n>` citation in this spec resolves here unchanged. `docs/reference/00{1,2}_*.sql` are now zero-DDL pointer stubs |
 | [`docs/reference/credentials.ts`](../docs/reference/credentials.ts) | Adopted with F5 corrections |

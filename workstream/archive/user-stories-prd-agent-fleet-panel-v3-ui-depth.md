@@ -4,7 +4,7 @@
 
 | Version | Date       | Summary                                                                 | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-09-15 | Initial version, generated from [`specification-prd-agent-fleet-panel-v3-ui-depth.md`](specification-prd-agent-fleet-panel-v3-ui-depth.md) v1.0 and [`prd-agent-fleet-panel-v3-ui-depth.md`](../docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md) v1.0. Seven stories, numbered **S-142–S-148** continuing the project-wide story sequence (highest prior: S-141, `security-analyst` PRD). Full FR1–FR18 coverage — see Coverage Validation. | product-engineer |
+| 1.0     | 2026-09-15 | Initial version, generated from [`specification-prd-agent-fleet-panel-v3-ui-depth.md`](../specification-prd-agent-fleet-panel-v3-ui-depth.md) v1.0 and [`prd-agent-fleet-panel-v3-ui-depth.md`](../docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md) v1.0. Seven stories, numbered **S-142–S-148** continuing the project-wide story sequence (highest prior: S-141, `security-analyst` PRD). Full FR1–FR18 coverage — see Coverage Validation. | product-engineer |
 
 ---
 
