@@ -3,7 +3,7 @@ name: runbook-webhook-deployment
 trigger: Enabling webhook triggers against the live Supabase project, adding a GitHub webhook endpoint, or rotating an endpoint's signing secret
 owner: operator (repository owner)
 last_verified: never — written with S-166; steps run against the local stack only so far
-related: ["supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
+related: ["scripts/verify-panel-auth.sh", "supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
 ---
 
 # Runbook — Webhook triggers deployment
@@ -87,6 +87,45 @@ In the organization (or repository) **Settings → Webhooks → Add webhook**:
 - **Secret:** `<SECRET>`
 - **Events:** the same set as `event_allowlist`. Anything else is recorded as `ignored`.
 
+### 5. Create the release-gate probe endpoint (S-175)
+
+The panel release gate (`scripts/verify-panel-auth.sh`, check 6) sends an
+**unsigned** POST to `/api/webhooks/<token>` and requires `401`. The route answers
+`404` for an unknown or disabled token before it checks the signature, so the gate
+needs the token of a real, **enabled** endpoint. Use a dedicated one: no rules, so
+it can never start a run, and a throwaway secret that nobody keeps.
+
+Do this **after step 1 and before the first panel deploy that carries S-175**.
+Otherwise that deploy's gate fails at check 6.
+
+```bash
+PROBE_TOKEN=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+```
+
+```sql
+insert into webhook_endpoints (name, url_token, source, is_enabled, event_allowlist)
+values ('release-gate probe (no rules)', '<PROBE_TOKEN>', 'github', true, array['ping'])
+returning id;
+
+-- a secret nobody keeps: the probe only needs signature checks to run and fail
+select webhook.set_endpoint_secret('<probe endpoint id>', encode(gen_random_bytes(32), 'hex'));
+```
+
+Store `PROBE_TOKEN` with the other deploy credentials (a password manager, not
+the repo). Export it before every gate run:
+
+```bash
+export WEBHOOK_PROBE_TOKEN='<PROBE_TOKEN>'
+./scripts/verify-panel-auth.sh https://dt-agent-fleet-panel.fly.dev -a dt-agent-fleet-panel
+# check 6 passes on 401. It fails (exit 1) on 2xx (signature not enforced),
+# 404 (wrong token or endpoint disabled), any other code, or an unset token.
+```
+
+Each gate run records one `unauthorized` delivery on the probe endpoint. The
+daily prune removes those with the rest. Never add rules to this endpoint and
+never disable it. If the token leaks, create a new probe endpoint and delete the
+old one.
+
 ## Rotating a secret
 
 1. `select webhook.set_endpoint_secret('<endpoint id>', '<NEW SECRET>');` (or rotate in the panel).
@@ -98,6 +137,11 @@ add `unauthorized` rows (test plan R-3). Create a new endpoint, move the GitHub
 webhook to the new URL, and disable or delete the old endpoint.
 
 ## Verification
+
+```bash
+# the release gate's webhook check (step 5) passes against the deployed app
+WEBHOOK_PROBE_TOKEN='<PROBE_TOKEN>' ./scripts/verify-panel-auth.sh https://dt-agent-fleet-panel.fly.dev -a dt-agent-fleet-panel
+```
 
 ```sql
 -- the secret exists and is readable by the definer path (prints true, not the value)
