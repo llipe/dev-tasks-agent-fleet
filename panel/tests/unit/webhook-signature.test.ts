@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { deliveryDedupKey, verifyHmacSignature } from "@/lib/auth/webhook-signature";
+import { mulberry32, testSeed } from "../helpers/prng";
 
 // Layer 1 — S-168 (#313): webhook signature verification (D-W1, D-W15, spec §9.1).
 //
@@ -138,7 +139,7 @@ describe("verifyHmacSignature", () => {
   // RT-1 (test plan §6): random bodies and secrets; only the exact header verifies,
   // and any single-bit flip in the body or the presented digest rejects.
   it("RT-1: only the exact signature verifies; any single-bit flip rejects (seed 309001)", () => {
-    const seed = Number(process.env.TEST_SEED ?? 309001);
+    const seed = testSeed(309001);
     const rand = mulberry32(seed);
     for (let i = 0; i < 2000; i++) {
       const len = Math.floor(rand() * 4096);
@@ -217,14 +218,3 @@ describe("deliveryDedupKey", () => {
     expect(deliveryDedupKey(h, enc.encode("different"), "x-github-delivery")).not.toBe(bodyKey);
   });
 });
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
