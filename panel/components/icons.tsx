@@ -25,6 +25,9 @@ import {
   Power,
   X,
   CalendarDots,
+  WebhooksLogo,
+  Copy,
+  ArrowsClockwise,
   Bell,
   Plus,
   Pause,
@@ -66,3 +69,6 @@ export const SkipIcon = SkipForward; // concurrency_cap / missed_tick reason chi
 export const LockIcon = LockSimple; // always-on guardrail lines
 export const CaretDownIcon = CaretDown; // disclosure open
 export const CaretRightIcon = CaretRight; // disclosure closed
+export const WebhooksIcon = WebhooksLogo; // Webhooks nav (S-176)
+export const CopyIcon = Copy; // copy URL / secret
+export const RotateIcon = ArrowsClockwise; // rotate signing secret
