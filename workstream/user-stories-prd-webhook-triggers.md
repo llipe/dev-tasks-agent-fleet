@@ -154,7 +154,7 @@ As a GitHub webhook, I want my signed delivery verified, size-checked, deduped, 
 
 #### Acceptance Criteria
 - [ ] Route is **public** (route policy classifies `/api/webhooks/**` like `/api/internal/**` — through the middleware without the session gate); Node runtime, `force-dynamic`, no cache.
-- [ ] Reads raw body via `request.text()`; body over the size cap → `413` (before full processing); unknown/disabled token → `404` (no record).
+- [ ] Reads the raw body as bytes (never `request.text()`, see D-W3); body over the size cap → `413` (before full processing); unknown/disabled token → `404` (no record).
 - [ ] Invalid/missing signature → record `unauthorized`, `401`.
 - [ ] Every delivery is recorded, including `unauthorized` ones (for tracking). Only a verified delivery claims the dedup key (delivery id, else body hash); a repeat of a claimed key → record/return `duplicate` `200` no-op. A forged request reusing a real delivery id never blocks the genuine one (D-W16).
 - [ ] A valid, new, allowlisted-or-not delivery is recorded `received` (routing lands in S-171); non-allowlisted event → `ignored` `202`.

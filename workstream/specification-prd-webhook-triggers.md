@@ -7,6 +7,7 @@
 | 1.0     | 2026-10-15 | Initial specification for Phase 1 (webhook mechanism) from PRD v0.1.    | product-engineer |
 | 1.1     | 2026-10-15 | Resolve OQ-1 (keep declared-key interpolation), OQ-2 (prune policy in v1), OQ-3 (define the generic-sender signature scheme), OQ-4 (G3 per-rule, settled). Add §9.1 signature scheme, delivery retention to data model + rollout. | product-engineer |
 | 1.2     | 2026-10-19 | Record B-4 (D-W16): every delivery is recorded, including `unauthorized`, but only verified deliveries claim the dedup key (`dedup_key` column, unique per endpoint). | product-engineer |
+| 1.3     | 2026-10-20 | D-W3 corrected during S-168: the body is read as raw bytes, not `request.text()` (UTF-8 decoding replaces invalid bytes and breaks the HMAC). | product-engineer |
 
 ---
 
@@ -72,7 +73,8 @@ flowchart LR
 
 Key properties, each tracing to the PRD:
 - Verification is **before parse / before work** (FR2/FR6); the raw body is read via
-  `request.text()` and HMAC'd exactly, then parsed only on success (D-W3).
+  the request stream as raw bytes (`request.arrayBuffer()` with a byte limit, never `request.text()`,
+  which would replace invalid UTF-8 and change the signed bytes) and HMAC'd exactly, then parsed only on success (D-W3).
 - The route handler returns a **fast 2xx** after verify + record + enqueue; the agent invoke is the
   existing async path, so GitHub never sees a slow handler (FR7, D-W11).
 - `invokeResolvedRun()` is the **single** invoke code path, shared with the schedule fire route —
@@ -174,7 +176,7 @@ Route-segment config identical to the fire route: `runtime = "nodejs"`, `dynamic
 Processing order (each step records to `webhook_deliveries` and never logs secrets, FR8):
 
 1. Resolve endpoint by `token`; unknown/disabled token → `404` (no record — an unknown token is not a delivery to us).
-2. Read **raw body** via `request.text()`; enforce the size cap → over cap → `413` (FR4).
+2. Read the **raw body as bytes** (stream with a byte limit, then `Uint8Array`; never `request.text()`); over the size cap → `413` (FR4).
 3. **Verify HMAC** of raw body against the endpoint's Vault secret, constant-time, fail-closed; invalid/missing → record `unauthorized`, return `401` (FR2/AC2).
 4. Compute the dedup key (delivery id header, else body hash) and insert the row with it; if `(endpoint_id, dedup_key)` already exists → record/return `duplicate` `200` no-op (FR3/AC2). Step 3 failures were already recorded with a null `dedup_key`, so a forged request can never block a later genuine delivery with the same id (D-W16).
 5. Parse JSON; read event type header; not in `event_allowlist` → record `ignored`, return `202` (FR5/AC3).
@@ -456,7 +458,7 @@ No open technical questions remain for Phase 1.
 | --- | --- |
 | D-W1 | HMAC-SHA256-over-raw-body auth module, per-endpoint Vault secret, GitHub `X-Hub-Signature-256` default. |
 | D-W2 | `POST /api/webhooks/[token]` public, signature-gated; release gate asserts unsigned → 401. |
-| D-W3 | Raw body via `request.text()`, verify-before-parse; Node runtime, no cache. |
+| D-W3 | Raw body read as bytes (not `request.text()`), verify-before-parse; Node runtime, no cache. |
 | D-W4 | Three tables mirroring scheduler schema conventions; deny-all RLS; Vault secret, no plaintext column. |
 | D-W5 | `TriggerDescriptor` gains `webhook` variant; `buildRunInsert` unchanged. |
 | D-W6 | Shared `invokeResolvedRun()` core; single invoke path for schedule + webhook. |
