@@ -6,7 +6,7 @@
 - Integration branch: `integration/webhook-triggers` (main merged in @ e4fe720: #355 audit exception)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-20T13:20-03:00
-- Last updated: 2026-10-20T17:30-03:00
+- Last updated: 2026-10-20T16:10-03:00 (corrected; an earlier commit wrote a placeholder 17:30)
 
 ## Story Status
 
