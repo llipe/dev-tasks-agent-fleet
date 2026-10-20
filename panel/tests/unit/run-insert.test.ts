@@ -60,6 +60,28 @@ describe("buildRunInsert — trigger descriptor", () => {
     expect(row.status).toBe("queued");
   });
 
+  // S-172 (#317, D-W5): webhook-fired runs.
+  it("webhook descriptor produces webhook / webhook:<endpoint>:<rule>", () => {
+    const row = buildRunInsert({
+      ...common,
+      trigger: { triggerType: "webhook", triggeredBy: "webhook:ep-1:rule-1" },
+    });
+    expect(row.trigger_type).toBe("webhook");
+    expect(row.triggered_by).toBe("webhook:ep-1:rule-1");
+    expect(row.status).toBe("queued");
+    expect(row.max_runtime_seconds).toBe(3600);
+  });
+
+  it("rejects a mismatched trigger type/identity at the type level", () => {
+    const bad = () =>
+      buildRunInsert({
+        ...common,
+        // @ts-expect-error — a webhook identity can't carry the schedule type.
+        trigger: { triggerType: "schedule", triggeredBy: "webhook:ep-1:rule-1" },
+      });
+    expect(bad).not.toThrow();
+  });
+
   it("still copies all three timeout snapshots explicitly (OQ3 unchanged)", () => {
     const row = buildRunInsert({
       ...common,

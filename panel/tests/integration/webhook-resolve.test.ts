@@ -1,10 +1,14 @@
 import { createHmac, randomBytes } from "node:crypto";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { probeLocalDb, withDb } from "./db";
 
 // Layer 2.5 — S-171 (#316): routing + resolution through the real route, real
 // rules, the real repositories allowlist, and the real bot-login RPC.
-// Invocation is S-172, so a resolved route stays `received` / reason `resolved`.
+// Since S-172 a resolved route invokes the agent (AWS stubbed here) and is `fired`.
+
+// A resolved route invokes the agent since S-172; stub only the AWS call.
+const aws = vi.hoisted(() => ({ invokeAgentRuntime: vi.fn(async () => undefined) }));
+vi.mock("@/lib/aws/invoke", () => aws);
 
 const probe = await probeLocalDb();
 const SECRET = "s171-l25-secret";
@@ -112,6 +116,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-171 route resolution", 
 
   afterEach(async () => {
     await withDb(async (c) => {
+      await c.query(`delete from runs where triggered_by like $1`, [`webhook:${endpointId}:%`]);
       await c.query(`select webhook.delete_endpoint_secret($1)`, [endpointId]);
       await c.query(`delete from webhook_endpoints where id = $1`, [endpointId]);
     });
@@ -129,8 +134,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-171 route resolution", 
     const res = await post(hit(repoName));
     expect(res.status).toBe(202);
     expect(await lastRow()).toEqual({
-      outcome: "received",
-      reason: "resolved",
+      outcome: "fired",
+      reason: null,
       matched_rule_id: second,
     });
   });
@@ -138,7 +143,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-171 route resolution", 
   it("matches the payload repo name case-insensitively (EC-7)", async () => {
     const r = await addRule({ position: 0 });
     await post(hit(repoName.toUpperCase()));
-    expect(await lastRow()).toMatchObject({ outcome: "received", matched_rule_id: r });
+    expect(await lastRow()).toMatchObject({ outcome: "fired", matched_rule_id: r });
   });
 
   it("rejects a payload repo that isn't registered, and creates no repository (AC5, I-4)", async () => {
@@ -204,7 +209,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-171 route resolution", 
     });
     const def = await addRule({ position: 1, is_default: true });
     await post(hit(repoName, "hello"));
-    expect(await lastRow()).toMatchObject({ outcome: "received", matched_rule_id: def });
+    expect(await lastRow()).toMatchObject({ outcome: "fired", matched_rule_id: def });
   });
 
   it("ignores an event from the configured bot account (AC7)", async () => {
@@ -228,8 +233,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — S-171 route resolution", 
     });
     await post(hit(repoName));
     expect(await lastRow()).toEqual({
-      outcome: "received",
-      reason: "resolved; dropped undeclared params: token",
+      outcome: "fired",
+      reason: "dropped undeclared params: token",
       matched_rule_id: r,
     });
   });

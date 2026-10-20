@@ -14,6 +14,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createServerClient } from "@/lib/supabase/server";
@@ -27,11 +28,17 @@ import {
   getWebhookEndpointByToken,
   getWebhookEndpointRouting,
   getWebhookRulesForEndpoint,
+  insertQueuedRun,
   insertUnclaimedWebhookDelivery,
+  markRunFailedToStart,
+  recordWebhookDeliveryFired,
   setWebhookDeliveryOutcome,
   setWebhookDeliveryRoute,
 } from "@/lib/supabase/queries";
+import { invokeAgentRuntime } from "@/lib/aws/invoke";
+import { invokeResolvedRun } from "@/lib/domain/invoke-resolved-run";
 import { resolveRoute, type ResolveDeps } from "@/lib/domain/webhook-resolve";
+import { fireResolvedRoute } from "@/lib/webhooks/fire";
 import { dispatchDelivery, type DispatchDeps } from "@/lib/webhooks/dispatch";
 import { readBodyWithLimit } from "@/lib/webhooks/read-body";
 import { receiveWebhook, WEBHOOK_MAX_BODY_BYTES, type ReceiveDeps } from "@/lib/webhooks/receive";
@@ -40,6 +47,15 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 export const runtime = "nodejs";
+
+/**
+ * Ceiling on the AgentCore invoke from a webhook (S-172, task 8.8). GitHub
+ * abandons a delivery after 10 s. Observed run-start latency in production is
+ * p95 3.2 s / max 4.1 s (30 days, includes agent boot), so 8 s leaves headroom
+ * for the DB writes. On expiry the run is a visible failed_to_start and the
+ * delivery is still acknowledged.
+ */
+const WEBHOOK_INVOKE_TIMEOUT_MS = 8000;
 
 function deps(client: SupabaseClient): ReceiveDeps {
   return {
@@ -66,8 +82,30 @@ function dispatchDeps(client: SupabaseClient): DispatchDeps {
     resolve: (rule, payload) => resolveRoute(resolveDeps, rule, payload),
     setRoute: (rowId, outcome, reason, ruleId) =>
       setWebhookDeliveryRoute(client, rowId, outcome, reason, ruleId),
-    // S-172 replaces this with the shared invoke core.
-    onResolved: async () => ({ status: 202, body: { received: true, resolved: true } }),
+    // S-172: invoke through the shared core (same path as the schedule fire route).
+    onResolved: (rule, resolved, delivery) =>
+      fireResolvedRoute(
+        {
+          invoke: (input) =>
+            invokeResolvedRun(
+              {
+                newRunId: randomUUID,
+                insertQueuedRun: (insert) => insertQueuedRun(client, insert),
+                invokeAgentRuntime: (target, req) =>
+                  invokeAgentRuntime(target, { ...req, timeoutMs: WEBHOOK_INVOKE_TIMEOUT_MS }),
+                markRunFailedToStart: (runId, code, message) =>
+                  markRunFailedToStart(client, runId, code, message),
+              },
+              input,
+            ),
+          recordFired: (rowId, runId, ruleId, reason) =>
+            recordWebhookDeliveryFired(client, rowId, runId, ruleId, reason),
+          log: (fields) => console.info(JSON.stringify(fields)),
+        },
+        rule,
+        resolved,
+        delivery,
+      ),
   };
 }
 

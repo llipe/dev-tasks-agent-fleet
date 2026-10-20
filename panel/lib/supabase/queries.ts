@@ -1427,3 +1427,20 @@ export async function getWebhookEndpointRouting(
   }
   return result.data as { ignore_bot_author: boolean };
 }
+
+/** Record a delivery as `fired` with its run and rule (S-172, AC1). */
+export async function recordWebhookDeliveryFired(
+  client: SupabaseClient,
+  rowId: string,
+  runId: string,
+  ruleId: string,
+  reason: string | null,
+): Promise<void> {
+  const result = await client
+    .from("webhook_deliveries")
+    .update({ outcome: "fired", run_id: runId, matched_rule_id: ruleId, reason })
+    .eq("id", rowId);
+  if (result.error) {
+    throw new DatabaseError("recordWebhookDeliveryFired", result.error);
+  }
+}
