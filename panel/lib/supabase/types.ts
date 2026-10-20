@@ -314,6 +314,8 @@ export interface WebhookRuleRow {
   params: WebhookRuleParams;
   consecutive_failures: number;
   auto_disable_threshold: number;
+  /** S-174: opt-in run_succeeded notifications for this rule. */
+  notify_on_success: boolean;
   is_enabled: boolean;
   created_at: string;
   updated_at: string;

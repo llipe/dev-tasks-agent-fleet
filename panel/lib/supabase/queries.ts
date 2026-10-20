@@ -34,6 +34,7 @@ import type {
   WebhookSource,
   WebhookRuleRow,
 } from "@/lib/supabase/types";
+import type { RuleWriteInput } from "@/lib/domain/webhook-rule-save";
 
 /** SD11 — the bounded initial `run_events` read cap. The SSE relay (S-110) */
 /** streams the tail beyond this; the panel never issues an unbounded read. */
@@ -1613,5 +1614,95 @@ export async function deleteWebhookEndpoint(client: SupabaseClient, id: string):
   const result = await client.rpc("webhook_delete_endpoint", { p_endpoint_id: id });
   if (result.error) {
     throw new DatabaseError("deleteWebhookEndpoint", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// S-177 (#322) — rule editor writes. The body is validated by
+// lib/domain/webhook-rule-save.ts before it reaches these.
+// ---------------------------------------------------------------------------
+
+function ruleRow(input: RuleWriteInput) {
+  return {
+    name: input.name,
+    event_types: input.eventTypes,
+    conditions: input.conditions,
+    is_default: input.isDefault,
+    agent_id: input.agentId,
+    repo_mode: input.repoMode,
+    repository_id: input.repositoryId,
+    repo_payload_field: input.repoPayloadField,
+    params: input.params,
+    auto_disable_threshold: input.autoDisableThreshold,
+    notify_on_success: input.notifyOnSuccess,
+    is_enabled: input.isEnabled,
+  };
+}
+
+/** Append a rule at the end of the endpoint's order. Returns the id. */
+export async function createWebhookRule(
+  client: SupabaseClient,
+  endpointId: string,
+  input: RuleWriteInput,
+): Promise<string> {
+  const result = await client.rpc("webhook_create_rule", {
+    p_endpoint_id: endpointId,
+    p_rule: ruleRow(input),
+  });
+  if (result.error || typeof result.data !== "string") {
+    throw new DatabaseError("createWebhookRule", result.error ?? { message: "no id returned" });
+  }
+  return result.data;
+}
+
+export async function updateWebhookRule(
+  client: SupabaseClient,
+  id: string,
+  input: RuleWriteInput,
+): Promise<void> {
+  const row = ruleRow(input);
+  const result = await client
+    .from("webhook_rules")
+    .update(input.isEnabled ? { ...row, consecutive_failures: 0 } : row)
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("updateWebhookRule", result.error);
+  }
+}
+
+/** Enabling resets the G3 counter, so a re-enabled rule gets a fresh run of attempts. */
+export async function setWebhookRuleEnabled(
+  client: SupabaseClient,
+  id: string,
+  isEnabled: boolean,
+): Promise<void> {
+  const result = await client
+    .from("webhook_rules")
+    .update(isEnabled ? { is_enabled: true, consecutive_failures: 0 } : { is_enabled: false })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("setWebhookRuleEnabled", result.error);
+  }
+}
+
+export async function deleteWebhookRule(client: SupabaseClient, id: string): Promise<void> {
+  const result = await client.from("webhook_rules").delete().eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("deleteWebhookRule", result.error);
+  }
+}
+
+/** Renumber all of the endpoint's rules to the given order, atomically. */
+export async function reorderWebhookRules(
+  client: SupabaseClient,
+  endpointId: string,
+  orderedRuleIds: string[],
+): Promise<void> {
+  const result = await client.rpc("webhook_reorder_rules", {
+    p_endpoint_id: endpointId,
+    p_rule_ids: orderedRuleIds,
+  });
+  if (result.error) {
+    throw new DatabaseError("reorderWebhookRules", result.error);
   }
 }
