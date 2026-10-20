@@ -25,6 +25,7 @@
 
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { awsCredentials } from "./credentials";
+import type { NotificationKind } from "@/lib/supabase/types";
 
 export const SES_SEND_FAILED = "SES_SEND_FAILED" as const;
 
@@ -41,7 +42,7 @@ export class SesSendFailedError extends Error {
 /** The subset of a notification row the digest needs (no PII beyond what the row holds). */
 export interface DigestNotification {
   id: string;
-  kind: "run_failed" | "schedule_auto_paused" | "pr_opened" | "run_succeeded";
+  kind: NotificationKind;
   title: string;
   detail: string | null;
   created_at: string;
@@ -56,6 +57,7 @@ export interface RenderedDigest {
 const KIND_LABEL: Record<DigestNotification["kind"], string> = {
   run_failed: "Failed runs",
   schedule_auto_paused: "Auto-paused schedules",
+  webhook_rule_auto_disabled: "Auto-disabled webhook rules",
   pr_opened: "Pull requests opened",
   run_succeeded: "Succeeded runs",
 };
@@ -64,6 +66,7 @@ const KIND_LABEL: Record<DigestNotification["kind"], string> = {
 const KIND_ORDER: DigestNotification["kind"][] = [
   "run_failed",
   "schedule_auto_paused",
+  "webhook_rule_auto_disabled",
   "pr_opened",
   "run_succeeded",
 ];

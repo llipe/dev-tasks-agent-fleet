@@ -25,6 +25,7 @@ function notif(overrides: Partial<NotificationRow> = {}): NotificationRow {
     id: overrides.id ?? "n1",
     kind: overrides.kind ?? "run_failed",
     schedule_id: "s1",
+    webhook_rule_id: null,
     agent_id: "a1",
     repository_id: "rp1",
     run_id: overrides.run_id ?? "r1",
