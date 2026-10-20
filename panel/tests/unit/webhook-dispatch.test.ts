@@ -32,6 +32,7 @@ function ruleRow(over: Partial<WebhookRuleRow> = {}): WebhookRuleRow {
     params: {},
     consecutive_failures: 0,
     auto_disable_threshold: 3,
+    notify_on_success: false,
     is_enabled: true,
     created_at: "",
     updated_at: "",

@@ -5,11 +5,27 @@ import { randomBytes } from "node:crypto";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   createWebhookEndpoint,
+  createWebhookRule,
   deleteWebhookEndpoint,
+  deleteWebhookRule,
+  getEnabledAgents,
+  getEnabledRepositories,
+  getWebhookEndpointById,
+  getWebhookRulesForEndpoint,
+  reorderWebhookRules,
   rotateWebhookEndpointSecret,
   setWebhookEndpointEnabled,
+  setWebhookRuleEnabled,
   updateWebhookEndpoint,
+  updateWebhookRule,
 } from "@/lib/supabase/queries";
+import {
+  resolveReorderRules,
+  resolveRuleMutation,
+  resolveSaveRule,
+  type RuleActionResult,
+  type SaveRuleResult,
+} from "@/lib/domain/webhook-rule-save";
 import {
   resolveCreateEndpoint,
   resolveDeleteEndpoint,
@@ -72,5 +88,58 @@ export async function toggleEndpointAction(
   const client = createServerClient();
   return resolveToggleEndpoint(id, enabled, {
     setEnabled: (endpointId, next) => setWebhookEndpointEnabled(client, endpointId, next),
+  });
+}
+
+// ---- S-177 (#322): rule editor -------------------------------------------
+
+/** Create (`ruleId` null) or update a rule. Validated against live agents/repos/rules first. */
+export async function saveRuleAction(
+  endpointId: unknown,
+  ruleId: unknown,
+  raw: unknown,
+): Promise<SaveRuleResult> {
+  const client = createServerClient();
+  return resolveSaveRule(endpointId, ruleId, raw, {
+    getEndpoint: (id) => getWebhookEndpointById(client, id),
+    getAgents: () => getEnabledAgents(client),
+    getRepositoryIds: async () => (await getEnabledRepositories(client)).map((r) => r.id),
+    getRules: (id) => getWebhookRulesForEndpoint(client, id),
+    create: (id, input) => createWebhookRule(client, id, input),
+    update: (id, input) => updateWebhookRule(client, id, input),
+  });
+}
+
+export async function deleteRuleAction(ruleId: unknown): Promise<RuleActionResult> {
+  const client = createServerClient();
+  return resolveRuleMutation(
+    ruleId,
+    (id) => deleteWebhookRule(client, id),
+    "Could not delete the rule. Try again.",
+  );
+}
+
+export async function toggleRuleAction(
+  ruleId: unknown,
+  enabled: unknown,
+): Promise<RuleActionResult> {
+  const client = createServerClient();
+  if (typeof enabled !== "boolean") {
+    return { ok: false, code: "INVALID_ID", message: "Invalid value." };
+  }
+  return resolveRuleMutation(
+    ruleId,
+    (id) => setWebhookRuleEnabled(client, id, enabled),
+    "Could not update the rule. Try again.",
+  );
+}
+
+export async function reorderRulesAction(
+  endpointId: unknown,
+  orderedIds: unknown,
+): Promise<RuleActionResult> {
+  const client = createServerClient();
+  return resolveReorderRules(endpointId, orderedIds, {
+    reorder: (id, ids) => reorderWebhookRules(client, id, ids),
   });
 }

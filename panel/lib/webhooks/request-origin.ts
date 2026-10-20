@@ -15,3 +15,8 @@ export function requestOrigin(h: { get(name: string): string | null }): string {
     forwarded === "http" || forwarded === "https" ? forwarded : local ? "http" : "https";
   return `${proto}://${host}`;
 }
+
+/** The payload URL for an endpoint token under an origin ("" → relative). */
+export function webhookUrl(baseUrl: string, urlToken: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/api/webhooks/${urlToken}`;
+}

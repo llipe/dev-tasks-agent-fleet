@@ -18,6 +18,7 @@
 | 1.10    | 2026-09-17 | Added the **audit-report findings block** to **§5.3 Run Detail** (issue #241). `audit_report` artifacts carry their content in `metadata` and have no URL by design, so the pill link alone showed nothing reviewable. The summary now renders, under the artifact pills, one findings block per `audit_report`: a summary line (total, per-tool and per-severity counts, before→after bucket counts for fix-mode reports) and a semantic `<table>` on the §4.4 CSS-grid pattern (tool · severity · bucket · `path:line` · rule · message), with a generic key/value `<dl>` fallback for unrecognized metadata shapes and an explicit "No findings." empty state. Severity text is tinted with the existing §2.4 status tokens (`--st-fail` for critical/high, `--st-timeout` for medium, `--faint` for low) via a per-row custom property, mirroring `StatusPill`'s `--st-color` mechanism. Metadata is untrusted and renders as text only (no markup, no links) — the same posture as §5.3's artifact-link guard. No new token or component variant introduced; header/row typography reuses the §2 table tokens. | developer |
 | 1.11    | 2026-10-13 | Added the **findings disclosure** to the **§5.3 Run Detail** audit-report block (issue #245). A large `audit_report` previously pushed the steps panel, log toolbar, and log viewer off screen, breaking §4.2's "no outer scroll" contract. The findings table is now wrapped in a native `<details>`/`<summary>`: the summary line is the always-visible `<summary>`, the table is the collapsible body. Default state is server-rendered via the `open` attribute — open at **10 rendered rows or fewer** (counting `view.rows.length`, not the agent-reported `total_findings`), closed above. When open, the body is a scroll container capped at `max-height: 40vh; overflow-y: auto` (the cap sits on the body container, not on `<details>`, so the summary stays visible). Paired with a **`min-height: 240px` log-section floor** on `RunDetailLogSection`'s `.section`, so the steps panel/toolbar/viewer never collapse to zero; the 40vh cap yields first on short viewports. The empty state and the key/value fallback have no table and therefore no disclosure. The `<summary>` keeps a visible `:focus-visible` ring. The component stays server-safe (no `"use client"`) and metadata stays escaped text. No new token or component variant — reuses §2 typography and the existing `--space-*`/`--radius-md`/`--color-accent-400` tokens. | developer |
 | 1.12    | 2026-10-20 | Added **§5.9 Webhooks (`/webhooks`)** (Webhook Triggers Phase 1, Story S-176 / issue #321, D-W13). Documents the endpoint list (Status / Endpoint / Events / Rules / Payload URL / Actions on the §5.7 semantic-table-on-grid), the New/Edit endpoint dialog (source segmented control fixed after creation; generic-only header fields; event checkboxes + an "Other events" field; bot-author and enabled toggles), the **show-once signing-secret dialog** (closes only on an explicit "I've stored it", no Escape/backdrop close, secret never re-displayed), and the delete and rotate `alertdialog`s. **§4.1** nav-state note: **Webhooks** is live after Schedules (six of eight items live); this also corrects the previous note, which said "four of six" while listing five. **§10** gains `WebhooksLogo`, `Copy` and `ArrowsClockwise`. No new visual token or component variant: every surface reuses the §5.7 table, the §3.4 pill mechanism, `Tag`, `Toggle`, `Button`, `KLabel` and the §5.7.2 dialog shell. First-pass layout without a dedicated `ux-engineer` prototype, flagged as with §5.6. | developer |
+| 1.13    | 2026-10-20 | Added **§5.9.4 Endpoint page** (`/webhooks/[id]`) and **§5.9.5 Rule dialog** (Story S-177 / issue #322, D-W7/D-W13): the numbered rule list in match order with the first-match note, the default rule in its own section, per-row text summary (events, conditions, agent, repository source) with ↑/↓ reorder, enable/disable, edit and delete; and the rule dialog's When / Run / Guardrails groups (event checkboxes from the endpoint allowlist, AND-ed condition rows, agent select, repository from a payload path or fixed, the reused `FieldRow` param grid, "fill from the payload" rows, threshold and toggles). Validation runs on the server before anything is stored; errors render inline and a summary sits next to Save. Endpoint names in the §5.9 list now link to the endpoint page. No new token or component variant. | developer |
 
 ---
 
@@ -785,6 +786,58 @@ The §5.7.3 `alertdialog` pattern, focus on Cancel, Escape cancels.
   log and secret, and its URL stops working. Runs it already started are kept.
 - **Rotate the signing secret?** The old secret stops working immediately. Update the
   sender right away or its deliveries return 401.
+
+#### 5.9.4 Endpoint page (`/webhooks/[id]`)
+
+A mono breadcrumb `Webhooks / <name>` (link in `--color-accent-300`), the endpoint name
+as `h1`, a `--faint` stat line (`source · enabled · events …`), and the full payload URL
+in mono. Below it, **Rules** (`500 16px heading`) with the standing note "The first
+matching rule wins, top to bottom. The default rule runs only when nothing else
+matches." and a primary **Add rule** button. S-178 adds the delivery log under it.
+
+- **Rule list**: an `<ol aria-label="Rules in match order">`; each row is a
+  `32px 1fr auto` grid with the 1-based position (mono `--color-accent-300`), the name
+  (`500 13px heading`) plus the §3.4 enabled/disabled pill and, once a rule has
+  failed, `N/T failed starts` in `--st-timeout`; a summary line (`on` + event `Tag`s +
+  one bordered mono chip per condition, e.g. `comment.body contains /audit`) and a
+  target line (`→ <agent> · <repo>` or `repo from <path>`, mono `--muted`). Row rules
+  and hover tint as §5.7.
+- **Row actions** (right): icon-only **↑ / ↓** (disabled at the edges), the ghost
+  **Enable/Disable** text toggle, **Edit** (`Pencil`) and **Delete** (`Trash`). Every
+  accessible name includes the rule name. A move sends the whole new order; the
+  server renumbers in one statement.
+- **Default rule**: a separate `KLabel` "Default rule" section after the list, with
+  the summary "when no other rule matches" and no move buttons, because its position
+  never matters.
+- **Empty state**: the dashed panel, "No rules yet. Every delivery to this endpoint is
+  recorded as no match until you add one."
+- **Delete confirm**: the §5.7.3 `alertdialog`: the rule stops matching; runs it started
+  are kept.
+
+#### 5.9.5 Rule dialog
+
+The §5.7.2 shell at max-width 820px; Escape and ✕ close it; focus starts on the name.
+Three groups separated by a top rule, each with an uppercase 10px `--faint` legend:
+
+- **Rule name**, then a **Default rule** §3.10 toggle (hint: one per endpoint). When
+  on, the **When** group is hidden.
+- **When**: event checkboxes from the endpoint's allowlist only, then condition rows
+  (`minmax(0,1.2fr) 140px minmax(0,1fr) 28px`): field path input, operator select
+  (`equals · not equals · contains · prefix · suffix · in · exists`), value input
+  (`in` takes a comma list; `exists` has no value), and a remove button. Conditions are
+  AND-ed. A ghost **+ Add condition** button.
+- **Run**: the agent select (a disabled agent is listed but not selectable; changing
+  the agent resets the parameters to that agent's defaults), the repository `.seg`
+  (**From the payload** with a path input defaulting to `repository.full_name`, or
+  **Fixed repository** with a select of enabled repositories), the reused §5.7.2
+  `FieldRow` parameter grid, then **Fill from the payload** rows (parameter select +
+  path input + remove) with a ghost **+ Add payload value** button.
+- **Guardrails**: **Disable after consecutive failed starts** (number, 1–100, default
+  3), **Notify me when a run succeeds** and **Enabled** toggles, and a `--faint` line
+  naming the always-on guardrails (no overlap, open-PR backoff, fleet-wide cap).
+- **Footer**: the server's summary ("Fix the highlighted fields.") in `--st-fail` on
+  the left, so it stays visible however far the form is scrolled; Cancel; and the
+  primary **Save rule** / `Saving…`. Field errors render under their group.
 
 ---
 

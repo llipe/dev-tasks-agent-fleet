@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type CSSProperties } from "react";
 
 import { Tag } from "@/components/Tag";
 import { CopyIcon, DeleteIcon, EditIcon, RotateIcon } from "@/components/icons";
 import type { WebhookEndpointListRow } from "@/lib/supabase/queries";
+import { webhookUrl } from "@/lib/webhooks/request-origin";
 
 import styles from "./Webhooks.module.css";
 
@@ -12,14 +14,11 @@ import styles from "./Webhooks.module.css";
  * S-176 (issue 321) — the `/webhooks` endpoint table (DESIGN.md §5.9). A semantic
  * `<table>` on the Schedules grid. Columns: status pill, name + source, events
  * (first 3 + overflow), rule count, the copyable payload URL, and actions.
+ * The name links to the endpoint's page (rules, delivery log).
  * The signing secret is never part of a row.
  */
 
 export const EVENTS_SHOWN = 3;
-
-export function webhookUrl(baseUrl: string, urlToken: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/api/webhooks/${urlToken}`;
-}
 
 export interface WebhooksTableProps {
   rows: WebhookEndpointListRow[];
@@ -119,7 +118,11 @@ function EndpointRow({
         </span>
       </td>
       <td className={styles.cell}>
-        <div className={styles.name}>{label}</div>
+        <div className={styles.name}>
+          <Link className={styles.nameLink} href={`/webhooks/${row.id}`}>
+            {label}
+          </Link>
+        </div>
         <div className={styles.source}>{row.source}</div>
       </td>
       <td className={styles.cell}>

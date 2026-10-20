@@ -30,3 +30,24 @@
 .note {
   color: var(--faint);
 }
+
+/* endpoint page (S-177) */
+.crumbs {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.crumbs a {
+  color: var(--color-accent-300);
+  text-decoration: none;
+}
+.crumbs a:hover {
+  text-decoration: underline;
+}
+.url {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--color-accent-300);
+  word-break: break-all;
+}

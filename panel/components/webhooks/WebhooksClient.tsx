@@ -17,7 +17,8 @@ import {
 
 import { EndpointForm, type EndpointFormValues, type EndpointSubmitResult } from "./EndpointForm";
 import { SecretReveal } from "./SecretReveal";
-import { WebhooksTable, webhookUrl } from "./WebhooksTable";
+import { webhookUrl } from "@/lib/webhooks/request-origin";
+import { WebhooksTable } from "./WebhooksTable";
 import styles from "./Webhooks.module.css";
 
 /**

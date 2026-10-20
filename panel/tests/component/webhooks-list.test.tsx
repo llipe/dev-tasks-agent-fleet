@@ -85,7 +85,10 @@ describe("list", () => {
 
     const first = within(rows[0]!);
     expect(first.getByText("enabled")).toBeInTheDocument();
-    expect(first.getByText("GitHub org")).toBeInTheDocument();
+    expect(first.getByRole("link", { name: "GitHub org" })).toHaveAttribute(
+      "href",
+      `/webhooks/${row().id}`,
+    );
     expect(first.getByText("github")).toBeInTheDocument();
     expect(first.getByText("issue_comment")).toBeInTheDocument();
     expect(first.getByText("+1")).toBeInTheDocument(); // 4 events, 3 shown
