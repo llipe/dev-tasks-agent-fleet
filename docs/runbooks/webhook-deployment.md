@@ -2,8 +2,8 @@
 name: runbook-webhook-deployment
 trigger: Enabling webhook triggers against the live Supabase project, adding a GitHub webhook endpoint, or rotating an endpoint's signing secret
 owner: operator (repository owner)
-last_verified: never — written with S-166; steps run against the local stack only so far
-related: ["scripts/verify-panel-auth.sh", "supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
+last_verified: 2026-10-20 — first live rollout (9 migrations pushed, bot_login set, probe endpoint created, panel v20 deployed with the 6-check gate, GitHub webhook on llipe/security-analyst-fixture, `/audit` comments fired real runs and a second one was skipped by G1)
+related: ["scripts/verify-panel-auth.sh", "scripts/deploy-panel.sh", "supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
 ---
 
 # Runbook — Webhook triggers deployment
@@ -50,7 +50,7 @@ gh api /app --jq '.slug + "[bot]"'     # with the App's JWT; or read the slug fr
 ```
 
 ```sql
-update webhook.config set value = '<app_slug>[bot]', updated_at = now()
+update webhook.config set value = '<app_slug>[bot]', updated_at = now()  -- this fleet: 'devtasks-agent-fleet[bot]' (no hyphen in "devtasks")
  where key = 'bot_login';
 ```
 
