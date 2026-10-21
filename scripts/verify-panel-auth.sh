@@ -26,6 +26,13 @@
 #   5. An unauthenticated POST to an /api/internal/** endpoint returns 401 (not
 #      200/202/404/409) — the scheduler's internal fire/digest endpoints are
 #      secret-gated in the handler, not an open invoke hole (S-160, FR5/FR6).
+#   6. An UNSIGNED POST to /api/webhooks/<probe-token> returns 401 (S-175,
+#      FR24/AC8) — the webhook signature check is enforcing. Needs the token of
+#      an ENABLED probe endpoint in WEBHOOK_PROBE_TOKEN (the route answers 404 for
+#      an unknown/disabled token before checking the signature). If it is unset,
+#      the gate FAILS; it never skips the check. The token is never printed.
+#      Each run records one `unauthorized` delivery on the probe endpoint
+#      (pruned with the others). See docs/runbooks/webhook-deployment.md.
 #
 # SECURITY: this script prints only NAMES, status codes, and pass/fail reasons.
 # It never prints secret values, tokens, cookies, or the anon/service keys.
@@ -99,7 +106,7 @@ json_str() { node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? "")
 # ---------------------------------------------------------------------------
 # CHECK 1 — auth env-var NAMES present on the app (NAMES ONLY).
 # ---------------------------------------------------------------------------
-echo "[panel-auth] (1/5) Collecting auth env-var NAMES (names only, never values)..."
+echo "[panel-auth] (1/6) Collecting auth env-var NAMES (names only, never values)..."
 ENV_NAMES_JSON="[]"
 if [[ -n "${PANEL_AUTH_ENV_NAMES:-}" ]]; then
   # Explicit override (comma-separated), e.g. for local/dev runs without flyctl.
@@ -145,7 +152,7 @@ fi
 # `-i` to capture headers; do NOT follow redirects (`-L` would hide the 302).
 # We extract the status code and the Location header only.
 # ---------------------------------------------------------------------------
-echo "[panel-auth] (2/5) Probing protected UI path ${PROTECTED_PATH} (expect 302 -> /login)..."
+echo "[panel-auth] (2/6) Probing protected UI path ${PROTECTED_PATH} (expect 302 -> /login)..."
 PROTECTED_JSON='{"error":"probe not run"}'
 if HDRS="$(curl -sS -i -o - -D - \
     --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
@@ -167,7 +174,7 @@ fi
 # CHECK 3 — unauthenticated SSE path → 401. Status code is authoritative.
 # ---------------------------------------------------------------------------
 SSE_PATH="/api/runs/${RUN_UUID}/events/stream"
-echo "[panel-auth] (3/5) Probing SSE path ${SSE_PATH} (expect 401)..."
+echo "[panel-auth] (3/6) Probing SSE path ${SSE_PATH} (expect 401)..."
 SSE_JSON='{"error":"probe not run"}'
 if SSTATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
     -H 'Accept: text/event-stream' \
@@ -189,7 +196,7 @@ fi
 # marked disposable address. A rejection (error) is PASS; a success is FAIL, and
 # we DELETE any account that was somehow created.
 # ---------------------------------------------------------------------------
-echo "[panel-auth] (4/5) Attempting a signUp (expect REJECTED — signups must be disabled)..."
+echo "[panel-auth] (4/6) Attempting a signUp (expect REJECTED — signups must be disabled)..."
 SIGNUP_JSON='{"error":"probe not run"}'
 SB_URL="${NEXT_PUBLIC_SUPABASE_URL:-}"
 # Prefer the new publishable client key (#172); fall back to the legacy anon
@@ -275,7 +282,7 @@ fi
 # is that auth MUST return 401 before the route resolves the id.
 # ---------------------------------------------------------------------------
 INTERNAL_PATH="/api/internal/schedules/00000000-0000-0000-0000-000000000000/fire"
-echo "[panel-auth] (5/5) Probing internal endpoint ${INTERNAL_PATH} unauthenticated (expect 401)..."
+echo "[panel-auth] (5/6) Probing internal endpoint ${INTERNAL_PATH} unauthenticated (expect 401)..."
 INTERNAL_JSON='{"error":"probe not run"}'
 if ISTATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
     -X POST -H 'Content-Type: application/json' \
@@ -290,11 +297,39 @@ else
   INTERNAL_JSON="{\"error\":$(json_str "curl: ${ERR:-request failed/timeout}")}"
 fi
 
+# ---------------------------------------------------------------------------
+# CHECK 6 — unsigned POST to /api/webhooks/<probe-token> → 401 (S-175).
+# The token is validated locally against the route's own format (so it can't
+# alter the URL) and is never echoed: the progress line shows a placeholder.
+# ---------------------------------------------------------------------------
+echo "[panel-auth] (6/6) Probing /api/webhooks/<WEBHOOK_PROBE_TOKEN> with an unsigned delivery (expect 401)..."
+WEBHOOK_JSON='{"error":"probe not run"}'
+PROBE_TOKEN="${WEBHOOK_PROBE_TOKEN:-}"
+if [[ -z "$PROBE_TOKEN" ]]; then
+  WEBHOOK_JSON='{"unset":true}'
+elif [[ ! "$PROBE_TOKEN" =~ ^[A-Za-z0-9_-]{32,64}$ ]]; then
+  WEBHOOK_JSON='{"error":"WEBHOOK_PROBE_TOKEN is not a valid endpoint token (expected 32-64 of [A-Za-z0-9_-])"}'
+elif WSTATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+    -X POST -H 'Content-Type: application/json' \
+    -H 'X-GitHub-Event: ping' -H "X-GitHub-Delivery: panel-auth-gate-$(date +%s)-$$" \
+    --data '{"zen":"release-gate probe (unsigned)"}' \
+    --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
+    "${BASE_URL}/api/webhooks/${PROBE_TOKEN}" 2>"$TMP_DIR/werr")"; then
+  WEBHOOK_JSON="$(node -e '
+    const status = Number.parseInt(process.argv[1] || "", 10);
+    process.stdout.write(JSON.stringify({ status: Number.isInteger(status) ? status : null }));
+  ' "$WSTATUS")"
+else
+  # curl's error text can include the URL, so report only the exit class.
+  WEBHOOK_JSON='{"error":"curl: request failed/timeout"}'
+fi
+unset PROBE_TOKEN
+
 # --- Assemble the gate input and hand it to the pure parser ----------------
 node -e '
-  const [envNames, protectedProbe, sseProbe, signupProbe, internalProbe] = process.argv.slice(1).map((a) => JSON.parse(a));
-  process.stdout.write(JSON.stringify({ envNames, protectedProbe, sseProbe, signupProbe, internalProbe }));
-' "$ENV_NAMES_JSON" "$PROTECTED_JSON" "$SSE_JSON" "$SIGNUP_JSON" "$INTERNAL_JSON" > "$INPUT_JSON"
+  const [envNames, protectedProbe, sseProbe, signupProbe, internalProbe, webhookProbe] = process.argv.slice(1).map((a) => JSON.parse(a));
+  process.stdout.write(JSON.stringify({ envNames, protectedProbe, sseProbe, signupProbe, internalProbe, webhookProbe }));
+' "$ENV_NAMES_JSON" "$PROTECTED_JSON" "$SSE_JSON" "$SIGNUP_JSON" "$INTERNAL_JSON" "$WEBHOOK_JSON" > "$INPUT_JSON"
 
 # The parser exits 0 (boundary holds) or 1 (any failure). `set -e` would abort
 # before we can echo, so capture the code.

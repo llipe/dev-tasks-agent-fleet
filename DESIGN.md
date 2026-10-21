@@ -17,6 +17,9 @@
 | 1.11    | 2026-10-13 | Added the **Agent Scheduler** screen specs (Phase 4, [`prd-agent-scheduler.md`](requirements/prd-agent-scheduler.md) / [`specification-prd-agent-scheduler.md`](../workstream/specification-prd-agent-scheduler.md)), pinned to the delivered Nocturne prototype (`docs/prototype/Agent Scheduler.dc.html`, same `_ds` bundle hash as the existing screens — zero DS divergence). New **§5.7 Schedules (`/schedules`)** (the fleet-wide list: State/Agent/Repository/Cadence/Next run/Last run/Actions semantic-table-on-grid, the unified blocked/skipped reason chip + "PR handled · resume anyway" ghost action, the New/Edit dialog with the schema-driven param form + cadence picker + live summary + next-3-runs preview + collapsible guardrails, and the delete `alertdialog`) and **§5.8 Notifications (`/notifications` + top-bar bell)** (the bell + unread badge + popover, and the full grouped feed). **§4.1** nav-state note updated: **Schedules** and **Notifications** are now live nav destinations (four of six items live; Settings + System health remain disabled). **§10** gains the scheduler icons (`CalendarDots` Schedules, `Bell` Notifications, plus the row-action `Pencil`/`Trash`/`Play`/`Pause` and reason `GitPullRequest`/`Warning`/`SkipForward`/`LockSimple`). No new visual token or component variant introduced — every surface reuses existing primitives (semantic table, `Button` ghost/primary/secondary, `Tag`/status-pill pattern, segmented control `.seg`, toggle switch, the dialog shell, `KLabel`). Documentation locking the design contract to the reviewed prototype ahead of story generation. | product-engineer |
 | 1.10    | 2026-09-17 | Added the **audit-report findings block** to **§5.3 Run Detail** (issue #241). `audit_report` artifacts carry their content in `metadata` and have no URL by design, so the pill link alone showed nothing reviewable. The summary now renders, under the artifact pills, one findings block per `audit_report`: a summary line (total, per-tool and per-severity counts, before→after bucket counts for fix-mode reports) and a semantic `<table>` on the §4.4 CSS-grid pattern (tool · severity · bucket · `path:line` · rule · message), with a generic key/value `<dl>` fallback for unrecognized metadata shapes and an explicit "No findings." empty state. Severity text is tinted with the existing §2.4 status tokens (`--st-fail` for critical/high, `--st-timeout` for medium, `--faint` for low) via a per-row custom property, mirroring `StatusPill`'s `--st-color` mechanism. Metadata is untrusted and renders as text only (no markup, no links) — the same posture as §5.3's artifact-link guard. No new token or component variant introduced; header/row typography reuses the §2 table tokens. | developer |
 | 1.11    | 2026-10-13 | Added the **findings disclosure** to the **§5.3 Run Detail** audit-report block (issue #245). A large `audit_report` previously pushed the steps panel, log toolbar, and log viewer off screen, breaking §4.2's "no outer scroll" contract. The findings table is now wrapped in a native `<details>`/`<summary>`: the summary line is the always-visible `<summary>`, the table is the collapsible body. Default state is server-rendered via the `open` attribute — open at **10 rendered rows or fewer** (counting `view.rows.length`, not the agent-reported `total_findings`), closed above. When open, the body is a scroll container capped at `max-height: 40vh; overflow-y: auto` (the cap sits on the body container, not on `<details>`, so the summary stays visible). Paired with a **`min-height: 240px` log-section floor** on `RunDetailLogSection`'s `.section`, so the steps panel/toolbar/viewer never collapse to zero; the 40vh cap yields first on short viewports. The empty state and the key/value fallback have no table and therefore no disclosure. The `<summary>` keeps a visible `:focus-visible` ring. The component stays server-safe (no `"use client"`) and metadata stays escaped text. No new token or component variant — reuses §2 typography and the existing `--space-*`/`--radius-md`/`--color-accent-400` tokens. | developer |
+| 1.12    | 2026-10-20 | Added **§5.9 Webhooks (`/webhooks`)** (Webhook Triggers Phase 1, Story S-176 / issue #321, D-W13). Documents the endpoint list (Status / Endpoint / Events / Rules / Payload URL / Actions on the §5.7 semantic-table-on-grid), the New/Edit endpoint dialog (source segmented control fixed after creation; generic-only header fields; event checkboxes + an "Other events" field; bot-author and enabled toggles), the **show-once signing-secret dialog** (closes only on an explicit "I've stored it", no Escape/backdrop close, secret never re-displayed), and the delete and rotate `alertdialog`s. **§4.1** nav-state note: **Webhooks** is live after Schedules (six of eight items live); this also corrects the previous note, which said "four of six" while listing five. **§10** gains `WebhooksLogo`, `Copy` and `ArrowsClockwise`. No new visual token or component variant: every surface reuses the §5.7 table, the §3.4 pill mechanism, `Tag`, `Toggle`, `Button`, `KLabel` and the §5.7.2 dialog shell. First-pass layout without a dedicated `ux-engineer` prototype, flagged as with §5.6. | developer |
+| 1.13    | 2026-10-20 | Added **§5.9.4 Endpoint page** (`/webhooks/[id]`) and **§5.9.5 Rule dialog** (Story S-177 / issue #322, D-W7/D-W13): the numbered rule list in match order with the first-match note, the default rule in its own section, per-row text summary (events, conditions, agent, repository source) with ↑/↓ reorder, enable/disable, edit and delete; and the rule dialog's When / Run / Guardrails groups (event checkboxes from the endpoint allowlist, AND-ed condition rows, agent select, repository from a payload path or fixed, the reused `FieldRow` param grid, "fill from the payload" rows, threshold and toggles). Validation runs on the server before anything is stored; errors render inline and a summary sits next to Save. Endpoint names in the §5.9 list now link to the endpoint page. No new token or component variant. | developer |
+| 1.14    | 2026-10-20 | Added **§5.9.6 Delivery log** (Story S-178 / issue #323, D-W11/D-W13, FR23) on the endpoint page: a newest-first semantic table (Received relative + absolute UTC · Event · Delivery ID · Signature · Rule · Outcome pill + plain-language reason + `Open run ▸` for `fired`), keyset-paged with **Older ▸ / ◂ Newest** links, the configured retention stated in the header, and the dashed empty state. Untrusted header and reason values render as text only. No new token or component variant: the §5.7 table grid, the §3.4 pill mechanism and the §5.8 muted reason line. | developer |
 
 ---
 
@@ -395,10 +398,11 @@ Visibility: **Log out renders only when the request is authenticated, and is abs
 
 #### Sidebar nav item state (current)
 
-As of Phase 4 (the Agent Scheduler, §5.7/§5.8), **four of the six primary nav
-items are live links** — Agents (since S-101), **All runs** (S-146, §5.2a),
-**Repositories** (S-147, §5.6), and now **Schedules** (§5.7, `CalendarDots`) and
-**Notifications** (§5.8, `Bell`, carrying the unread badge) — and **two remain
+As of Webhook Triggers Phase 1 (§5.9), **six of the eight primary nav items are
+live links**: Agents (since S-101), **All runs** (S-146, §5.2a), **Repositories**
+(S-147, §5.6), **Schedules** (§5.7, `CalendarDots`), **Webhooks** (S-176, §5.9,
+`WebhooksLogo`, right after Schedules) and **Notifications** (§5.8, `Bell`,
+carrying the unread badge). **Two remain
 `DisabledNavItem`** — Settings and System health (`aria-disabled`, "not
 available in this phase", not focusable, per PRD §10). (Before Phase 4 only the
 first three were live; Schedules and Notifications were disabled placeholders.)
@@ -707,6 +711,163 @@ inline route-segment config. No new visual token or component variant — the be
 `btn-ghost`, the badge/dots reuse the status-pill color mechanism, the rows reuse the
 `KLabel` + mono/body type set.
 
+### 5.9 Webhooks (`/webhooks`)
+
+Webhook Triggers Phase 1 (S-176, D-W13). An authenticated fleet-wide surface for the
+inbound endpoints GitHub (or another HMAC-signing sender) posts to. The sidebar
+**Webhooks** item (`WebhooksLogo`, §10) sits right after Schedules. First-pass layout
+with no dedicated prototype; it reuses the §5.7 primitives, and no token is new.
+
+**Page header.** `h1` "Webhooks" (the §5.7 heading), then the mono/`--faint` stat line
+`N endpoints · M enabled · K rules · every delivery is signature-checked`. A right-
+aligned primary **New endpoint** button (`Plus`).
+
+**Table (semantic `<table aria-label="Webhook endpoints">` on the §4.4 grid).** Min-width
+1080px with horizontal scroll below; columns `100px minmax(170px,1.1fr)
+minmax(200px,1.3fr) 80px minmax(260px,1.6fr) 176px`; header and row rules, hover tint
+and the create/edit accent left inset exactly as §5.7.
+
+- **Status**: §3.4 pill, `enabled` (`--st-ok` solid dot) or `disabled` (`--muted`,
+  hollow dot).
+- **Endpoint**: name (`500 13px heading`) over the source (`github` / `generic`, mono
+  11px `--color-accent-400`).
+- **Events**: the first 3 allowlisted events as small `Tag`s, then an outline `+N` tag
+  whose `title` lists the rest.
+- **Rules**: `N rules` (mono).
+- **Payload URL**: `<origin>/api/webhooks/<token>` in mono `--color-accent-300`,
+  ellipsized with the full value in `title`, plus an icon-only **Copy URL for
+  <name>** button (`Copy`) and a polite live `Copied` confirmation (`--st-ok`).
+  The origin is the host the operator is using (display only).
+- **Actions**: right-aligned ghost **Enable/Disable** text toggle, then icon-only
+  **Edit** (`Pencil`), **Rotate secret** (`ArrowsClockwise`) and **Delete** (`Trash`,
+  `--st-fail` hover as §5.7). Every control has an accessible name that includes the
+  endpoint name.
+
+**Empty state.** The §5.7 dashed panel: `KLabel` "Webhooks", "No webhook endpoints
+yet. Create one to get a URL and secret for GitHub.", and the New endpoint CTA.
+
+**Errors.** A failed toggle, delete or rotate shows a `role="alert"` banner above the
+table (the §5.7.2 banner tint). A failed rotate says the old secret is still active.
+
+#### 5.9.1 New / Edit endpoint dialog
+
+The §5.7.2 dialog shell at max-width 640px; Escape and ✕ close it; focus starts on Name.
+
+- **Name**: text input, required, ≤100 characters.
+- **Source** (create only): the `.seg` segmented control over **GitHub · Generic**
+  (radio inputs), with a one-line hint on the signature scheme. On edit the source
+  is shown as fixed text. GitHub's header names are fixed; **Generic** reveals
+  **Signature header** (default `x-signature-256`) and **Delivery ID header**
+  (default `x-delivery-id`, hint: without one, duplicates are detected by body hash).
+- **Events**: a checkbox grid of common GitHub events plus a free-text **Other
+  events** input (comma or space separated). At least one is required: deliveries for
+  any other event are recorded as `ignored`.
+- **Ignore events from the fleet's bot**: §3.10 toggle, default on.
+- **Enabled** (edit only): §3.10 toggle; hint "A disabled endpoint answers 404 and
+  records nothing."
+- **Footer**: Cancel (ghost) and a primary **Create endpoint** / **Save** with a
+  `Creating…` / `Saving…` pending state. Server field errors render inline under
+  their field (`--st-fail`, `aria-invalid`), and a summary banner sits at the top.
+
+#### 5.9.2 Show-once signing secret
+
+After **create** or **rotate**, a small dialog (`aria-label="Copy the signing
+secret"`, max-width 480px) shows a `--st-timeout`-tinted warning ("Copy the secret now.
+It won't be shown again."), a one-line setup instruction (GitHub: payload URL, secret,
+`application/json`; on rotate, update the sender now or deliveries return 401), and two
+read-only mono inputs, **Signing secret** (focused and selected on open) and **Payload
+URL**, each with a **Copy** button. It closes **only** on the primary **I've stored
+it**: no Escape, no backdrop click. Closing discards the secret; it is never fetched
+again, so the only way to get a new one is to rotate.
+
+#### 5.9.3 Delete and rotate confirms
+
+The §5.7.3 `alertdialog` pattern, focus on Cancel, Escape cancels.
+- **Delete endpoint?** The endpoint and its N rules are deleted along with its delivery
+  log and secret, and its URL stops working. Runs it already started are kept.
+- **Rotate the signing secret?** The old secret stops working immediately. Update the
+  sender right away or its deliveries return 401.
+
+#### 5.9.4 Endpoint page (`/webhooks/[id]`)
+
+A mono breadcrumb `Webhooks / <name>` (link in `--color-accent-300`), the endpoint name
+as `h1`, a `--faint` stat line (`source · enabled · events …`), and the full payload URL
+in mono. Below it, **Rules** (`500 16px heading`) with the standing note "The first
+matching rule wins, top to bottom. The default rule runs only when nothing else
+matches." and a primary **Add rule** button. S-178 adds the delivery log under it.
+
+- **Rule list**: an `<ol aria-label="Rules in match order">`; each row is a
+  `32px 1fr auto` grid with the 1-based position (mono `--color-accent-300`), the name
+  (`500 13px heading`) plus the §3.4 enabled/disabled pill and, once a rule has
+  failed, `N/T failed starts` in `--st-timeout`; a summary line (`on` + event `Tag`s +
+  one bordered mono chip per condition, e.g. `comment.body contains /audit`) and a
+  target line (`→ <agent> · <repo>` or `repo from <path>`, mono `--muted`). Row rules
+  and hover tint as §5.7.
+- **Row actions** (right): icon-only **↑ / ↓** (disabled at the edges), the ghost
+  **Enable/Disable** text toggle, **Edit** (`Pencil`) and **Delete** (`Trash`). Every
+  accessible name includes the rule name. A move sends the whole new order; the
+  server renumbers in one statement.
+- **Default rule**: a separate `KLabel` "Default rule" section after the list, with
+  the summary "when no other rule matches" and no move buttons, because its position
+  never matters.
+- **Empty state**: the dashed panel, "No rules yet. Every delivery to this endpoint is
+  recorded as no match until you add one."
+- **Delete confirm**: the §5.7.3 `alertdialog`: the rule stops matching; runs it started
+  are kept.
+
+#### 5.9.5 Rule dialog
+
+The §5.7.2 shell at max-width 820px; Escape and ✕ close it; focus starts on the name.
+Three groups separated by a top rule, each with an uppercase 10px `--faint` legend:
+
+- **Rule name**, then a **Default rule** §3.10 toggle (hint: one per endpoint). When
+  on, the **When** group is hidden.
+- **When**: event checkboxes from the endpoint's allowlist only, then condition rows
+  (`minmax(0,1.2fr) 140px minmax(0,1fr) 28px`): field path input, operator select
+  (`equals · not equals · contains · prefix · suffix · in · exists`), value input
+  (`in` takes a comma list; `exists` has no value), and a remove button. Conditions are
+  AND-ed. A ghost **+ Add condition** button.
+- **Run**: the agent select (a disabled agent is listed but not selectable; changing
+  the agent resets the parameters to that agent's defaults), the repository `.seg`
+  (**From the payload** with a path input defaulting to `repository.full_name`, or
+  **Fixed repository** with a select of enabled repositories), the reused §5.7.2
+  `FieldRow` parameter grid, then **Fill from the payload** rows (parameter select +
+  path input + remove) with a ghost **+ Add payload value** button.
+- **Guardrails**: **Disable after consecutive failed starts** (number, 1–100, default
+  3), **Notify me when a run succeeds** and **Enabled** toggles, and a `--faint` line
+  naming the always-on guardrails (no overlap, open-PR backoff, fleet-wide cap).
+- **Footer**: the server's summary ("Fix the highlighted fields.") in `--st-fail` on
+  the left, so it stays visible however far the form is scrolled; Cancel; and the
+  primary **Save rule** / `Saving…`. Field errors render under their group.
+
+
+#### 5.9.6 Delivery log
+
+On the endpoint page, below the rules. A `Deliveries` heading (`500 16px heading`)
+with the note "Every request to this URL, newest first. Kept for N days." (N is the
+configured retention, `webhook.config`). A semantic `<table aria-label="Deliveries">`
+on the §5.7 grid (`150px 150px minmax(160px,1fr) 110px minmax(140px,0.8fr)
+minmax(260px,1.4fr)`, rows top-aligned):
+
+- **Received**: §7.1 relative time (mono) over the absolute `YYYY-MM-DD HH:MM:SS UTC`
+  (`--faint`).
+- **Event** and **Delivery ID**: the sender's header values in mono, ellipsized, `—`
+  when absent. They are untrusted and always rendered as text, never markup or links.
+- **Signature**: `verified` (`--faint`) or `signature failed` (`--st-fail`).
+- **Rule**: the matched rule's name, `deleted rule` when it is gone, `—` when none.
+- **Outcome**: a §3.4 pill (`fired` `--st-ok`; `skipped` / `rejected` `--st-timeout`;
+  `unauthorized` `--st-fail`; `ignored` / `no match` `--faint`; `duplicate` /
+  `received` `--muted`), plus `Open run ▸` (mono `--color-accent-300`) for `fired`
+  only. Below it, a plain-language reason in 12px `--muted`: known codes are
+  translated (e.g. "A run is already running for this agent and repository.",
+  "Signature doesn't match this endpoint's secret."); unknown text is shown as-is,
+  capped at 200 characters.
+
+Paging is keyset (`created_at, id`), 50 per page: a right-aligned `Older ▸` link
+carries an opaque `?before=` cursor, and `◂ Newest` returns to the first page. A
+malformed cursor silently shows the first page. Empty state: the dashed panel, "No
+deliveries yet. Every request to this endpoint lands here, including rejected ones."
+
 ---
 
 ## 6. Interaction Patterns
@@ -887,6 +1048,9 @@ Use **Phosphor Icons** (https://phosphoricons.com) throughout, rendered as inlin
 | ⚠ | Auto-pause block reason (§5.7) | `Warning` |
 | ⏭ | Skipped reason — cap / missed tick (§5.7) | `SkipForward` |
 | 🔒 | Always-on guardrail line (dialog, §5.7.2) | `LockSimple` |
+| ⚓ | Webhooks (nav, §5.9) | `WebhooksLogo` |
+| ⧉ | Copy URL / secret (§5.9) | `Copy` |
+| ↻ | Rotate signing secret (§5.9) | `ArrowsClockwise` |
 | ⚙ | Settings | `GearSix` |
 | ◈ | System health | `Heartbeat` |
 | ⏻ | Log out (sidebar footer, §4.1) | `Power` |

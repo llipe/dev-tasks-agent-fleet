@@ -7,6 +7,8 @@
 | 1.0     | 2026-10-15 | Initial specification for Phase 1 (webhook mechanism) from PRD v0.1.    | product-engineer |
 | 1.1     | 2026-10-15 | Resolve OQ-1 (keep declared-key interpolation), OQ-2 (prune policy in v1), OQ-3 (define the generic-sender signature scheme), OQ-4 (G3 per-rule, settled). Add §9.1 signature scheme, delivery retention to data model + rollout. | product-engineer |
 | 1.2     | 2026-10-19 | Record B-4 (D-W16): every delivery is recorded, including `unauthorized`, but only verified deliveries claim the dedup key (`dedup_key` column, unique per endpoint). | product-engineer |
+| 1.3     | 2026-10-20 | D-W3 corrected during S-168: the body is read as raw bytes, not `request.text()` (UTF-8 decoding replaces invalid bytes and breaks the HMAC). | product-engineer |
+| 1.4     | 2026-10-20 | Delivery write-back (fidelity reports S-173, S-174). §8.4 now describes the guardrails as built: a stateless `public.webhook_guardrail` that reuses the scheduler's SQL predicates (not moved into the TS core), one G4 cap shared by schedule and webhook runs, G5 superseded by a later manual run (no manual clear), and webhook G3 counting fire-time start failures only (D-W18). D-W10 row updated. #302 recorded as D-W17. | planner |
 
 ---
 
@@ -72,7 +74,8 @@ flowchart LR
 
 Key properties, each tracing to the PRD:
 - Verification is **before parse / before work** (FR2/FR6); the raw body is read via
-  `request.text()` and HMAC'd exactly, then parsed only on success (D-W3).
+  the request stream as raw bytes (`request.arrayBuffer()` with a byte limit, never `request.text()`,
+  which would replace invalid UTF-8 and change the signed bytes) and HMAC'd exactly, then parsed only on success (D-W3).
 - The route handler returns a **fast 2xx** after verify + record + enqueue; the agent invoke is the
   existing async path, so GitHub never sees a slow handler (FR7, D-W11).
 - `invokeResolvedRun()` is the **single** invoke code path, shared with the schedule fire route —
@@ -174,7 +177,7 @@ Route-segment config identical to the fire route: `runtime = "nodejs"`, `dynamic
 Processing order (each step records to `webhook_deliveries` and never logs secrets, FR8):
 
 1. Resolve endpoint by `token`; unknown/disabled token → `404` (no record — an unknown token is not a delivery to us).
-2. Read **raw body** via `request.text()`; enforce the size cap → over cap → `413` (FR4).
+2. Read the **raw body as bytes** (stream with a byte limit, then `Uint8Array`; never `request.text()`); over the size cap → `413` (FR4).
 3. **Verify HMAC** of raw body against the endpoint's Vault secret, constant-time, fail-closed; invalid/missing → record `unauthorized`, return `401` (FR2/AC2).
 4. Compute the dedup key (delivery id header, else body hash) and insert the row with it; if `(endpoint_id, dedup_key)` already exists → record/return `duplicate` `200` no-op (FR3/AC2). Step 3 failures were already recorded with a null `dedup_key`, so a forged request can never block a later genuine delivery with the same id (D-W16).
 5. Parse JSON; read event type header; not in `event_allowlist` → record `ignored`, return `202` (FR5/AC3).
@@ -287,10 +290,25 @@ export type TriggerDescriptor =
 
 ### 8.4 Guardrails (D-W10)
 
-G1 overlap, G4 concurrency cap, G5 open-PR backoff apply unchanged (shared core). G3 circuit breaker
-is keyed **per rule**: `webhook_rules.consecutive_failures` + `auto_disable_threshold`; crossing the
-threshold auto-disables the rule and records a `schedule_auto_paused`-analog notification
-(generalized `kind`). G2 catch-up has no meaning for edge-triggered webhooks (documented n/a).
+**As built (S-173).** The schedule guardrails live in the SQL due-tick, with block/clear state on
+the `schedules` row; a webhook has no such row. The fire step therefore calls one stateless,
+service_role-only decision, `public.webhook_guardrail(agent, repo)`, which reuses the scheduler's
+own predicates. A skip records the delivery as `skipped:<reason>` and creates no run.
+
+- **G1 overlap**: `scheduler.has_active_run` (by `effective_status`, so a stale run past the reaper
+  threshold does not block).
+- **G5 open PR**: `scheduler.open_pr_block_run` with no manual clear. A later **manual** run of the
+  same agent and repository supersedes the block (G5-a).
+- **G4 cap**: `scheduler.max_inflight()`. `scheduler.in_flight_scheduled_runs()` counts `schedule`
+  **and** `webhook` runs, so both automated triggers share one cap and webhook runs can make a
+  scheduled run skip with `concurrency_cap`. Manual runs never count.
+- **G3, per rule**: `public.webhook_record_rule_result(rule, ok, error)`. A failed **start** (the
+  invoke returned an error) increments `webhook_rules.consecutive_failures`; a clean start resets it.
+  At `auto_disable_threshold` the rule is disabled and one `webhook_rule_auto_disabled`
+  notification is written. A run that starts and later fails is notified (§9.2) but does **not**
+  count, unlike scheduled runs, whose G3 is fed by the notify-sweep (D-W18). Re-enabling a rule
+  resets the counter.
+- **G2 catch-up**: not applicable to edge-triggered webhooks.
 
 ### 8.5 Delivery state (FR23)
 
@@ -456,14 +474,14 @@ No open technical questions remain for Phase 1.
 | --- | --- |
 | D-W1 | HMAC-SHA256-over-raw-body auth module, per-endpoint Vault secret, GitHub `X-Hub-Signature-256` default. |
 | D-W2 | `POST /api/webhooks/[token]` public, signature-gated; release gate asserts unsigned → 401. |
-| D-W3 | Raw body via `request.text()`, verify-before-parse; Node runtime, no cache. |
+| D-W3 | Raw body read as bytes (not `request.text()`), verify-before-parse; Node runtime, no cache. |
 | D-W4 | Three tables mirroring scheduler schema conventions; deny-all RLS; Vault secret, no plaintext column. |
 | D-W5 | `TriggerDescriptor` gains `webhook` variant; `buildRunInsert` unchanged. |
 | D-W6 | Shared `invokeResolvedRun()` core; single invoke path for schedule + webhook. |
 | D-W7 | Pure bounded routing engine `lib/domain/webhook-routing.ts`; JSON-path-lite + fixed op set, no regex/code. |
 | D-W8 | Payload repo matched via new `getRepositoryByFullName`, allowlist-constrained, never auto-create. |
 | D-W9 | Params = static + declared-key interpolation, schema-validated (OQ-1 flags the alternative). |
-| D-W10 | G1/G4/G5 shared in the core; G3 keyed per rule; G2 n/a for webhooks. |
+| D-W10 | G1/G4/G5 decided by `public.webhook_guardrail`, which reuses the scheduler predicates (one shared G4 cap); G3 keyed per rule and fed by start failures (D-W18); G2 n/a for webhooks. See §8.4. |
 | D-W11 | Always-on synchronous delivery recording; fast ack; async invoke. |
 | D-W12 | First-class bot-author guard + endpoint `ignore_bot_author` default-on. |
 | D-W13 | `/webhooks` UI reuses schema-form, table/pill/feed patterns; new sidebar item. |

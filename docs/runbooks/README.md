@@ -11,4 +11,4 @@ Copy `runbook-template.md` to start a new one, and add a row here.
 
 | Runbook | Trigger | Owner | Last verified |
 | ------- | ------- | ----- | ------------- |
-|         |         |       |               |
+| [webhook-deployment](webhook-deployment.md) | Enabling webhook triggers live, adding a GitHub endpoint, or rotating its secret | operator | never (local stack only, S-166) |

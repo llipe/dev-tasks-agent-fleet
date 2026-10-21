@@ -29,7 +29,13 @@ import type {
   ScheduleRow,
   VRunRow,
   VScheduleRow,
+  WebhookDeliveryRow,
+  WebhookEndpointRow,
+  WebhookOutcome,
+  WebhookSource,
+  WebhookRuleRow,
 } from "@/lib/supabase/types";
+import type { RuleWriteInput } from "@/lib/domain/webhook-rule-save";
 
 /** SD11 — the bounded initial `run_events` read cap. The SSE relay (S-110) */
 /** streams the tail beyond this; the panel never issues an unbounded read. */
@@ -1229,4 +1235,531 @@ export async function markAllNotificationsRead(client: SupabaseClient): Promise<
   if (result.error) {
     throw new DatabaseError("markAllNotificationsRead", result.error);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Webhook Triggers (S-166, #310)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read an endpoint's signing secret from Vault through the service_role-only
+ * `public.webhook_endpoint_secret` RPC (D-W4). Server-only: the returned value
+ * must never be logged, put in a row type, or sent to the client (AC9).
+ *
+ * Fails closed: an absent, empty, or non-string value returns `null`, which the
+ * inbound route (S-169) treats as `401` (test plan EC-21). An RPC error throws a
+ * `DatabaseError` whose message never carries the Postgres detail.
+ */
+export async function getEndpointSecret(
+  client: SupabaseClient,
+  endpointId: string,
+): Promise<string | null> {
+  const result = await client.rpc("webhook_endpoint_secret", { p_endpoint_id: endpointId });
+  if (result.error) {
+    throw new DatabaseError("getEndpointSecret", result.error);
+  }
+  return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
+
+/** The endpoint fields the inbound route needs (S-169). Never includes the secret. */
+export interface WebhookEndpointForReceive {
+  id: string;
+  is_enabled: boolean;
+  signature_header: string;
+  delivery_id_header: string;
+  event_allowlist: string[];
+}
+
+/** Look up an endpoint by its URL token (S-169). Returns null when unknown. */
+export async function getWebhookEndpointByToken(
+  client: SupabaseClient,
+  token: string,
+): Promise<WebhookEndpointForReceive | null> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select("id, is_enabled, signature_header, delivery_id_header, event_allowlist")
+    .eq("url_token", token)
+    .maybeSingle();
+  if (result.error) {
+    throw new DatabaseError("getWebhookEndpointByToken", result.error);
+  }
+  return (result.data as WebhookEndpointForReceive | null) ?? null;
+}
+
+/**
+ * Insert a verified delivery that claims `dedup_key` (D-W16). Uses
+ * `ON CONFLICT (endpoint_id, dedup_key) DO NOTHING`, so a concurrent or replayed
+ * delivery inserts nothing and this returns `null` (EC-14).
+ */
+export async function claimWebhookDelivery(
+  client: SupabaseClient,
+  row: {
+    endpoint_id: string;
+    delivery_id: string | null;
+    event_type: string | null;
+    dedup_key: string;
+  },
+): Promise<string | null> {
+  const result = await client
+    .from("webhook_deliveries")
+    .upsert(
+      { ...row, outcome: "received" },
+      { onConflict: "endpoint_id,dedup_key", ignoreDuplicates: true },
+    )
+    .select("id");
+  if (result.error) {
+    throw new DatabaseError("claimWebhookDelivery", result.error);
+  }
+  const rows = (result.data ?? []) as { id: string }[];
+  return rows[0]?.id ?? null;
+}
+
+/** Insert a delivery row that claims no dedup key (`unauthorized` / `duplicate`, D-W16). */
+export async function insertUnclaimedWebhookDelivery(
+  client: SupabaseClient,
+  row: {
+    endpoint_id: string;
+    delivery_id: string | null;
+    event_type: string | null;
+    outcome: WebhookOutcome;
+    reason: string | null;
+  },
+): Promise<string> {
+  const result = await client.from("webhook_deliveries").insert(row).select("id").single();
+  if (result.error) {
+    throw new DatabaseError("insertUnclaimedWebhookDelivery", result.error);
+  }
+  return (result.data as { id: string }).id;
+}
+
+/** Set a delivery's outcome and reason (S-169 ignore paths; S-171+ routing outcomes). */
+export async function setWebhookDeliveryOutcome(
+  client: SupabaseClient,
+  rowId: string,
+  outcome: WebhookOutcome,
+  reason: string | null,
+): Promise<void> {
+  const result = await client
+    .from("webhook_deliveries")
+    .update({ outcome, reason })
+    .eq("id", rowId);
+  if (result.error) {
+    throw new DatabaseError("setWebhookDeliveryOutcome", result.error);
+  }
+}
+
+/**
+ * Resolve a payload-named repository against the allowlist (S-171, D-W8).
+ * Case-insensitive exact match on `full_name` (GitHub names are
+ * case-insensitive; EC-7), enabled and not archived only. Wildcards in the
+ * input are escaped, so `ilike` acts as an exact match. `full_name` is unique
+ * per installation, not globally: if more than one enabled repository matches,
+ * this returns null rather than picking one. Never creates a row (I-4).
+ */
+export async function getRepositoryByFullName(
+  client: SupabaseClient,
+  fullName: string,
+): Promise<RepositoryRow | null> {
+  const result = await client
+    .from("repositories")
+    .select("*")
+    .ilike("full_name", escapeIlikeWildcards(fullName))
+    .eq("is_enabled", true)
+    .is("archived_at", null)
+    .limit(2);
+  if (result.error) {
+    throw new DatabaseError("getRepositoryByFullName", result.error);
+  }
+  const rows = (result.data ?? []) as RepositoryRow[];
+  return rows.length === 1 ? rows[0]! : null;
+}
+
+/** The routing fields of an endpoint's rules, for routeDelivery + resolveRoute (S-171). */
+export async function getWebhookRulesForEndpoint(
+  client: SupabaseClient,
+  endpointId: string,
+): Promise<WebhookRuleRow[]> {
+  const result = await client
+    .from("webhook_rules")
+    .select("*")
+    .eq("endpoint_id", endpointId)
+    .order("position", { ascending: true });
+  if (result.error) {
+    throw new DatabaseError("getWebhookRulesForEndpoint", result.error);
+  }
+  return (result.data ?? []) as WebhookRuleRow[];
+}
+
+/** The bot login for the self-trigger guard (FR19), from webhook.config via a service-role RPC. */
+export async function getWebhookBotLogin(client: SupabaseClient): Promise<string | null> {
+  const result = await client.rpc("webhook_bot_login");
+  if (result.error) {
+    throw new DatabaseError("getWebhookBotLogin", result.error);
+  }
+  return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
+
+/** Record a routing outcome and the matched rule on a delivery (S-171). */
+export async function setWebhookDeliveryRoute(
+  client: SupabaseClient,
+  rowId: string,
+  outcome: WebhookOutcome,
+  reason: string | null,
+  matchedRuleId: string | null,
+): Promise<void> {
+  const result = await client
+    .from("webhook_deliveries")
+    .update({ outcome, reason, matched_rule_id: matchedRuleId })
+    .eq("id", rowId);
+  if (result.error) {
+    throw new DatabaseError("setWebhookDeliveryRoute", result.error);
+  }
+}
+
+/** The endpoint's routing toggle for the bot-author guard (S-171). */
+export async function getWebhookEndpointRouting(
+  client: SupabaseClient,
+  endpointId: string,
+): Promise<{ ignore_bot_author: boolean }> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select("ignore_bot_author")
+    .eq("id", endpointId)
+    .single();
+  if (result.error) {
+    throw new DatabaseError("getWebhookEndpointRouting", result.error);
+  }
+  return result.data as { ignore_bot_author: boolean };
+}
+
+/** Record a delivery as `fired` with its run and rule (S-172, AC1). */
+export async function recordWebhookDeliveryFired(
+  client: SupabaseClient,
+  rowId: string,
+  runId: string,
+  ruleId: string,
+  reason: string | null,
+): Promise<void> {
+  const result = await client
+    .from("webhook_deliveries")
+    .update({ outcome: "fired", run_id: runId, matched_rule_id: ruleId, reason })
+    .eq("id", rowId);
+  if (result.error) {
+    throw new DatabaseError("recordWebhookDeliveryFired", result.error);
+  }
+}
+
+/** S-173: the webhook guardrail decision (null = allowed, else the skip reason). */
+export async function checkWebhookGuardrail(
+  client: SupabaseClient,
+  agentId: string,
+  repositoryId: string | null,
+): Promise<string | null> {
+  const result = await client.rpc("webhook_guardrail", {
+    p_agent_id: agentId,
+    p_repository_id: repositoryId,
+  });
+  if (result.error) {
+    throw new DatabaseError("checkWebhookGuardrail", result.error);
+  }
+  return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
+}
+
+/** S-173: G3 per rule — count a start failure, or reset on success. */
+export async function recordWebhookRuleResult(
+  client: SupabaseClient,
+  ruleId: string,
+  ok: boolean,
+  errorCode: string | null,
+): Promise<void> {
+  const result = await client.rpc("webhook_record_rule_result", {
+    p_rule_id: ruleId,
+    p_ok: ok,
+    p_error: errorCode,
+  });
+  if (result.error) {
+    throw new DatabaseError("recordWebhookRuleResult", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// S-176 (#321) — /webhooks endpoint admin. None of these return a secret.
+// ---------------------------------------------------------------------------
+
+/** An endpoint as the list shows it: the row plus its rule count. No secret. */
+export interface WebhookEndpointListRow extends WebhookEndpointRow {
+  rule_count: number;
+}
+
+export interface WebhookEndpointSettings {
+  name: string;
+  eventAllowlist: string[];
+  ignoreBotAuthor: boolean;
+  signatureHeader: string;
+  deliveryIdHeader: string;
+}
+
+export interface WebhookEndpointCreateInput extends WebhookEndpointSettings {
+  source: WebhookSource;
+  urlToken: string;
+  secret: string;
+}
+
+export async function getWebhookEndpointsForList(
+  client: SupabaseClient,
+): Promise<WebhookEndpointListRow[]> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select(
+      "id, name, url_token, source, signature_header, delivery_id_header, event_allowlist, ignore_bot_author, is_enabled, created_at, updated_at, webhook_rules(count)",
+    )
+    .order("created_at", { ascending: true });
+  if (result.error) {
+    throw new DatabaseError("getWebhookEndpointsForList", result.error);
+  }
+  return (result.data ?? []).map((row) => {
+    const { webhook_rules: rules, ...rest } = row as WebhookEndpointRow & {
+      webhook_rules?: { count: number }[];
+    };
+    return { ...rest, rule_count: rules?.[0]?.count ?? 0 };
+  });
+}
+
+export async function getWebhookEndpointById(
+  client: SupabaseClient,
+  id: string,
+): Promise<WebhookEndpointRow | null> {
+  const result = await client
+    .from("webhook_endpoints")
+    .select(
+      "id, name, url_token, source, signature_header, delivery_id_header, event_allowlist, ignore_bot_author, is_enabled, created_at, updated_at",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  return unwrap<WebhookEndpointRow>("getWebhookEndpointById", result);
+}
+
+/** Insert the endpoint and its Vault secret in one transaction. Returns the id. */
+export async function createWebhookEndpoint(
+  client: SupabaseClient,
+  input: WebhookEndpointCreateInput,
+): Promise<string> {
+  const result = await client.rpc("webhook_create_endpoint", {
+    p_name: input.name,
+    p_source: input.source,
+    p_event_allowlist: input.eventAllowlist,
+    p_ignore_bot_author: input.ignoreBotAuthor,
+    p_signature_header: input.signatureHeader,
+    p_delivery_id_header: input.deliveryIdHeader,
+    p_url_token: input.urlToken,
+    p_secret: input.secret,
+  });
+  if (result.error || typeof result.data !== "string") {
+    throw new DatabaseError("createWebhookEndpoint", result.error ?? { message: "no id returned" });
+  }
+  return result.data;
+}
+
+/** Settings only: never the token or the secret. */
+export async function updateWebhookEndpoint(
+  client: SupabaseClient,
+  id: string,
+  input: WebhookEndpointSettings & { isEnabled: boolean },
+): Promise<void> {
+  const result = await client
+    .from("webhook_endpoints")
+    .update({
+      name: input.name,
+      event_allowlist: input.eventAllowlist,
+      ignore_bot_author: input.ignoreBotAuthor,
+      signature_header: input.signatureHeader,
+      delivery_id_header: input.deliveryIdHeader,
+      is_enabled: input.isEnabled,
+    })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("updateWebhookEndpoint", result.error);
+  }
+}
+
+export async function setWebhookEndpointEnabled(
+  client: SupabaseClient,
+  id: string,
+  isEnabled: boolean,
+): Promise<void> {
+  const result = await client
+    .from("webhook_endpoints")
+    .update({ is_enabled: isEnabled })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("setWebhookEndpointEnabled", result.error);
+  }
+}
+
+export async function rotateWebhookEndpointSecret(
+  client: SupabaseClient,
+  id: string,
+  secret: string,
+): Promise<void> {
+  const result = await client.rpc("webhook_rotate_endpoint_secret", {
+    p_endpoint_id: id,
+    p_secret: secret,
+  });
+  if (result.error) {
+    throw new DatabaseError("rotateWebhookEndpointSecret", result.error);
+  }
+}
+
+/** Vault secret first, then the row; rules and deliveries cascade. */
+export async function deleteWebhookEndpoint(client: SupabaseClient, id: string): Promise<void> {
+  const result = await client.rpc("webhook_delete_endpoint", { p_endpoint_id: id });
+  if (result.error) {
+    throw new DatabaseError("deleteWebhookEndpoint", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// S-177 (#322) — rule editor writes. The body is validated by
+// lib/domain/webhook-rule-save.ts before it reaches these.
+// ---------------------------------------------------------------------------
+
+function ruleRow(input: RuleWriteInput) {
+  return {
+    name: input.name,
+    event_types: input.eventTypes,
+    conditions: input.conditions,
+    is_default: input.isDefault,
+    agent_id: input.agentId,
+    repo_mode: input.repoMode,
+    repository_id: input.repositoryId,
+    repo_payload_field: input.repoPayloadField,
+    params: input.params,
+    auto_disable_threshold: input.autoDisableThreshold,
+    notify_on_success: input.notifyOnSuccess,
+    is_enabled: input.isEnabled,
+  };
+}
+
+/** Append a rule at the end of the endpoint's order. Returns the id. */
+export async function createWebhookRule(
+  client: SupabaseClient,
+  endpointId: string,
+  input: RuleWriteInput,
+): Promise<string> {
+  const result = await client.rpc("webhook_create_rule", {
+    p_endpoint_id: endpointId,
+    p_rule: ruleRow(input),
+  });
+  if (result.error || typeof result.data !== "string") {
+    throw new DatabaseError("createWebhookRule", result.error ?? { message: "no id returned" });
+  }
+  return result.data;
+}
+
+export async function updateWebhookRule(
+  client: SupabaseClient,
+  id: string,
+  input: RuleWriteInput,
+): Promise<void> {
+  const row = ruleRow(input);
+  const result = await client
+    .from("webhook_rules")
+    .update(input.isEnabled ? { ...row, consecutive_failures: 0 } : row)
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("updateWebhookRule", result.error);
+  }
+}
+
+/** Enabling resets the G3 counter, so a re-enabled rule gets a fresh run of attempts. */
+export async function setWebhookRuleEnabled(
+  client: SupabaseClient,
+  id: string,
+  isEnabled: boolean,
+): Promise<void> {
+  const result = await client
+    .from("webhook_rules")
+    .update(isEnabled ? { is_enabled: true, consecutive_failures: 0 } : { is_enabled: false })
+    .eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("setWebhookRuleEnabled", result.error);
+  }
+}
+
+export async function deleteWebhookRule(client: SupabaseClient, id: string): Promise<void> {
+  const result = await client.from("webhook_rules").delete().eq("id", id);
+  if (result.error) {
+    throw new DatabaseError("deleteWebhookRule", result.error);
+  }
+}
+
+/** Renumber all of the endpoint's rules to the given order, atomically. */
+export async function reorderWebhookRules(
+  client: SupabaseClient,
+  endpointId: string,
+  orderedRuleIds: string[],
+): Promise<void> {
+  const result = await client.rpc("webhook_reorder_rules", {
+    p_endpoint_id: endpointId,
+    p_rule_ids: orderedRuleIds,
+  });
+  if (result.error) {
+    throw new DatabaseError("reorderWebhookRules", result.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// S-178 (#323) — the delivery log feed: newest first, keyset on (created_at, id).
+// ---------------------------------------------------------------------------
+
+export interface DeliveryCursor {
+  createdAt: string;
+  id: string;
+}
+
+export const DELIVERY_PAGE_SIZE = 50;
+
+export async function getWebhookDeliveriesPage(
+  client: SupabaseClient,
+  endpointId: string,
+  opts: { limit?: number; before?: DeliveryCursor } = {},
+): Promise<{ rows: WebhookDeliveryRow[]; nextCursor: DeliveryCursor | null }> {
+  const limit = Math.min(Math.max(opts.limit ?? DELIVERY_PAGE_SIZE, 1), 200);
+  let query = client
+    .from("webhook_deliveries")
+    .select(
+      "id, endpoint_id, delivery_id, dedup_key, event_type, outcome, matched_rule_id, run_id, reason, received_at, created_at, updated_at",
+    )
+    .eq("endpoint_id", endpointId);
+  if (opts.before) {
+    // Quoted values: timestamps contain ':' and '+'. The cursor is validated by the caller.
+    const ts = `"${opts.before.createdAt}"`;
+    query = query.or(`created_at.lt.${ts},and(created_at.eq.${ts},id.lt.${opts.before.id})`);
+  }
+  const result = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+  if (result.error) {
+    throw new DatabaseError("getWebhookDeliveriesPage", result.error);
+  }
+  const all = (result.data ?? []) as WebhookDeliveryRow[];
+  const rows = all.slice(0, limit);
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    nextCursor: all.length > limit && last ? { createdAt: last.created_at, id: last.id } : null,
+  };
+}
+
+/** S-178: the configured delivery retention (webhook.config), for the log's note. */
+export async function getWebhookDeliveryRetentionDays(client: SupabaseClient): Promise<number> {
+  const result = await client.rpc("webhook_delivery_retention_days");
+  if (result.error || typeof result.data !== "number") {
+    throw new DatabaseError(
+      "getWebhookDeliveryRetentionDays",
+      result.error ?? { message: "no value" },
+    );
+  }
+  return result.data;
 }

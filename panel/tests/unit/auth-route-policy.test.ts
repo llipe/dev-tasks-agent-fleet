@@ -55,6 +55,23 @@ describe("classifyRoute (spec §7.3)", () => {
     expect(classifyRoute("/api/internalish")).toBe("api");
   });
 
+  // S-169 (#314, D-W2): inbound webhooks come from GitHub, which holds no
+  // session. Same class as the scheduler surface: the gate declines the session
+  // check and the handler's HMAC verification is the authorization.
+  it.each(["/api/webhooks", "/api/webhooks/abc", "/api/webhooks/abc/extra"])(
+    "classifies inbound webhook path %s as internal",
+    (p) => {
+      expect(classifyRoute(p)).toBe("internal");
+    },
+  );
+
+  it.each(["/api/webhooksx", "/api/webhook", "/webhooks", "/webhooks/abc"])(
+    "keeps %s session-gated (sibling API path or the UI page)",
+    (p) => {
+      expect(classifyRoute(p)).not.toBe("internal");
+    },
+  );
+
   it("fails closed: an unknown path defaults to ui", () => {
     expect(classifyRoute("/some/future/route")).toBe("ui");
   });

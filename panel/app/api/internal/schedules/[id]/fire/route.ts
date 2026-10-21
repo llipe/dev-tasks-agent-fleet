@@ -34,12 +34,10 @@ import {
   recordScheduleFired,
   recordScheduleFireFailure,
 } from "@/lib/supabase/queries";
-import { buildAgentPayload } from "@/lib/domain/payload";
-import { buildRunInsert } from "@/lib/domain/run-insert";
+import { invokeResolvedRun } from "@/lib/domain/invoke-resolved-run";
 import { validateParams } from "@/lib/schema/validate";
 import { invokeAgentRuntime } from "@/lib/aws/invoke";
 import { authorizeInternalRequest } from "@/lib/auth/internal-secret";
-import { asTypedError, INVOCATION_FAILED } from "@/lib/errors";
 import { credentialSource } from "@/lib/aws/credentials";
 import { describeAwsError } from "@/lib/aws/aws-error";
 import type { AnySchema } from "ajv";
@@ -141,67 +139,52 @@ export async function POST(
     return NextResponse.json({ error: { code: "INVALID_PARAMS" } }, { status: 422 });
   }
   const params = validation.params;
-  const baseBranch =
-    typeof params.base_branch === "string" && params.base_branch.trim() !== ""
-      ? (params.base_branch as string)
-      : defaultBranch;
-
-  // 5. Generate the run id (panel-owned, D1) and build the payload.
-  const runId = randomUUID();
-  const agentPayload: Record<string, unknown> =
-    agent.requires_repository && repositoryFullName
-      ? (buildAgentPayload({
-          runId,
-          repositoryFullName,
-          baseBranch,
-          params,
-        }) as unknown as Record<string, unknown>)
-      : { run_id: runId, base_branch: baseBranch, params };
-
-  // 6. Insert the queued run with the SCHEDULE trigger descriptor (S-150 / AC2).
-  const insert = buildRunInsert({
-    runId,
-    agent: {
-      id: agent.id,
-      version: agent.version,
-      max_runtime_seconds: agent.max_runtime_seconds,
-      grace_seconds: agent.grace_seconds,
-      start_timeout_seconds: agent.start_timeout_seconds,
+  // 5–8. Shared invoke core (S-172, D-W6): payload → queued insert with the
+  //      SCHEDULE trigger descriptor (S-150 / AC2) → invoke → failed_to_start on
+  //      throw. The webhook handler runs the same steps.
+  const outcome = await invokeResolvedRun(
+    {
+      newRunId: randomUUID,
+      insertQueuedRun: (insert) => insertQueuedRun(client, insert),
+      invokeAgentRuntime: (target, req) => invokeAgentRuntime(target, req),
+      markRunFailedToStart: (runId, code, message) =>
+        markRunFailedToStart(client, runId, code, message),
+      onQueued: (runId) =>
+        logFire({ schedule_id: id, run_id: runId, event: "queued_row_inserted" }),
     },
-    repositoryId,
-    installationId,
-    params,
-    trigger: { triggerType: "schedule", triggeredBy: `schedule:${id}` },
-  });
-  await insertQueuedRun(client, insert);
-  logFire({ schedule_id: id, run_id: runId, event: "queued_row_inserted" });
+    {
+      agent,
+      repository:
+        repositoryId && installationId && repositoryFullName
+          ? {
+              id: repositoryId,
+              installation_id: installationId,
+              full_name: repositoryFullName,
+              default_branch: defaultBranch,
+            }
+          : null,
+      params,
+      trigger: { triggerType: "schedule", triggeredBy: `schedule:${id}` },
+    },
+  );
 
-  // 7 & 8. Invoke. On throw → failed_to_start + increment the G3 counter.
-  try {
-    await invokeAgentRuntime(
-      { runtimeArn: agent.runtime_arn, runtimeQualifier: agent.runtime_qualifier },
-      { payload: agentPayload },
-    );
-  } catch (invokeErr) {
-    const typed = asTypedError(invokeErr);
-    const errorCode = typed?.code ?? INVOCATION_FAILED;
-    const status = typed?.status ?? 502;
-    try {
-      await markRunFailedToStart(client, runId, errorCode, typed?.message ?? "Invoke failed.");
-    } catch {
-      // The run stays queued; the reaper is the backstop.
-    }
-    await recordScheduleFireFailure(client, id, errorCode);
+  if (!outcome.ok) {
+    // The core already marked the run failed_to_start; count it toward G3.
+    await recordScheduleFireFailure(client, id, outcome.errorCode);
     logFire({
       schedule_id: id,
-      run_id: runId,
+      run_id: outcome.runId,
       event: "invocation_failed",
-      error_code: errorCode,
+      error_code: outcome.errorCode,
       // Allowlisted AWS error fields only (#306) — never the SDK message.
-      ...describeAwsError(invokeErr),
+      ...describeAwsError(outcome.cause),
     });
-    return NextResponse.json({ error: { code: errorCode }, run_id: runId }, { status });
+    return NextResponse.json(
+      { error: { code: outcome.errorCode }, run_id: outcome.runId },
+      { status: outcome.status },
+    );
   }
+  const runId = outcome.runId;
 
   // 9. Record the clean fire (reset counter, pin refs). The tick owns next_run_at.
   await recordScheduleFired(client, id, runId);

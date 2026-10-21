@@ -18,6 +18,8 @@
  *      A SUCCESSFUL signup FAILS the release (PRD AC17 / R9): public signups on
  *      an internet-reachable panel let anyone self-register into the invoke
  *      surface. This is the single most important check.
+ *   5. An unauthenticated POST to an /api/internal/** endpoint returns 401.
+ *   6. An unsigned POST to /api/webhooks/<probe-token> returns 401 (S-175).
  *
  * The parsing/decision logic lives here (PURE, no I/O) so it is unit-testable
  * from fixtures; `scripts/verify-panel-auth.sh` supplies the live probe results
@@ -127,8 +129,10 @@ export function extractSecretNames(raw, opts = {}) {
 function statusOf(probe) {
   if (!probe || typeof probe !== "object") return null;
   const raw = probe.status ?? probe.statusCode ?? probe.code;
-  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
-  return Number.isInteger(n) ? n : null;
+  if (typeof raw === "number") return Number.isInteger(raw) ? raw : null;
+  // A string must be a bare integer: "401x" or "4 01" is malformed, not 401 (fail-closed).
+  const str = String(raw ?? "").trim();
+  return /^\d{3}$/.test(str) ? Number(str) : null;
 }
 
 /**
@@ -314,6 +318,60 @@ export function checkInternalRejected(probe) {
 }
 
 /**
+ * CHECK 6 — an UNSIGNED POST to `/api/webhooks/<probe-token>` returns 401
+ * (S-175, FR24/AC8). The webhook route is public by design: the URL token
+ * selects an endpoint and the HMAC signature is the authorization. This probe
+ * proves the signature check is enforcing on the deployed app.
+ *
+ * The route answers 404 for an unknown or disabled token BEFORE it checks the
+ * signature, so the probe needs a real, ENABLED endpoint's token
+ * (`WEBHOOK_PROBE_TOKEN`). Without one, nothing about the signature gate is
+ * proven, so the wrapper reports `{ unset: true }` and the check FAILS rather
+ * than being skipped.
+ *
+ * Only 401 passes. 200/202 means an unsigned delivery was accepted (critical).
+ * 404 means the token is wrong or the endpoint is disabled. Anything else,
+ * an error, or a missing result fails (fail-closed). The token is never part
+ * of the result.
+ */
+export function checkWebhookRejected(probe) {
+  if (probe && probe.unset === true) {
+    return {
+      ok: false,
+      reason:
+        "WEBHOOK_PROBE_TOKEN is not set — cannot prove the webhook signature gate (set it to an enabled probe endpoint's token).",
+    };
+  }
+  if (probe && probe.error) {
+    return { ok: false, reason: `Webhook probe failed to complete: ${String(probe.error)}` };
+  }
+  const status = statusOf(probe);
+  if (status === null) {
+    return { ok: false, reason: "Webhook probe returned no usable status code." };
+  }
+  if (status === 200 || status === 202) {
+    return {
+      ok: false,
+      reason: `Webhook endpoint returned ${status} to an unsigned delivery (signature gate NOT enforcing).`,
+    };
+  }
+  if (status === 404) {
+    return {
+      ok: false,
+      reason:
+        "Webhook endpoint returned 404 — WEBHOOK_PROBE_TOKEN is unknown or its endpoint is not enabled, so the signature check never ran.",
+    };
+  }
+  if (status !== 401) {
+    return {
+      ok: false,
+      reason: `Webhook endpoint returned ${status}; expected 401 for an unsigned delivery.`,
+    };
+  }
+  return { ok: true, reason: null };
+}
+
+/**
  * The gate verdict. Runs all checks over the collected inputs and returns
  * `{ pass: boolean, checks: {...}, reasons: string[] }`. `pass` is true only
  * when EVERY check is ok.
@@ -326,6 +384,7 @@ export function checkInternalRejected(probe) {
  *     sseProbe:       { status }         | { error }
  *     signupProbe:    { rejected, ... }
  *     internalProbe:  { status }         | { error }
+ *     webhookProbe:   { status }         | { error } | { unset: true }
  *   }
  */
 export function evaluateAuthGate(input) {
@@ -336,6 +395,7 @@ export function evaluateAuthGate(input) {
     sseUnauthorized: checkSseUnauthorized(src.sseProbe),
     signupRejected: checkSignupRejected(src.signupProbe),
     internalRejected: checkInternalRejected(src.internalProbe),
+    webhookRejected: checkWebhookRejected(src.webhookProbe),
   };
   const reasons = [];
   for (const [, result] of Object.entries(checks)) {
@@ -378,7 +438,7 @@ function mainCli() {
   const verdict = evaluateAuthGate(parsed);
   if (verdict.pass) {
     console.log(
-      "[panel-auth] OK — auth boundary holds: env names present, protected UI → /login, SSE → 401, signups rejected, internal endpoint → 401.",
+      "[panel-auth] OK — auth boundary holds: env names present, protected UI → /login, SSE → 401, signups rejected, internal endpoint → 401, unsigned webhook → 401.",
     );
     process.exit(0);
   }

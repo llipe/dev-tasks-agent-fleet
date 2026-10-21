@@ -82,3 +82,32 @@ describe("Sidebar — Repositories is a live link (S-147, FR18)", () => {
     expect(screen.getByRole("link", { name: /repositories/i })).not.toHaveAttribute("aria-current");
   });
 });
+
+describe("Sidebar — Webhooks (S-176, #321)", () => {
+  it("is a live link to /webhooks, placed right after Schedules", () => {
+    pathname = "/";
+    renderSidebar();
+    const link = screen.getByRole("link", { name: /webhooks/i });
+    expect(link).toHaveAttribute("href", "/webhooks");
+    const labels = screen.getAllByRole("link").map((l) => l.textContent?.trim());
+    expect(labels.indexOf("Webhooks")).toBe(labels.indexOf("Schedules") + 1);
+  });
+
+  it.each(["/webhooks", "/webhooks/3f9b1c2e-8a4d-4c6b-9e1f-2a3b4c5d6e7f"])(
+    "is active on %s",
+    (p) => {
+      pathname = p;
+      renderSidebar();
+      expect(screen.getByRole("link", { name: /webhooks/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    },
+  );
+
+  it("is not active on /api/webhooks-like or unrelated routes", () => {
+    pathname = "/webhooksx";
+    renderSidebar();
+    expect(screen.getByRole("link", { name: /webhooks/i })).not.toHaveAttribute("aria-current");
+  });
+});

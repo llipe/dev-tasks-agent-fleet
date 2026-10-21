@@ -15,6 +15,7 @@ function notif(overrides: Partial<NotificationRow> = {}): NotificationRow {
     id: overrides.id ?? "n1",
     kind: overrides.kind ?? "run_failed",
     schedule_id: "schedule_id" in overrides ? overrides.schedule_id! : "s1",
+    webhook_rule_id: "webhook_rule_id" in overrides ? overrides.webhook_rule_id! : null,
     agent_id: "a1",
     repository_id: "rp1",
     run_id: "run_id" in overrides ? overrides.run_id! : "r1",
@@ -54,6 +55,38 @@ describe("toNotificationViewModel", () => {
       notif({ kind: "schedule_auto_paused", run_id: null, schedule_id: "s1" }),
     );
     expect(vm.links).toEqual([{ label: "View schedule ▸", href: "/schedules" }]);
+  });
+});
+
+describe("webhook-origin notifications (S-173/S-174)", () => {
+  it("gives every DB notification kind a dot color, including webhook_rule_auto_disabled", () => {
+    expect(KIND_DOT_COLOR.webhook_rule_auto_disabled).toBe("--st-timeout");
+    const vm = toNotificationViewModel(
+      notif({
+        kind: "webhook_rule_auto_disabled",
+        run_id: null,
+        schedule_id: null,
+        webhook_rule_id: "w1",
+      }),
+    );
+    expect(vm.dotColor).toBe("--st-timeout");
+  });
+
+  it("links a webhook run to the run and the webhooks page, never to schedules", () => {
+    const vm = toNotificationViewModel(
+      notif({ run_id: "r9", schedule_id: null, webhook_rule_id: "w1" }),
+    );
+    expect(vm.links).toEqual([
+      { label: "Open run ▸", href: "/runs/r9" },
+      { label: "View webhooks ▸", href: "/webhooks" },
+    ]);
+  });
+
+  it("shows only the run link when the schedule or rule was deleted (#302)", () => {
+    const vm = toNotificationViewModel(
+      notif({ run_id: "r9", schedule_id: null, webhook_rule_id: null }),
+    );
+    expect(vm.links).toEqual([{ label: "Open run ▸", href: "/runs/r9" }]);
   });
 });
 

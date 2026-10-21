@@ -207,8 +207,42 @@ on conflict (slug) do update
       params_schema         = excluded.params_schema;
 
 -- ---------------------------------------------------------------------
+-- 4b. Webhook fixture (S-165)  -- LOCAL DEV / E2E ONLY
+--    One DISABLED sample endpoint + one rule routing a PR review comment
+--    "security review" to security-analyst on the payload's repository.
+--    Disabled on purpose: the inbound route treats a disabled endpoint as
+--    unknown (404), so this row can never receive traffic even if this seed
+--    is applied to a non-local database. The token is a well-known local
+--    value; production endpoints are created in the panel (S-176), which
+--    generates a random token. No signing secret is seeded here.
+-- ---------------------------------------------------------------------
+insert into webhook_endpoints (name, url_token, source, event_allowlist, is_enabled)
+values (
+  'Local sample (disabled)',
+  'local-dev-sample-endpoint-token-0000000',
+  'github',
+  array['pull_request', 'issue_comment', 'pull_request_review_comment', 'push'],
+  false
+)
+on conflict (url_token) do nothing;
+
+insert into webhook_rules (endpoint_id, position, name, event_types, conditions, agent_id, repo_mode, repo_payload_field, params)
+select e.id, 0, 'Security review on request',
+       array['pull_request_review_comment'],
+       '[{"field": "comment.body", "op": "equals", "value": "security review"}]'::jsonb,
+       a.id, 'payload_field', 'repository.full_name',
+       '{"static": {"mode": "audit_only"}}'::jsonb
+  from webhook_endpoints e, agents a
+ where e.url_token = 'local-dev-sample-endpoint-token-0000000'
+   and a.slug = 'security-analyst'
+   -- Not `on conflict`: (endpoint_id, position) is deferrable (rule reorder,
+   -- S-177), and Postgres cannot use a deferrable unique as an arbiter.
+   and not exists (select 1 from webhook_rules r where r.endpoint_id = e.id and r.position = 0);
+
+-- ---------------------------------------------------------------------
 -- 5. Verification
 -- ---------------------------------------------------------------------
 select 'installations' as table_name, count(*) from github_installations
 union all select 'repositories', count(*) from repositories
-union all select 'agents',       count(*) from agents;
+union all select 'agents',       count(*) from agents
+union all select 'webhook_endpoints', count(*) from webhook_endpoints;
