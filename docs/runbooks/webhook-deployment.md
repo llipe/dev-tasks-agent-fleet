@@ -3,7 +3,7 @@ name: runbook-webhook-deployment
 trigger: Enabling webhook triggers against the live Supabase project, adding a GitHub webhook endpoint, or rotating an endpoint's signing secret
 owner: operator (repository owner)
 last_verified: 2026-10-20 — first live rollout (9 migrations pushed, bot_login set, probe endpoint created, panel v20 deployed with the 6-check gate, GitHub webhook on llipe/security-analyst-fixture, `/audit` comments fired real runs and a second one was skipped by G1)
-related: ["scripts/verify-panel-auth.sh", "scripts/deploy-panel.sh", "supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
+related: ["docs/runbooks/webhook-rules.md", "scripts/verify-panel-auth.sh", "scripts/deploy-panel.sh", "supabase/migrations/20261019181000_webhook_vault_config.sql", "supabase/migrations/20261019180000_webhook_schema.sql", "supabase/migrations/20261019182000_webhook_prune.sql"]
 ---
 
 # Runbook — Webhook triggers deployment
@@ -125,6 +125,10 @@ Each gate run records one `unauthorized` delivery on the probe endpoint. The
 daily prune removes those with the rest. Never add rules to this endpoint and
 never disable it. If the token leaks, create a new probe endpoint and delete the
 old one.
+
+
+To add rules to an endpoint (events, conditions, repository, parameters), see
+[`webhook-rules.md`](webhook-rules.md).
 
 ## Rotating a secret
 
