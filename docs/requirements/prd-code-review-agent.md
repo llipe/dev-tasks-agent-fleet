@@ -13,8 +13,9 @@
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 0.1     | 2026-10-20 | Base draft from the reviewer handoff (`handoff-reviewer-agent.md`, Spanish). Scheduled queue sweep, check run verdict, shadow/enforcing modes, findings table, eval harness.                                                                                                                                                                 | product-engineer |
 | 0.2     | 2026-10-21 | Rescoped to a base version (review with Llipe). Trigger is a `/review` PR comment routed by the live webhook mechanism (out of scope). Context is expanded diff + issues + spec + verifier report. Output is one PR comment. Queue, check run, modes, findings table, panel view, eval harness, and agentic tools moved to §10 Later phases. | product-engineer |
+| 1.0     | 2026-10-21 | Approved. Resolved §18: verifier `Critical`+`Unintended` drift counts toward `blocking` (D-15); no CI precondition (D-16); default `MODEL_ID` is OpenAI GPT-5.6 Sol on Bedrock (D-17); DeepSeek on Bedrock is acceptable as the fallback (D-18); agent slug `code-review` (D-19). Decision IDs renamed P-xx → D-xx.                          | product-engineer |
 
-**Status: DRAFT — not approved.** Decisions `P-xx` are proposals until the open questions in §18 are answered.
+**Status: APPROVED v1.0 (2026-10-21).** Open questions resolved by Llipe; see §18 and decisions D-15–D-18. Next: `activity-generate-spec`.
 
 ---
 
@@ -81,7 +82,7 @@ Unchanged from v0.1 in intent; goal 1 restated for the `/review` trigger, and go
 - **FR-1.** The agent SHALL accept params `pr_number` (required, integer), `max_diff_lines` (default 2000), `max_context_tokens` (default 150000), `max_suggestions` (default 5), `run_timeout_seconds` (default 900). The repository comes from the invocation payload. Registered in `agents` with a JSON Schema so the webhook route, the panel form, and `validateParams` work unchanged.
 - **FR-2.** The agent SHALL be invocable from the panel with a `pr_number` (manual), and from the webhook rule in §12. It does not parse the comment; the webhook resolves `pr_number`.
 - **FR-3.** The agent SHALL review the PR's head SHA at run start, in any state but closed or merged, draft included. A closed or merged PR, or a number that is not a PR, ends `succeeded`/`not_applicable` with no comment.
-- **FR-4.** The agent does not check CI status. The human chose to request the review (P-05).
+- **FR-4.** The agent does not check CI status. The human chose to request the review (D-05).
 
 ### 7.2 Context assembly (wrapper)
 
@@ -105,7 +106,7 @@ Unchanged from v0.1 in intent; goal 1 restated for the `/review` trigger, and go
 ### 7.4 Model call
 
 - **FR-18.** The wrapper SHALL make one Bedrock Converse call with the assembled context, the rubric, and an output JSON schema, using `MODEL_ID`. No tools, no agent loop. Invalid JSON gets one repair call with the validation error; a second failure ends `failed`/`MODEL_OUTPUT_INVALID`.
-- **FR-19.** `MODEL_ID` SHALL default to a non-Anthropic frontier model available on Bedrock in the fleet's Region (§12). All model-specific code lives in one adapter.
+- **FR-19.** `MODEL_ID` SHALL default to OpenAI GPT-5.6 Sol on Bedrock (D-17); DeepSeek V4 Pro on Bedrock is the approved fallback (D-18). The exact model or inference-profile ID is fixed at deploy from the Bedrock console. All model-specific code lives in one adapter.
 
 ### 7.5 Rubric and findings
 
@@ -191,7 +192,7 @@ flowchart LR
     W --> BR[Bedrock Converse<br/>non-Anthropic model]
 ```
 
-- **Runtime:** AgentCore Container, ARM64, Python, reusing the sibling modules (`agent_reporter`, `credentials`, `heartbeat`, `signal_backstop`, `scrubber`, `pull_request` client). One `bedrock-runtime` Converse call through `boto3`; Strands is not needed for a single call without tools (P-07). No clone: files come from the GitHub contents API at the head SHA.
+- **Runtime:** AgentCore Container, ARM64, Python, reusing the sibling modules (`agent_reporter`, `credentials`, `heartbeat`, `signal_backstop`, `scrubber`, `pull_request` client). One `bedrock-runtime` Converse call through `boto3`; Strands is not needed for a single call without tools (D-07). No clone: files come from the GitHub contents API at the head SHA.
 - **Webhook rule (configuration only, operator in `/webhooks`):**
 
   | Field              | Value                                                                                                                                              |
@@ -205,14 +206,14 @@ flowchart LR
   The `author_association` condition is the authorization check: without it, anyone who can comment on a public repo can spend model budget. The bot-author guard (D-W12) prevents the agent's own comment from re-triggering it.
 
 - **Guardrails inherited from the webhook path:** G1 overlap is per (agent, repository), so a second `/review` in the same repo while a review runs is skipped as `overlap` and shown in the delivery log; the user re-comments. G5 keys on the agent's own `pull_request` artifacts, which this agent never creates, so it does not apply. G3 counts `failed` runs per rule.
-- **Model (P-09).** Bedrock, because the runtime role already calls it: no new vendor key, IAM-scoped, data stays in AWS. Candidates found on 2026-10-20, **to verify in the console for `us-east-1`**:
+- **Model (D-09).** Bedrock, because the runtime role already calls it: no new vendor key, IAM-scoped, data stays in AWS. Status found on 2026-10-20; Wave B verifies availability in the console for `us-east-1` before deploy:
 
-  | Candidate          | Bedrock status                                                          | Note                                         |
-  | ------------------ | ----------------------------------------------------------------------- | -------------------------------------------- |
-  | OpenAI GPT-5.6 Sol | GA July 2026; Converse API and cross-Region inference since August 2026 | Proposed default                             |
-  | DeepSeek V4 Pro    | Conflicting reports; possibly limited preview                           | Cheaper alternative if GA; subject to §18 Q4 |
+  | Candidate          | Bedrock status                                                          | Note                                  |
+  | ------------------ | ----------------------------------------------------------------------- | ------------------------------------- |
+  | OpenAI GPT-5.6 Sol | GA July 2026; Converse API and cross-Region inference since August 2026 | Default (D-17)                        |
+  | DeepSeek V4 Pro    | Conflicting reports; possibly limited preview                           | Fallback if Sol is unavailable (D-18) |
 
-  The base version picks the default from availability and a smoke run on 5 historical PRs with known bugs during live verification (AC-12). The proper eval is L3.
+  Live verification runs a smoke on 5 historical PRs with known bugs (AC-12). A Sol result that misses most known bugs reopens the model decision before the agent is announced for use. The proper eval is L3.
 
 - **GitHub App permissions:** Pull requests read + write (granted: read the PR and diff, post the comment); Contents read (granted); Issues read (needed for FR-7; requested by the `bug-fix` Wave A infra change — confirm it is applied before this agent deploys).
 - **Infrastructure:** new AgentCore runtime; panel `invoke-runtime` IAM entry (issue #280 pattern); runtime role `bedrock:InvokeModel` scoped to the chosen model and its inference profile; Bedrock model access enabled. **Recommend an `infra-engineer` pass.** Runbook ships in the same PR as the deploy changes (FR-49a).
@@ -247,7 +248,7 @@ If precision is below target, change the rubric before adding phases.
 
 ## 15. Assumptions
 
-- A non-Anthropic frontier model is GA on Bedrock in `us-east-1` with JSON output through Converse.
+- GPT-5.6 Sol is GA on Bedrock in `us-east-1` (or reachable through a cross-Region inference profile) with JSON output through Converse.
 - An expanded diff with full touched files catches most correctness issues worth blocking on. Callers outside the diff are a known blind spot (L2).
 - The `[PRD-<name>]` title convention and `workstream/specification-<name>.md` naming hold in dev-tasks repos; other repos get "no spec found".
 - The fidelity report is committed on the PR branch under `workstream/fidelity-report-<id>.md`.
@@ -267,34 +268,41 @@ If precision is below target, change the rubric before adding phases.
 - **Secrets in diffs.** A diff may contain a leaked secret; it reaches the model and may be quoted back. `scrubber.py` runs on the comment and the artifact.
 - **Credentials.** GitHub App key and Supabase service-role key stay in the wrapper (sibling pattern). No static AWS keys.
 
-## 18. Open Questions (for Llipe)
+## 18. Open Questions
 
-1. **Verifier drift in the verdict.** FR-16 makes `Critical`+`Unintended` drift count toward `blocking`. The handoff called for this, but it gives the verifier's non-blocking finding blocking weight through another agent. Keep it, or list the drift without changing the verdict?
-2. **CI precondition dropped.** The handoff required green CI before review. With an explicit `/review`, the human chose the timing, so the base version reviews regardless (FR-4). Confirm.
-3. **Default model.** GPT-5.6 Sol, subject to `us-east-1` availability and the AC-12 smoke. Confirm, or name another.
-4. **DeepSeek data policy.** Even hosted on AWS, is DeepSeek acceptable for every managed repo?
-5. **Name.** `code-review` (matches the webhook PRD and fleet slug style) vs. `reviewer` (handoff).
+None open. Resolved 2026-10-21 by Llipe:
 
-## Decisions (proposed)
+1. **Verifier drift in the verdict:** keep. `Critical`+`Unintended` drift counts toward `blocking` (FR-16, D-15).
+2. **CI precondition:** dropped. An explicit `/review` reviews regardless of CI (FR-4, D-16).
+3. **Default model:** OpenAI GPT-5.6 Sol on Bedrock (FR-19, D-17).
+4. **DeepSeek data policy:** acceptable for every managed repo when hosted on Bedrock; approved as the fallback model (D-18).
+5. **Name:** `code-review` (D-19).
+
+## Decisions
 
 | ID   | Decision (short form)                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------ |
-| P-01 | Trigger = `/review` PR comment, routed by the live webhook mechanism. The webhook itself is out of scope.                      |
-| P-02 | Authorization = webhook rule condition on `author_association` (OWNER, MEMBER, COLLABORATOR).                                  |
-| P-03 | Separate agent, not a `verifier` mode, and not a dev-tasks subagent.                                                           |
-| P-04 | Context = expanded diff (±50 lines + full touched files within budget), linked issues, spec, verifier drift, repo conventions. |
-| P-05 | No CI precondition in the base version.                                                                                        |
-| P-06 | Boundary with `verifier`: no fidelity audit; issues and spec are used for intent; drift consumed, not restated.                |
-| P-07 | One Bedrock Converse call, no tools, no Strands loop, no clone.                                                                |
-| P-08 | Wrapper enforces the blocking contract (downgrade without scenario or location; drop without consequence).                     |
-| P-09 | Non-Anthropic model on Bedrock; default chosen from availability and a 5-PR smoke; full eval is L3.                            |
-| P-10 | Output = one PR comment per run; no reviews API, no check run.                                                                 |
-| P-11 | Oversized PRs get a budget comment, not a partial review.                                                                      |
-| P-12 | Existing outcomes and `audit_report` artifact; no migration, no new table.                                                     |
-| P-13 | Best-effort failure comment so a `/review` never goes silent.                                                                  |
-| P-14 | Later phases L1–L7 each gated on base-version evidence.                                                                        |
+| D-01 | Trigger = `/review` PR comment, routed by the live webhook mechanism. The webhook itself is out of scope.                      |
+| D-02 | Authorization = webhook rule condition on `author_association` (OWNER, MEMBER, COLLABORATOR).                                  |
+| D-03 | Separate agent, not a `verifier` mode, and not a dev-tasks subagent.                                                           |
+| D-04 | Context = expanded diff (±50 lines + full touched files within budget), linked issues, spec, verifier drift, repo conventions. |
+| D-05 | No CI precondition in the base version.                                                                                        |
+| D-06 | Boundary with `verifier`: no fidelity audit; issues and spec are used for intent; drift consumed, not restated.                |
+| D-07 | One Bedrock Converse call, no tools, no Strands loop, no clone.                                                                |
+| D-08 | Wrapper enforces the blocking contract (downgrade without scenario or location; drop without consequence).                     |
+| D-09 | Non-Anthropic model on Bedrock; default chosen from availability and a 5-PR smoke; full eval is L3.                            |
+| D-10 | Output = one PR comment per run; no reviews API, no check run.                                                                 |
+| D-11 | Oversized PRs get a budget comment, not a partial review.                                                                      |
+| D-12 | Existing outcomes and `audit_report` artifact; no migration, no new table.                                                     |
+| D-13 | Best-effort failure comment so a `/review` never goes silent.                                                                  |
+| D-14 | Later phases L1–L7 each gated on base-version evidence.                                                                        |
+| D-15 | Verifier `Critical`+`Unintended` drift counts toward a `blocking` verdict.                                                     |
+| D-16 | No CI precondition: an explicit `/review` reviews regardless of CI state.                                                      |
+| D-17 | Default `MODEL_ID` = OpenAI GPT-5.6 Sol on Bedrock.                                                                            |
+| D-18 | DeepSeek on Bedrock acceptable for all managed repos; approved fallback.                                                       |
+| D-19 | Agent slug `code-review`.                                                                                                      |
 
-## Delivery (proposed)
+## Delivery
 
 | Wave           | Scope                                                                                                                                                                                        | Gate             |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
