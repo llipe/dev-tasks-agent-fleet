@@ -6,6 +6,7 @@ import {
   checkProtectedRedirect,
   checkSignupRejected,
   checkSseUnauthorized,
+  checkWebhookRejected,
   evaluateAuthGate,
   extractSecretNames,
   REQUIRED_AUTH_ENV_NAMES,
@@ -32,6 +33,7 @@ const PROTECTED_OK = { status: 302, location: "/login?redirect=/" };
 const SSE_OK = { status: 401 };
 const SIGNUP_OK = { rejected: true, message: "Signups not allowed for this instance" };
 const INTERNAL_OK = { status: 401 };
+const WEBHOOK_OK = { status: 401 };
 
 /** A fully correct deployment: every check passes. */
 const GATE_INPUT_OK = {
@@ -40,6 +42,7 @@ const GATE_INPUT_OK = {
   sseProbe: SSE_OK,
   signupProbe: SIGNUP_OK,
   internalProbe: INTERNAL_OK,
+  webhookProbe: WEBHOOK_OK,
 };
 
 describe("checkEnvNames — auth env var NAMES present (names only, never values)", () => {
@@ -306,6 +309,50 @@ describe("checkInternalRejected — unauthenticated /api/internal/** → 401 (S-
   });
 });
 
+describe("checkWebhookRejected — unsigned POST /api/webhooks/<probe-token> → 401 (S-175, FR24/AC8)", () => {
+  it("passes on a 401 (the signature check rejected the unsigned delivery)", () => {
+    expect(checkWebhookRejected({ status: 401 })).toEqual({ ok: true, reason: null });
+  });
+
+  it("FAILS on 200/202 — an unsigned delivery was ACCEPTED (signature gate not enforcing)", () => {
+    for (const status of [200, 202]) {
+      const r = checkWebhookRejected({ status });
+      expect(r.ok, String(status)).toBe(false);
+      expect(r.reason).toMatch(/unsigned|not enforcing/i);
+    }
+  });
+
+  it("FAILS on 404 — the probe token is unknown or disabled, so the signature check never ran", () => {
+    const r = checkWebhookRejected({ status: 404 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/WEBHOOK_PROBE_TOKEN|enabled/);
+  });
+
+  it("FAILS on 413/5xx and any other code", () => {
+    for (const status of [400, 413, 500, 502, 503]) {
+      expect(checkWebhookRejected({ status }).ok, String(status)).toBe(false);
+    }
+  });
+
+  it("FAILS when the probe token is not configured (the gate refuses to skip the check)", () => {
+    const r = checkWebhookRejected({ unset: true });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/WEBHOOK_PROBE_TOKEN/);
+  });
+
+  it("is fail-closed on an error / missing / garbage probe", () => {
+    expect(checkWebhookRejected({ error: "ETIMEDOUT" }).ok).toBe(false);
+    expect(checkWebhookRejected(null).ok).toBe(false);
+    expect(checkWebhookRejected({}).ok).toBe(false);
+    expect(checkWebhookRejected({ status: "401x" }).ok).toBe(false);
+  });
+
+  it("never echoes the probe token, even if the wrapper passed one by mistake", () => {
+    const r = checkWebhookRejected({ status: 404, token: "whk_secret_value" });
+    expect(JSON.stringify(r)).not.toContain("whk_secret_value");
+  });
+});
+
 describe("evaluateAuthGate — the release-gate verdict (both directions)", () => {
   it("PASSES on a fully correct deployment fixture", () => {
     const v = evaluateAuthGate(GATE_INPUT_OK);
@@ -345,6 +392,19 @@ describe("evaluateAuthGate — the release-gate verdict (both directions)", () =
     expect(v.pass).toBe(false);
   });
 
+  it("FAILS the release when the webhook probe is not 401 (S-175)", () => {
+    for (const webhookProbe of [
+      { status: 202 },
+      { status: 404 },
+      { unset: true },
+      { error: "x" },
+    ]) {
+      const v = evaluateAuthGate({ ...GATE_INPUT_OK, webhookProbe });
+      expect(v.pass, JSON.stringify(webhookProbe)).toBe(false);
+      expect(v.checks.webhookRejected.ok).toBe(false);
+    }
+  });
+
   it("FAILS the release when a required env name is missing", () => {
     const v = evaluateAuthGate({ ...GATE_INPUT_OK, envNames: ["NEXT_PUBLIC_SUPABASE_URL"] });
     expect(v.pass).toBe(false);
@@ -360,8 +420,8 @@ describe("evaluateAuthGate — the release-gate verdict (both directions)", () =
   it("is fail-closed on an EMPTY object (no probes collected at all)", () => {
     const v = evaluateAuthGate({});
     expect(v.pass).toBe(false);
-    // All five checks should contribute a reason.
-    expect(v.reasons.length).toBe(5);
+    // All six checks should contribute a reason.
+    expect(v.reasons.length).toBe(6);
   });
 
   it("reports EVERY failing reason, not just the first (multiple violations)", () => {
@@ -371,8 +431,9 @@ describe("evaluateAuthGate — the release-gate verdict (both directions)", () =
       sseProbe: { status: 200 },
       signupProbe: { rejected: false },
       internalProbe: { status: 200 },
+      webhookProbe: { status: 202 },
     });
     expect(v.pass).toBe(false);
-    expect(v.reasons.length).toBe(5);
+    expect(v.reasons.length).toBe(6);
   });
 });

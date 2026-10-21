@@ -504,7 +504,8 @@ window entirely (spec §15.1, R10): a public app never exists without a proven g
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='<sb_publishable_… key>' \
    SUPABASE_SERVICE_ROLE_KEY='<service role key>'   `# optional: lets the gate auto-delete a stray signup account` \
      scripts/verify-panel-auth.sh http://localhost:8080 -a dt-agent-fleet-panel
-   # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signUp REJECTED.
+   # PASS (exit 0): env names present, protected UI → 302 /login, SSE → 401, signUp REJECTED,
+   # internal endpoint → 401, unsigned webhook → 401 (check 6 fails if WEBHOOK_PROBE_TOKEN is unset).
    # FAIL (exit 1): any check fails — FIX and redeploy. The app is still private; zero exposure.
    ```
    The gate’s check 4 attempts a `signUp` for a disposable `…@release-gate.invalid` address; if
@@ -629,6 +630,7 @@ running today on the legacy anon key. `fly.toml` already declares the public `[h
    export NEXT_PUBLIC_SUPABASE_URL='https://hegxeycmbmjfgzqpdiik.supabase.co'
    export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY='sb_publishable_…'
    export SUPABASE_SERVICE_ROLE_KEY='<service-role key>'   # optional: lets the gate auto-delete a stray signup account
+   export WEBHOOK_PROBE_TOKEN='<probe endpoint token>'      # required for check 6 (S-175); see docs/runbooks/webhook-deployment.md step 5
 
    printenv NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY   # confirm it is EXPORTED (prints a value) before running
 

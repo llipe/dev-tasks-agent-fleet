@@ -2,7 +2,7 @@
  * S-163 (#275) — pure presentation helpers for the notifications feed + bell
  * (DESIGN.md §5.8). Maps a notification kind to its dot color, groups rows into
  * "Today"/"Earlier" (clock-injected), and derives the optional inline links from
- * the row's run/schedule ids. The `detail` text is UNTRUSTED and is rendered as
+ * the row's run/schedule/webhook-rule ids. The `detail` text is UNTRUSTED and is rendered as
  * text only by the view — this module never builds a link out of it.
  */
 
@@ -12,6 +12,7 @@ export const KIND_DOT_COLOR: Record<NotificationKind, string> = {
   run_succeeded: "--st-ok",
   run_failed: "--st-fail",
   schedule_auto_paused: "--st-timeout",
+  webhook_rule_auto_disabled: "--st-timeout",
   pr_opened: "--color-accent",
 };
 
@@ -41,6 +42,7 @@ function linksFor(row: NotificationRow): NotificationLink[] {
   const links: NotificationLink[] = [];
   if (row.run_id) links.push({ label: "Open run ▸", href: `/runs/${row.run_id}` });
   if (row.schedule_id) links.push({ label: "View schedule ▸", href: "/schedules" });
+  if (row.webhook_rule_id) links.push({ label: "View webhooks ▸", href: "/webhooks" });
   return links;
 }
 

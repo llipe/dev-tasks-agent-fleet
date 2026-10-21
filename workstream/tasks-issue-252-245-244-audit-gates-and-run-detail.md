@@ -1,6 +1,6 @@
 # Implementation Plan - CI audit gates (#252) and run-detail follow-ups (#245, #244)
 
-> Planner batch: one integration branch, merged in the order 1.0 → 2.0 → 3.0 (D-09). #217 (Next 16.4.0 upgrade) is a **separate planner run that starts immediately after** this batch (D-09). Sources: `workstream/issue-252-fix-deps-audit-gates-refinement.md`, `workstream/issue-245-run-detail-unscrollable-summary-refinement.md`, `workstream/issue-244-run-detail-refresh-on-terminal-refinement.md`, `workstream/decisions-run-detail-followups-and-audit.md`.
+> Planner batch: one integration branch, merged in the order 1.0 → 2.0 → 3.0 (D-09). #217 (Next 16.4.0 upgrade) is a **separate planner run that starts immediately after** this batch (D-09). Sources: `workstream/archive/issue-252-fix-deps-audit-gates-refinement.md`, `workstream/archive/issue-245-run-detail-unscrollable-summary-refinement.md`, `workstream/archive/issue-244-run-detail-refresh-on-terminal-refinement.md`, `workstream/archive/decisions-run-detail-followups-and-audit.md`.
 
 ## Relevant Files
 
@@ -25,7 +25,7 @@
 - `panel/tests/e2e/fixtures/seed.ts` - `seedArtifact` gains an optional `metadata` param (F-2); `setRunTerminal` added to drive a live run terminal in place (#244 E2E)
 - `panel/tests/e2e/fixtures/` - seeded 50-finding `audit_report` artifact
 - `agents/*/app/*/tests/` - real-library JWT round-trip test TC-252-3a (F-1)
-- `workstream/test-plan-issue-252-245-244.md` - verifier Design Mode plan (cited in every handoff)
+- `workstream/archive/test-plan-issue-252-245-244.md` - verifier Design Mode plan (cited in every handoff)
 - `DESIGN.md` - §5.3 disclosure rule plus changelog row
 - `docs/roadmap.md` - batch row status (planner, consolidated PR)
 

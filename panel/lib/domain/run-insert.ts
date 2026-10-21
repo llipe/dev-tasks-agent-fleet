@@ -27,7 +27,9 @@
 /** Who/what triggered the run — the only varying part of the insert shape. */
 export type TriggerDescriptor =
   | { triggerType: "manual"; triggeredBy: "panel" }
-  | { triggerType: "schedule"; triggeredBy: `schedule:${string}` };
+  | { triggerType: "schedule"; triggeredBy: `schedule:${string}` }
+  // S-172 (D-W5): `webhook:<endpoint_id>:<rule_id>`.
+  | { triggerType: "webhook"; triggeredBy: `webhook:${string}` };
 
 /** The columns the panel writes when inserting the `queued` run. */
 export interface RunInsert {

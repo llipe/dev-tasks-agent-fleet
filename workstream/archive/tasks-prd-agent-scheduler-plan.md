@@ -1,7 +1,7 @@
 # Task List — Agent Scheduler (Phase 4)
 
 > Execution plan for [`prd-agent-scheduler`](../docs/requirements/prd-agent-scheduler.md) /
-> [`specification-prd-agent-scheduler`](specification-prd-agent-scheduler.md) /
+> [`specification-prd-agent-scheduler`](../specification-prd-agent-scheduler.md) /
 > [`user-stories-prd-agent-scheduler`](user-stories-prd-agent-scheduler.md).
 > GitHub issues **#261–#276** (S-149…S-164), milestone `v3.0 — Phase 4 Agent Scheduler`.
 >

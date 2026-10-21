@@ -58,7 +58,7 @@ jobs:
         run: pytest --cov --cov-report=term-missing
 
       - name: Dependency audit (pip-audit)
-        run: pip-audit . --strict
+        run: make audit
 
   panel-quality:
     name: Panel quality gate (JS/TS)

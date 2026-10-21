@@ -34,6 +34,56 @@ const rows: DigestNotification[] = [
   },
 ];
 
+describe("renderDigest — webhook kinds (S-173/S-174)", () => {
+  it("includes auto-disabled webhook rules in the email instead of dropping them", () => {
+    const d = renderDigest([
+      {
+        id: "w",
+        kind: "webhook_rule_auto_disabled",
+        title: "Webhook rule disabled after 3 consecutive failures (gh-main / comment-fix)",
+        detail: "INVOCATION_FAILED",
+        created_at: "2026-10-20T12:00:00Z",
+      },
+    ]);
+    expect(d.subject).toBe("Agent Fleet — 1 notification");
+    expect(d.text).toContain("Auto-disabled webhook rules (1)");
+    expect(d.text).toContain("gh-main / comment-fix");
+  });
+
+  it("lists a webhook run failure under Failed runs with its endpoint in the title", () => {
+    const d = renderDigest([
+      {
+        id: "f",
+        kind: "run_failed",
+        title: "Webhook run failed · gh-main / comment-fix",
+        detail: "security-analyst · o/r · INVOCATION_FAILED",
+        created_at: "2026-10-20T12:00:00Z",
+      },
+    ]);
+    expect(d.text).toContain("Failed runs (1)");
+    expect(d.text).toContain("Webhook run failed · gh-main / comment-fix");
+  });
+
+  it("never drops a row: every row of any known kind appears exactly once", () => {
+    const kinds: DigestNotification["kind"][] = [
+      "run_failed",
+      "schedule_auto_paused",
+      "webhook_rule_auto_disabled",
+      "pr_opened",
+      "run_succeeded",
+    ];
+    const all = kinds.map((kind, i) => ({
+      id: String(i),
+      kind,
+      title: `t-${kind}`,
+      detail: null,
+      created_at: "2026-10-20T12:00:00Z",
+    }));
+    const d = renderDigest(all);
+    for (const k of kinds) expect(d.text.split(`t-${k}`).length - 1, k).toBe(1);
+  });
+});
+
 describe("renderDigest (pure)", () => {
   it("groups by kind, counts, and includes a subject with the total", () => {
     const d = renderDigest(rows);

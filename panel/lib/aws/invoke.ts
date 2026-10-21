@@ -39,6 +39,13 @@ export interface InvokeOptions {
   logger?: Pick<Console, "info" | "error">;
   /** Optional injected client factory, for unit tests. */
   clientFactory?: (region: string) => Pick<BedrockAgentCoreClient, "send">;
+  /**
+   * Optional hard ceiling on the invoke call (S-172). The webhook path sets it so
+   * GitHub's 10 s delivery timeout is never reached; on expiry the call is
+   * aborted and surfaces as InvocationFailedError. Unset = unbounded (manual
+   * invoke and the schedule fire route).
+   */
+  timeoutMs?: number;
 }
 
 function defaultClientFactory(region: string): BedrockAgentCoreClient {
@@ -76,7 +83,14 @@ export async function invokeAgentRuntime(
   });
 
   try {
-    await client.send(command as never);
+    if (options.timeoutMs !== undefined) {
+      await client.send(
+        command as never,
+        { abortSignal: AbortSignal.timeout(options.timeoutMs) } as never,
+      );
+    } else {
+      await client.send(command as never);
+    }
   } catch (err) {
     // A credential failure surfaced from the provider stays a 500; anything
     // else from the invoke call is a 502. Either way, log ONLY the allowlisted

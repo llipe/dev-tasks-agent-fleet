@@ -10,6 +10,7 @@ import {
   ExpandIcon,
   RepositoriesIcon,
   SchedulesIcon,
+  WebhooksIcon,
   NotificationsIcon,
   SettingsIcon,
   SystemHealthIcon,
@@ -51,6 +52,8 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
   const repositoriesActive = pathname === "/repositories";
   // Schedules (S-161) owns "/schedules".
   const schedulesActive = pathname === "/schedules" || pathname.startsWith("/schedules/");
+  // Webhooks (S-176) owns "/webhooks" and its endpoint pages.
+  const webhooksActive = pathname === "/webhooks" || pathname.startsWith("/webhooks/");
   // Notifications (S-163) owns "/notifications".
   const notificationsActive = pathname === "/notifications";
 
@@ -94,6 +97,13 @@ export function Sidebar({ collapsed, onToggle, authenticated }: SidebarProps) {
           icon={<SchedulesIcon />}
           label="Schedules"
           active={schedulesActive}
+          collapsed={collapsed}
+        />
+        <NavItem
+          href="/webhooks"
+          icon={<WebhooksIcon />}
+          label="Webhooks"
+          active={webhooksActive}
           collapsed={collapsed}
         />
         <NavItem
