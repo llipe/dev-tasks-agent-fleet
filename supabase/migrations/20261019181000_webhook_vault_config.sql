@@ -45,7 +45,7 @@ grant select, insert, update on webhook.config to service_role;
 
 insert into webhook.config (key, value) values
   ('delivery_retention_days', '30'),
-  ('bot_login',               'dev-tasks-agent-fleet[bot]')
+  ('bot_login',               'devtasks-agent-fleet[bot]')  -- the App slug is devtasks-agent-fleet (no hyphen)
 on conflict (key) do nothing;
 
 create or replace function webhook.get_setting(p_key text)
