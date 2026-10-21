@@ -14,7 +14,7 @@ import { mulberry32, testSeed } from "../helpers/prng";
 // Layer 1 — S-170 (#315): the pure, bounded routing engine (D-W7, D-W12).
 // No regex, no code, own properties only; never throws on hostile payloads.
 
-const BOT = "dev-tasks-agent-fleet[bot]";
+const BOT = "devtasks-agent-fleet[bot]";
 
 const payload = {
   action: "created",

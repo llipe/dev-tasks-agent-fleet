@@ -33,7 +33,7 @@ import {
  * (notify-sweep.test.ts) and the release-gate half of AC8 by S-175.
  */
 
-const BOT = "dev-tasks-agent-fleet[bot]"; // supabase/seed.sql webhook.config bot_login
+const BOT = "devtasks-agent-fleet[bot]"; // webhook.config bot_login, seeded by migration 20261019181000
 
 test.describe("webhooks — deliveries end to end", () => {
   test.beforeEach(async () => {
