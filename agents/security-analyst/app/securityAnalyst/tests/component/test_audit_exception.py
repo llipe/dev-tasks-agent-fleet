@@ -10,7 +10,7 @@ run the real pip-audit: a stub ``pip-audit`` is placed first on ``PATH`` to
 record its arguments, so the suite stays offline (TESTING.md: no network).
 
 Delete this file together with the exception when #360 is resolved.
-Test plan: workstream/test-plan-issue-355.md.
+Test plan: workstream/archive/test-plan-issue-355.md.
 """
 
 from __future__ import annotations
