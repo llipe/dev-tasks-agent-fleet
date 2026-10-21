@@ -1,72 +1,49 @@
-# GitHub Publication Report — Bug Fix Agent
+# GitHub Publication Report: Bug Fix Agent
 
-Published 2026-10-18 to [`llipe/dev-tasks-agent-fleet`](https://github.com/llipe/dev-tasks-agent-fleet)
-from [`user-stories-prd-bug-fix-agent.md`](user-stories-prd-bug-fix-agent.md) v1.0.
-Execution method: `github-mcp` (the `gh` CLI is installed but its token is invalid in this session).
-`github-ops` delegation was unavailable (the subagent has no GitHub write tools here), so its issue,
-label, and title conventions were applied directly; this note is the required fallback disclosure.
+## Changelog
 
-## Story → issue map (24 issues, #326–#349)
+| Version | Date       | Summary                       | Author           |
+| ------- | ---------- | ----------------------------- | ---------------- |
+| 1.1 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). Issues #326–#349 from the superseded line are closed as superseded, each pointing to its counterpart in #362–#380. | product-engineer |
+| 1.0     | 2026-10-20 | 19 stories published (#362–#380). | product-engineer |
 
-| Story | Issue | Title | Wave | Size | Priority | Extra labels | Depends on |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| S-180 | [#326](https://github.com/llipe/dev-tasks-agent-fleet/issues/326) | Package scaffold, configuration, clock invariant, CI | A | M | Critical | — | — |
-| S-181 | [#327](https://github.com/llipe/dev-tasks-agent-fleet/issues/327) | Container image, pinned CLI, managed settings | A | M | Critical | scope:infra, security | S-180 |
-| S-182 | [#328](https://github.com/llipe/dev-tasks-agent-fleet/issues/328) | Agent registration, params schema, payload validation | A | S | High | scope:infra | S-180 |
-| S-183 | [#329](https://github.com/llipe/dev-tasks-agent-fleet/issues/329) | GitHub REST client and permission preflight | A | M | Critical | — | S-180 |
-| S-184 | [#330](https://github.com/llipe/dev-tasks-agent-fleet/issues/330) | Selection, linked-PR index, applicability gate | A | M | Critical | — | S-183 |
-| S-185 | [#331](https://github.com/llipe/dev-tasks-agent-fleet/issues/331) | Claim, claim marker, disposition protocol | A | M | Critical | — | S-183 |
-| S-186 | [#332](https://github.com/llipe/dev-tasks-agent-fleet/issues/332) | Stale-claim sweep | A | M | High | — | S-185 |
-| S-187 | [#333](https://github.com/llipe/dev-tasks-agent-fleet/issues/333) | Orchestrator through applicability, reporting, outcome mapping | A | M | Critical | — | S-184, S-185, S-186 |
-| S-188 | [#334](https://github.com/llipe/dev-tasks-agent-fleet/issues/334) | Operator prerequisites, infra pass, Wave A deploy | A | M | Critical | scope:infra, security | S-181, S-182, S-187 |
-| S-189 | [#335](https://github.com/llipe/dev-tasks-agent-fleet/issues/335) | Canary mode and the Wave A canary run | A | M | Critical | security | S-188 |
-| S-190 | [#336](https://github.com/llipe/dev-tasks-agent-fleet/issues/336) | Fake claude CLI harness and stream-json fixtures | B | S | High | — | S-189 |
-| S-191 | [#337](https://github.com/llipe/dev-tasks-agent-fleet/issues/337) | CLI runner: argv, env allow-list, settings, termination | B | M | Critical | security | S-190 |
-| S-192 | [#338](https://github.com/llipe/dev-tasks-agent-fleet/issues/338) | Stream-json parser, events, metrics, limit detection | B | M | High | — | S-191 |
-| S-193 | [#339](https://github.com/llipe/dev-tasks-agent-fleet/issues/339) | Dependency installer | B | M | High | — | S-184 |
-| S-194 | [#340](https://github.com/llipe/dev-tasks-agent-fleet/issues/340) | Task list: checklist, plan pass, prompts | B | M | High | — | S-191 |
-| S-195 | [#341](https://github.com/llipe/dev-tasks-agent-fleet/issues/341) | Measure: classification, caps, forbidden paths, commit message | B | M | Critical | — | S-180 |
-| S-196 | [#342](https://github.com/llipe/dev-tasks-agent-fleet/issues/342) | Gate runner and audit baseline | B | M | Critical | — | S-193 |
-| S-197 | [#343](https://github.com/llipe/dev-tasks-agent-fleet/issues/343) | Red-to-green verification | B | M | Critical | — | S-195, S-196 |
-| S-198 | [#344](https://github.com/llipe/dev-tasks-agent-fleet/issues/344) | Pull request: branch, commit, push, Draft PR, artifact | B | M | Critical | — | S-195 |
-| S-199 | [#345](https://github.com/llipe/dev-tasks-agent-fleet/issues/345) | Pipeline wiring and enable the pipeline | B | L | Critical | — | S-192, S-194, S-197, S-198 |
-| S-200 | [#346](https://github.com/llipe/dev-tasks-agent-fleet/issues/346) | Disposition wiring: failure paths, ceilings, deadline | B | M | Critical | — | S-199 |
-| S-201 | [#347](https://github.com/llipe/dev-tasks-agent-fleet/issues/347) | Live verification on a fixture repository | C | M | Critical | scope:infra | S-200 |
-| S-202 | [#348](https://github.com/llipe/dev-tasks-agent-fleet/issues/348) | First schedule and enablement criteria | C | S | High | scope:infra | S-201 + S-189 decision |
-| S-203 | [#349](https://github.com/llipe/dev-tasks-agent-fleet/issues/349) | Documentation close-out | C | S | Medium | — | S-202 |
+## Target Repository
 
-Every issue carries `story`, `size:X`, `priority:<level>`, `prd:bug-fix-agent`, `agent:bug-fix`.
-Titles follow `[PRD-bug-fix-agent] Story S-NNN: <title>`. Dependencies are stated by story ID in each
-body (the prior batches' convention); the table above maps them to issue numbers.
+- Repo: `llipe/dev-tasks-agent-fleet`
+- Date: 2026-10-20
+- Milestone: [v5.0 — Phase 5 Bug Fix Agent](https://github.com/llipe/dev-tasks-agent-fleet/milestone/6) (#6, no due date)
+- Source: [`user-stories-prd-bug-fix-agent.md`](user-stories-prd-bug-fix-agent.md) v1.0
+
+## Created Issues
+
+| Story ID | Story Title | Issue | Labels | Milestone | Assignee |
+| -------- | ----------- | ----- | ------ | --------- | -------- |
+| S-180 | Agent scaffold, image, and sandbox policy | [#362](https://github.com/llipe/dev-tasks-agent-fleet/issues/362) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-181 | Infra: key, runtime, invoke policy, App issues | [#363](https://github.com/llipe/dev-tasks-agent-fleet/issues/363) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, scope:infra, size:M, story | v5.0 | — |
+| S-182 | Sandbox spike on the deployed runtime | [#364](https://github.com/llipe/dev-tasks-agent-fleet/issues/364) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-183 | Panel string-list schema-form control | [#365](https://github.com/llipe/dev-tasks-agent-fleet/issues/365) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, scope:panel, size:M, story | v5.0 | — |
+| S-184 | Agents seed row, params schema, typed params | [#366](https://github.com/llipe/dev-tasks-agent-fleet/issues/366) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, scope:infra, size:S, story | v5.0 | — |
+| S-185 | Preflight: permission, labels, assignee | [#367](https://github.com/llipe/dev-tasks-agent-fleet/issues/367) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:S, story | v5.0 | — |
+| S-186 | Claim markers and idempotent disposition | [#368](https://github.com/llipe/dev-tasks-agent-fleet/issues/368) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-187 | Selection: oldest ready bug, linked-PR skip | [#369](https://github.com/llipe/dev-tasks-agent-fleet/issues/369) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-188 | Claim with post-claim race check | [#370](https://github.com/llipe/dev-tasks-agent-fleet/issues/370) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-189 | Checkout, repo gate, toolchain, gate runner | [#371](https://github.com/llipe/dev-tasks-agent-fleet/issues/371) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-190 | Orchestration and outcomes through the claim | [#372](https://github.com/llipe/dev-tasks-agent-fleet/issues/372) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-191 | Fix runner: confined claude -p | [#373](https://github.com/llipe/dev-tasks-agent-fleet/issues/373) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:L, story | v5.0 | — |
+| S-192 | Change validation: caps, paths, gates | [#374](https://github.com/llipe/dev-tasks-agent-fleet/issues/374) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-193 | Red-to-green on the changed tests | [#375](https://github.com/llipe/dev-tasks-agent-fleet/issues/375) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-194 | Draft PR, artifact, and fix-loop enablement | [#376](https://github.com/llipe/dev-tasks-agent-fleet/issues/376) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story | v5.0 | — |
+| S-195 | In-container confinement tests (AC-5, AC-6) | [#377](https://github.com/llipe/dev-tasks-agent-fleet/issues/377) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:S, story | v5.0 | — |
+| S-196 | Stale-claim sweep | [#378](https://github.com/llipe/dev-tasks-agent-fleet/issues/378) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:M, story | v5.0 | — |
+| S-197 | Deploy script, runbook, fixture schedule | [#379](https://github.com/llipe/dev-tasks-agent-fleet/issues/379) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, scope:infra, size:M, story | v5.0 | — |
+| S-198 | Live verification on fixture repo (AC-16) | [#380](https://github.com/llipe/dev-tasks-agent-fleet/issues/380) | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:S, story | v5.0 | — |
 
 ## Notes
 
-- **Renumbered before publishing.** The stories were drafted as S-165–S-188. `[PRD-webhook-triggers]`
-  already holds S-165–S-179 (#309–#324), so the stories were shifted by +15 to **S-180–S-203** and the
-  stories file and roadmap were updated first. If the webhook-triggers PRD plans further stories past
-  S-179 that are not yet published, a clash is still possible; check before it publishes.
-- **No milestone.** The GitHub MCP tools available here cannot list or create milestones. Prior batches
-  used `v3.0 — Phase 4 Agent Scheduler` and `v4.0 — Phase 1 Webhook Triggers`. Create a milestone for this
-  PRD and assign #326–#349 (one `gh` or UI action).
-- **Two new labels with default grey color.** `prd:bug-fix-agent` and `agent:bug-fix` were created by
-  GitHub on first use; these tools cannot set a color or description. The scheduler batch used `#0E8A16`
-  for its `prd:` label. Recolor in the UI if wanted.
-- **Label taxonomy deviation.** `github-ops.md` requires `type:` and spaced `priority: ` labels; this
-  repository's actual practice (and the labels that exist) is `story`, `size:X`, `priority:x`, `prd:`,
-  `agent:`, `scope:`. The existing practice was followed. `github-ops.md` and the repo disagree; that is
-  worth a `github-ops` audit.
-- **Spec additions recorded.** `FIX_PIPELINE_ENABLED` (S-187, S-199) and the gated canary mode (S-189)
-  are story-level additions to the specification; recorded as specification changelog 1.1.
-- **PR #325 was already merged** (it contained only the PRD v1.0 and decision log). The branch was
-  rebased onto `main`; the specification, stories, PRD v1.1, and this report are unmerged commits on
-  `claude/bug-fixing-agent-fleet-0yb54w` and need a new PR.
-- No issue was assigned, and none was pinned to a project board.
-
-## Dependency order (for `plan`)
-
-Wave A: #326 → (#327, #328, #329) → (#330, #331) → #332 → #333 → #334 → #335 (canary gate).
-Wave B: #336 → #337 → #338; #339, #340, #341 in parallel; #342, #344 → #343; #345 → #346.
-Wave C: #347 → #348 → #349. #348 is also blocked by the credential decision recorded in #335.
-
-GitHub is now the source of truth for execution tracking. The stories file is the design record; status
-lives on the issues.
+- **Skipped stories:** none (19/19).
+- **Labels:** repo story convention: `story`, `priority:*`, `size:*`, `phase:control-plane`, `prd:bug-fix-agent`, `agent:bug-fix`, plus `scope:infra` (S-181, S-184, S-197) and `scope:panel` (S-183). The `github-ops` rule of a `type:` label is met by `story`, as in the scheduler and webhook batches. The empty description of `prd:bug-fix-agent` was filled in.
+- **Titles** are shortened to stay within the 80-character limit. Full story titles are in the issue bodies and the stories file.
+- **Body links** point to `main`. The PRD v1.2, spec, stories and this report are not on `main` until the docs branch merges, so the links return 404 until then.
+- **No assignee, no epic.** This was the user's choice. `planner` assigns at execution.
+- **Execution method:** `gh-cli`, delegated to the `github-ops` subagent. The bodies were passed with `--body-file`.
+- **Assisted-by:** not applicable. No PR was created and no issue was closed.
