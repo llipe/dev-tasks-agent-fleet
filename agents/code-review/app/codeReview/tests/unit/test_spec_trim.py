@@ -251,3 +251,44 @@ def test_two_specs_share_the_cap_equally():
     assert len(ctx.specs) == 2
     assert sum(estimate(s.text) for s in ctx.specs) <= spec_cap(20_000)
     assert all(estimate(s.text) <= spec_cap(20_000) // 2 for s in ctx.specs)
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["```inline``` code at the start of a paragraph", "``` info`with`backticks"],
+)
+def test_a_heading_after_a_backtick_line_that_is_not_a_fence_is_kept(line):
+    """DR-10 (S-207 carry): a backtick fence's info string may not contain a backtick.
+
+    Such a line is inline code, not a fence opener, so the headings after it are
+    still headings: the outline keeps them and a cited section keeps its body.
+    """
+    spec = (
+        "# Spec\n## 1. Intro\n" + line + "\n" + FILLER + "## 9. Cited\ncited body\n"
+        "## 10. Other\n" + FILLER
+    )
+    text, trimmed, _ = trim_spec(
+        spec, citations=("9",), story_ids=(), reviewed_paths=(), cap_tokens=TRIM_CAP
+    )
+    assert trimmed
+    assert "## 9. Cited\n" in text and "cited body" in text
+    assert "## 10. Other\n" in text
+    assert "lorem" not in text
+
+
+def test_a_real_backtick_fence_still_hides_headings():
+    spec = "# Spec\n## 1. Intro\n```md\n## 2. Fenced\n```\n" + FILLER + "## 3. After\nafter\n"
+    text, trimmed, _ = trim_spec(
+        spec, citations=("3",), story_ids=(), reviewed_paths=(), cap_tokens=TRIM_CAP
+    )
+    assert trimmed
+    assert "## 2. Fenced" not in text  # inside the fence, part of the uncited intro body
+    assert "## 3. After\nafter\n" in text
+
+
+def test_a_tilde_fence_with_backticks_in_its_info_string_is_a_fence():
+    spec = "# Spec\n## 1. Intro\n~~~ a`b\n## 2. Fenced\n~~~\n" + FILLER + "## 3. After\n"
+    text, _, _ = trim_spec(
+        spec, citations=("3",), story_ids=(), reviewed_paths=(), cap_tokens=TRIM_CAP
+    )
+    assert "## 2. Fenced" not in text
