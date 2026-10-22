@@ -251,6 +251,12 @@ remains empty (`.gitkeep` only) — no recorded API payloads yet.
 answers from a route table) and the recorded fixtures under
 `tests/fixtures/github/<sample>/` (`routes.json` plus GitHub-shaped bodies,
 loaded with `load_fixture("sample-pr")` or `load_fixture("issue-315")`; no real tokens, accounts, or SHAs).
+Fidelity-report inputs for the Layer 1 verifier parser (S-208) live in
+`tests/fixtures/reports/` (a byte copy of `workstream/fidelity-report-S-170.md`
+plus synthetic AC-7, no-heading, numbered-heading, empty, and bullet-list
+reports, described in that directory's `README.md`) and are loaded with
+`tests/helpers/reports.py::report_text(<file name>)`, which decodes the bytes so
+line endings are exactly the ones on disk.
 Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`
@@ -262,6 +268,13 @@ client through a real `requests.Session` with a capturing adapter mounted for
 `PreparedRequest`; no socket is opened. A known defect pinned by a test is
 marked `xfail(strict=True)` with the defect in `reason`, so the fix turns it red
 and the marker is removed in the same change.
+Hostile-input suites for repository-controlled text (S-208:
+`tests/unit/test_verifier_hostile.py`, `tests/unit/test_repo_conventions_hostile.py`)
+are the one sanctioned Layer 1 use of `time.perf_counter`: a regex-cost or
+quadratic-scan test may assert an elapsed bound on a 100k+ line input. The bound
+must hold with at least 3x margin under `make test-cov` (coverage tracing), and
+the input must be large enough that a quadratic implementation misses the bound
+by an order of magnitude, so the test cannot flake either way.
 
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real

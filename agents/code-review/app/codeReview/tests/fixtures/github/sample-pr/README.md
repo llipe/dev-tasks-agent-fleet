@@ -13,7 +13,8 @@ Contents of the sample:
 - Five changed files: `src/app.py` (modified), `docs/notes with space.md` (added; a
   path with a space), `src/new_name.py` (renamed from `src/old_name.py`),
   `pnpm-lock.yaml` (lockfile), `assets/logo.png` (binary, no `patch`).
-- Contents at the merge base and head for the reviewed files, `AGENTS.md`, one ADR,
+- Contents at the merge base and head for the reviewed files, `AGENTS.md`, two ADRs
+  (`ADR-001` with an inline `Status:` line; `ADR-002`, added by S-208, with a `## Status` heading),
   and a 404 for `workstream/specification-prd-widgets.md` and `workstream/`.
 - `docs/adr` directory listing (two files, one subdirectory).
 - Issue #41 (labels `prd:widgets`, `type:feature`; a `Task Checklist` heading) and

@@ -19,7 +19,8 @@ the spec block's 30% share of ``max_context_tokens`` is split equally among
 them, so their combined estimate stays within the one spec cap of §8.4.
 
 Trimming (``trim_spec``), when a spec is over its cap: the spec is split at
-Markdown headings (ATX, levels 1-6, outside code fences) and keeps
+Markdown headings (ATX, levels 1-6, outside code fences as
+``context.markdown.FenceTracker`` defines them) and keeps
 
 (i) every heading line (the outline);
 (ii) the sections cited in an issue body as ``Spec §<n>[.<m>…]``: a heading
@@ -59,6 +60,7 @@ from context.conventions import (
 )
 from context.diff import split_lines
 from context.issues import LinkedIssue, Warn
+from context.markdown import FenceTracker
 from context.tokens import estimate, truncate
 from github_client import GitHubClient
 
@@ -191,7 +193,6 @@ def resolve_specs(
 # title is captured greedily and ``rstrip``-ed of spaces, tabs and ``\r``: a lazy
 # title before ``[ \t]*`` backtracks quadratically over a long whitespace run.
 _HEADING_RE = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*))?\r?")
-_FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})")
 # The leading section number of a heading: ``8``, ``8.``, ``8.1``, ``8.1.2``.
 _NUMBER_RE = re.compile(r"(\d+(?:\.\d+)*)\.?(?=\s|$)")
 
@@ -206,22 +207,10 @@ class _Section:
 
 def _split_sections(text: str) -> list[_Section]:
     sections = [_Section("", 0, None)]
-    fence: str | None = None
+    fence = FenceTracker()
     for line in split_lines(text):
         bare = line.rstrip("\n")
-        opener = _FENCE_RE.match(bare)
-        if fence is not None:
-            if (
-                opener is not None
-                and opener.group(1)[0] == fence[0]
-                and len(opener.group(1)) >= len(fence)
-                and not bare[opener.end() :].strip()
-            ):
-                fence = None
-            sections[-1].body += line
-            continue
-        if opener is not None:
-            fence = opener.group(1)
+        if fence.step(bare):
             sections[-1].body += line
             continue
         heading = _HEADING_RE.fullmatch(bare)
