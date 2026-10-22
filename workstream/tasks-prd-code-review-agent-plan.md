@@ -16,7 +16,7 @@
 - `agents/code-review/app/codeReview/{main,config}.py` - entrypoint, payload validation, defaults, clock invariant (S-204, S-213)
 - `agents/code-review/app/codeReview/{agent_reporter,credentials,heartbeat,signal_backstop,scrubber}.py` - copies of the sibling modules (S-204)
 - `agents/code-review/app/codeReview/{pyproject.toml,Makefile,Dockerfile,.dockerignore}` - package, gates, image (S-204)
-- `agents/code-review/app/codeReview/github_client.py` - allowlisted GitHub REST client (S-205)
+- `agents/code-review/app/codeReview/github_client.py` - allowlisted GitHub REST client (S-205); `get_content_bytes` for the byte-exact NUL check (S-206)
 - `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206)
 - `agents/code-review/app/codeReview/context/{issues,spec,conventions}.py` - linked issues, checklist strip, spec resolution and trimming (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
@@ -33,6 +33,8 @@
 - `agents/code-review/app/codeReview/tests/unit/{test_github_client,test_contracts,test_properties_github_client,test_prng}.py` - S-205 tests (TC-205-\*, CT-04, CT-05 GitHub half, seeded allowlist property, PRNG helper)
 - `agents/code-review/app/codeReview/tests/helpers/{prng,github_stub}.py` - seeded PRNG helper (G-6) and `StubTransport` with the recorded-fixture loader (S-205)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/` - recorded GitHub responses for a sample PR, reused by S-206–S-213 (S-205)
+- `agents/code-review/app/codeReview/tests/unit/{test_classify,test_diff,test_changed_ranges,test_properties_classify,test_properties_diff}.py`, `tests/integration/test_context_diff.py` - S-206 tests (TC-206-\*, RT-02, RT-09)
+- `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/expanded_diff.golden` - hand-written golden expanded diff for the sample PR (S-206)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
@@ -70,14 +72,14 @@
   - [x] 2.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
 - [ ] 3.0 Implement Story S-206 (#408): Expanded diff and size check · branch `story/S-206-expanded-diff`
-  - [ ] 3.1 `[T]` [code-review] L1 `test_classify.py`: lockfiles, generated paths, binaries, excluded workstream paths; near-misses (e.g. `lockfile.md`); property tactic over random paths (fixed seed)
-  - [ ] 3.2 `[T]` [code-review] L1 `test_diff.py`: added, removed, renamed, modified; ±50 context; empty file; no trailing newline; CRLF; invalid UTF-8; diff round-trip property
-  - [ ] 3.3 `[T]` [code-review] L1 budget: exactly `max_diff_lines` vs +1; lockfile-only PR; 300+ files; `test_changed_ranges.py`
-  - [ ] 3.4 `[T]` [code-review] `tests/integration/test_context_diff.py` on recorded fixtures for a 3-file PR
-  - [ ] 3.5 `[I]` [code-review] `context/diff.py`: `classify`, `OverBudget` without fetching content, merge-base via `compare`, blob fetch (thread pool 8), `difflib.unified_diff(n=50)`, head contents, changed head ranges (D-26, D-11)
-  - [ ] 3.6 Verify Acceptance Criteria: AC1 classification; AC2 size check; AC3 expanded diff; AC4 head contents; AC5 changed ranges
-  - [ ] 3.7 Map each AC to test evidence in the PR body
-  - [ ] 3.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 3.1 `[T]` [code-review] L1 `test_classify.py`: lockfiles, generated paths, binaries, excluded workstream paths; near-misses (e.g. `lockfile.md`); property tactic over random paths (fixed seed)
+  - [x] 3.2 `[T]` [code-review] L1 `test_diff.py`: added, removed, renamed, modified; ±50 context; empty file; no trailing newline; CRLF; invalid UTF-8; diff round-trip property
+  - [x] 3.3 `[T]` [code-review] L1 budget: exactly `max_diff_lines` vs +1; lockfile-only PR; 300+ files; `test_changed_ranges.py`
+  - [x] 3.4 `[T]` [code-review] `tests/integration/test_context_diff.py` on recorded fixtures for a 3-file PR
+  - [x] 3.5 `[I]` [code-review] `context/diff.py`: `classify`, `OverBudget` without fetching content, merge-base via `compare`, blob fetch (thread pool 8), `difflib.unified_diff(n=50)`, head contents, changed head ranges (D-26, D-11)
+  - [x] 3.6 Verify Acceptance Criteria: AC1 classification; AC2 size check; AC3 expanded diff; AC4 head contents; AC5 changed ranges
+  - [x] 3.7 Map each AC to test evidence in the PR body
+  - [x] 3.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` — package `validate` green; root `make validate` stops in `dependency-update` (`/usr/bin/python: No module named pytest`, no sibling venv in this runtime) before reaching `code-review`; the known `security-analyst` audit CVE is not tracked here
 
 - [ ] 4.0 Implement Story S-207 (#409): Linked issues and spec resolution · branch `story/S-207-issues-spec`
   - [ ] 4.1 `[T]` [code-review] L1 `test_issue_links.py`: `closes #1`, `Fixes: #2`, `resolved #3`, `owner/repo#4` ignored, branch `issue/5-x`, dedupe, cap 5, linked PR skipped; regex property tactic
