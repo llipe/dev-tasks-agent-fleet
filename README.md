@@ -70,10 +70,12 @@ The project is delivered in three phases:
 │   │   ├── agentcore/       # Runtime config + CDK infra
 │   │   ├── app/dependencyUpdate/   # Agent source, tests, Makefile, pyproject.toml
 │   │   └── README.md        # Agent-specific docs (deployment, pipeline, env vars)
-│   └── security-analyst/   # Phase 3 agent (Python, AgentCore Container) — done, verified live
-│       ├── agentcore/       # Runtime config + CDK infra
-│       ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
-│       └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
+│   ├── security-analyst/   # Phase 3 agent (Python, AgentCore Container) — done, verified live
+│   │   ├── agentcore/       # Runtime config + CDK infra
+│   │   ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
+│   │   └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
+│   └── code-review/   # Code Review agent (Python) — Wave A scaffold, in development, not deployed
+│       └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml (no agentcore/ config yet)
 └── workstream/              # Task lists, specs, test plans, fidelity reports; archive/ holds completed work
 ```
 
@@ -81,8 +83,11 @@ The **active codebase** is the `dependency-update` Python agent under
 `agents/dependency-update/app/dependencyUpdate/` (Phase 1), the `panel/` Next.js app
 (Phase 2, deployed), and the `security-analyst` Python agent under
 `agents/security-analyst/app/securityAnalyst/` (Phase 3, done and verified live, see
-Delivery phases above). Agent-specific details (pipeline, deployment,
-environment variables, runtime timeouts) live in
+Delivery phases above), and the `code-review` Python package under
+`agents/code-review/app/codeReview/` (Wave A scaffold, in development: params validation and
+a skeleton invoke only; it is not deployed, has no runtime ARN yet, and reviews nothing yet —
+see [`docs/requirements/prd-code-review-agent.md`](docs/requirements/prd-code-review-agent.md)).
+Agent-specific details (pipeline, deployment, environment variables, runtime timeouts) live in
 [`agents/dependency-update/README.md`](agents/dependency-update/README.md) and
 [`agents/security-analyst/README.md`](agents/security-analyst/README.md).
 Panel-specific details (scripts, conventions, env vars) live in [`panel/README.md`](panel/README.md).
