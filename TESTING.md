@@ -176,7 +176,7 @@ thin `pnpm --filter panel run <script>` wrappers, so `pnpm run test` /
 | `dependency-update` | Audit                         | `make audit` → `pip-audit . --strict`                                                    |
 | `dependency-update` | **Aggregate gate**            | `make validate` → lint + format-check + typecheck + test-cov + audit (fail-fast)          |
 | `security-analyst`  | All of the above              | Identical `Makefile` targets (`make test`, `test-unit`, `test-component`, `lint`, `format-check`, `typecheck`, `test-cov`, `audit`, `validate`) run from `agents/security-analyst/app/securityAnalyst/` |
-| `security-analyst`  | Audit (temporary exception)   | `make audit` → `audit-exception-check` then `pip-audit . --strict --ignore-vuln CVE-2026-59951`. It's a time-boxed exception (#355) because semgrep pins `mcp==1.29.0`. The check fails closed after `AUDIT_EXCEPTION_EXPIRES` (20261026, UTC) or if the value is malformed. It's covered offline by `tests/component/test_audit_exception.py`; removal is tracked in #360 |
+| `security-analyst`  | Audit                         | `make audit` → `pip-audit . --strict`, no ignored vulnerabilities. `semgrep` is installed in its own venv in the Dockerfile, not in `pyproject.toml`, so its exact `mcp`/`opentelemetry-api` pins stay out of the audited tree (#360). `tests/unit/test_semgrep_isolation.py` pins this |
 | `agentcore-cdk-app` | Run test / build / format     | `pnpm test` (→ `jest`) / `pnpm run build` (→ `tsc`) / `pnpm run format:check` (from its own package dir) |
 
 ### Repo-root aggregate (`Makefile`)

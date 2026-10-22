@@ -119,9 +119,23 @@ RUN curl -sSfL \
     rm /tmp/trivy.tar.gz && \
     chmod +x /usr/local/bin/trivy
 
-# Python deps -- includes semgrep and checkov (S-141: their scanner
-# binaries ship as pip packages, pinned in pyproject.toml's dependencies;
-# see that file for the same S-128/S-131 toolchain-gap note).
+# Semgrep -- issue #360: installed in its own venv, outside the agent's
+# resolver, the way the Go binaries above are. Every semgrep release through
+# 1.182.1 pins `mcp==1.29.0` and `opentelemetry-api~=1.37.0`; as a project
+# dependency that held CVE-2026-59951 and CVE-2026-114603 in the agent's
+# environment and failed `pip-audit --strict`. The agent only runs the
+# `semgrep` CLI as a subprocess (scanners/semgrep_runner.py,
+# fixers/semgrep_autofix.py), so nothing imports it. 1.180.0 is the version
+# live-verified against real output (R-03, infra change
+# 20261013-redeploy-agents-pyjwt).
+ARG SEMGREP_VERSION=1.180.0
+RUN python -m venv /opt/semgrep && \
+    /opt/semgrep/bin/pip install --no-cache-dir semgrep==${SEMGREP_VERSION} && \
+    ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
+
+# Python deps -- includes checkov (S-141: its scanner binary ships as a pip
+# package, pinned in pyproject.toml's dependencies; see that file for the
+# S-131 toolchain-gap note).
 WORKDIR /app
 COPY pyproject.toml .
 RUN pip install --no-cache-dir .
