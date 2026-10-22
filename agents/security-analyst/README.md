@@ -241,8 +241,9 @@ agents/security-analyst/
 │   │                        # v2.27.0, S-132 — the first story to install a real scanner
 │   │                        # toolchain into this image, per its own blocking ARM64-availability
 │   │                        # pre-check) plus its two query packs, gitleaks + trivy as pinned
-│   │                        # ARM64 binaries from GitHub Releases, and semgrep + checkov as
-│   │                        # pinned pip packages via pyproject.toml (S-141 — closed the
+│   │                        # ARM64 binaries from GitHub Releases, semgrep in an isolated
+│   │                        # venv at /opt/semgrep (#360), and checkov as a pinned pip
+│   │                        # package via pyproject.toml (S-141 — closed the
 │   │                        # S-128/S-129/S-130/S-131 toolchain-install gap that each of those
 │   │                        # stories tracked and deferred; all five scanner binaries now ship
 │   │                        # in the image). Also installs a Node.js runtime (NodeSource,
@@ -620,7 +621,7 @@ from `app/securityAnalyst/`:
 
 ```bash
 cd agents/security-analyst/app/securityAnalyst
-make install         # pip install -e '.[dev]'
+make install         # pip install -e '.[dev]' (no semgrep binary; it lives in the image's /opt/semgrep venv, #360)
 make test            # python -m pytest (all layers)
 make test-unit       # python -m pytest -m unit
 make test-component  # python -m pytest -m component
