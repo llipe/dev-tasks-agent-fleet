@@ -555,6 +555,17 @@ class GitHubClient:
 
     def get_content_raw(self, path: str, ref: str) -> str | None:
         """Raw file content at ``ref`` (UTF-8, errors replaced). 404 -> ``None``."""
+        content = self.get_content_bytes(path, ref)
+        if content is None:
+            return None
+        return content.decode("utf-8", errors="replace")
+
+    def get_content_bytes(self, path: str, ref: str) -> bytes | None:
+        """Raw file bytes at ``ref``, undecoded. 404 -> ``None``.
+
+        Same allowlisted call as ``get_content_raw``; callers that need byte
+        offsets (the binary NUL check, S-206) decode afterwards.
+        """
         resp = self._request(
             "GET",
             f"{self._prefix}/contents/{_encode_path(path)}",
@@ -564,7 +575,7 @@ class GitHubClient:
         )
         if resp is None:
             return None
-        return (resp.content or b"").decode("utf-8", errors="replace")
+        return bytes(resp.content or b"")
 
     def list_dir(self, path: str, ref: str) -> list[DirEntry]:
         """Directory entries at ``ref``. 404, or a file path -> ``[]``."""
