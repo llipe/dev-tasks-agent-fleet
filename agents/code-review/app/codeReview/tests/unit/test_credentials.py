@@ -340,6 +340,87 @@ class TestMintInstallationToken:
         assert not isinstance(exc_info.value, requests.RequestException)
 
 
+def _http_response(status: int, body: bytes = b"{}") -> requests.Response:
+    """A real ``requests.Response`` so ``raise_for_status`` builds a real HTTPError."""
+    resp = requests.Response()
+    resp.status_code = status
+    resp._content = body
+    resp.url = "https://example.invalid/app/installations/200/access_tokens"
+    return resp
+
+
+class TestMintInstallationTokenHttpErrors:
+    """S-204 QA carry-over (S-205): a non-2xx token exchange is classified.
+
+    Before the fix, ``resp.raise_for_status()`` sat outside the classified
+    ``try`` and a 401/403 escaped as a raw ``requests.HTTPError``, so the run
+    reported the wrong error code. Spec §13: 401/403 from GitHub is
+    ``GITHUB_PERMISSION_DENIED``; other failures are ``GITHUB_API_ERROR``.
+    """
+
+    @pytest.mark.parametrize("status", [401, 403])
+    @patch("credentials.jwt")
+    def test_permission_status_is_credential_error(self, mock_jwt, status):
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        with (
+            patch("credentials.requests.post", return_value=_http_response(status)),
+            pytest.raises(CredentialError) as exc_info,
+        ):
+            mint_installation_token(app_id=100, installation_id=200, pem="pem")
+        assert exc_info.value.code == "GITHUB_PERMISSION_DENIED"
+        assert f"HTTP {status}" in exc_info.value.message
+        assert not isinstance(exc_info.value, requests.RequestException)
+
+    @pytest.mark.parametrize("status", [404, 422, 500, 503])
+    @patch("credentials.jwt")
+    def test_other_error_status_is_github_api_error(self, mock_jwt, status):
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        with (
+            patch("credentials.requests.post", return_value=_http_response(status)),
+            pytest.raises(CredentialError) as exc_info,
+        ):
+            mint_installation_token(app_id=100, installation_id=200, pem="pem")
+        assert exc_info.value.code == "GITHUB_API_ERROR"
+
+    @patch("credentials.jwt")
+    def test_error_text_carries_no_assertion_or_response_body(self, mock_jwt):
+        mock_jwt.encode.return_value = "signed.jwt.ASSERTION_SENTINEL"
+        body = b'{"message": "Bad credentials", "token": "ghs_BODY_SENTINEL"}'
+        with (
+            patch("credentials.requests.post", return_value=_http_response(401, body)),
+            pytest.raises(CredentialError) as exc_info,
+        ):
+            mint_installation_token(app_id=100, installation_id=200, pem="pem")
+        exc = exc_info.value
+        for text in (str(exc), repr(exc), exc.message):
+            assert "ASSERTION_SENTINEL" not in text
+            assert "ghs_BODY_SENTINEL" not in text
+        # No chained HTTPError carrying the response (and its request headers).
+        assert exc.__cause__ is None
+        assert exc.__context__ is None
+
+    @patch("credentials.jwt")
+    def test_error_with_unreadable_status_is_github_api_error(self, mock_jwt):
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        resp = MagicMock()
+        resp.status_code = None
+        resp.raise_for_status.side_effect = requests.HTTPError("boom")
+        with (
+            patch("credentials.requests.post", return_value=resp),
+            pytest.raises(CredentialError) as exc_info,
+        ):
+            mint_installation_token(100, 200, "pem")
+        assert exc_info.value.code == "GITHUB_API_ERROR"
+        assert "HTTP unknown" in exc_info.value.message
+
+    @patch("credentials.jwt")
+    def test_success_status_still_returns_token(self, mock_jwt):
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        resp = _http_response(201, b'{"token": "ghs_ok"}')
+        with patch("credentials.requests.post", return_value=resp):
+            assert mint_installation_token(100, 200, "pem") == "ghs_ok"
+
+
 # ---------------------------------------------------------------------------
 # refresh_if_stale
 # ---------------------------------------------------------------------------

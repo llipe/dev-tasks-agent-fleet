@@ -83,14 +83,15 @@ class TestRealJwtSigning:
     @patch("credentials.requests")
     def test_malformed_pem_is_classified_or_raises(self, mock_requests):
         """CT-3: a malformed PEM must not silently sign; the real `jwt.encode`
-        rejects it. The agent surfaces either a classified CredentialError or
-        the library error — never a successful token mint."""
+        rejects it with PyJWT's `InvalidKeyError` (pinned PyJWT 2.15.1) before
+        any GitHub call — never a successful token mint. `mint_installation_token`
+        does not classify signing errors, so the library error is what escapes."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"token": "should_not_be_reached"}
         mock_resp.raise_for_status = MagicMock()
         mock_requests.post.return_value = mock_resp
 
-        with pytest.raises((CredentialError, Exception)) as exc_info:
+        with pytest.raises(jwt.InvalidKeyError) as exc_info:
             mint_installation_token(
                 app_id=APP_ID,
                 installation_id=INSTALLATION_ID,
@@ -98,4 +99,4 @@ class TestRealJwtSigning:
             )
         # The GitHub HTTP exchange must never have been reached with a bad key.
         mock_requests.post.assert_not_called()
-        assert exc_info.value is not None
+        assert not isinstance(exc_info.value, CredentialError)

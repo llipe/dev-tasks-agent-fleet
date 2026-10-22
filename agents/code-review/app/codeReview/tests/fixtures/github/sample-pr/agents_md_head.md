@@ -1,0 +1,3 @@
+# AGENTS
+
+Use Conventional Commits.

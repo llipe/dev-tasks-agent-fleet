@@ -11,7 +11,8 @@ signing change cannot stay green:
 - the issuer is the App id, so a verifier expecting another issuer rejects it;
 - the assertion expires: minted an hour ago, it is rejected as expired now;
 - the validity window stays inside GitHub's 10-minute ceiling;
-- a GitHub rejection (401) never yields a token.
+- a GitHub rejection (401) never yields a token and is classified as a
+  ``CredentialError`` (``GITHUB_PERMISSION_DENIED``).
 
 Only the GitHub HTTP exchange is stubbed.
 """
@@ -29,7 +30,7 @@ import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from credentials import mint_installation_token
+from credentials import CredentialError, mint_installation_token
 
 APP_ID = 424242
 INSTALLATION_ID = 99
@@ -132,11 +133,15 @@ def test_validity_window_is_inside_github_ceiling(signer):
 def test_github_rejection_never_yields_a_token(signer):
     pem, _ = signer
     resp = MagicMock()
+    resp.status_code = 401
     resp.raise_for_status.side_effect = requests.HTTPError("401 Unauthorized")
     resp.json.return_value = {"token": "ghs_must_not_leak"}
     with (
         patch("credentials.requests.post", return_value=resp),
-        pytest.raises(requests.HTTPError),
+        pytest.raises(CredentialError) as exc_info,
     ):
         mint_installation_token(APP_ID, INSTALLATION_ID, pem)
+    # Classified (S-205 carry-over from the S-204 QA gate), never a raw HTTPError.
+    assert exc_info.value.code == "GITHUB_PERMISSION_DENIED"
+    assert "ghs_must_not_leak" not in str(exc_info.value)
     resp.json.assert_not_called()

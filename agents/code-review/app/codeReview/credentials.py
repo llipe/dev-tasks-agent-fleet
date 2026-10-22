@@ -177,8 +177,35 @@ def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
             "GITHUB_UNREACHABLE",
             f"Could not reach GitHub to mint installation token: {exc}",
         ) from exc
-    resp.raise_for_status()
+    status = _http_error_status(resp)
+    if status is not None:
+        # Diverges from the security-analyst sibling (S-205, S-204 QA gate): the
+        # sibling lets `raise_for_status()` escape as a raw HTTPError, so a
+        # 401/403 reported the wrong error code. Classified per spec §13. Raised
+        # outside the `except` so no HTTPError (which holds the request and its
+        # JWT header) is chained; the message carries only the status.
+        code = "GITHUB_PERMISSION_DENIED" if status in (401, 403) else "GITHUB_API_ERROR"
+        raise CredentialError(
+            code,
+            f"GitHub rejected the installation token exchange for installation "
+            f"{installation_id} (HTTP {status or 'unknown'})",
+        )
     return resp.json()["token"]
+
+
+def _http_error_status(resp: requests.Response) -> int | None:
+    """Return the HTTP status if ``resp`` is an error response, else ``None``.
+
+    ``0`` means an error whose status could not be read.
+    """
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        for candidate in (getattr(exc.response, "status_code", None), resp.status_code):
+            if isinstance(candidate, int) and not isinstance(candidate, bool):
+                return candidate
+        return 0
+    return None
 
 
 # ---------------------------------------------------------------------------
