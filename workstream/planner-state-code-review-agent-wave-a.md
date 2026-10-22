@@ -6,7 +6,7 @@
 - Integration branch: `integration/code-review-agent` (from `main` @ dc89014)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-22
-- Last updated: 2026-10-22 (S-206 merged)
+- Last updated: 2026-10-22 (S-207 merged)
 
 ## Story Status
 
@@ -15,7 +15,7 @@
 | 1        | S-204    | #406    | ✅ Merged  | #425 | `story/S-204-agent-scaffold`      |
 | 2        | S-205    | #407    | ✅ Merged  | #426 | `story/S-205-github-client`       |
 | 3        | S-206    | #408    | ✅ Merged  | #429 | `story/S-206-expanded-diff`       |
-| 4        | S-207    | #409    | ⏳ Pending | —    | `story/S-207-issues-spec`         |
+| 4        | S-207    | #409    | ✅ Merged  | #430 | `story/S-207-issues-spec`         |
 | 5        | S-208    | #410    | ⏳ Pending | —    | `story/S-208-verifier-candidates` |
 | 6        | S-209    | #411    | ⏳ Pending | —    | `story/S-209-budget-prompt`       |
 | 7        | S-210    | #412    | ⏳ Pending | —    | `story/S-210-bedrock-adapter`     |
@@ -25,9 +25,9 @@
 
 ## Current Position
 
-- Next story: S-207 (#409)
-- Last merged PR: #429 (merge commit 9379b25)
-- Integration branch HEAD: 9379b25 + checkpoint commit (package `validate` green post-merge)
+- Next story: S-208 (#410)
+- Last merged PR: #430 (merge commit 6becd1d)
+- Integration branch HEAD: 6becd1d + checkpoint commit (package `validate` green post-merge)
 
 ## Decisions Log
 
@@ -48,3 +48,6 @@
 - 2026-10-22: S-206 merge gates: developer gates PASS; qa-engineer coverage_gate PASS (46cbc2d, +61 probe tests) found an FR-10 leak on rename-away and C1/U+2028 header forging, fixed in 1ed702f and 0b4e129; verifier High / Minor, 9 drift items (5730124). Planner decisions: D-42 (classify both names, base withheld); D6 keep GitHub counts for the size check; D7 (`binary` label on empty or mode-only files) deferred to S-212.
 - 2026-10-22: Spec write-back backlog for one batched update before the consolidated PR: S-206 D1 (binary rule), D2 (truncated listing → OverBudget), D3 (EC-07 deletion anchor), D4 (D-42), D5 (per-thread client_factory, §11), D8 (hardening), D9 (D-26 wording); S-205 D2 (GitHubNotFound), D3 (extra retries), D5 (TC-205-07 wording).
 - 2026-10-22: Carry forward to S-212: render_budget says "at least" when `OverBudget.truncated`; context line names `base_withheld` files; fix the `binary` label for empty added files. To S-213: pass `client_factory`; map `GitHubNotFound`; DF-16 lockfile-only PR.
+- 2026-10-22: S-207 merge gates: developer gates PASS; qa-engineer coverage_gate PASS (21ae48d, hostile-input suite) found a CR-only FR-10 checklist leak, quadratic spec-heading (~24 s) and issue-link (~3.4 s) regexes, and Unicode-digit links; all fixed in 9ee1b47 with D-43 and a 200-citation cap; verifier High / Minor, 10 drift items (07d46b2). D-43 logged.
+- 2026-10-22: Spec write-back backlog adds S-207 DR-1 (DF-18), DR-2 (DF-20), DR-3 (PRD §15 spec name), DR-4 (skip taxonomy, §13), DR-5 (tokens.py), DR-6 (D-43), DR-7 (hardening), DR-8 (context/ naming); undetermined DR-9 (setext spec headings in trimming) and DR-10 (story IDs from titles only) go to the user with the batch.
+- 2026-10-22: Carry forward to S-209/S-213: import `estimate`/`truncate` from `context/tokens.py`; read `SpecContext.specs`; pass a `warn` callback; render "issues unavailable (permission)".
