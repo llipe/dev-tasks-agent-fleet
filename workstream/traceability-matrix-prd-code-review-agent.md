@@ -2,9 +2,10 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                                                                                                                                                   | Author   |
-| ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| 1.0     | 2026-10-22 | Initial matrix from test plan v1.0 (248 counted cases), PRD v1.1 (FR-1…FR-31, AC-1…AC-13), spec v1.0, decisions D-01…D-35, and stories v1.1 (82 story ACs across S-204…S-215, #406–#417). | verifier |
+| Version | Date       | Summary                                                                                                                                                                                   | Author           |
+| ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.0     | 2026-10-22 | Initial matrix from test plan v1.0 (248 counted cases), PRD v1.1 (FR-1…FR-31, AC-1…AC-13), spec v1.0, decisions D-01…D-35, and stories v1.1 (82 story ACs across S-204…S-215, #406–#417). | verifier         |
+| 1.1     | 2026-10-22 | DF-02, DF-03, DF-04 resolved in spec v1.1 (D-36–D-38); D.3 states updated; G-5 partly resolved.                                                                                           | product-engineer |
 
 > Companion to [`test-plan-prd-code-review-agent.md`](test-plan-prd-code-review-agent.md) v1.0. It maps:
 >
@@ -184,14 +185,14 @@ All 13 of 13 PRD ACs have at least one positive and one negative or edge test.
 - **FRs without a test:** none. All 31 of 31 map to at least one test.
 - **Tests without an owning story AC, or behavior that only live or manual evidence can show:**
 
-| Gap | FR / AC                                 | What is missing                                                                                                                                                                                                                        | Closed by (test)                                                               | Suggested owner                  | Status              |
-| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------- | ------------------- |
-| G-1 | AC-1, AC-2, AC-3; FR-2                  | S-215 checks AC-1…AC-3 only live. No story AC owns a pre-live, automated check that the §7.1 rule routes correctly (association, plain issue, bot, `/Review`, `/reviewer`), or that the resolved `pr_number` passes the seeded schema. | TC-215-02 (L1), TC-215-03 (L2.5)                                               | S-215                            | Open                |
-| G-2 | FR-1; S-204 business rule               | "The schema in the seed and the runtime validation agree" is a business rule with no AC, and only the Python side is named in S-204's Testing Requirements. The panel (Ajv) side of the parity check has no owner.                     | CT-01 (`P/tests/unit/code-review-params-parity.test.ts`)                       | S-204                            | Open                |
-| G-3 | AC-7 (restatement), FR-12, FR-14, FR-15 | These are model behaviors. Automated tests can assert only that the prompt carries the instruction. Whether the model obeys is shown live or by MR judgment.                                                                           | TC-209-11, SC-LIVE-04, SC-LIVE-11                                              | S-215                            | Accepted (inherent) |
-| G-4 | FR-19 (fallback model)                  | No live or fixture check exercises the switch to DeepSeek V4 Pro (`MODEL_ID` + IAM). Only static omission of the reasoning field (TC-210-07) is covered.                                                                               | —                                                                              | S-215 (optional)                 | Open                |
-| G-5 | DF-02, DF-03, DF-04, DF-09              | No story AC asserts a hard comment cap, a rule for budget overflow, safe placement of candidate rows, or the seed operational columns. The test plan adds pinned tests marked **(new)**.                                               | TC-212-14, RT-06, TC-209-08, RT-07, TC-208-15, TC-209-16, TC-204-16, TC-214-05 | S-212, S-209, S-208/S-209, S-204 | Open                |
-| G-6 | Property tactics                        | `A/tests/helpers/prng.py` (the seeded helper behind RT-01…RT-12) is not in any story's "Files to Create/Modify".                                                                                                                       | Add in S-205                                                                   | S-205                            | Open                |
+| Gap | FR / AC                                 | What is missing                                                                                                                                                                                                                        | Closed by (test)                                                               | Suggested owner                  | Status                                                                                     |
+| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| G-1 | AC-1, AC-2, AC-3; FR-2                  | S-215 checks AC-1…AC-3 only live. No story AC owns a pre-live, automated check that the §7.1 rule routes correctly (association, plain issue, bot, `/Review`, `/reviewer`), or that the resolved `pr_number` passes the seeded schema. | TC-215-02 (L1), TC-215-03 (L2.5)                                               | S-215                            | Open                                                                                       |
+| G-2 | FR-1; S-204 business rule               | "The schema in the seed and the runtime validation agree" is a business rule with no AC, and only the Python side is named in S-204's Testing Requirements. The panel (Ajv) side of the parity check has no owner.                     | CT-01 (`P/tests/unit/code-review-params-parity.test.ts`)                       | S-204                            | Open                                                                                       |
+| G-3 | AC-7 (restatement), FR-12, FR-14, FR-15 | These are model behaviors. Automated tests can assert only that the prompt carries the instruction. Whether the model obeys is shown live or by MR judgment.                                                                           | TC-209-11, SC-LIVE-04, SC-LIVE-11                                              | S-215                            | Accepted (inherent)                                                                        |
+| G-4 | FR-19 (fallback model)                  | No live or fixture check exercises the switch to DeepSeek V4 Pro (`MODEL_ID` + IAM). Only static omission of the reasoning field (TC-210-07) is covered.                                                                               | —                                                                              | S-215 (optional)                 | Open                                                                                       |
+| G-5 | DF-02, DF-03, DF-04, DF-09              | No story AC asserts a hard comment cap, a rule for budget overflow, safe placement of candidate rows, or the seed operational columns. The test plan adds pinned tests marked **(new)**.                                               | TC-212-14, RT-06, TC-209-08, RT-07, TC-208-15, TC-209-16, TC-204-16, TC-214-05 | S-212, S-209, S-208/S-209, S-204 | Partly resolved: DF-02–DF-04 covered by stories v1.2 (S-209, S-212, S-213 ACs); DF-09 open |
+| G-6 | Property tactics                        | `A/tests/helpers/prng.py` (the seeded helper behind RT-01…RT-12) is not in any story's "Files to Create/Modify".                                                                                                                       | Add in S-205                                                                   | S-205                            | Open                                                                                       |
 
 ### D.2 Story ACs relying only on live or manual evidence (16)
 
@@ -207,31 +208,31 @@ All 13 of 13 PRD ACs have at least one positive and one negative or edge test.
 
 That is 16 story ACs whose primary evidence is live or manual. S-215-AC1…AC4 also get an automated pre-live check (TC-215-02, TC-215-03).
 
-### D.3 Rows pinned by a design finding, or known red against spec v1.0
+### D.3 Rows pinned by a design finding
 
-| Test(s)                                    | Finding       | State against spec v1.0                                                                     |
-| ------------------------------------------ | ------------- | ------------------------------------------------------------------------------------------- |
-| TC-212-14, RT-06 (65,536 bound)            | DF-02 (Major) | **Expected to fail**: no stage after the scenario cut keeps the body under GitHub's limit   |
-| TC-209-08, RT-07 (total ≤ budget)          | DF-03 (Major) | **Expected to fail**: capped blocks can overrun `max_context_tokens`                        |
-| TC-208-15, TC-209-16                       | DF-04 (Major) | Asserts the safe design (row text inside the `verifier` block), which contradicts spec §8.5 |
-| TC-208-05, TC-208-08, TC-208-10, TC-208-11 | DF-05         | Pinned: numbered headings, `Non-Critical`, header rows, cap ordering                        |
-| TC-212-03                                  | DF-01         | Pinned to whichever section order is reconciled                                             |
-| TC-211-01                                  | DF-07         | Pinned: name of the drop reason for a non-reviewed file                                     |
-| TC-212-17, TC-213-08                       | DF-08         | Pinned: budget-message wording on the token path                                            |
-| TC-204-16, TC-214-05                       | DF-09         | Pinned: seed `max_runtime_seconds` = `maxLifetime`                                          |
-| TC-211-12                                  | DF-12         | Pinned: duplicate `verifier_checks` entries                                                 |
-| TC-207-06, TC-213-03                       | DF-13         | Pinned: 404 handling for a PR or a linked issue                                             |
-| TC-205-15                                  | DF-14         | Pinned: GitHub request timeout                                                              |
-| TC-206-09, TC-213-30                       | DF-16         | Pinned: lockfile-only PR                                                                    |
-| TC-207-05                                  | DF-18         | Pinned: cap order vs PR skip                                                                |
-| TC-212-11                                  | DF-19         | Pinned: Markdown link and image neutralization                                              |
-| TC-207-15                                  | DF-20         | Pinned: multiple specs                                                                      |
-| TC-210-05, TC-210-07                       | DF-21         | Pinned: OpenAI-ID detection, prompt-only JSON tolerance                                     |
+| Test(s)                                    | Finding       | State against spec v1.1                                              |
+| ------------------------------------------ | ------------- | -------------------------------------------------------------------- |
+| TC-212-14, RT-06 (65,536 bound)            | DF-02 (Major) | Resolved in spec v1.1 §8.8 (D-36); expected green                    |
+| TC-209-08, RT-07 (total ≤ budget)          | DF-03 (Major) | Resolved in spec v1.1 §8.4 (D-37); expected green                    |
+| TC-208-15, TC-209-16                       | DF-04 (Major) | Matches spec v1.1 §8.5 (D-38): row text inside per-candidate blocks  |
+| TC-208-05, TC-208-08, TC-208-10, TC-208-11 | DF-05         | Pinned: numbered headings, `Non-Critical`, header rows, cap ordering |
+| TC-212-03                                  | DF-01         | Pinned to whichever section order is reconciled                      |
+| TC-211-01                                  | DF-07         | Pinned: name of the drop reason for a non-reviewed file              |
+| TC-212-17, TC-213-08                       | DF-08         | Pinned: budget-message wording on the token path                     |
+| TC-204-16, TC-214-05                       | DF-09         | Pinned: seed `max_runtime_seconds` = `maxLifetime`                   |
+| TC-211-12                                  | DF-12         | Pinned: duplicate `verifier_checks` entries                          |
+| TC-207-06, TC-213-03                       | DF-13         | Pinned: 404 handling for a PR or a linked issue                      |
+| TC-205-15                                  | DF-14         | Pinned: GitHub request timeout                                       |
+| TC-206-09, TC-213-30                       | DF-16         | Pinned: lockfile-only PR                                             |
+| TC-207-05                                  | DF-18         | Pinned: cap order vs PR skip                                         |
+| TC-212-11                                  | DF-19         | Pinned: Markdown link and image neutralization                       |
+| TC-207-15                                  | DF-20         | Pinned: multiple specs                                               |
+| TC-210-05, TC-210-07                       | DF-21         | Pinned: OpenAI-ID detection, prompt-only JSON tolerance              |
 
 ### D.4 Drift
 
 Design Mode has no delivered code, so there is no delivered-vs-requested drift yet. The 22 design findings (DF-01…DF-22, test plan §10)
-are spec and story inconsistencies. **Highest impact: Major** (DF-02, DF-03, DF-04). All are advisory and non-blocking, and they route to
+are spec and story inconsistencies. **Highest open impact: Minor**; DF-02, DF-03, DF-04 (Major) are resolved in spec v1.1 (D-36–D-38). All are advisory and non-blocking, and they route to
 `product-engineer`'s `activity-drift-reconciliation`.
 
 ## E. Audit-Mode fill-in protocol
