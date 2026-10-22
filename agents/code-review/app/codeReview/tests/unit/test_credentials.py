@@ -400,6 +400,20 @@ class TestMintInstallationTokenHttpErrors:
         assert exc.__context__ is None
 
     @patch("credentials.jwt")
+    def test_error_with_unreadable_status_is_github_api_error(self, mock_jwt):
+        mock_jwt.encode.return_value = "signed.jwt.assertion"
+        resp = MagicMock()
+        resp.status_code = None
+        resp.raise_for_status.side_effect = requests.HTTPError("boom")
+        with (
+            patch("credentials.requests.post", return_value=resp),
+            pytest.raises(CredentialError) as exc_info,
+        ):
+            mint_installation_token(100, 200, "pem")
+        assert exc_info.value.code == "GITHUB_API_ERROR"
+        assert "HTTP unknown" in exc_info.value.message
+
+    @patch("credentials.jwt")
     def test_success_status_still_returns_token(self, mock_jwt):
         mock_jwt.encode.return_value = "signed.jwt.assertion"
         resp = _http_response(201, b'{"token": "ghs_ok"}')

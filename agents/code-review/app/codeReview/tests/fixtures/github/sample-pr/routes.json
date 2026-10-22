@@ -1,0 +1,175 @@
+[
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/pulls/42",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "pull.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/pulls/42/files",
+    "query": {
+      "per_page": "100",
+      "page": "1"
+    },
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "pull_files_page1.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/compare/3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c...9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "compare.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/src/app.py",
+    "query": {
+      "ref": "7e1d3c5b9a8f6e4d2c0b1a3f5e7d9c8b6a4f2e0d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "app_py_base.txt"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/src/app.py",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "app_py_head.txt"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/docs/notes%20with%20space.md",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "notes_head.md"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/src/old_name.py",
+    "query": {
+      "ref": "7e1d3c5b9a8f6e4d2c0b1a3f5e7d9c8b6a4f2e0d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "old_name_base.txt"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/src/new_name.py",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "new_name_head.txt"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/AGENTS.md",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "agents_md_head.md"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/docs/adr/ADR-001-use-python.md",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "adr_001_head.md"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/workstream/specification-prd-widgets.md",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "message": "Not Found",
+      "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
+      "status": "404"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/docs/adr",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "dir_docs_adr.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/contents/workstream",
+    "query": {
+      "ref": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
+    },
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body": {
+      "message": "Not Found",
+      "documentation_url": "https://docs.github.com/rest/repos/contents#get-repository-content",
+      "status": "404"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/issues/41",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "issue_41.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/acme/widgets/issues/40",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "issue_40.json"
+  },
+  {
+    "method": "POST",
+    "path": "/repos/acme/widgets/issues/42/comments",
+    "status": 201,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "comment_created.json"
+  }
+]

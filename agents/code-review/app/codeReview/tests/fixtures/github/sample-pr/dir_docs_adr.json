@@ -1,0 +1,23 @@
+[
+  {
+    "name": "ADR-001-use-python.md",
+    "path": "docs/adr/ADR-001-use-python.md",
+    "type": "file",
+    "size": 120,
+    "sha": "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+  },
+  {
+    "name": "ADR-002-sizes.md",
+    "path": "docs/adr/ADR-002-sizes.md",
+    "type": "file",
+    "size": 140,
+    "sha": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7"
+  },
+  {
+    "name": "drafts",
+    "path": "docs/adr/drafts",
+    "type": "dir",
+    "size": 0,
+    "sha": "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8"
+  }
+]
