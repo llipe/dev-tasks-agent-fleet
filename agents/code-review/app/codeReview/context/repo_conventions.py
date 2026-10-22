@@ -59,6 +59,7 @@ __all__ = [
 
 ADR_HEADER = f"ADRs in {ADR_DIR} (title and Status line):\n"
 NO_TITLE = "(no title)"
+BOM = "\ufeff"
 
 _ATX_RE = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)")
 
@@ -96,8 +97,10 @@ def adr_summary(path: str, text: str) -> AdrSummary:
     The Status is a line such as ``Status: Accepted`` or ``**Status:** Accepted``
     (kept as written, stripped), or a ``## Status`` heading followed by its first
     non-blank line when that is not a heading (``Status: <line>``).
-    Case-sensitive. Lines split on ``\\r\\n``, ``\\r`` or ``\\n``.
+    Case-sensitive. Lines split on ``\\r\\n``, ``\\r`` or ``\\n``. One leading
+    UTF-8 BOM (U+FEFF) is dropped first, as GitHub renders the file (QA D3).
     """
+    text = text.removeprefix(BOM)
     title: str | None = None
     status: str | None = None
     # One linear pass (QA D1). ``pending``: a ``Status`` heading was seen and

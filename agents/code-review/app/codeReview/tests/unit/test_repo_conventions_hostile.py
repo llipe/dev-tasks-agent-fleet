@@ -247,14 +247,6 @@ def test_status_heading_scan_is_linear_in_the_number_of_lines():
     assert time.perf_counter() - start < 0.3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA S-208 D3: an ADR saved with a UTF-8 BOM ('\\ufeff# Title') loses its title: "
-        "get_content_raw decodes with 'utf-8' (BOM kept) and adr_summary compares "
-        "line[:2] to '# '. GitHub renders the line as an H1. Expected: title 'Title'."
-    ),
-)
 def test_a_bom_prefixed_adr_keeps_its_title():
     stub = _stub({"docs/adr/a.md": "\ufeff# Title\n\nStatus: Accepted\n"}, [_entry("a.md")])
     ctx = _run(stub)
