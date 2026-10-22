@@ -142,16 +142,17 @@ def issue_report_path(number: int) -> str:
 
 
 # Applied with ``match`` to each line (the spec's ``^`` anchor), outside code
-# fences. Case-sensitive; ``re.ASCII`` keeps ``\s`` to ASCII whitespace and
-# ``\d`` to 0-9, so ``##\u00a0Drift`` and ``## \u0664. Drift`` are not drift
-# headings. D-44 (widening spec §8.3 step 4 / D-33) accepts an optional numeric
+# fences. Case-sensitive. The separators are a space or tab only, as for a
+# CommonMark ATX heading (QA D2: ``\v``/``\f`` would start a section that no
+# later heading ends); ``re.ASCII`` keeps ``\d`` to 0-9, so ``##\u00a0Drift``
+# and ``## \u0664. Drift`` are not drift headings. D-44 (widening spec §8.3 step 4 / D-33) accepts an optional numeric
 # section prefix of 1-4 parts of 1-3 digits with an optional final dot and
 # whitespace after it (``## 4. Drift catalog``, ``## 3 Drift``, ``## 3.2. Drift``),
 # as the verifier template numbers its sections. The ``\b`` after ``Drift`` also
 # admits ``Drift Catalog``, ``Drift findings`` and ``Drift (rolled up)`` (pinned).
 # Linear: every quantified part is bounded or followed by a class it cannot match.
 DRIFT_HEADING_RE = re.compile(
-    r"#{2,3}\s+(?:\d{1,3}(?:\.\d{1,3}){0,3}\.?\s+)?(?:Drift catalog|Drift)\b", re.ASCII
+    r"#{2,3}[ \t]+(?:\d{1,3}(?:\.\d{1,3}){0,3}\.?[ \t]+)?(?:Drift catalog|Drift)\b", re.ASCII
 )
 # Whole, case-sensitive words, searched in a table data row. ``re.ASCII``: a
 # word character is ``[A-Za-z0-9_]``, so ``Non-critical``, ``CRITICAL`` and

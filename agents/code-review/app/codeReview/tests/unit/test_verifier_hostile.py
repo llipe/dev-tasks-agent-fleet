@@ -375,15 +375,6 @@ def test_a_report_path_that_is_a_directory_listing_is_not_parseable():
 
 
 @pytest.mark.parametrize("ws", ["\x0b", "\x0c"])
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA S-208 D2: DRIFT_HEADING_RE accepts ASCII \\v/\\f after the hashes (re.ASCII \\s), "
-        "but _ATX_RE needs a space or tab, so the section level is 0 and no later heading "
-        "ends the section; rows from '## Gates' become candidates. Expected: the heading is "
-        "rejected (CommonMark needs a space or tab) or the section ends at '## Gates'."
-    ),
-)
 def test_vertical_tab_or_form_feed_heading_does_not_swallow_later_sections(ws):
     text = (
         f"# R\n\n##{ws}Drift\n\n| a | b |\n| - | - |\n| x | y |\n\n"
