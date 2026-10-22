@@ -350,3 +350,49 @@ def test_403_without_a_warn_callback_still_skips():
     stub.add(("GET", CONTENTS + "AGENTS.md"), json_response({}, 403))
     ctx = _run(stub)
     assert ctx.source == "CLAUDE.md" and ctx.unavailable
+
+
+# -- ADR size cap (QA gap 1, planner decision) ----------------------------------------
+
+
+def _adr_stub(text: str) -> StubTransport:
+    stub = _stub({}, [_entry("a.md")])
+    stub.add(("GET", CONTENTS + "docs/adr/a.md"), text_response(text))
+    return stub
+
+
+def test_adr_cap_constant():
+    from context.conventions import MAX_ADR_BYTES
+
+    assert MAX_ADR_BYTES == 64 * 1024
+
+
+def test_only_the_first_64_kib_of_an_adr_is_parsed():
+    filler = "x" * 99 + "\n"  # 100 bytes per line
+    head = "# Title\n" + filler * 600  # 60,008 bytes
+    text = head + filler * 100 + "Status: Late\n"
+    ctx = _run(_adr_stub(text))
+    assert ctx.adrs[0].title == "Title"
+    assert ctx.adrs[0].status is None
+
+
+def test_a_status_line_within_64_kib_is_kept():
+    text = "# Title\n" + ("x" * 99 + "\n") * 600 + "Status: Early\n"
+    ctx = _run(_adr_stub(text))
+    assert ctx.adrs[0].status == "Status: Early"
+
+
+def test_the_adr_cap_cuts_at_a_line_boundary():
+    """A line straddling the 64 KiB cap is dropped whole, not cut mid-line."""
+    lead = "# Title\n" + "y" * (64 * 1024 - 8 - 10 - 1) + "\n"  # ends 10 bytes before the cap
+    text = lead + "Status: Straddles the cap\n"
+    ctx = _run(_adr_stub(text))
+    assert ctx.adrs[0].status is None
+
+
+def test_the_adr_cap_counts_bytes_not_characters():
+    """Multi-byte text reaches the cap sooner; a cut multi-byte character is not kept."""
+    text = "# Title\n" + ("é" * 49 + "\n") * 700 + "Status: Late\n"  # 99 bytes per line
+    ctx = _run(_adr_stub(text))
+    assert ctx.adrs[0].status is None
+    assert ctx.adrs[0].title == "Title"
