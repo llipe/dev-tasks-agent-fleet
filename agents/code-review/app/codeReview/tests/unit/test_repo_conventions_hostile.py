@@ -240,17 +240,6 @@ def test_warn_payloads_carry_only_a_validated_path_and_a_fixed_reason():
 # -- defects pinned by this pass (strict xfail) -------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA S-208 D1: adr_summary is quadratic in the number of '## Status' headings. "
-        "Each heading whose next non-blank line is a heading calls "
-        "_status_after_heading(lines, k + 1), which copies lines[start:] (O(n)) and "
-        "returns None, so the scan repeats per heading. 40k lines (~400 KB) take "
-        "~2 s, 80k ~12 s; one ~1 MB hostile ADR at head takes ~20 s and 50 of them "
-        "stall the run past RUN_TIMEOUT. Expected: linear (an index loop, no slice)."
-    ),
-)
 def test_status_heading_scan_is_linear_in_the_number_of_lines():
     text = "# T\n" + "## Status\n" * 40_000
     start = time.perf_counter()

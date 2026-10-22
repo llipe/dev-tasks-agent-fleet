@@ -98,30 +98,27 @@ def adr_summary(path: str, text: str) -> AdrSummary:
     non-blank line when that is not a heading (``Status: <line>``).
     Case-sensitive. Lines split on ``\\r\\n``, ``\\r`` or ``\\n``.
     """
-    lines = LINE_END_RE.split(text)
     title: str | None = None
     status: str | None = None
-    for k, line in enumerate(lines):
+    # One linear pass (QA D1). ``pending``: a ``Status`` heading was seen and
+    # its first non-blank line has not been reached yet.
+    pending = False
+    for line in LINE_END_RE.split(text):
         if title is None and line[:2] in ("# ", "#\t") and line[2:].strip():
             title = _cut(line[2:].strip())
         if status is None:
-            if ADR_STATUS_LINE_RE.match(line):
-                status = _cut(line.strip())
-            elif ADR_STATUS_HEADING_RE.fullmatch(line):
-                status = _status_after_heading(lines, k + 1)
+            if pending and line.strip():
+                pending = False
+                if not _ATX_RE.match(line):
+                    status = _cut("Status: " + line.strip())
+            if status is None and not pending:
+                if ADR_STATUS_LINE_RE.match(line):
+                    status = _cut(line.strip())
+                elif ADR_STATUS_HEADING_RE.fullmatch(line):
+                    pending = True
         if title is not None and status is not None:
             break
     return AdrSummary(path, title, status)
-
-
-def _status_after_heading(lines: Sequence[str], start: int) -> str | None:
-    for line in lines[start:]:
-        if not line.strip():
-            continue
-        if _ATX_RE.match(line):
-            return None
-        return _cut("Status: " + line.strip())
-    return None
 
 
 def render_conventions(source: str | None, content: str | None, adrs: Sequence[AdrSummary]) -> str:
