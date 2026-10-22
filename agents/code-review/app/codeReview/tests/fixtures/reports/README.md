@@ -12,6 +12,7 @@ decodes UTF-8, so the line endings are exactly the ones on disk.
 | `fidelity-report-no-heading.md` | No drift heading; a qualifying row under `## Findings` | `not_parseable` |
 | `fidelity-report-empty.md` | Empty file | `not_parseable` |
 | `fidelity-report-no-table.md` | `## Drift` with a bullet list, no table | `parsed`, 0 candidates, 0 other drift |
-| `fidelity-report-numbered.md` | `## 3. Drift catalog` (the numbered verifier template) | `not_parseable` (spec regex, DF-05) |
+| `fidelity-report-numbered.md` | `## 3. Drift catalog` (the numbered verifier template) | `parsed`, 1 candidate (D-44 numeric prefix) |
+| `fidelity-report-S-207.md` | Byte copy of `workstream/fidelity-report-S-207.md` (real, numbered): `## 3. Drift catalog`, 10 Minor rows | `parsed`, 0 candidates, 10 other drift (D-44) |
 
 The synthetic reports are not verifier output; they exist to pin the parser.

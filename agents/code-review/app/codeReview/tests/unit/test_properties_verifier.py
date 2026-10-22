@@ -79,9 +79,17 @@ def _report(rng: random.Random) -> tuple[str | None, list[tuple[str, bool]], boo
     delimiter = "| " + " | ".join(rng.choice(["---", ":---", "---:", ":-:"]) for _ in range(cols))
     delimiter += " |"
     rows = [_row(rng, cols) for _ in range(rng.randint(0, 8))]
-    heading = rng.choice(["## Drift", "### Drift catalog", "## Drift (rolled up)"])
+    heading = rng.choice(
+        [
+            "## Drift",
+            "### Drift catalog",
+            "## Drift (rolled up)",
+            "## 4. Drift Catalog",
+            "## 3 Drift",
+        ]
+    )
     if kind < 0.2:
-        heading = rng.choice(["## Findings", "## 3. Drift catalog", "# Drift"])
+        heading = rng.choice(["## Findings", "## 1234. Drift catalog", "# Drift"])
     lines = ["# Report", "", heading, "", header, delimiter, *rows, "", "## Gates", "", "- ok"]
     end = rng.choice(ENDINGS)
     text = end.join(lines) + end

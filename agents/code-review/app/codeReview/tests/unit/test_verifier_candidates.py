@@ -54,6 +54,7 @@ NO_HEADING = report_text("fidelity-report-no-heading.md")
 EMPTY = report_text("fidelity-report-empty.md")
 NO_TABLE = report_text("fidelity-report-no-table.md")
 NUMBERED = report_text("fidelity-report-numbered.md")
+S207 = report_text("fidelity-report-S-207.md")
 
 AC7_CRITICAL = (
     "| D1 | The retry loop retries POST requests, so a comment can be posted twice. "
@@ -200,7 +201,30 @@ def test_real_s170_report_parses_with_no_candidates():
 
 @pytest.mark.parametrize(
     "heading",
-    ["## Drift", "### Drift", "## Drift catalog", "### Drift catalog", "## Drift (rolled up)"],
+    [
+        "## Drift",
+        "### Drift",
+        "## Drift catalog",
+        "### Drift catalog",
+        "## Drift (rolled up)",
+        # D-44: an optional numeric section prefix (the real numbered forms).
+        "## 4. Drift Catalog",
+        "## 4. Drift catalog",
+        "## 3. Drift catalog",
+        "## 5. Drift Catalog",
+        "## 6. Drift catalog",
+        "## 3 Drift catalog",
+        "## 3.2. Drift",
+        "### 1.2.3.4 Drift",
+        "## 999. Drift",
+        "##\t4.\tDrift catalog",
+        # Kept as the ``\b`` after ``Drift`` already allowed (pinned, D-44).
+        "## Drift Catalog",
+        "## Drift findings",
+        "## 4. Drift findings",
+        "### Drift #1 — retries",
+        "## Drift-related notes",
+    ],
 )
 def test_drift_heading_forms_that_match(heading):
     section = parse_drift(_report(_table(AC7_CRITICAL), heading=heading))
@@ -216,7 +240,19 @@ def test_drift_heading_forms_that_match(heading):
         "## Drifting",
         "## drift",
         "## DRIFT",
-        "## 4. Drift catalog",
+        "## 1234. Drift",
+        "## 1.2.3.4.5 Drift",
+        "## 1..2 Drift",
+        "## .4 Drift",
+        "## 4.Drift catalog",
+        "## \u0664. Drift catalog",
+        "## \uff14. Drift catalog",
+        "## 4. drift catalog",
+        "## 4) Drift catalog",
+        "## v4. Drift catalog",
+        "# 4. Drift catalog",
+        "#### 4. Drift catalog",
+        "## 4. Drifting",
         " ## Drift",
         "##Drift",
         "##\u00a0Drift",
@@ -248,9 +284,31 @@ def test_no_drift_heading_is_not_parseable():
     assert ctx.state == REPORT_NOT_PARSEABLE
 
 
-def test_numbered_drift_heading_is_not_parseable():
-    """``## 3. Drift catalog`` (the numbered verifier template) misses the spec regex (DF-05)."""
-    assert parse_drift(NUMBERED) is None
+def test_numbered_drift_heading_is_parsed():
+    """D-44: ``## 3. Drift catalog`` (the numbered verifier template) is a drift heading."""
+    section = parse_drift(NUMBERED)
+    assert section is not None
+    assert section.heading == "## 3. Drift catalog"
+    assert [r.candidate for r in section.rows] == [True]
+
+
+def test_real_s207_numbered_report_is_parsed():
+    """D-44: a byte copy of ``workstream/fidelity-report-S-207.md`` (``## 3. Drift catalog``)."""
+    ctx = build_verifier_context([("workstream/fidelity-report-S-207.md", 409, S207)])
+    (report,) = ctx.reports
+    assert report.state == REPORT_PARSED
+    assert report.section.startswith("## 3. Drift catalog\n")
+    assert "## 4. Edge-case" not in report.section
+    assert report.candidates == ()  # 10 Minor items, no Critical
+    assert report.other_drift == 10
+
+
+def test_the_first_matching_heading_wins_over_numbered_sub_headings():
+    text = "## 4. Drift catalog\n\n### Drift #1 — x\n\n" + _table(AC7_CRITICAL)
+    section = parse_drift(text)
+    assert section is not None
+    assert section.heading == "## 4. Drift catalog"
+    assert len(section.rows) == 1
 
 
 def test_empty_report_is_not_parseable():
