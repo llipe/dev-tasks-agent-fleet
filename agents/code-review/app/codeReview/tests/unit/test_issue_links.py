@@ -173,10 +173,12 @@ def test_a_linked_pull_request_uses_one_of_the_five_slots():
     assert all(c.path != f"{ISSUES}/6" for c in stub.calls)
 
 
-# -- TC-207-06: a 404/410 issue is skipped (carry-forward 1, DF-13) ----------
+# -- TC-207-06: a 404/410/301 issue is skipped (carry-forward 1, DF-13) ------
 
 
-@pytest.mark.parametrize(("status", "reason"), [(404, "not_found"), (410, "not_found")])
+@pytest.mark.parametrize(
+    ("status", "reason"), [(404, "not_found"), (410, "not_found"), (301, "not_found")]
+)
 def test_a_missing_issue_is_skipped_without_failing_or_flagging_permission(status, reason):
     stub = StubTransport(
         {

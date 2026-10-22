@@ -203,7 +203,9 @@ def test_a_404_is_not_fetched_twice_across_issues():
         {"workstream/specification-prd-y.md": "# Y\n"},
         missing=("workstream/specification-prd-x.md",),
     )
-    ctx = _resolve(stub, _issue(1, title="[PRD-x] a"), _issue(2, title="[PRD-x] b", labels=("prd:y",)))
+    ctx = _resolve(
+        stub, _issue(1, title="[PRD-x] a"), _issue(2, title="[PRD-x] b", labels=("prd:y",))
+    )
     assert [s.path for s in ctx.specs] == ["workstream/specification-prd-y.md"]
     assert _content_paths(stub) == [
         "workstream/specification-prd-x.md",

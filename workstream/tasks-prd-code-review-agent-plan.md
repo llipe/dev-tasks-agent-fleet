@@ -19,6 +19,7 @@
 - `agents/code-review/app/codeReview/github_client.py` - allowlisted GitHub REST client (S-205); `get_content_bytes` for the byte-exact NUL check (S-206)
 - `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206)
 - `agents/code-review/app/codeReview/context/{issues,spec,conventions}.py` - linked issues, checklist strip, spec resolution and trimming (S-207)
+- `agents/code-review/app/codeReview/context/tokens.py` - `estimate()` (D-27) and line-boundary `truncate()`, the one token estimator; S-209's budget fit reuses it (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
 - `agents/code-review/app/codeReview/{budget,prompt}.py`, `rubric.md` - priority fill, prompt with nonce blocks, rubric v1 (S-209)
 - `agents/code-review/app/codeReview/{bedrock_adapter,findings_schema}.py` - Converse adapter and output schema (S-210)
@@ -35,6 +36,8 @@
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/` - recorded GitHub responses for a sample PR, reused by S-206–S-213 (S-205)
 - `agents/code-review/app/codeReview/tests/unit/{test_classify,test_diff,test_changed_ranges,test_properties_classify,test_properties_diff}.py`, `tests/integration/test_context_diff.py` - S-206 tests (TC-206-\*, RT-02, RT-09)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/expanded_diff.golden` - hand-written golden expanded diff for the sample PR (S-206)
+- `agents/code-review/app/codeReview/tests/unit/{test_issue_links,test_checklist_strip,test_spec_resolve,test_spec_trim,test_tokens,test_properties_issue_links,test_properties_spec,test_properties_checklist}.py`, `tests/integration/test_context_issues_spec.py` - S-207 tests (TC-207-\*, CT-12, RT-03, RT-10, RT-12)
+- `agents/code-review/app/codeReview/tests/fixtures/github/issue-315/` - issue #315 shape, PR #330 linking it, and the webhook-triggers spec served at head (S-207)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
@@ -82,14 +85,14 @@
   - [x] 3.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` — package `validate` green; root `make validate` stops in `dependency-update` (`/usr/bin/python: No module named pytest`, no sibling venv in this runtime) before reaching `code-review`; the known `security-analyst` audit CVE is not tracked here
 
 - [ ] 4.0 Implement Story S-207 (#409): Linked issues and spec resolution · branch `story/S-207-issues-spec`
-  - [ ] 4.1 `[T]` [code-review] L1 `test_issue_links.py`: `closes #1`, `Fixes: #2`, `resolved #3`, `owner/repo#4` ignored, branch `issue/5-x`, dedupe, cap 5, linked PR skipped; regex property tactic
-  - [ ] 4.2 `[T]` [code-review] L1 `test_checklist_strip.py` (heading levels 1–6, case-sensitive) and 8,000-token cap
-  - [ ] 4.3 `[T]` [code-review] L1 `test_spec_resolve.py` (path → title → label, 404 fall-through, none) and `test_spec_trim.py` (outline, `Spec §8` vs `§8.1`, story IDs, reviewed paths)
-  - [ ] 4.4 `[T]` [code-review] Issue 403 → skipped, `issues_unavailable=True`
-  - [ ] 4.5 `[T]` [code-review] `tests/integration/test_context_issues_spec.py` on #315 and `specification-prd-webhook-triggers.md` fixtures
-  - [ ] 4.6 `[I]` [code-review] `context/conventions.py` regex and mapping constants; `context/issues.py`; `context/spec.py` (D-22, D-23, D-24)
-  - [ ] 4.7 Verify Acceptance Criteria: AC1 links; AC2 checklist strip; AC3 cap; AC4 spec resolution; AC5 spec trim; AC6 403
-  - [ ] 4.8 Map each AC to test evidence in the PR body
+  - [x] 4.1 `[T]` [code-review] L1 `test_issue_links.py`: `closes #1`, `Fixes: #2`, `resolved #3`, `owner/repo#4` ignored, branch `issue/5-x`, dedupe, cap 5, linked PR skipped; regex property tactic
+  - [x] 4.2 `[T]` [code-review] L1 `test_checklist_strip.py` (heading levels 1–6, case-sensitive) and 8,000-token cap
+  - [x] 4.3 `[T]` [code-review] L1 `test_spec_resolve.py` (path → title → label, 404 fall-through, none) and `test_spec_trim.py` (outline, `Spec §8` vs `§8.1`, story IDs, reviewed paths)
+  - [x] 4.4 `[T]` [code-review] Issue 403 → skipped, `issues_unavailable=True`
+  - [x] 4.5 `[T]` [code-review] `tests/integration/test_context_issues_spec.py` on #315 and `specification-prd-webhook-triggers.md` fixtures
+  - [x] 4.6 `[I]` [code-review] `context/conventions.py` regex and mapping constants; `context/issues.py`; `context/spec.py` (D-22, D-23, D-24)
+  - [x] 4.7 Verify Acceptance Criteria: AC1 links; AC2 checklist strip; AC3 cap; AC4 spec resolution; AC5 spec trim; AC6 403
+  - [x] 4.8 Map each AC to test evidence in the PR body
   - [ ] 4.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
 - [ ] 5.0 Implement Story S-208 (#410): Verifier drift candidates and conventions · branch `story/S-208-verifier-candidates`

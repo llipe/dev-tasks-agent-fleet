@@ -40,6 +40,10 @@ SPEC = (
     "```\n"
 )
 
+# Below the whole spec, above any selection the tests make.
+TRIM_CAP = 300
+assert estimate(SPEC) > TRIM_CAP
+
 OUTLINE = [
     "# Spec\n",
     "## 1. Intro\n",
@@ -83,7 +87,7 @@ def test_over_the_cap_keeps_outline_citations_story_ids_and_paths():
         citations=("8.1",),
         ids=("S-170",),
         paths=("panel/lib/domain/webhook-routing.ts",),
-        cap=10_000,
+        cap=TRIM_CAP,
     )
     assert (trimmed, truncated) == (True, False)
     for heading in OUTLINE:
@@ -97,7 +101,7 @@ def test_over_the_cap_keeps_outline_citations_story_ids_and_paths():
 
 
 def test_kept_lines_follow_document_order():
-    text, _, _ = _trim(citations=("8.1",), cap=10_000)
+    text, _, _ = _trim(citations=("8.1",), cap=TRIM_CAP)
     lines = text.splitlines(keepends=True)
     assert lines == [
         "# Spec\n",
@@ -116,7 +120,7 @@ def test_kept_lines_follow_document_order():
 
 
 def test_story_id_matches_whole_ids_only():
-    text, _, _ = _trim(ids=("S-17",), cap=10_000)
+    text, _, _ = _trim(ids=("S-17",), cap=TRIM_CAP)
     assert "resolution body" not in text
 
 
@@ -136,14 +140,14 @@ def test_preamble_naming_a_path_is_kept():
 
 
 def test_spec_8_keeps_8_and_its_subsections_but_not_80():
-    text, _, _ = _trim(citations=("8",), cap=10_000)
+    text, _, _ = _trim(citations=("8",), cap=TRIM_CAP)
     for body in ("eight intro", "routing body", "routing notes", "ten body", "resolution body"):
         assert body in text
     assert "eighty body" not in text
 
 
 def test_spec_8_1_keeps_8_1_but_not_8_10():
-    text, _, _ = _trim(citations=("8.1",), cap=10_000)
+    text, _, _ = _trim(citations=("8.1",), cap=TRIM_CAP)
     assert "routing body" in text
     assert "ten body" not in text
     assert "eight intro" not in text
