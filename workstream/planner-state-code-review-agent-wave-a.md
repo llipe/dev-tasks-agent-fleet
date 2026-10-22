@@ -16,7 +16,7 @@
 | 2        | S-205    | #407    | ✅ Merged  | #426 | `story/S-205-github-client`       |
 | 3        | S-206    | #408    | ✅ Merged  | #429 | `story/S-206-expanded-diff`       |
 | 4        | S-207    | #409    | ✅ Merged  | #430 | `story/S-207-issues-spec`         |
-| 5 | S-208 | #410 | ✅ Merged | #431 | `story/S-208-verifier-candidates` |
+| 5        | S-208    | #410    | ✅ Merged  | #431 | `story/S-208-verifier-candidates` |
 | 6        | S-209    | #411    | ⏳ Pending | —    | `story/S-209-budget-prompt`       |
 | 7        | S-210    | #412    | ⏳ Pending | —    | `story/S-210-bedrock-adapter`     |
 | 8        | S-211    | #413    | ⏳ Pending | —    | `story/S-211-findings-validation` |
