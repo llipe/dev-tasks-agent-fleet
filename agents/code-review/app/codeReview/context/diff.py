@@ -284,10 +284,23 @@ def split_lines(text: str) -> list[str]:
     return lines
 
 
+def _unsafe_in_header(c: str) -> bool:
+    """C0, DEL, the C1 range (U+0080-U+009F, which holds NEL), U+2028, U+2029.
+
+    These are every character ``str.splitlines`` breaks on, plus the C1
+    controls a terminal may act on (for example U+009B, CSI).
+    """
+    return c < " " or "\x7f" <= c <= "\x9f" or c in "\u2028\u2029"
+
+
 def _header_path(prefix: str, path: str) -> str:
-    """``a/<path>``, with control characters escaped so a name cannot add lines."""
+    """``a/<path>``, with control characters and line separators escaped.
+
+    A name cannot add lines to the diff for any consumer, including one that
+    splits with ``str.splitlines``.
+    """
     escaped = "".join(
-        c if c >= " " and c != "\x7f" else c.encode("unicode_escape").decode("ascii") for c in path
+        c.encode("unicode_escape").decode("ascii") if _unsafe_in_header(c) else c for c in path
     )
     return prefix + escaped
 

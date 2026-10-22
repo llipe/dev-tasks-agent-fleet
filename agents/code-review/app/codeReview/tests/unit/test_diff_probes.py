@@ -8,10 +8,9 @@ file names, lone-CR and CRLF texts, invalid UTF-8 on the base side, the NUL
 scan on base and rename blobs, worker isolation in the content pool, a huge
 single-line file, and renames whose names carry a backslash or a newline.
 
-One ``xfail(strict=True)`` test pins a source defect reported to ``developer``
-(Unicode line separators in header names); it flips to XPASS (a failure) once
-the source is fixed, so the marker must then be removed. The rename-away
-defect it shared this note with is fixed and its test runs unmarked.
+Two source defects these probes found (rename-away from a name-only path,
+Unicode line separators in header names) are fixed; their tests now run
+unmarked.
 """
 
 from __future__ import annotations
@@ -236,17 +235,13 @@ def test_rename_with_a_newline_in_previous_filename_escapes_the_from_header():
     assert ctx.files[0].diff.splitlines()[:2] == ["--- a/old\\nname.py", "+++ b/new.py"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SOURCE DEFECT (minor): _header_path escapes C0 and DEL only. C1 NEL "
-    "(U+0085) and U+2028/U+2029 survive, so a consumer splitting with "
-    "str.splitlines() sees a forged '+++ b/evil' header line.",
-)
-@pytest.mark.parametrize("ch", ["\x85", " ", " "])
+@pytest.mark.parametrize("ch", ["\x80", "\x85", "\x9b", "\x9f", " ", " "])
 def test_unicode_line_separators_in_a_name_cannot_forge_a_header_line(ch):
     name = f"x{ch}+++ b/evil"
     out = unified_diff(name, name, "a\n", "b\n", "modified")
     assert len(out.splitlines()) == 5
+    escaped = ch.encode("unicode_escape").decode("ascii")
+    assert out.splitlines()[:2] == [f"--- a/x{escaped}+++ b/evil", f"+++ b/x{escaped}+++ b/evil"]
 
 
 # -- line endings --------------------------------------------------------------------
