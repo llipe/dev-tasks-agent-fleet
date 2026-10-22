@@ -44,6 +44,7 @@ __all__ = [
     "MAX_ISSUE_NUMBER",
     "LINE_END_RE",
     "MAX_ADRS",
+    "MAX_ADR_BYTES",
     "MAX_ADR_FIELD_CHARS",
     "MAX_LINKED_ISSUES",
     "MAX_SPEC_CITATIONS",
@@ -145,10 +146,11 @@ def issue_report_path(number: int) -> str:
 # fences. Case-sensitive. The separators are a space or tab only, as for a
 # CommonMark ATX heading (QA D2: ``\v``/``\f`` would start a section that no
 # later heading ends); ``re.ASCII`` keeps ``\d`` to 0-9, so ``##\u00a0Drift``
-# and ``## \u0664. Drift`` are not drift headings. D-44 (widening spec §8.3 step 4 / D-33) accepts an optional numeric
-# section prefix of 1-4 parts of 1-3 digits with an optional final dot and
-# whitespace after it (``## 4. Drift catalog``, ``## 3 Drift``, ``## 3.2. Drift``),
-# as the verifier template numbers its sections. The ``\b`` after ``Drift`` also
+# and ``## \u0664. Drift`` are not drift headings. D-44 (widening spec §8.3
+# step 4 / D-33) accepts an optional numeric section prefix of 1-4 parts of 1-3
+# digits with an optional final dot and a space or tab after it
+# (``## 4. Drift catalog``, ``## 3 Drift``, ``## 3.2. Drift``), as the verifier
+# template numbers its sections. The ``\b`` after ``Drift`` also
 # admits ``Drift Catalog``, ``Drift findings`` and ``Drift (rolled up)`` (pinned).
 # Linear: every quantified part is bounded or followed by a class it cannot match.
 DRIFT_HEADING_RE = re.compile(
@@ -173,6 +175,9 @@ ADR_DIR = "docs/adr"
 # requested, as ``docs/adr/<name>``, so no listed name can add a path segment.
 ADR_NAME_RE = re.compile(r"[A-Za-z0-9._-]+\.md", re.ASCII)
 MAX_ADRS = 50
+# Only the first 64 KiB of each ADR is parsed, cut back to the last line
+# ending inside it (planner decision after the S-208 QA gate, gap 1).
+MAX_ADR_BYTES = 64 * 1024
 # An ADR's title and Status line are each cut to this many characters.
 MAX_ADR_FIELD_CHARS = 200
 # ``Status: Accepted``, ``**Status:** Accepted``, ``- Status: Accepted``: applied

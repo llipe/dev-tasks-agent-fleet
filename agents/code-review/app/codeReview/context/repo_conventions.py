@@ -11,7 +11,8 @@ Read at ``head_sha``:
    the validated name, never from the listed ``path``. Later ones are counted
    (``adrs_ignored``);
 3. from each ADR, the title (the first ``# `` line) and the ``Status`` line
-   (``adr_summary``), each cut to ``MAX_ADR_FIELD_CHARS``.
+   (``adr_summary``), each cut to ``MAX_ADR_FIELD_CHARS``. Only the first
+   ``MAX_ADR_BYTES`` (64 KiB) of an ADR is parsed, cut at a line ending.
 
 The bundle (``render_conventions``) lists the ADRs first and the conventions
 file after, so the whole-bundle cap of 10% of ``max_context_tokens`` cuts the
@@ -41,6 +42,7 @@ from context.conventions import (
     CONVENTIONS_SHARE_DENOMINATOR,
     CONVENTIONS_SHARE_NUMERATOR,
     LINE_END_RE,
+    MAX_ADR_BYTES,
     MAX_ADR_FIELD_CHARS,
     MAX_ADRS,
 )
@@ -156,6 +158,29 @@ def _read(
         return None, True
 
 
+def _read_adr(
+    client: GitHubClient, path: str, head_sha: str, warn: Warn | None
+) -> tuple[str | None, bool]:
+    """Like ``_read``, but only the first ``MAX_ADR_BYTES``, cut at a line ending.
+
+    The cut is made on the bytes, at the last ``\\n`` or ``\\r`` inside the cap,
+    so no multi-byte character is split; a line straddling the cap is dropped.
+    """
+    try:
+        raw = client.get_content_bytes(path, head_sha)
+    except GitHubPermissionDenied as exc:
+        if exc.status != 403:
+            raise
+        _warn_unavailable(warn, path)
+        return None, True
+    if raw is None:
+        return None, False
+    if len(raw) > MAX_ADR_BYTES:
+        head = raw[:MAX_ADR_BYTES]
+        raw = head[: max(head.rfind(b"\n"), head.rfind(b"\r")) + 1]
+    return raw.decode("utf-8", errors="replace"), False
+
+
 def _warn_unavailable(warn: Warn | None, path: str) -> None:
     if warn is not None:
         warn("conventions file unavailable", path=path, reason="permission")
@@ -196,7 +221,7 @@ def repo_conventions(
     adrs: list[AdrSummary] = []
     for name in names[:MAX_ADRS]:
         path = f"{ADR_DIR}/{name}"
-        text, refused = _read(client, path, head_sha, warn)
+        text, refused = _read_adr(client, path, head_sha, warn)
         unavailable = unavailable or refused
         if text is not None:
             adrs.append(adr_summary(path, text))

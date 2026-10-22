@@ -13,7 +13,13 @@ import time
 
 import pytest
 
-from context.conventions import ADR_DIR, CONVENTION_FILES, MAX_ADR_FIELD_CHARS, MAX_ADRS
+from context.conventions import (
+    ADR_DIR,
+    CONVENTION_FILES,
+    MAX_ADR_BYTES,
+    MAX_ADR_FIELD_CHARS,
+    MAX_ADRS,
+)
 from context.repo_conventions import (
     AdrSummary,
     ConventionsContext,
@@ -362,8 +368,6 @@ def _adr_stub(text: str) -> StubTransport:
 
 
 def test_adr_cap_constant():
-    from context.conventions import MAX_ADR_BYTES
-
     assert MAX_ADR_BYTES == 64 * 1024
 
 
