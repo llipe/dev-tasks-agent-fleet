@@ -14,6 +14,7 @@ at 4,000 tokens, is returned as context. No report → ``none``.
 
 from __future__ import annotations
 
+import re
 import time
 
 import pytest
@@ -740,3 +741,29 @@ def test_hostile_reports_are_parsed_quickly(name):
     build_verifier_context([("workstream/fidelity-report-S-1.md", 1, _HOSTILE[name])])
     elapsed = time.perf_counter() - start
     assert elapsed < 2.0, f"{name}: {elapsed:.2f}s"
+
+
+def test_report_403_without_a_warn_callback_still_skips():
+    stub = _stub({})
+    stub.add(("GET", CONTENTS + "workstream/fidelity-report-issue-1.md"), json_response({}, 403))
+    ctx = _run(stub, _issue(1, "x"))
+    assert ctx.unavailable and ctx.reports[0].state == REPORT_NONE
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Story S-1/../../etc/passwd",
+        "Story S-1%2F..%2Fx",
+        "Story S-1\\..\\x",
+        "Story S-12.md?ref=main",
+        "Story S-" + "9" * 200,
+        "[PRD-../../x] Story S-3-rollup",
+    ],
+)
+def test_every_hostile_title_requests_only_report_names_at_head_sha(title):
+    stub = _stub({})
+    _run(stub, _issue(8, title))
+    safe = re.compile(r"workstream/fidelity-report-(?:S-[0-9]+|issue-[0-9]+)\.md")
+    assert stub.calls and all(safe.fullmatch(p) for p in _requested(stub))
+    assert all(c.params == {"ref": HEAD} for c in stub.calls)

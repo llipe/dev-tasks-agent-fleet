@@ -251,6 +251,12 @@ remains empty (`.gitkeep` only) — no recorded API payloads yet.
 answers from a route table) and the recorded fixtures under
 `tests/fixtures/github/<sample>/` (`routes.json` plus GitHub-shaped bodies,
 loaded with `load_fixture("sample-pr")` or `load_fixture("issue-315")`; no real tokens, accounts, or SHAs).
+Fidelity-report inputs for the Layer 1 verifier parser (S-208) live in
+`tests/fixtures/reports/` (a byte copy of `workstream/fidelity-report-S-170.md`
+plus synthetic AC-7, no-heading, numbered-heading, empty, and bullet-list
+reports, described in that directory's `README.md`) and are loaded with
+`tests/helpers/reports.py::report_text(<file name>)`, which decodes the bytes so
+line endings are exactly the ones on disk.
 Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`

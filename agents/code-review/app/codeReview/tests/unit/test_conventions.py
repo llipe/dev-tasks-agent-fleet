@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from context.conventions import ADR_DIR, CONVENTION_FILES, MAX_ADRS, MAX_ADR_FIELD_CHARS
+from context.conventions import ADR_DIR, CONVENTION_FILES, MAX_ADR_FIELD_CHARS, MAX_ADRS
 from context.repo_conventions import (
     AdrSummary,
     ConventionsContext,
@@ -343,3 +343,10 @@ def test_hostile_adr_text_is_summarized_quickly():
     start = time.perf_counter()
     adr_summary("docs/adr/x.md", text * 3)
     assert time.perf_counter() - start < 2.0
+
+
+def test_403_without_a_warn_callback_still_skips():
+    stub = _stub({"CLAUDE.md": "c\n"})
+    stub.add(("GET", CONTENTS + "AGENTS.md"), json_response({}, 403))
+    ctx = _run(stub)
+    assert ctx.source == "CLAUDE.md" and ctx.unavailable

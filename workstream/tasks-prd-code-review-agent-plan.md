@@ -38,6 +38,10 @@
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/expanded_diff.golden` - hand-written golden expanded diff for the sample PR (S-206)
 - `agents/code-review/app/codeReview/tests/unit/{test_issue_links,test_checklist_strip,test_spec_resolve,test_spec_trim,test_tokens,test_properties_issue_links,test_properties_spec,test_properties_checklist}.py`, `tests/integration/test_context_issues_spec.py` - S-207 tests (TC-207-\*, CT-12, RT-03, RT-10, RT-12)
 - `agents/code-review/app/codeReview/tests/fixtures/github/issue-315/` - issue #315 shape, PR #330 linking it, and the webhook-triggers spec served at head (S-207)
+- `agents/code-review/app/codeReview/context/conventions.py` - S-208 adds the report-name mappings, drift heading and candidate-word regexes, token caps, conventions sources, and ADR name/Status regexes
+- `agents/code-review/app/codeReview/tests/unit/{test_verifier_candidates,test_conventions,test_properties_verifier}.py` - S-208 tests (TC-208-\*, CT-11, RT-05)
+- `agents/code-review/app/codeReview/tests/fixtures/reports/`, `tests/helpers/reports.py` - fidelity-report fixtures (byte copy of `fidelity-report-S-170.md`, synthetic AC-7, no-heading, numbered, empty, bullet-list) and their loader (S-208)
+- `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,adr_002_head.md,README.md}` - ADR-002 route with a `## Status` heading (S-208)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
@@ -96,12 +100,12 @@
   - [ ] 4.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
 - [ ] 5.0 Implement Story S-208 (#410): Verifier drift candidates and conventions · branch `story/S-208-verifier-candidates`
-  - [ ] 5.1 `[T]` [code-review] L1 `test_verifier_candidates.py`: real `fidelity-report-S-170.md` (no candidates), synthetic Critical+Unintended and Major+Unintended rows, no drift heading, split cells, `Non-critical`, multiple reports, global numbering; candidate shape (path, row index, text ≤ 300 tokens); drift-row parsing property tactic
-  - [ ] 5.2 `[T]` [code-review] L1 report lookup (`S-<id>`, `issue-<N>`, rollup ignored) and `test_conventions.py` (`AGENTS.md` / `CLAUDE.md`, ADR titles ≤ 50, 10% cap)
-  - [ ] 5.3 `[I]` [code-review] `context/verifier.py`, `context/repo_conventions.py` (D-25, D-33, D-38)
-  - [ ] 5.4 Verify Acceptance Criteria: AC1 lookup; AC2 drift section; AC3 candidates; AC4 drift context; AC5 conventions; AC6 no report
-  - [ ] 5.5 Map each AC to test evidence in the PR body
-  - [ ] 5.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 5.1 `[T]` [code-review] L1 `test_verifier_candidates.py`: real `fidelity-report-S-170.md` (no candidates), synthetic Critical+Unintended and Major+Unintended rows, no drift heading, split cells, `Non-critical`, multiple reports, global numbering; candidate shape (path, row index, text ≤ 300 tokens); drift-row parsing property tactic
+  - [x] 5.2 `[T]` [code-review] L1 report lookup (`S-<id>`, `issue-<N>`, rollup ignored) and `test_conventions.py` (`AGENTS.md` / `CLAUDE.md`, ADR titles ≤ 50, 10% cap)
+  - [x] 5.3 `[I]` [code-review] `context/verifier.py`, `context/repo_conventions.py` (D-25, D-33, D-38)
+  - [x] 5.4 Verify Acceptance Criteria: AC1 lookup; AC2 drift section; AC3 candidates; AC4 drift context; AC5 conventions; AC6 no report
+  - [x] 5.5 Map each AC to test evidence in the PR body
+  - [x] 5.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` — package validate passes; root `make validate` NOT RUN in the S-208 runtime (sibling venvs missing)
 
 - [ ] 6.0 Implement Story S-209 (#411): Budget fit, rubric v1, and prompt builder · branch `story/S-209-budget-prompt`
   - [ ] 6.1 `[T]` [code-review] L1 `test_estimate.py`
