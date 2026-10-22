@@ -3,12 +3,13 @@
 > Derived from [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v2.0
 > and [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v2.0 (issue mode, `/bug-fix` trigger).
 > Waves (D-106): foundations, trigger contract and claim (A) → fix loop and validation (B) → board, runbook and live (C).
-> Active stories: **S-180–S-182, S-184–S-186, S-188–S-195, S-197–S-199** (17). S-183, S-187 and S-196 are removed in v2.0, and their IDs are kept.
+> Active stories: **S-180–S-182, S-184–S-186, S-188–S-195, S-197–S-200** (18). S-183, S-187 and S-196 are removed in v2.0, and their IDs are kept.
 
 ## Changelog
 
 | Version | Date       | Summary                                                  | Author           |
 | ------- | ---------- | -------------------------------------------------------- | ---------------- |
+| 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108): new S-200 (trigger guardrail scope and blocked 👎 reaction) in Wave C. | product-engineer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, D-88–D-106). Removed: S-183, S-187, S-196. Rewritten: S-184, S-185 (refusal checks and reply), S-186, S-188, S-190, S-197, S-198. Small updates: S-180, S-181, S-182 (board probe), S-189, S-194. New: S-199 (Projects v2 board updates). Wave B is unchanged except S-194. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). Stories S-180–S-198 replace the superseded S-180–S-203 (issues #326–#349, closed). | product-engineer |
 | 1.4     | 2026-10-20 | Drift reconciliation of verifier DF-20 to DF-28 (D-79–D-86), accepted by @llipe. ACs changed or added in S-184, S-185, S-186, S-188, S-189, S-190, S-191, S-192, S-193 and S-196; stale wording fixed. | product-engineer |
@@ -944,6 +945,74 @@ This story covers PRD AC-5, AC-6 and D-51. It uses a fixture repo with an issue 
 
 ## Wave C — Board, runbook and live
 
+### Story S-200: Trigger guardrail scope and blocked reaction
+
+**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-184 (seed sets the scope)
+
+#### User Story
+
+As the operator,
+I want `/bug-fix` on one issue to never be silently blocked by another issue's run or PR, and a visible 👎 when the trigger can't start a run,
+So that every `/bug-fix` gets an answer (Goal 4; DF-29).
+
+#### Context
+
+This story covers D-107 and D-108, PRD FR-35, FR-36, AC-25 and AC-26, and spec §8.11. It changes the merged webhook trigger (PR #398) in the panel and the database.
+
+#### Acceptance Criteria
+
+- [ ] A migration adds `agents.guardrail_scope` (`repo` default, `issue`; CHECK constraint). `public.webhook_guardrail` skips G1 and G5 for `issue` scope and keeps G4. Behaviour for `repo` scope is unchanged (D-107).
+- [ ] The bug-fix seed row has `guardrail_scope = 'issue'`.
+- [ ] `panel/lib/github/app-token.ts` reads the App PEM (Secrets Manager), mints and caches an installation token, and never logs the token or the key.
+- [ ] `reactBlocked` adds one 👎 (`-1`) to `comment.id` for `issue_comment` deliveries that matched a rule and were skipped (`concurrency_cap`, a breaker-disabled rule) or rejected (`route_rejected`). It never acts on `no_match`, posts no comment, and records `reaction: ok | failed | skipped` on the delivery (D-108).
+- [ ] **Infra** (`infra-engineer`): the panel's AWS role gets `secretsmanager:GetSecretValue` on the App PEM secret ARN only, recorded in the change record.
+- [ ] PRD AC-25 and AC-26 hold on the fixture repo.
+
+#### Business Rules
+
+- The reaction is best effort; failures never change the delivery outcome or the rule's breaker.
+
+#### Technical Notes
+
+- Port the agents' `credentials.py` token minting to TypeScript (RS256 via Node `crypto` or `jose`).
+- A `repo`-scoped agent's delivery behaviour must be unchanged (regression tests).
+
+#### Testing Requirements
+
+- **Unit Tests:** the reaction decision table; a token cache with expiry; a scrubbed logger.
+- **Integration Tests:** L2.5 `webhook-guardrails.test.ts`:
+  - `issue` scope: an active run plus an open PR in the repo still fire, while G4 still blocks;
+  - `repo` scope: unchanged.
+
+  L2 `fire`/`dispatch` with GitHub mocked: one reaction call, timeout handling, the delivery row recorded.
+- **Manual/UI Testing:** the delivery log shows the reaction result.
+- **Edge-Case Matrix:** a missing PEM secret; an installation not found; a comment deleted before the reaction (404 → `failed`).
+- **Acceptance-Criteria Mapping:** AC1–AC2 → L2.5; AC3–AC4 → unit and L2; AC5 → the change record; AC6 → live evidence in S-198.
+- **Execution Commands:** `pnpm --filter panel run test`, `pnpm --filter panel run test:integration`, `supabase db reset`.
+
+#### Migration Requirements
+
+- Artifact: new timestamped SQL (`agents.guardrail_scope` plus the `webhook_guardrail` replacement). Rollback: drop the column and restore the previous function body. Apply: requires explicit user confirmation. Verify: `select slug, guardrail_scope from agents`; the L2.5 guardrail tests.
+
+#### Implementation Steps
+
+1. L2.5 tests.
+2. Migration.
+3. `app-token.ts`.
+4. `reactBlocked` wiring.
+5. Infra change.
+6. Live check.
+
+#### Files to Create/Modify
+
+- `supabase/migrations/<ts>_agents_guardrail_scope.sql`, `supabase/seed.sql`, `panel/lib/github/app-token.ts`, `panel/lib/webhooks/react-blocked.ts`, `panel/lib/webhooks/fire.ts`, `panel/lib/webhooks/dispatch.ts`, `panel/tests/…`, `infra/changes/<date>-panel-app-pem-read/`.
+
+#### Definition of Done Checklist
+
+- [ ] Migration written and applied (confirmed) · [ ] Tests passing · [ ] Panel gate green · [ ] Infra change recorded · [ ] AC mapped · [ ] PR merged
+
+---
+
 ### Story S-196: Stale-claim sweep
 
 > **Removed in v2.0** (D-94: no lock label, so no sweep). The issue is closed as not planned; the ID is kept so existing references stay valid.
@@ -1142,7 +1211,8 @@ flowchart LR
     S182 -- sandbox PASS --> S191
     S190 --> S191 --> S192 --> S193 --> S194 --> S195
     S182 & S188 & S194 --> S199
-    S194 & S199 --> S197
+    S184 --> S200
+    S194 & S199 & S200 --> S197
     S195 & S197 & S199 --> S198
 ```
 
@@ -1150,7 +1220,7 @@ flowchart LR
 | ---- | ------- | ---- |
 | A | S-180, S-181, S-182, S-184, S-185, S-186, S-188, S-189, S-190 | S-182 sandbox PASS before Wave B |
 | B | S-191–S-195 | In-container confinement evidence (S-195) |
-| C | S-199, S-197, S-198 | Live evidence (AC-16, AC-19–AC-24) |
+| C | S-200, S-199, S-197, S-198 | Live evidence (AC-16, AC-19–AC-26) |
 
 ---
 
@@ -1197,6 +1267,8 @@ flowchart LR
 | AC-20 concurrency | S-188, S-198 | ✅ Covered |
 | AC-21 / AC-22 / AC-23 board | S-199, S-198 | ✅ Covered |
 | AC-24 crash then retry | S-188, S-198 | ✅ Covered |
+| FR-35 / AC-25 guardrail scope | S-200, S-198 | ✅ Covered |
+| FR-36 / AC-26 blocked 👎 reaction | S-200, S-198 | ✅ Covered |
 
 ### Gaps
 
