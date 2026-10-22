@@ -337,6 +337,31 @@ def test_contents_invalid_utf8_is_replaced_not_raised():
     assert client.get_content_raw("bin.dat", HEAD) == "\x00�ok"
 
 
+def test_contents_bytes_are_returned_undecoded_for_byte_exact_binary_detection():
+    """S-206: the NUL check needs byte offsets, which decoding would shift."""
+    from tests.helpers.github_stub import StubResponse
+
+    stub = StubTransport({("GET", f"{R}/contents/bin.dat"): StubResponse(200, b"\xff\x00ok")})
+    client, _ = make_client(stub)
+    assert client.get_content_bytes("bin.dat", HEAD) == b"\xff\x00ok"
+    (call,) = stub.calls
+    assert call.params == {"ref": HEAD}
+    _assert_common_headers(call, accept="application/vnd.github.raw")
+
+
+def test_contents_bytes_404_is_none(sample):
+    client, _, _ = sample
+    assert client.get_content_bytes("workstream/specification-prd-widgets.md", HEAD) is None
+
+
+def test_contents_bytes_unsafe_path_fails_closed_before_transport():
+    stub = StubTransport()
+    client, _ = make_client(stub)
+    with pytest.raises(ForbiddenCall):
+        client.get_content_bytes("dir/a\\b.py", HEAD)
+    assert stub.calls == []
+
+
 def test_contents_list_dir_on_a_file_is_empty():
     stub = StubTransport(
         {("GET", f"{R}/contents/README.md"): json_response({"type": "file", "name": "README.md"})}
