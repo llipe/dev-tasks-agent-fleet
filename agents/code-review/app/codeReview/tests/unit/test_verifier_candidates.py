@@ -827,3 +827,16 @@ def test_every_hostile_title_requests_only_report_names_at_head_sha(title):
     safe = re.compile(r"workstream/fidelity-report-(?:S-[0-9]+|issue-[0-9]+)\.md")
     assert stub.calls and all(safe.fullmatch(p) for p in _requested(stub))
     assert all(c.params == {"ref": HEAD} for c in stub.calls)
+
+
+def test_a_fence_closer_with_trailing_text_does_not_close():
+    """CommonMark: a closer has only whitespace after it, so rows stay inside the fence."""
+    text = (
+        "## Drift\n\n```\n``` not a closer\n"
+        + _table(AC7_CRITICAL)
+        + "```  \n"
+        + _table("| 2 | y | Critical | Unintended |")
+    )
+    section = parse_drift(text)
+    assert section is not None
+    assert [r.text.split("|")[1].strip() for r in section.rows] == ["2"]

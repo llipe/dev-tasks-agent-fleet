@@ -388,15 +388,6 @@ def test_vertical_tab_or_form_feed_heading_does_not_swallow_later_sections(ws):
     "line",
     ["```inline``` code at the start of a paragraph", "``` info`with`backticks"],
 )
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA S-208 D4: _Fence opens a fence on any line starting with ``` even when the "
-        "info string contains a backtick, which CommonMark says is not a fence (it is an "
-        "inline code span). The rest of the drift section is swallowed and a Critical + "
-        "Unintended row after it is lost. Expected: one candidate."
-    ),
-)
 def test_a_backtick_line_that_is_not_a_fence_does_not_hide_rows(line):
     ctx = _one("## Drift\n\n" + line + "\n\n" + _table(CANDIDATE))
     assert [c.id for c in ctx.candidates] == ["V1"]

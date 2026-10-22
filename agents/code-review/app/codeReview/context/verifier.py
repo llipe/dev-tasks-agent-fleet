@@ -261,7 +261,12 @@ def is_candidate_row(line: str) -> bool:
 
 
 class _Fence:
-    """Tracks fenced code blocks (backticks or tildes, closed by a fence as long)."""
+    """Tracks fenced code blocks (CommonMark).
+
+    An opener is 0-3 spaces then 3+ backticks or tildes; a backtick opener's
+    info string may not contain a backtick. A closer uses the same character,
+    is at least as long as the opener, and has only whitespace after it.
+    """
 
     def __init__(self) -> None:
         self.open: str | None = None
@@ -279,7 +284,12 @@ class _Fence:
                 self.open = None
             return True
         if m is not None:
-            self.open = m.group(1)
+            fence = m.group(1)
+            # A backtick fence's info string may not contain a backtick
+            # (CommonMark); such a line is inline code, not a fence (QA D4).
+            if fence[0] == "`" and "`" in line[m.end() :]:
+                return False
+            self.open = fence
             return True
         return False
 
