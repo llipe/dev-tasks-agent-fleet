@@ -409,11 +409,11 @@ The rubric and system prompt encode the scope (PRD FR-14, FR-15, FR-20, FR-21), 
 
 #### Testing Requirements
 
-- **Unit Tests:** `test_estimate.py`, `test_budget_fit.py` (order, caps, smallest-first, dropped list, diff-over-budget), `test_prompt.py` (all blocks present, nonce wrapping, forged `<<<END` inside content stays inside, candidates outside markers, rubric version).
+- **Unit Tests:** `test_estimate.py`, `test_budget_fit.py` (priority order, `min(cap, remaining)`, truncation and omission named, smallest-first files, diff-over-budget, invariant over random inputs at `max_context_tokens` 20,000), `test_prompt.py` (all blocks present, nonce wrapping, forged `<<<END` inside content stays inside, candidate IDs outside and row text inside per-candidate blocks, rubric version).
 - **Integration Tests:** prompt-capture assertions for AC-4, AC-6, AC-8 run in S-213.
 - **Manual/UI Testing:** read one rendered prompt for a fixture PR in the PR description.
 - **Edge-Case Matrix:** no issues, no spec, no reports; every block at cap; one huge file and many small ones.
-- **Acceptance-Criteria Mapping:** AC-1 → `test_estimate.py`; AC-2 → `test_budget_fit.py`; AC-3/AC-4 → `test_prompt.py::test_rubric_*`; AC-5 → `test_prompt.py::test_nonce_*`.
+- **Acceptance-Criteria Mapping:** AC-1 → `test_estimate.py`; AC-2/AC-3 → `test_budget_fit.py`; AC-4/AC-5 → `test_prompt.py::test_rubric_*`; AC-6 → `test_prompt.py::test_nonce_*`; AC-7 → `test_prompt.py::test_candidate_blocks_*`; AC-8 → `test_prompt.py::test_sink`.
 - **Execution Commands:** `make -C agents/code-review/app/codeReview test`.
 
 #### Implementation Steps
@@ -610,7 +610,7 @@ Implements the layout in PRD FR-24 and spec §8.8, the size limit (D-28), the ru
 
 #### Testing Requirements
 
-- **Unit Tests:** `test_render.py`: clear and blocking layouts; empty sections omitted; verifier states; mention and HTML neutralization; 60k truncation stages; budget and failure messages.
+- **Unit Tests:** `test_render.py`: clear and blocking layouts; empty sections omitted; verifier states; mention and HTML neutralization; each of the five size stages; worst case at schema maxima with escape-heavy text (all `<`) stays ≤ 60,000 chars; verifier rows taken from wrapper data even when the model's `reason` quotes other text; budget and failure messages.
 - **Integration Tests:** S-213.
 - **Manual/UI Testing:** paste a rendered snapshot into a GitHub comment preview on a scratch PR and check the layout.
 - **Edge-Case Matrix:** 0 findings; 40 findings with 1,500-char scenarios; a title containing `</details>`; `@everyone` in a scenario.
@@ -682,7 +682,7 @@ Replaces S-204's placeholder with the spec §8.1 pipeline, outcomes (PRD FR-29),
 #### Testing Requirements
 
 - **Unit Tests:** `test_outcomes.py` (verdict → outcome mapping; error → code → comment-or-not table), `test_deadline.py`.
-- **Integration Tests:** `test_pipeline_e2e.py` on recorded fixtures + fake Bedrock: clear review; blocking review; AC-7 verifier (Critical+Unintended confirmed → blocking; Major not listed); AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` → no second post; artifact and metrics shape; prompt-capture assertions.
+- **Integration Tests:** `test_pipeline_e2e.py` on recorded fixtures + fake Bedrock: clear review; blocking review; AC-7 verifier (Critical+Unintended confirmed → blocking; Major not listed); AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` → one short failure comment, and none after a 401/403; artifact and metrics shape; prompt-capture assertions.
 - **Manual/UI Testing:** run the agent locally (`agentcore dev` or `python main.py` with a fixture payload) against a scratch PR in a test repo, using a personal token, before Wave B.
 - **Edge-Case Matrix:** deadline hit during Converse; SIGTERM during `post`; PR closed between invoke and `load_pr`; PR with only lockfile changes; force-push after `load_pr` (review stays on captured SHA).
 - **Acceptance-Criteria Mapping:** AC-1 → `test_steps`; AC-2 → `test_closed_pr`, `test_draft_pr`, `test_no_ci_read`; AC-3 → `test_sha_pinned`; AC-4 → `test_budget_path`; AC-5 → `test_outcomes.py`; AC-6 → `test_artifact_metrics`; AC-7 → `test_errors_*`; AC-8 → `test_deadline.py`; AC-9 → `test_new_comment_each_run`; AC-10 → `test_prompt_capture_*`.
