@@ -6,7 +6,7 @@
 - Integration branch: `integration/code-review-agent` (from `main` @ dc89014)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-22
-- Last updated: 2026-10-22 (S-207 merged)
+- Last updated: 2026-10-22 (S-208 merged)
 
 ## Story Status
 
@@ -16,7 +16,7 @@
 | 2        | S-205    | #407    | ✅ Merged  | #426 | `story/S-205-github-client`       |
 | 3        | S-206    | #408    | ✅ Merged  | #429 | `story/S-206-expanded-diff`       |
 | 4        | S-207    | #409    | ✅ Merged  | #430 | `story/S-207-issues-spec`         |
-| 5        | S-208    | #410    | ⏳ Pending | —    | `story/S-208-verifier-candidates` |
+| 5 | S-208 | #410 | ✅ Merged | #431 | `story/S-208-verifier-candidates` |
 | 6        | S-209    | #411    | ⏳ Pending | —    | `story/S-209-budget-prompt`       |
 | 7        | S-210    | #412    | ⏳ Pending | —    | `story/S-210-bedrock-adapter`     |
 | 8        | S-211    | #413    | ⏳ Pending | —    | `story/S-211-findings-validation` |
@@ -25,9 +25,9 @@
 
 ## Current Position
 
-- Next story: S-208 (#410)
-- Last merged PR: #430 (merge commit 6becd1d)
-- Integration branch HEAD: 6becd1d + checkpoint commit (package `validate` green post-merge)
+- Next story: S-209 (#411)
+- Last merged PR: #431 (merge commit ecc721f)
+- Integration branch HEAD: ecc721f + checkpoint commit (package `validate` green post-merge)
 
 ## Decisions Log
 
@@ -51,3 +51,6 @@
 - 2026-10-22: S-207 merge gates: developer gates PASS; qa-engineer coverage_gate PASS (21ae48d, hostile-input suite) found a CR-only FR-10 checklist leak, quadratic spec-heading (~24 s) and issue-link (~3.4 s) regexes, and Unicode-digit links; all fixed in 9ee1b47 with D-43 and a 200-citation cap; verifier High / Minor, 10 drift items (07d46b2). D-43 logged.
 - 2026-10-22: Spec write-back backlog adds S-207 DR-1 (DF-18), DR-2 (DF-20), DR-3 (PRD §15 spec name), DR-4 (skip taxonomy, §13), DR-5 (tokens.py), DR-6 (D-43), DR-7 (hardening), DR-8 (context/ naming); undetermined DR-9 (setext spec headings in trimming) and DR-10 (story IDs from titles only) go to the user with the batch.
 - 2026-10-22: Carry forward to S-209/S-213: import `estimate`/`truncate` from `context/tokens.py`; read `SpecContext.specs`; pass a `warn` callback; render "issues unavailable (permission)".
+- 2026-10-22: S-208 merge gates. Developer gates PASS. D-44 (numbered drift headings) taken by the planner: the spec regex rejected every report for this PRD. qa-engineer `coverage_gate` PASS (2c942d6) found D1 (quadratic ADR Status scan), D2 (`\v`/`\f` heading never ends its section), D3 (BOM ADR title), D4 (backtick line taken as a fence, losing a Critical+Unintended row); all fixed, plus a 64 KiB per-ADR cap. Verifier verdict High, highest drift Minor, 12 items (a1cc47d). DR-10 (S-207 `spec.py` fence) fixed in the same PR through the shared `context/markdown.py`. D-44 and D-45 logged.
+- 2026-10-22: Spec write-back backlog adds S-208 DR-1 (D-44 regex, §8.3 step 4), DR-2 (test-plan TC-208-05, EC-16, DF-05, matrix rows), DR-3 (§13 403 extension), DR-4 (row_index), DR-5..DR-8 (D-45 details, QA contract details), DR-12 (1,000-entry `docs/adr` listing limit in §8.3 step 5). For the user: DR-9 (PRD FR-9 asks for the report verdict line, which the spec does not pass; add it in S-209 or amend FR-9). Accepted residual: DR-11 (BOM on line 1 of a report).
+- 2026-10-22: Carry forward. S-209: only `Candidate.label()` goes outside nonce markers, `Candidate.text` goes in a `verifier-candidate V<k>` block and `VerifierReport.section` in a `verifier` block; the §8.4 d 10%-of-R cap still applies; candidate text may end in `[truncated]`. S-212: render per-report states, `unavailable` (a 403 shows as `none` plus `unavailable`), and `other_drift` counts; the candidate count is uncapped, so the size stages matter. S-213: wire `verifier_candidates(client, issues, head_sha, warn=)` and `repo_conventions(client, head_sha, max_context_tokens=, warn=)`.
