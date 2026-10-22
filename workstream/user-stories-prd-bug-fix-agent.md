@@ -1,14 +1,15 @@
 # User Stories — Bug Fix Agent
 
-> Derived from [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v1.5
-> and [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v1.4. Stories follow the
-> D-59 wave order: foundations, contract and claim (Wave A) → fix loop and validation (Wave B) →
-> recovery and live (Wave C). Story IDs continue the fleet sequence from S-179: **S-180 … S-198**.
+> Derived from [`specification-prd-bug-fix-agent.md`](specification-prd-bug-fix-agent.md) v2.0
+> and [`prd-bug-fix-agent.md`](../docs/requirements/prd-bug-fix-agent.md) v2.0 (issue mode, `/bug-fix` trigger).
+> Waves (D-106): foundations, trigger contract and claim (A) → fix loop and validation (B) → board, runbook and live (C).
+> Active stories: **S-180–S-182, S-184–S-186, S-188–S-195, S-197–S-199** (17). S-183, S-187 and S-196 are removed in v2.0, and their IDs are kept.
 
 ## Changelog
 
 | Version | Date       | Summary                                                  | Author           |
 | ------- | ---------- | -------------------------------------------------------- | ---------------- |
+| 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, D-88–D-106). Removed: S-183, S-187, S-196. Rewritten: S-184, S-185 (refusal checks and reply), S-186, S-188, S-190, S-197, S-198. Small updates: S-180, S-181, S-182 (board probe), S-189, S-194. New: S-199 (Projects v2 board updates). Wave B is unchanged except S-194. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). Stories S-180–S-198 replace the superseded S-180–S-203 (issues #326–#349, closed). | product-engineer |
 | 1.4     | 2026-10-20 | Drift reconciliation of verifier DF-20 to DF-28 (D-79–D-86), accepted by @llipe. ACs changed or added in S-184, S-185, S-186, S-188, S-189, S-190, S-191, S-192, S-193 and S-196; stale wording fixed. | product-engineer |
 | 1.3     | 2026-10-20 | Drift reconciliation of the verifier's Minor findings DF-04 to DF-19 (D-64–D-78), accepted by @llipe. ACs changed or added in S-182, S-184, S-185, S-187, S-188, S-190, S-191, S-192, S-193, S-194 and S-196. | product-engineer |
@@ -21,12 +22,12 @@
 - **Layers** per `TESTING.md`. L1 unit, L2 component, L2.5 integration (live local Supabase, `REQUIRE_LOCAL_DB=1`), E2E (Playwright), **IC** in-container (deployed AgentCore runtime), **Live** (real fixture repo).
 - **Agent paths** are relative to `agents/bug-fix/app/bugFix/`. Tests live under `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}`, as in the siblings.
 - **Agent quality gate.** From `agents/bug-fix/app/bugFix/`: `make lint && make format-check && make typecheck && make test && make audit`. **Panel quality gate:** `pnpm --filter panel run lint && pnpm --filter panel run format:check && pnpm --filter panel run typecheck && pnpm --filter panel run test && pnpm run audit`. **Repo gate:** `make validate`.
-- **Inert until scheduled.** The agent ships with no schedule (spec §15). Every story can merge without acting on any repository until an operator invokes it.
+- **Inert until a rule exists.** The agent ships with no webhook rule (spec §15). Every story can merge without acting on any repository until an operator configures the rule or invokes it manually.
 - **Infra stories** run through `infra-engineer` (approval-gated, reversible, recorded under `infra/changes/`), never `developer`.
 
 ---
 
-## Wave A — Foundations, contract and claim
+## Wave A — Foundations, trigger contract and claim
 
 ### Story S-180: Agent scaffold, image, and managed Claude Code policy
 
@@ -46,7 +47,7 @@ This story only builds the skeleton. It establishes the sibling module set (D-03
 
 - [ ] `agents/bug-fix/` mirrors the sibling layout: `agentcore/agentcore.json`, `app/bugFix/{main.py, config.py, Dockerfile, Makefile, pyproject.toml}`, `README.md`, `AGENTS.md`.
 - [ ] Copied sibling modules: `agent_reporter.py`, `heartbeat.py`, `signal_backstop.py`, `scrubber.py`, `credentials.py`. Each carries a header comment naming its source and source commit.
-- [ ] `agentcore.json`: runtime `bug_fix`, `Container`, `PUBLIC` network, `maxLifetime: 3600`, `envVars` `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID` (`agent-fleet/prod/ANTHROPIC_API_KEY`), and `MODEL_ID` (a Sonnet id on the Anthropic API). No Bedrock reference (D-50).
+- [ ] `agentcore.json`: runtime `bug_fix`, `Container`, `PUBLIC` network, `maxLifetime: 3600`, `envVars` `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID` (`agent-fleet/prod/ANTHROPIC_API_KEY`), `PROJECTS_TOKEN_SECRET_ID` (`agent-fleet/prod/GITHUB_PROJECTS_TOKEN`), `BOARD_UPDATES_ENABLED=1`, and `MODEL_ID` (a Sonnet id on the Anthropic API). No Bedrock reference (D-50).
 - [ ] The Dockerfile builds on ARM64 with Python 3.13, Node 26 + pnpm, git, `bubblewrap`, `socat`, and a pinned `@anthropic-ai/claude-code` version.
 - [ ] Users `wrapper` and `fixer` exist with different uids. `/work/repo` and `/work/out` are owned by `fixer`. `/home/fixer` exists.
 - [ ] `/etc/claude-code/managed-settings.json` is root-owned with mode 0644. It enables the sandbox, has the registry-only network allow-list, and denies `Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, and Read/Edit of `/proc/**`, `/etc/claude-code/**`, `/work/secrets/**` (spec §12). Key names are provisional until S-182.
@@ -112,7 +113,8 @@ D-58 sets this scope. The panel's invoke policy lists runtime ARNs explicitly, s
 
 - [ ] The operator has created a dedicated Anthropic API key with a spend cap. It is stored as `agent-fleet/prod/ANTHROPIC_API_KEY` in Secrets Manager. The change record holds the cap value, never the key.
 - [ ] The S-180 image is deployed with `agentcore deploy`. `agentcore status` reports the runtime ARN, and the change record holds it.
-- [ ] The runtime role can call `secretsmanager:GetSecretValue` on exactly three ARNs: the Supabase key, the App PEM, and the Anthropic key. It has no `bedrock:*`. Simulated with `aws iam simulate-principal-policy`.
+- [ ] **Operator action:** a classic PAT with only the `project` scope is created and stored as `agent-fleet/prod/GITHUB_PROJECTS_TOKEN`. The change record holds the scope and expiry, never the token (D-99).
+- [ ] The runtime role can call `secretsmanager:GetSecretValue` on exactly four ARNs: the Supabase key, the App PEM, the Anthropic key and the Projects token. It has no `bedrock:*`. Simulated with `aws iam simulate-principal-policy`.
 - [ ] The panel's `invoke-runtime` policy includes the new runtime ARN and its `runtime-endpoint/DEFAULT`. Invoking the stub from the deployed panel creates a run that ends `succeeded`/`not_applicable`.
 - [ ] The GitHub App has **Issues: read and write**, accepted on every installation in `github_installations`. Verified by the `permissions.issues == "write"` field of a minted token, and recorded.
 - [ ] The change record has backup and revert steps for each item.
@@ -183,7 +185,15 @@ D-49 found that env stripping alone leaves the runtime role reachable. D-51 reli
 - [ ] As `fixer`, `/proc/<wrapper pid>/environ` and `/proc/<wrapper pid>/mem` are unreadable. No `AWS_*` or `AWS_CONTAINER_*` variable is present.
 - [ ] Through `claude -p` (as `fixer`, in the sandbox): a repo `.claude/settings.json` allow rule for `Bash(git push:*)` loses to the managed deny rule, and `WebFetch` is denied.
 - [ ] The verified managed-settings key names and the CLI version are recorded in the spike report `workstream/spike-bug-fix-sandbox.md`, and `managed-settings.json` is updated to match.
-- [ ] **Exit rule:** if any check fails, the report says so. Wave B stories stay blocked, and the finding goes to `product-engineer` drift reconciliation (spec §12).
+- [ ] **Board probe** (D-105), with `GITHUB_PROJECTS_TOKEN` on the linked board #5:
+  - `repository.projectsV2` on `llipe/dev-tasks` returns #5;
+  - on the probe issue `[probe] bug-fix board probe` in `llipe/dev-tasks`, `addProjectV2ItemById` is idempotent;
+  - `updateProjectV2ItemFieldValue` sets `In progress`, `In review` and `Ready`, each read back;
+  - the PAT is absent from every `fixer` env and readable file;
+  - without the PAT the board is disabled and the run ends normally.
+  
+  Cleanup deletes the card and closes the probe issue. If the first three checks fail, the probe sets `BOARD_UPDATES_ENABLED=0` and routes the finding to drift; this doesn't block Wave B.
+- [ ] **Exit rule (sandbox):** if any sandbox check fails, the report says so. Wave B stories stay blocked, and the finding goes to `product-engineer` drift reconciliation (spec §12).
 
 #### Business Rules
 
@@ -227,71 +237,7 @@ D-49 found that env stripping alone leaves the runtime role reachable. D-51 reli
 
 ### Story S-183: Panel `string-list` schema-form control
 
-**Priority:** High · **Estimated Size:** M · **Dependencies:** none (parallel) · **Pixel contract:** `DESIGN.md` §3.11 (new), §3.2, §3.3, §6.4
-
-#### User Story
-
-As the operator,
-I want to edit list-valued agent params, such as label lists, in the invoke form and the schedule dialog,
-So that each schedule can set its own selection and claim labels (D-44, D-45).
-
-#### Context
-
-D-47 found that the form maps any `items` property to `unsupported` and that both dialogs skip it on submit. D-48 adds a fifth control kind without bringing in a JSON-Schema form library (SD8).
-
-#### Acceptance Criteria
-
-- [ ] `buildFieldDescriptors` maps a property with `type: "array"`, `items.type: "string"`, and no `oneOf`/`anyOf`/`allOf`/`properties` to `control: "string-list"`, carrying `minItems`, `uniqueItems`, `items.minLength`, and `default`. Arrays of other item types, and objects, stay `unsupported`.
-- [ ] `FieldRow` renders a String List built from DESIGN.md §3.2 Input and §3.3 Tag tokens:
-  - Enter or Tab commits a chip;
-  - Backspace on an empty input removes the last chip;
-  - each chip's × button has `aria-label="Remove <value>"`;
-  - a pasted newline-separated list splits into chips;
-  - commas are kept inside a chip (`"a, b"` stays one chip);
-  - the focus ring follows §6.4.
-- [ ] `InvokeDialog` and `ScheduleDialog` pre-fill a `string-list` from schema `default`, then `default_params`, and submit it as a JSON array. They still skip `unsupported`.
-- [ ] Ajv errors (`minItems`, `uniqueItems`, `minLength`) render inline under the field, on both client and server.
-- [ ] `DESIGN.md` gains §3.11 String List (anatomy, tokens, states, keyboard behaviour), plus notes in §5.4 and §5.7, with a changelog row.
-- [ ] Saving a schedule with custom labels, then firing it, delivers the array in the agent payload.
-
-#### Business Rules
-
-- Labels may contain spaces, colons, and commas. The control never splits on commas.
-- Existing agents: no seeded sibling schema has a list-of-strings property. This is confirmed in the PR description.
-
-#### Technical Notes
-
-- Spec §10. Files: `panel/lib/schema/form.ts:24,70-129`, `panel/components/invoke/FieldRow.tsx`, `InvokeDialog.tsx:48-59,87`, `ScheduleDialog.tsx:126-150`. The shared Ajv lives in `panel/lib/schema/ajv.ts`.
-- DESIGN.md is owned by `ux-engineer`. A `ux-engineer` lite pass is recommended before implementation.
-
-#### Testing Requirements
-
-- **Unit Tests:** `tests/unit/form.test.ts` covers string-list mapping, the unsupported shapes (array of numbers, array of objects, `items` plus `oneOf`), and default propagation.
-- **Integration Tests:** L2 component tests (`FieldRow` chip keyboard, paste and ARIA behaviour; both dialogs pre-fill and submit). L2.5: schedule save, then fire, round-trips the array through `validateParams`.
-- **Manual/UI Testing:** `/agents/bug-fix/invoke` and `/schedules` → new schedule → edit labels → save → reopen.
-- **Edge-Case Matrix:** an empty list with `minItems` 1 shows the error; a duplicate chip shows a `uniqueItems` error; a whitespace-only chip is rejected; very long label text wraps; 20+ chips stay usable; a pasted list containing blank lines drops the blanks.
-- **Acceptance-Criteria Mapping:** AC1 → form.test; AC2 → FieldRow component; AC3–AC4 → dialog component tests; AC5 → DESIGN.md diff; AC6 → L2.5 plus E2E `tests/e2e/schedules-string-list.spec.ts`.
-- **Execution Commands:** `pnpm --filter panel run test`, `pnpm --filter panel run test:integration`, `pnpm --filter panel run test:e2e`.
-
-#### Migration Requirements
-
-- Opt-out: UI-only, no schema change.
-
-#### Implementation Steps
-
-1. Form-mapping tests, then the implementation.
-2. `FieldRow` String List.
-3. Dialog wiring.
-4. DESIGN.md §3.11.
-5. L2.5 and E2E.
-
-#### Files to Create/Modify
-
-- `panel/lib/schema/form.ts`, `panel/components/invoke/FieldRow.tsx` (+ CSS module), `panel/components/invoke/InvokeDialog.tsx`, `panel/components/schedules/ScheduleDialog.tsx`, `DESIGN.md`, and the tests under `panel/tests/{unit,component,integration,e2e}/`.
-
-#### Definition of Done Checklist
-
-- [ ] Tests passing · [ ] Panel gate green · [ ] DESIGN.md updated · [ ] Reviewed · [ ] AC mapped to evidence · [ ] PR merged
+> **Removed in v2.0** (D-95: bug-fix has no list params). The issue is closed as not planned; the ID is kept so existing references stay valid.
 
 ---
 
@@ -302,44 +248,45 @@ D-47 found that the form maps any `items` property to `unsupported` and that bot
 #### User Story
 
 As the operator,
-I want `bug-fix` registered with its params schema and defaults,
-So that the panel can invoke it and schedules can carry its label and budget params.
+I want `bug-fix` registered with its issue-mode params schema,
+So that the panel and the `/bug-fix` webhook rule can invoke it for one issue.
 
 #### Context
 
-Spec §5.1 and §5.2. The defaults live in the seed, never in agent code (D-45, D-57). `repo` is not a param (D-60).
+This story covers spec §5.1 and §5.2 (v2.0). `issue_number` is the only required param. There are no label or assignee params (D-93), and `repo` is not a param (D-60).
 
 #### Acceptance Criteria
 
-- [ ] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql` upserts `bug-fix` with the siblings' `on conflict (slug) do update` shape. `supabase/seed.sql` mirrors it.
+- [ ] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql` upserts `bug-fix` with the siblings' `on conflict (slug) do update` shape, and `supabase/seed.sql` mirrors it.
 - [ ] The row has `requires_repository = true`, `max_runtime_seconds = 3600`, `grace_seconds = 120`, `start_timeout_seconds = 300`, and the S-181 `runtime_arn`.
-- [ ] `params_schema` equals spec §5.2, including `additionalProperties: false`. `default_params` holds the same defaults (labels, `assignee: "llipe"`, budgets, caps).
-- [ ] `params_schema.required` = the four label lists plus `assignee`. Budgets and caps are optional, and `params.py` applies defaults equal to the seed values when they are absent; a missing safety bound never means unbounded (D-68). Label comparisons are case-insensitive (D-69).
-- [ ] `params.py` parses the payload `params` into a typed object, fills absent keys from nothing (the agent rejects a missing required label list with a typed error rather than inventing a default), and enforces the cross-field rules: `claim_remove_labels ⊆ select_labels`, and non-empty `select_labels` and `claim_add_labels` (D-46).
+- [ ] `params_schema` equals spec §5.2. It has `required: ["issue_number"]`, plus `trigger_comment_id`, `project`, the three `status_*` names, budgets and caps, and `additionalProperties: false`. `default_params` holds only the budget, cap and status defaults (D-93, D-102).
+- [ ] `params.py` parses the payload `params` into a typed object. It applies the schema's defaults for budgets, caps and status names, and enforces the schema's type and range bounds. A missing `issue_number`, or any bounds violation, raises a typed error naming the key, which S-185 turns into refusal `invalid_params` (D-82).
+- [ ] A webhook payload mapped with `from_payload {"issue_number": "issue.number", "trigger_comment_id": "comment.id"}` resolves through `resolveRoute` into valid params (D-88).
 
 #### Business Rules
 
-- The agent code holds **no** label or assignee default (D-45).
+- The agent code holds no label, assignee or project default (D-93).
 
 #### Technical Notes
 
-- `default_params` reaches runs through the form pre-fill (S-183). With `required` keys (D-68), a schedule saved without the label lists is rejected by the panel at save and at fire (`INVALID_PARAMS`). Only a direct invoke reaches the agent without them, and that ends `not_applicable` through S-185 (D-86).
+- `panel/lib/domain/webhook-resolve.ts` accepts only scalar `from_payload` values and validates them with the same Ajv path.
 
 #### Testing Requirements
 
-- **Unit Tests:** `test_params.py` covers valid defaults, the subset violation, an empty select list, an empty claim-add list, a missing key, and unknown keys being ignored.
-- **Integration Tests:** L2.5: `db reset`, then the row exists. `validateParams` against the seeded schema accepts the defaults, rejects `params.repo` (`additionalProperties`), and rejects an empty `select_labels`.
-- **Manual/UI Testing:** `/agents/bug-fix/invoke` shows every field, with the label lists as String Lists once S-183 is in.
-- **Edge-Case Matrix:** labels with unicode or a colon; duplicate labels (`uniqueItems`); `max_turns` at its 5 and 100 boundaries.
-- **Acceptance-Criteria Mapping:** AC1–AC3 → L2.5 `bug-fix-seed.test.ts`; AC4 → `test_params.py`.
+- **Unit Tests:** `test_params.py` covers valid params, a missing `issue_number`, every bound's edges, a wrong type, and unknown keys being ignored.
+- **Integration Tests:** L2.5 `bug-fix-seed.test.ts`:
+  - after `db reset`, the row exists;
+  - `validateParams` accepts `{issue_number: 7}`;
+  - it rejects `{}`, `{issue_number: 0}` and `{select_labels: [...]}` (`additionalProperties`);
+  - `resolveRoute` with the runbook mapping yields `{issue_number, trigger_comment_id}`.
+- **Manual/UI Testing:** `/agents/bug-fix/invoke` shows `issue_number` as required.
+- **Edge-Case Matrix:** `project` with an invalid pattern; a 100-character status name; `trigger_comment_id` given as a string (rejected).
+- **Acceptance-Criteria Mapping:** AC1–AC3 and AC5 → L2.5; AC4 → `test_params.py`.
 - **Execution Commands:** `supabase db reset`, `pnpm --filter panel run test:integration`, `make test`.
 
 #### Migration Requirements
 
-- Artifact: a new timestamped SQL migration (required).
-- Rollback: `delete from agents where slug = 'bug-fix'` (no dependent rows before the first run).
-- Apply: requires explicit user confirmation.
-- Verify: `select slug, requires_repository, max_runtime_seconds from agents where slug='bug-fix'`.
+- Artifact: new timestamped SQL (required). Rollback: `delete from agents where slug = 'bug-fix'`. Apply: requires explicit user confirmation. Verify: `select slug, requires_repository, params_schema->'required' from agents where slug='bug-fix'`.
 
 #### Implementation Steps
 
@@ -356,45 +303,49 @@ Spec §5.1 and §5.2. The defaults live in the seed, never in agent code (D-45, 
 - [ ] Migration written and applied (confirmed) · [ ] Tests passing · [ ] Gates green · [ ] AC mapped · [ ] PR merged
 
 ---
+### Story S-185: Refusal checks and marked reply
 
-### Story S-185: Preflight checks — Issues permission, label configuration, assignee
-
-**Priority:** Critical · **Estimated Size:** S · **Dependencies:** S-184
+**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-184, S-186 (markers)
 
 #### User Story
 
-As the operator,
-I want a misconfigured run to stop before it touches any issue, with the reason named,
-So that a typo or a missing permission is visible and never half-applies a claim.
+As the person who wrote `/bug-fix`,
+I want a clear reply when the agent can't work on the issue,
+So that the trigger never fails silently and I know what to change.
 
 #### Context
 
-This story covers D-46 (labels), D-57 (assignee), and D-58 (permission). The checks run in step `preflight` before the sweep and selection.
+This story covers D-92 and D-104, spec §8.2, and PRD FR-5. It replaces the label and assignee preflight; the linked-PR check moves here from the old selection story.
 
 #### Acceptance Criteria
 
-- [ ] `credentials.py` returns the minted token's `permissions`. If `issues` is not `"write"`, the run ends `failed` / `GITHUB_PERMISSION_MISSING`.
-- [ ] Each label in the four lists is checked with `GET /repos/{o}/{r}/labels/{name}`, URL-encoded. Missing labels end the run `succeeded` / `not_applicable` with `result.reason` listing every missing label.
-- [ ] A cross-field violation from `params.py` ends `not_applicable` naming the rule.
-- [ ] `GET /repos/{o}/{r}/assignees/{login}` returning anything other than 204 ends `not_applicable` "assignee <login> not assignable".
-- [ ] When preflight ends a run, no GitHub write call was made. This is asserted by the mock.
-- [ ] A direct invoke missing a required param (a label list or `assignee`), or carrying an out-of-range or wrongly-typed budget or cap, ends `not_applicable` naming the key (D-68, D-82). Exhausted 5xx or rate-limit retries end `failed`/`GITHUB_UNAVAILABLE` (D-67).
+- [ ] **Preflight:** missing `issues: write` on the minted token → `failed`/`GITHUB_PERMISSION_MISSING` (D-58). A `params.py` error → refusal `invalid_params` (D-82).
+- [ ] **Refusal checks**, in order, first match wins:
+  - `pull_request`: the issue payload has `pull_request`;
+  - `closed`: `state != open`;
+  - `linked_pr`: an open closing-reference PR, or an open PR with head ref `issue/<N>-…` (D-55);
+  - `active_run`: a trusted claim marker with no `pr`, `disposition` or `refusal` marker for its run, whose run is non-terminal in `v_runs`.
+  
+  The `repo_gate` refusal comes from S-189.
+- [ ] **Reply:** each refusal posts exactly one comment. Its first line is `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->`, followed by the fixed text for that code and the run link. It contains no model text and adds **no** reaction (D-104).
+- [ ] A refusal ends `succeeded`/`not_applicable` with `result.reason = <code>`. It makes no claim and no board call (D-92, D-102).
+- [ ] A failure to post the reply is logged and the outcome is unchanged. Exhausted GitHub retries end `failed`/`GITHUB_UNAVAILABLE`; a Supabase read failure in `active_run` ends `failed`/`SUPABASE_UNAVAILABLE` (D-67).
 
 #### Business Rules
 
-- `not_applicable` does not count toward G3. `GITHUB_PERMISSION_MISSING` does (D-20, D-58).
+- Labels never affect the checks (D-90). The commenter's permission is not checked (D-91).
 
 #### Technical Notes
 
-- Spec §8.2 and §6. Labels with spaces or colons must be URL-encoded.
+- Spec §6 lists the calls. `github_client.py` provides the retry policy.
 
 #### Testing Requirements
 
-- **Unit Tests:** permission parsing (absent, `read`, `write`) and reason formatting.
-- **Integration Tests:** L2 with `responses`: each failure path produces the exact outcome and zero writes; the happy path passes; a label name such as `status: ready` is requested encoded.
-- **Manual/UI Testing:** invoke on a repo missing `status: in-progress`, then read the run summary.
-- **Edge-Case Matrix:** a 404 versus a 5xx on the label lookup (5xx → retry, then `failed`/`GITHUB_UNAVAILABLE`, D-67); a GitHub rate-limit response; an assignee who is an org member without push access.
-- **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/component/test_preflight.py`.
+- **Unit Tests:** refusal decision table; fixed text per code (snapshot); a refusal marker never counts as a claim.
+- **Integration Tests:** L2 with `responses`: each code posts one marked reply and makes zero claim or board calls; the happy path proceeds; a reply-post failure is logged and the outcome is unchanged.
+- **Manual/UI Testing:** `/bug-fix` on a PR, on a closed issue, and twice in quick succession on a fixture repo.
+- **Edge-Case Matrix:** an issue that is both closed and a PR (the first code wins); a linked PR from a fork; an `active_run` marker from an untrusted author (ignored); a terminal claim (proceeds).
+- **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/unit/test_refusal.py`, `tests/component/test_refusal.py`.
 - **Execution Commands:** `make test`.
 
 #### Migration Requirements
@@ -404,57 +355,56 @@ This story covers D-46 (labels), D-57 (assignee), and D-58 (permission). The che
 #### Implementation Steps
 
 1. Tests.
-2. `preflight.py`.
-3. `credentials.py` extension.
+2. `github_client.py`.
+3. `issues.py` (issue facts, linked PRs).
+4. `refusal.py`.
 
 #### Files to Create/Modify
 
-- `preflight.py`, `credentials.py`, `issues.py` (label and assignee reads), `tests/component/test_preflight.py`.
+- `refusal.py`, `issues.py`, `github_client.py`, `credentials.py`, `tests/unit/test_refusal.py`, `tests/component/test_refusal.py`.
 
 #### Definition of Done Checklist
 
 - [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] PR merged
 
 ---
+### Story S-186: Markers, reactions and the idempotent disposition
 
-### Story S-186: Claim/disposition markers and an idempotent disposition
-
-**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-185
+**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-184
 
 #### User Story
 
 As the operator,
-I want every agent claim and disposition comment to carry a verifiable marker, and a disposition that is safe to apply twice,
-So that recovery can act only on the agent's own claims and never double-comments.
+I want every agent comment to carry a verifiable marker, and a disposition that is safe to apply twice,
+So that the agent recognizes its own claims and never double-comments.
 
 #### Context
 
-This story covers D-53 (format and trust), D-08 and D-45 (the disposition label swap), and spec §8.3 and §8.8.
+This story covers D-53, D-80, D-93, D-104, D-65 and D-85, and spec §8.3 and §8.8.
 
 #### Acceptance Criteria
 
-- [ ] `markers.py` builds `<!-- agent-fleet:bug-fix:claim run_id=<uuid> -->` and the matching `disposition` marker, and parses the **leading block** of marker lines (line 1 and the consecutive matching lines after it), so one comment can name several `run_id`s (D-80).
-- [ ] A marker is trusted only if `performed_via_github_app.id` equals the configured App ID and `user.type == "Bot"`.
-- [ ] `live_claim(comments)` returns the trusted claim with the highest comment id that has no trusted disposition for the same `run_id`.
-- [ ] `disposition.py` posts the marker comment (what was tried, why it stopped, the diffstat when a cap was hit), removes `claim_add_labels`, adds `disposition_add_labels`, and keeps the assignee. Model-derived text in the comment passes the D-65 neutralizer (D-85).
-- [ ] The disposition is a no-op when a trusted disposition marker for this `run_id` already exists.
-- [ ] `signal_backstop.py` calls the disposition with a 10-second budget before `fail()`, when a claim exists.
+- [ ] `markers.py` builds and parses `claim`, `disposition`, `refusal` (with `reason=`) and `pr` markers, reading the **leading marker block** from line 1 (D-80, D-104).
+- [ ] A marker is trusted only if `performed_via_github_app.id` equals the fleet App ID and `user.type == "Bot"`.
+- [ ] `issues.py` adds reactions (`eyes`, `rocket`, `confused`) to a comment id. A missing `trigger_comment_id` skips the reaction silently (D-93).
+- [ ] `neutralize.py` implements D-65 (closing keyword + reference → `(ref #N)`, `@` → `@` + U+200B).
+- [ ] `disposition.py` posts the diagnosis comment (what was tried, why it stopped, the diffstat when a cap was hit) with a `disposition` marker and model text neutralized (D-85), and adds 😕. It changes **no** labels or assignee. It is a no-op when a trusted disposition for this `run_id` exists.
+- [ ] `signal_backstop.py` calls the disposition with a 10-second budget before `fail()`, but only when the claim's ownership is confirmed (D-81).
 
 #### Business Rules
 
-- The diagnosis never contains secret material. Text is passed through the scrubber.
+- The diagnosis never contains secret material (it passes through the scrubber).
 
 #### Technical Notes
 
-- The App ID comes from the `github_installations` row that `credentials.py` already resolves (research Q5).
+- The App ID comes from the `github_installations` row that `credentials.py` already resolves.
 
 #### Testing Requirements
 
-- **Unit Tests:** marker round-trip; a marker not on the first line is ignored; a forged marker (human author, wrong App id, `user.type == "User"`) is untrusted; `live_claim` ordering when several claims and dispositions exist.
-- **Integration Tests:** L2: the disposition applies once, and a second call makes zero writes; the backstop path under a simulated SIGTERM.
-- **Manual/UI Testing:** none, until the end-to-end run in S-190.
-- **Edge-Case Matrix:** a comment body with CRLF line endings; very long diagnosis text (truncated to GitHub's 65,536-character limit); a label already absent when removed (404 tolerated).
-- **Acceptance-Criteria Mapping:** AC1–AC3 → `test_markers.py`; AC4–AC6 → `tests/component/test_disposition.py`.
+- **Unit Tests:** marker round-trip for the four kinds; a forged marker (human author, wrong App id) is untrusted; the leading-block parse; neutralizer property tests (`hypothesis`).
+- **Integration Tests:** L2: the disposition applies once, and a second call makes zero writes; reactions are skipped without `trigger_comment_id`; the backstop under SIGTERM, with and without confirmed ownership.
+- **Edge-Case Matrix:** CRLF bodies; a diagnosis truncated to 65,536 characters; a reaction API 4xx (logged, not fatal).
+- **Acceptance-Criteria Mapping:** AC1–AC2 and AC4 → `test_markers.py`, `test_neutralize.py`; AC3, AC5 and AC6 → `tests/component/test_disposition.py`.
 - **Execution Commands:** `make test`.
 
 #### Migration Requirements
@@ -463,117 +413,63 @@ This story covers D-53 (format and trust), D-08 and D-45 (the disposition label 
 
 #### Implementation Steps
 
-1. `markers.py`, tests first.
-2. `disposition.py`.
-3. Backstop hook.
+1. `markers.py`.
+2. `neutralize.py`.
+3. Reactions in `issues.py`.
+4. `disposition.py`.
+5. Backstop hook.
 
 #### Files to Create/Modify
 
-- `markers.py`, `disposition.py`, `signal_backstop.py`, `issues.py` (comments, labels), tests.
+- `markers.py`, `neutralize.py`, `issues.py`, `disposition.py`, `signal_backstop.py`, tests.
 
 #### Definition of Done Checklist
 
 - [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] PR merged
 
 ---
+### Story S-187: Selection — oldest ready bug
 
-### Story S-187: Selection — oldest ready bug, AND labels, linked-PR skip, explicit issue
-
-**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-185
-
-#### User Story
-
-As the operator,
-I want the agent to pick the oldest issue matching all my selection labels with no PR already open,
-So that it works the queue in order and never duplicates work in progress.
-
-#### Context
-
-This story covers D-10, D-44 and D-55, and spec §8.5.
-
-#### Acceptance Criteria
-
-- [ ] GraphQL pages open issues carrying the first `select_labels` label, 50 at a time and oldest first, then applies AND over all of `select_labels`, plus "none of `claim_add_labels`".
-- [ ] An issue is skipped when `closedByPullRequestsReferences(includeClosedPrs: false)` is non-empty, or when an open PR's head ref starts with `issue/<N>-`.
-- [ ] Label matching (AND filter, lock exclusion) is case-insensitive (D-69).
-- [ ] Selection stops at the first eligible issue. If none is eligible, the run ends `succeeded` / `no_findings` (FR-4).
-- [ ] An explicit `issue_number` applies the same checks to that issue. A failure ends `not_applicable` with the specific reason: not open, missing `<labels>`, already claimed, or open PR #M.
-- [ ] Given the PRD AC-1 fixture (newest ready, oldest ready, needs-refinement), the oldest ready issue is selected.
-
-#### Business Rules
-
-- An explicit number never bypasses `select_labels` (D-10).
-
-#### Technical Notes
-
-- Branch-prefix PRs come from `GET /pulls?state=open` (paged), fetched once per run.
-
-#### Testing Requirements
-
-- **Unit Tests:** the AND filter, the claim-label exclusion, and both linked-PR rules, as a table.
-- **Integration Tests:** L2 with GraphQL and REST mocked: AC-1, AC-2 and AC-17 fixtures (custom labels `kind/bug` and `triage/ok`); pagination across pages.
-- **Manual/UI Testing:** none.
-- **Edge-Case Matrix:** zero open issues; a PR closed but not merged (not linked); a PR from a fork (still linked); a label with different letter case (GitHub labels match case-insensitively); 200+ candidates.
-- **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/component/test_select.py`.
-- **Execution Commands:** `make test`.
-
-#### Migration Requirements
-
-- Opt-out: no schema change.
-
-#### Implementation Steps
-
-1. Fixtures.
-2. Tests.
-3. `select.py` and the GraphQL query in `issues.py`.
-
-#### Files to Create/Modify
-
-- `select.py`, `issues.py`, `tests/component/test_select.py`, `tests/fixtures/graphql/*.json`.
-
-#### Definition of Done Checklist
-
-- [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] PR merged
+> **Removed in v2.0** (D-90: issue mode; linked-PR detection moved to S-185). The issue is closed as not planned; the ID is kept so existing references stay valid.
 
 ---
 
 ### Story S-188: Claim with the post-claim race check
 
-**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-186, S-187
+**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-185, S-186
 
 #### User Story
 
-As the operator,
-I want a claim that shows the bug is taken and that a second concurrent run backs off from,
-So that two runs never work the same issue (D-54).
+As the person who wrote `/bug-fix`,
+I want to see that a run has taken the issue, and that a second quick `/bug-fix` doesn't start a competing fix,
+So that one issue never gets two Draft PRs (D-54, D-93).
 
 #### Context
 
-G1 applies only to scheduled fires. A manual invoke can overlap a scheduled run (`scheduler_g1_overlap.sql:72`).
+The claim is a 👀 reaction plus a marker comment, with no labels and no assignee (D-93). Two triggers can overlap, so the race check stays.
 
 #### Acceptance Criteria
 
-- [ ] **Pre-check:** the issue is re-read and must still be selectable. If not, the run moves to the next candidate, or ends `not_applicable` for an explicit `issue_number`.
-- [ ] **Claim order:** the marker comment is posted first, then `claim_remove_labels` are removed, `claim_add_labels` are added, and the assignee is set (FR-7, D-07, D-45).
-- [ ] **Ownership gate:** if the post-check itself fails (`SUPABASE_UNAVAILABLE`), the run keeps its comment, leaves labels and assignee untouched, applies **no** disposition and ends `failed` (D-81).
-- [ ] **Post-check:** if a live, trusted claim with a lower comment id belongs to another run that isn't terminal (per `v_runs.effective_status`), this run deletes its own comment, leaves labels and assignee untouched, and ends `not_applicable` "claimed by run <id>".
-- [ ] After a successful claim the issue matches PRD AC-3: the assignee is set, the claim labels are present, the removed labels are absent, and a marked comment with the run link exists.
+- [ ] **Claim:** post the claim marker comment with the run link, then add 👀 to `trigger_comment_id` when it's present. No label or assignee changes (FR-7, FR-8).
+- [ ] **Post-check:** if a trusted claim with a lower comment id and no `pr` or `disposition` marker belongs to another non-terminal run, this run deletes its own comment and ends `not_applicable`, reason `active_run`. It makes no board call.
+- [ ] **Ownership gate:** only a confirmed claim enables the disposition and board updates. If the post-check fails (`SUPABASE_UNAVAILABLE`), the run keeps its comment, applies nothing else and ends `failed` (D-81).
+- [ ] PRD AC-3: after a claim, the trigger comment has 👀, the issue has a claim comment with the run link and marker, and labels and assignees are unchanged.
+- [ ] PRD AC-20: two claims a moment apart produce one owner and one withdrawal.
 
 #### Business Rules
 
-- The claim never relies on assigning the App bot (FR-8).
+- The claim never assigns anyone (FR-8).
 
 #### Technical Notes
 
-- The panel run link uses the panel base URL from `config.py` (env `PANEL_BASE_URL`), added to `agentcore.json`.
+- `PANEL_BASE_URL` in `config.py` and `agentcore.json` builds the run link.
 
 #### Testing Requirements
 
-- **Unit Tests:** the race verdict (an earlier marker from a terminal run is ignored; an earlier marker from a running run means this run lost).
-- **Integration Tests:** L2: a happy claim; a lost race with only this run's comment deleted; a pre-check failure; a crash right after the comment and before the labels: the comment exists and labels are unchanged, so the issue stays selectable, and the next run's post-check ignores the orphaned marker because its run is terminal. The sweep is not involved (D-78).
-- **Manual/UI Testing:** none.
-- **Edge-Case Matrix:** two runs posting comments in the same second (comment-id order decides); the other run is already terminal; a GitHub 422 on the assignee (`failed`/`GITHUB_REQUEST_REJECTED`, D-67).
-- **Acceptance-Criteria Mapping:** AC1–AC4 → `tests/component/test_claim.py`.
+- **Unit Tests:** race verdicts (an earlier terminal claim is ignored; an earlier active claim means this run lost).
+- **Integration Tests:** L2: a happy claim; a lost race withdraws only its own comment; a crash after the comment leaves the issue retryable once the run is terminal; a post-check failure applies no disposition.
+- **Edge-Case Matrix:** two comments in the same second (comment-id order decides); the other run already terminal; a reaction 422 (logged, not fatal).
+- **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/component/test_claim.py`.
 - **Execution Commands:** `make test`.
 
 #### Migration Requirements
@@ -584,7 +480,7 @@ G1 applies only to scheduled fires. A manual invoke can overlap a scheduled run 
 
 1. Tests.
 2. `claim.py`.
-3. `PANEL_BASE_URL` config.
+3. `PANEL_BASE_URL`.
 
 #### Files to Create/Modify
 
@@ -595,7 +491,6 @@ G1 applies only to scheduled fires. A manual invoke can overlap a scheduled run 
 - [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] PR merged
 
 ---
-
 ### Story S-189: Checkout, repository gate, toolchain, and the gate runner
 
 **Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-182 (`sandbox.py`), S-184
@@ -616,7 +511,7 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 - [ ] `safe_git.py`: every wrapper git call runs with `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and never sets `safe.directory=*`. No wrapper git call targets a `fixer`-writable `.git` (D-62, DF-02).
 - [ ] The base tree is materialized into a fresh `/work/repo` with `git archive <base>` piped into `tar -x` **running as `fixer`**. A planted `.git/hooks/*` or `core.fsmonitor` in `/work/repo` never runs as `wrapper` (TC-193-14 shape, applied at checkout) (D-62).
 - [ ] `toolchain.py` (copied from `dependency-update`, extended) detects JS/TS (pnpm or npm) or Python (`Makefile`).
-- [ ] The repo gate requires `.claude/agents/developer.md` plus `test`, `lint`, `format:check`, `typecheck` (JS scripts) or `test`, `lint`, `format-check`, `typecheck` (Make targets). A missing item ends `not_applicable` naming it, before the claim (AC-4).
+- [ ] The repo gate requires `.claude/agents/developer.md` plus `test`, `lint`, `format:check`, `typecheck` (JS scripts) or `test`, `lint`, `format-check`, `typecheck` (Make targets). A missing item ends with refusal `repo_gate` (a marked reply via S-185, D-92), naming it, before the claim (AC-4).
 - [ ] **OQ-1 resolved and recorded in the PR:**
   - the proposal is a `make install` target for Python, otherwise `not_applicable`;
   - the decision is appended to the decision log as a new `D-NN`.
@@ -665,29 +560,29 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 
 ### Story S-190: Orchestration, outcome mapping, and reporting through the claim
 
-**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-185–S-189
+**Priority:** Critical · **Estimated Size:** M · **Dependencies:** S-185, S-186, S-188, S-189
 
 #### User Story
 
 As the operator,
-I want a deployed run to go preflight → select → checkout → claim and report every step,
-So that I can invoke the agent end to end and see each decision in the panel.
+I want a deployed `/bug-fix` run to go through preflight, refusal, checkout and claim and report every step,
+So that I can trigger the agent end to end and see each decision in the panel.
 
 #### Context
 
-This story covers FR-25, FR-26, D-20 and D-61, and spec §8.9. The fix step is not built yet: after the claim, the run applies the disposition with the reason "fix loop not yet enabled" behind a feature flag `FIX_LOOP_ENABLED=0`. Wave A can therefore be exercised live on a fixture repo without producing PRs.
+This story covers FR-25, FR-26, D-20, D-61 and D-67, and spec §8.9. The fix loop isn't built yet, so with `FIX_LOOP_ENABLED=0` the run applies the disposition after the claim, with the reason "fix loop not yet enabled".
 
 #### Acceptance Criteria
 
-- [ ] `main.py` runs the steps `preflight`, `sweep` (a no-op until S-196), `select`, `checkout`, `claim`, then `fix` only when `FIX_LOOP_ENABLED=1`. Each is a `run_steps` entry with `run_events` at its decisions.
-- [ ] The outcome mapping exactly matches spec §8.9 v1.3 for the paths that exist in Wave A, including `GITHUB_UNAVAILABLE`, `GITHUB_REQUEST_REJECTED`, `SUPABASE_UNAVAILABLE` (D-67) and the missing-required-param `not_applicable` (D-68). Every `needs_review` and `not_applicable` run sets `result.summary` with the reason.
-- [ ] The heartbeat and signal backstop run as in the siblings. The `finally` path and the backstop apply the disposition only after the race post-check has confirmed ownership of the claim (S-186, D-81).
-- [ ] `runs.metrics` records `issue_number` and the step timings.
-- [ ] Deployed through the S-181 flow: one manual run on the fixture repo selects, claims and disposes ("fix loop not yet enabled"), and the issue ends with `disposition_add_labels`.
+- [ ] `main.py` runs `preflight` → `refuse` → `checkout` → `claim`, then `fix` only when `FIX_LOOP_ENABLED=1`. Each is a `run_steps` entry with `run_events` at its decisions.
+- [ ] The outcome mapping matches spec §8.9 v2.0 for every Wave A path, including every refusal code, a lost race, and the D-67 fault codes. Every `needs_review` and `not_applicable` result sets `result.summary`.
+- [ ] The heartbeat and signal backstop run as in the siblings. The `finally` path and the backstop dispose only after confirmed ownership (D-81).
+- [ ] `runs.metrics` records `issue_number` and step timings.
+- [ ] Deployed through the S-181 flow: a manual invoke with an `issue_number` on the fixture repo claims (a marker comment, no reaction) and disposes ("fix loop not yet enabled").
 
 #### Business Rules
 
-- Only `failed` counts toward G3 (D-20).
+- Only `failed` counts toward the webhook circuit breaker and G3 (D-20).
 
 #### Technical Notes
 
@@ -695,12 +590,11 @@ This story covers FR-25, FR-26, D-20 and D-61, and spec §8.9. The fix step is n
 
 #### Testing Requirements
 
-- **Unit Tests:** the outcome-mapping table, one test per row in spec §8.9 that exists in Wave A.
-- **Integration Tests:** L2: the orchestrator with every collaborator mocked, one test per terminal path; a `finally` path after an exception raised in `claim`.
-- **Manual/UI Testing:** deployed run on the fixture repo; check the step list, events, summary and issue state.
-- **Edge-Case Matrix:** SIGTERM during `checkout` (no claim, no disposition); SIGTERM after `claim` (disposition applied); a reporter flush failure (logged, never masks the outcome).
-- **Acceptance-Criteria Mapping:** AC1–AC5 → `test_outcomes.py`, `tests/component/test_main.py`, plus the deployed-run evidence.
-- **Execution Commands:** `make test`; the deployed invoke documented in the runbook stub.
+- **Unit Tests:** outcome-table tests, one per §8.9 row that exists in Wave A.
+- **Integration Tests:** L2: the orchestrator with mocks, one per terminal path; SIGTERM during `checkout` (no disposition); SIGTERM after a confirmed claim (disposition applied).
+- **Manual/UI Testing:** the deployed manual run; check the steps, events, summary and issue comments.
+- **Acceptance-Criteria Mapping:** AC1–AC5 → `test_outcomes.py`, `tests/component/test_main.py`, deployed-run evidence.
+- **Execution Commands:** `make test`.
 
 #### Migration Requirements
 
@@ -708,8 +602,8 @@ This story covers FR-25, FR-26, D-20 and D-61, and spec §8.9. The fix step is n
 
 #### Implementation Steps
 
-1. Outcome table tests.
-2. `main.py` orchestration.
+1. Outcome tests.
+2. `main.py`.
 3. Deploy.
 4. Fixture run.
 
@@ -722,10 +616,9 @@ This story covers FR-25, FR-26, D-20 and D-61, and spec §8.9. The fix step is n
 - [ ] Tests passing · [ ] Agent gate green · [ ] Deployed-run evidence · [ ] Roadmap Wave A row → In progress · [ ] PR merged
 
 ---
-
 ## Wave B — Fix loop and validation
 
-> **Blocked until S-182 reports PASS.**
+> **Blocked until the S-182 sandbox checks report PASS.**
 
 ### Story S-191: Fix runner — confined `claude -p`
 
@@ -948,8 +841,8 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
   - red-to-green outputs;
   - `verifier_audit: not-run(no-delegation)`;
   - `coverage_gate: SKIPPED(no-delegation)`.
-- [ ] A `pull_request` artifact is recorded (`run.artifact('pull_request', url, title, metadata)`), so G5 applies (D-21). The run ends `succeeded` / `fixed`.
-- [ ] The issue's labels are unchanged after the PR (spec §8.6), and the PR stays Draft.
+- [ ] A `pull_request` artifact is recorded (`run.artifact('pull_request', url, title, metadata)`), (D-21). The run ends `succeeded` / `fixed`.
+- [ ] After the PR, the wrapper adds 🚀 to `trigger_comment_id` (when present) and posts a comment with a `pr` marker linking the PR. Labels and assignees are unchanged, and the PR stays Draft (D-93).
 - [ ] `FIX_LOOP_ENABLED=1` in `agentcore.json`, and deployed.
 - [ ] A push or PR API failure leads to disposition, then `failed` / `PR_CREATE_FAILED`.
 
@@ -1049,176 +942,172 @@ This story covers PRD AC-5, AC-6 and D-51. It uses a fixture repo with an issue 
 
 ---
 
-## Wave C — Recovery and live
+## Wave C — Board, runbook and live
 
 ### Story S-196: Stale-claim sweep
 
-**Priority:** High · **Estimated Size:** M · **Dependencies:** S-186, S-190
+> **Removed in v2.0** (D-94: no lock label, so no sweep). The issue is closed as not planned; the ID is kept so existing references stay valid.
+
+---
+
+### Story S-199: Projects v2 board updates
+
+**Priority:** High · **Estimated Size:** M · **Dependencies:** S-182 (board probe), S-188, S-194
 
 #### User Story
 
 As the operator,
-I want claims left by crashed or timed-out runs recovered automatically at the start of the next run,
-So that no issue stays locked with nobody working on it (FR-24, D-16).
+I want the issue's card on my repo's linked Projects board to move as the agent works,
+So that the board reflects the agent's state without my updating it (D-97).
 
 #### Context
 
-This story covers D-16 and D-53, and spec §8.4. It replaces the S-190 no-op `sweep` step.
+This story covers D-97 to D-103 and D-105, and spec §8.10. Board work is best effort and never changes the run outcome.
 
 #### Acceptance Criteria
 
-- [ ] The sweep lists open issues carrying every `claim_add_labels` label through GraphQL, which excludes PRs, with the first lock label as the server filter and a case-insensitive AND on the client (D-75, D-69). For each issue it collects **every** trusted claim marker that has no trusted disposition (D-71).
-- [ ] **Lock ownership and episode (D-79).** It continues only if the most recent `labeled` event for a lock label came from the fleet App; a human-applied lock is never touched. It weighs only claim markers created after the most recent `unlabeled` event of a lock label, so a `fixed` run's claim from before a human re-queue doesn't block recovery.
-- [ ] It acts only when **all** of those runs are terminal in `v_runs.effective_status` (`failed`, `timed_out`, `failed_to_start`, `canceled`, or `succeeded` as a race loser) **and** none has a `pull_request` artifact. It then applies the disposition once, "recovered: run <id> ended <status> without a PR", and marks each `run_id` disposed (D-71). A Supabase read failure skips that issue; it does not fail the run (D-81).
-- [ ] Issues with no trusted marker, a human-posted marker, or a non-terminal run are never touched (AC-13).
-- [ ] The sweep runs before selection on every run, and its count is recorded in `runs.metrics.swept`.
-- [ ] A GitHub or Supabase failure while sweeping one issue is logged, that issue is skipped, and the sweep continues; the sweep never fails the run (D-81). A recovery disposition starts with one marker line per recovered `run_id` (D-80).
+- [ ] `projects.py` looks up the board once, after the refusal checks:
+  - the `project` override, or `repository.projectsV2`;
+  - the `Status` field and the option IDs for the three status names, matched case-insensitively;
+  - all with `GITHUB_PROJECTS_TOKEN`.
+- [ ] **One linked board:** after a confirmed claim, `addProjectV2ItemById` (idempotent) then `In progress`. After the Draft PR, `In review`. In the disposition, `Ready` (D-102, D-103).
+- [ ] **No linked board:** no board call after the look-up. **Several boards** and no `project` param: no update, plus a `run_event` asking for the override.
+- [ ] A missing PAT, an unknown status name, `BOARD_UPDATES_ENABLED=0` or any API error is logged and skipped. The outcome matches the same run without a board (AC-23).
+- [ ] Refusals and lost races never touch the board. `runs.metrics.board` records the board, the reason and each transition.
+- [ ] The PAT is read by the wrapper only, added to the scrubber, and never in a `fixer` env (D-99).
 
 #### Business Rules
 
-- Locks made under an older `claim_add_labels` aren't swept after the label param changes (spec §8.4). This is documented in the runbook.
+- 10-second timeout and no retries per call (D-103).
 
 #### Technical Notes
 
-- One Supabase read per marker `run_id`.
+- GraphQL: `projectsV2`, `projectV2(number)`, `fields { ... on ProjectV2SingleSelectField { id name options { id name } } }`, `addProjectV2ItemById`, `updateProjectV2ItemFieldValue`.
 
 #### Testing Requirements
 
-- **Unit Tests:** the eligibility table (status × artifact × trust).
-- **Integration Tests:** L2 with GitHub mocked and an L2.5 `v_runs` read against local Supabase. Fixture: a `timed_out` run with no PR is swept; a `running` run is untouched; a marker-less issue is untouched; a run with a PR artifact is untouched.
-- **Manual/UI Testing:** on the fixture repo: kill a run mid-claim (stop the session), then run again and see the recovery.
-- **Edge-Case Matrix:** a `run_id` missing from Supabase (skip and log); 100 locked issues (paged); the disposition already applied (no-op).
-- **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/component/test_sweep.py`, `panel/tests/integration/bug-fix-sweep-read.test.ts`, in the panel Vitest integration project (D-77).
-- **Execution Commands:** `make test`, `REQUIRE_LOCAL_DB=1 pnpm --filter panel run test:integration` (D-77).
+- **Unit Tests:** option resolution (case-insensitive, missing option); the `project` param parse.
+- **Integration Tests:** L2 with the Projects GraphQL mocked: one board, none, several, a missing field or option, a 401 on the PAT, a timeout. Each asserts the transitions and an unchanged outcome.
+- **Manual/UI Testing:** in S-198, the live card moves on board #5.
+- **Edge-Case Matrix:** an issue already on the board in another status; an org-owned `project` override; a board with a renamed `Status` field.
+- **Acceptance-Criteria Mapping:** AC1–AC6 → `tests/unit/test_projects.py`, `tests/component/test_projects.py`; PRD AC-21, AC-22, AC-23.
+- **Execution Commands:** `make test`.
 
 #### Migration Requirements
 
-- Opt-out: no schema change (reads `v_runs` and `run_artifacts`).
+- Opt-out: no schema change.
 
 #### Implementation Steps
 
 1. Tests.
-2. `sweep.py`.
-3. Wire into `main.py`.
+2. `projects.py`.
+3. Wire into `claim.py`, `pull_request.py` and `disposition.py` behind the ownership gate.
+4. `BOARD_UPDATES_ENABLED`.
 
 #### Files to Create/Modify
 
-- `sweep.py`, `main.py`, tests.
+- `projects.py`, `claim.py`, `pull_request.py`, `disposition.py`, `config.py`, tests.
 
 #### Definition of Done Checklist
 
 - [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] PR merged
 
 ---
+### Story S-197: Deploy script and runbook (webhook rule, board, token rotation)
 
-### Story S-197: Deploy script, runbook, and fixture-repo schedule
-
-**Priority:** High · **Estimated Size:** M · **Dependencies:** S-194, S-196
+**Priority:** High · **Estimated Size:** M · **Dependencies:** S-194, S-199
 
 #### User Story
 
 As the operator,
-I want a documented, repeatable deploy and a schedule on the fixture repo,
-So that the agent can be redeployed safely and runs unattended where it's safe to (FR-49a).
+I want a documented, repeatable deploy and the recommended `/bug-fix` webhook rule,
+So that I can enable the agent on a repo safely (FR-28, FR-49a).
 
 #### Context
 
-This story covers the PRD's Wave C scope and spec §15.
+This story covers PRD FR-28, FR-29 and FR-34, D-91 and D-99, and spec §15. There's no schedule (D-96).
 
 #### Acceptance Criteria
 
-- [ ] The deploy follows the sibling flow, scripted as `agents/bug-fix/scripts/deploy.sh`, and prints the runtime ARN. The runbook ships in the same PR (FR-49a).
+- [ ] `agents/bug-fix/scripts/deploy.sh` follows the sibling flow and prints the runtime ARN. The runbook ships in the same PR.
 - [ ] `docs/runbooks/bug-fix-agent.md` covers:
-  - deploy and rollback (pause schedules, `agents.is_enabled=false`);
-  - Anthropic key rotation and the spend cap;
+  - deploy and rollback (disable the rule, `agents.is_enabled=false`);
+  - the **recommended webhook rule**: `issue_comment`, `action equals created`, `comment.body prefix /bug-fix`, `comment.author_association in [OWNER, MEMBER, COLLABORATOR]`, the repo from `repository.full_name`, and the `from_payload` mapping;
+  - linking a Projects board to a repo;
+  - Anthropic key and Projects PAT creation and rotation (the classic `project` scope only);
   - the App Issues permission;
-  - target-repo prerequisites (`developer.md`, the four gates, pass-through `test` paths, the Python install target from OQ-1);
-  - the label-param change note (§8.4);
-  - how to clear G5;
-  - live verification steps.
-- [ ] One schedule on the fixture repo is created through the panel with the default labels. Its saved params contain the arrays (proves S-183 plus S-184 end to end).
-- [ ] A schedule tick fires a run. G1, G5 and G3 behave as in the scheduler (PRD AC-12, AC-15), verified on the fixture repo.
+  - target-repo prerequisites (`developer.md`, the four gates, pass-through `test` paths, the Python install target);
+  - live verification.
+- [ ] One webhook rule is configured on the fixture repo following the runbook. A delivery from `/bug-fix` starts a run, and an unrelated comment doesn't.
+- [ ] Circuit breaker check (PRD AC-12): repeated `not_applicable` and `needs_review` runs don't trip the rule's breaker; repeated `failed` runs do.
 
 #### Business Rules
 
-- No production repo gets a schedule in this story.
+- No production repo gets a rule in this story.
 
 #### Technical Notes
 
-- Model the runbook on `docs/runbooks/scheduler-deployment.md` and `runbook-template.md`.
+- Model it on `docs/runbooks/webhook-deployment.md` and `runbook-template.md`.
 
 #### Testing Requirements
 
 - **Unit Tests:** a shellcheck lint of `deploy.sh`.
-- **Integration Tests:** a scheduled fire on the fixture repo.
-- **Manual/UI Testing:**
-  - the schedule dialog with the default String Lists;
-  - three forced `needs_review` runs don't pause the schedule;
-  - three forced `failed` runs (revoked permission) do pause it;
-  - after a `fixed` run, the next tick is blocked by G5 until it's cleared.
-- **Edge-Case Matrix:** a deploy with a stale `runtime_arn` in the seed (the runbook covers the update).
-- **Acceptance-Criteria Mapping:** AC1–AC4 → the runbook, the schedule screenshot, and the AC-12 and AC-15 evidence table.
+- **Integration Tests:** a webhook delivery on the fixture repo.
+- **Manual/UI Testing:** the rule editor configuration; the breaker checks.
+- **Acceptance-Criteria Mapping:** AC1–AC4 → the runbook, a rule screenshot, the breaker evidence table.
 - **Execution Commands:** `agents/bug-fix/scripts/deploy.sh`, `make validate`.
 
 #### Migration Requirements
 
-- Opt-out: the schedule is created through the panel (data, not schema).
+- Opt-out: the rule is configured through the panel (data, not schema).
 
 #### Implementation Steps
 
 1. Deploy script.
 2. Runbook.
-3. Schedule.
-4. Guardrail checks.
+3. Rule.
+4. Breaker checks.
 
 #### Files to Create/Modify
 
-- `agents/bug-fix/scripts/deploy.sh`, `docs/runbooks/bug-fix-agent.md`, `docs/runbooks/README.md` (index).
+- `agents/bug-fix/scripts/deploy.sh`, `docs/runbooks/bug-fix-agent.md`, `docs/runbooks/README.md`.
 
 #### Definition of Done Checklist
 
 - [ ] Runbook in the same PR · [ ] Evidence attached · [ ] PR merged
 
 ---
+### Story S-198: Live verification on the fixture repo
 
-### Story S-198: Live verification on the fixture repo (AC-16)
-
-**Priority:** High · **Estimated Size:** S · **Dependencies:** S-195, S-197
+**Priority:** High · **Estimated Size:** S · **Dependencies:** S-195, S-197, S-199
 
 #### User Story
 
 As the operator,
-I want one real fixable bug to reach a Draft PR and one unfixable bug to reach the disposition on the deployed runtime,
-So that the feature is proven end to end before any real repo is scheduled.
+I want `/bug-fix` proven end to end on a real fixture repo with a linked board,
+So that the feature is trustworthy before any real repo gets the rule.
 
 #### Context
 
-This story covers PRD AC-16. It is the PRD-level completion evidence.
+This story covers PRD AC-16 and AC-19 to AC-24. It is the PRD-level completion evidence.
 
 #### Acceptance Criteria
 
-- [ ] **Fixable:** a seeded ready bug with a unit-testable defect leads to a Draft PR on `issue/<N>-<slug>` with the full FR-20 body, a `pull_request` artifact, `succeeded` / `fixed`, and unchanged labels.
-- [ ] **Unfixable:** a seeded ready bug that cannot be unit-tested, or would exceed the caps, leads to a diagnosis comment, `disposition_add_labels`, the assignee kept, and `succeeded` / `needs_review` with the reason in the summary.
-- [ ] **Custom labels:** a manual run with custom labels (`kind/bug`, `triage/ok` and matching claim and disposition labels) selects, claims and disposes using only those labels (AC-17).
-- [ ] **Misconfiguration:** a run naming a non-existent label ends `not_applicable` with no issue change (AC-18).
-- [ ] `runs.metrics` shows turns, usage, cost, files and lines, gates and red-to-green for the fixable run (FR-27).
-- [ ] Roadmap Wave C row → Done in the consolidated PR (set by `planner`).
+- [ ] **Fixable:** `/bug-fix` on a seeded fixable issue leads to a Draft PR with the FR-20 body, a `pull_request` artifact, 🚀 plus a PR comment, the card in `In review`, and `succeeded`/`fixed`.
+- [ ] **Unfixable:** `/bug-fix` on a seeded unfixable issue leads to 😕 plus a diagnosis comment, the card in `Ready`, the issue still open, and `succeeded`/`needs_review`.
+- [ ] **Refusals and concurrency:** `/bug-fix` on a PR gives a `pull_request` reply. Two quick `/bug-fix` comments give one claim and one `active_run` refusal or withdrawal (AC-20).
+- [ ] **Manual and retry:** a manual invoke gives comments with no reactions (AC-19). A killed run, after the reaper, is followed by a successful `/bug-fix` (AC-24).
+- [ ] **Board degraded:** with `BOARD_UPDATES_ENABLED=0`, the same outcomes occur and no card moves (AC-23).
+- [ ] `runs.metrics` shows turns, usage, cost, files and lines, gates, red-to-green and board transitions (FR-27).
 
 #### Business Rules
 
-- The PR from the fixable run is reviewed and closed by the operator, not merged into any real codebase.
-
-#### Technical Notes
-
-- The fixture repo has dev-tasks installed (`developer.md` and the four gates).
+- The fixable run's PR is reviewed and closed by the operator, never merged into a real codebase.
 
 #### Testing Requirements
 
-- **Unit Tests:** n/a.
-- **Integration Tests:** **Live**, four deployed runs.
-- **Manual/UI Testing:** the panel run detail for each run, the GitHub issue and the PR.
-- **Edge-Case Matrix:** covered by S-185–S-196; this story is the happy and boundary proof.
-- **Acceptance-Criteria Mapping:** AC1–AC5 → `workstream/live-evidence-bug-fix.md`, with links.
+- **Integration Tests:** **Live**, on the deployed runtime.
+- **Acceptance-Criteria Mapping:** AC1–AC6 → `workstream/live-evidence-bug-fix.md`.
 - **Execution Commands:** the runbook's live-verification section.
 
 #### Migration Requirements
@@ -1227,8 +1116,8 @@ This story covers PRD AC-16. It is the PRD-level completion evidence.
 
 #### Implementation Steps
 
-1. Seed the fixture issues.
-2. Run the four invocations.
+1. Seed the fixture issues and link the board.
+2. Run the scenarios.
 3. Write the evidence document.
 
 #### Files to Create/Modify
@@ -1237,36 +1126,31 @@ This story covers PRD AC-16. It is the PRD-level completion evidence.
 
 #### Definition of Done Checklist
 
-- [ ] Evidence recorded · [ ] `verifier` audit run · [ ] PR merged
+- [ ] Evidence recorded · [ ] `verifier` audit run · [ ] Roadmap Wave C row → Done (by `planner`) · [ ] PR merged
 
 ---
-
 ## Execution Plan
 
 ```mermaid
 flowchart LR
     S180 --> S181 --> S182
     S181 --> S184 --> S185
-    S185 --> S186 & S187
-    S186 & S187 --> S188
+    S184 --> S186 --> S185
+    S185 & S186 --> S188
     S182 & S184 --> S189
     S188 & S189 --> S190
-    S183
-    S182 -- PASS --> S191
+    S182 -- sandbox PASS --> S191
     S190 --> S191 --> S192 --> S193 --> S194 --> S195
-    S186 & S190 --> S196
-    S194 & S196 --> S197
-    S195 & S197 --> S198
-    S183 --> S197
+    S182 & S188 & S194 --> S199
+    S194 & S199 --> S197
+    S195 & S197 & S199 --> S198
 ```
 
-| Wave | Stories     | Sizes                  | Gate                                         |
-| ---- | ----------- | ---------------------- | -------------------------------------------- |
-| A    | S-180–S-190 | 2×S, 9×M (≈ 20 d)      | S-182 spike PASS before Wave B               |
-| B    | S-191–S-195 | 1×L, 3×M, 1×S (≈ 11 d) | In-container confinement evidence (S-195)    |
-| C    | S-196–S-198 | 2×M, 1×S (≈ 5 d)       | Live AC-16 evidence                          |
-
-S-183 runs in parallel with Wave A. It is needed before S-197 creates the first label-bearing schedule from the panel.
+| Wave | Stories | Gate |
+| ---- | ------- | ---- |
+| A | S-180, S-181, S-182, S-184, S-185, S-186, S-188, S-189, S-190 | S-182 sandbox PASS before Wave B |
+| B | S-191–S-195 | In-container confinement evidence (S-195) |
+| C | S-199, S-197, S-198 | Live evidence (AC-16, AC-19–AC-24) |
 
 ---
 
@@ -1274,98 +1158,54 @@ S-183 runs in parallel with Wave A. It is needed before S-197 creates the first 
 
 ### Summary
 
-- **Total PRD requirements:** 76 (27 FRs + FR-1a/FR-1b, 18 ACs, 6 business rules, 8 user stories, 5 data requirements, 10 non-goals checked separately)
-- **Total user stories:** 19 (S-180–S-198)
-- **Coverage:** 100% of in-scope requirements
-- **Status:** Complete
+- **Total PRD v2.0 requirements in scope:** FR-1, FR-3, FR-5–FR-23, FR-25–FR-34; AC-1–AC-12, AC-14, AC-16, AC-19–AC-24. Removed FRs and ACs are excluded.
+- **Total user stories:** 17 active.
+- **Coverage:** 100%.
+- **Status:** Complete.
 
 ### Requirement Mapping
 
-| PRD Requirement                                         | Story ID(s)                | Status     |
-| ------------------------------------------------------- | -------------------------- | ---------- |
-| FR-1 params, run repository, schema                     | S-184, S-183               | ✅ Covered |
-| FR-1a label parameters                                  | S-184, S-183               | ✅ Covered |
-| FR-1b label check                                       | S-185                      | ✅ Covered |
-| FR-2 oldest AND selection, linked-PR skip               | S-187                      | ✅ Covered |
-| FR-3 explicit issue gate                                | S-187, S-188               | ✅ Covered |
-| FR-4 no ready bug → `no_findings`                       | S-187, S-190               | ✅ Covered |
-| FR-5 checks before claim                                | S-185, S-189               | ✅ Covered |
-| FR-6 repository gate                                    | S-189                      | ✅ Covered |
-| FR-7 claim (assignee, labels, marked comment)           | S-186, S-188               | ✅ Covered |
-| FR-8 no bot assignment                                  | S-188                      | ✅ Covered |
-| FR-9 wrapper owns GitHub; confined CLI and scripts      | S-180, S-182, S-191, S-195 | ✅ Covered |
-| FR-10 issue text as quoted data                         | S-191                      | ✅ Covered |
-| FR-11 repo `.claude/` + `developer`, `MODEL_ID`         | S-180, S-191               | ✅ Covered |
-| FR-12 turns / CLI time / run budget                     | S-191                      | ✅ Covered |
-| FR-13 caps                                              | S-192                      | ✅ Covered |
-| FR-14 forbidden paths                                   | S-192                      | ✅ Covered |
-| FR-15 test required                                     | S-192                      | ✅ Covered |
-| FR-16 per-file rationale                                | S-192, S-194               | ✅ Covered |
-| FR-17 wrapper-run gates                                 | S-189, S-192               | ✅ Covered |
-| FR-18 audit recorded, non-blocking                      | S-189, S-192, S-194        | ✅ Covered |
-| FR-19 red-to-green                                      | S-193                      | ✅ Covered |
-| FR-20 Draft PR shape                                    | S-194                      | ✅ Covered |
-| FR-21 `pull_request` artifact                           | S-194                      | ✅ Covered |
-| FR-22 disposition                                       | S-186, S-191–S-193         | ✅ Covered |
-| FR-23 `finally` + signal backstop                       | S-186, S-190               | ✅ Covered |
-| FR-24 stale-claim sweep                                 | S-196                      | ✅ Covered |
-| FR-25 reporting steps and events                        | S-190                      | ✅ Covered |
-| FR-26 outcome mapping                                   | S-190, S-191, S-194        | ✅ Covered |
-| FR-27 metrics                                           | S-190, S-191, S-198        | ✅ Covered |
-| AC-1 selection                                          | S-187                      | ✅ Covered |
-| AC-2 explicit gate                                      | S-187                      | ✅ Covered |
-| AC-3 claim                                              | S-188                      | ✅ Covered |
-| AC-4 not applicable (repo gate)                         | S-189                      | ✅ Covered |
-| AC-5 confinement                                        | S-182, S-195               | ✅ Covered |
-| AC-6 prompt injection                                   | S-191, S-195               | ✅ Covered |
-| AC-7 caps                                               | S-192                      | ✅ Covered |
-| AC-8 regression test                                    | S-192, S-193               | ✅ Covered |
-| AC-9 gates                                              | S-192                      | ✅ Covered |
-| AC-10 PR                                                | S-194                      | ✅ Covered |
-| AC-11 disposition                                       | S-186, S-198               | ✅ Covered |
-| AC-12 G3                                                | S-190, S-197               | ✅ Covered |
-| AC-13 sweep                                             | S-196                      | ✅ Covered |
-| AC-14 budget                                            | S-191                      | ✅ Covered |
-| AC-15 G5                                                | S-194, S-197               | ✅ Covered |
-| AC-16 live                                              | S-198                      | ✅ Covered |
-| AC-17 label parameters                                  | S-187, S-198               | ✅ Covered |
-| AC-18 label check                                       | S-185, S-198               | ✅ Covered |
-| BR: `select_labels` gate never bypassed                 | S-187                      | ✅ Covered |
-| BR: `claim_add_labels` is the lock                      | S-188, S-186, S-196        | ✅ Covered |
-| BR: agents never merge; PR stays Draft                  | S-194                      | ✅ Covered |
-| BR: one open agent PR per repo (G5)                     | S-194, S-197               | ✅ Covered |
-| BR: `github-ops` conventions                            | S-194                      | ✅ Covered |
-| BR: defaults in seed, not code (D-45)                   | S-184                      | ✅ Covered |
-| US-1 schedule fixes oldest ready bug                    | S-187, S-197               | ✅ Covered |
-| US-2 name a specific issue                              | S-187                      | ✅ Covered |
-| US-3 visible claim                                      | S-188                      | ✅ Covered |
-| US-4 regression test failed before fix                  | S-193                      | ✅ Covered |
-| US-5 rationale + gates in PR                            | S-194                      | ✅ Covered |
-| US-6 unfixable leaves queue with reason                 | S-186, S-198               | ✅ Covered |
-| US-7 dead claims recovered                              | S-196                      | ✅ Covered |
-| US-8 faults separate from hard bugs (G3)                | S-190, S-197               | ✅ Covered |
-| Data: `agents` row + schema                             | S-184                      | ✅ Covered |
-| Data: `runs` params/metrics                             | S-190, S-191               | ✅ Covered |
-| Data: `run_steps`/`run_events`                          | S-190                      | ✅ Covered |
-| Data: `pull_request` artifact                           | S-194                      | ✅ Covered |
-| Data: GitHub claim/disposition comments, labels         | S-186, S-188               | ✅ Covered |
-| PRD §11 `string-list` control + DESIGN.md               | S-183                      | ✅ Covered |
-| PRD §12 infra scope + spike                             | S-181, S-182               | ✅ Covered |
-| PRD §12 runbook (FR-49a)                                | S-181 (stub), S-197        | ✅ Covered |
+| PRD Requirement | Story ID(s) | Status |
+| --------------- | ----------- | ------ |
+| FR-1 params, run repository, schema | S-184 | ✅ Covered |
+| FR-3 one issue only, labels ignored | S-185, S-190 | ✅ Covered |
+| FR-5 refusal cases (a)–(e) + reply | S-185, S-189 | ✅ Covered |
+| FR-6 repository gate | S-189 | ✅ Covered |
+| FR-7 / FR-8 claim (👀 + marker), no assignee | S-186, S-188 | ✅ Covered |
+| FR-9 confinement | S-180, S-182, S-191, S-195 | ✅ Covered |
+| FR-10 / FR-11 / FR-12 prompt, CLI, budgets | S-191 | ✅ Covered |
+| FR-13–FR-16 change limits | S-192, S-194 | ✅ Covered |
+| FR-17–FR-19 validation, red-to-green | S-189, S-192, S-193 | ✅ Covered |
+| FR-20 / FR-21 Draft PR, 🚀 + comment, artifact | S-194 | ✅ Covered |
+| FR-22 / FR-23 disposition (😕 + diagnosis), ownership gate | S-186, S-188, S-190 | ✅ Covered |
+| FR-25 / FR-26 / FR-27 reporting, outcomes, metrics | S-190, S-191, S-199 | ✅ Covered |
+| FR-28 / FR-29 webhook rule, runbook | S-184, S-197 | ✅ Covered |
+| FR-30 no schedules | S-197 | ✅ Covered |
+| FR-31–FR-34 board updates, PAT | S-181, S-182, S-199 | ✅ Covered |
+| AC-1 trigger | S-184, S-197, S-198 | ✅ Covered |
+| AC-2 refusals | S-185, S-198 | ✅ Covered |
+| AC-3 claim | S-188 | ✅ Covered |
+| AC-4 repo gate | S-189 | ✅ Covered |
+| AC-5 / AC-6 confinement, injection | S-182, S-191, S-195 | ✅ Covered |
+| AC-7 / AC-8 / AC-9 caps, regression test, gates | S-192, S-193 | ✅ Covered |
+| AC-10 PR | S-194 | ✅ Covered |
+| AC-11 disposition | S-186, S-198 | ✅ Covered |
+| AC-12 circuit breaker | S-190, S-197 | ✅ Covered |
+| AC-14 budget | S-191 | ✅ Covered |
+| AC-16 live | S-198 | ✅ Covered |
+| AC-19 manual invoke | S-190, S-198 | ✅ Covered |
+| AC-20 concurrency | S-188, S-198 | ✅ Covered |
+| AC-21 / AC-22 / AC-23 board | S-199, S-198 | ✅ Covered |
+| AC-24 crash then retry | S-188, S-198 | ✅ Covered |
 
 ### Gaps
 
-None. Spec OQ-1 (the Python install contract) is assigned to S-189. Spec OQ-2 (managed-settings key names) is assigned to S-182.
+None.
 
 ### Non-Goals Validation
 
-- [x] Assigning the GitHub App bot as assignee — not in any story (S-188 asserts FR-8).
-- [x] Automatic retry of a failed fix — not in any story.
-- [x] Agent merges or converts the PR out of Draft — not in any story (S-194 business rule).
-- [x] Running `verifier`/`qa-engineer` inside the agent — not in any story; recorded as not run (S-194).
-- [x] Several bugs per run — not in any story (S-187 stops at the first).
-- [x] A bundled `developer` definition — not in any story (S-189 ends `not_applicable`).
-- [x] Stacks beyond JS/TS and Python — not in any story.
-- [x] G5-b PR merge/close auto-detection — not in any story.
-- [x] Event-driven trigger on the ready label (webhook) — not in any story.
-- [x] Per-repo stack extension — not in any story.
+- [x] Labels, queue and schedules: no story covers them (S-187 and S-196 removed; S-197 has no schedule).
+- [x] Assignee: no story assigns anyone (S-188 asserts FR-8).
+- [x] Auto-retry, merging, verifier or qa inside the agent, several issues per run, bundled `developer`, other stacks: none.
+- [x] Board moves triggering runs: none (D-101).
+- [x] Settings UI for the PAT and the `string-list` control: follow-up issues, not stories here.
