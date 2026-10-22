@@ -38,6 +38,10 @@ def test_dockerfile_installs_semgrep_in_its_own_venv_on_path() -> None:
     )
     assert re.search(r"ARG SEMGREP_VERSION=\d+\.\d+\.\d+\n", dockerfile)
     assert "ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep" in dockerfile
+    # The venv install is the only one: a `pip install semgrep` into the
+    # image's main Python would pass pip-audit (it audits declared deps only)
+    # while putting the pinned CVEs back next to the agent.
+    assert len(re.findall(r"semgrep==", dockerfile)) == 1
 
 
 def test_audit_runs_strict_with_no_ignored_vulnerabilities() -> None:
