@@ -40,6 +40,8 @@
 - `agents/code-review/app/codeReview/tests/fixtures/github/issue-315/` - issue #315 shape, PR #330 linking it, and the webhook-triggers spec served at head (S-207)
 - `agents/code-review/app/codeReview/context/conventions.py` - S-208 adds the report-name mappings, drift heading and candidate-word regexes, token caps, conventions sources, and ADR name/Status regexes
 - `agents/code-review/app/codeReview/tests/unit/{test_verifier_candidates,test_conventions,test_properties_verifier}.py` - S-208 tests (TC-208-\*, CT-11, RT-05)
+- `agents/code-review/app/codeReview/tests/unit/{test_verifier_hostile,test_repo_conventions_hostile}.py` - S-208 QA hostile-input tests (D1–D4 pins, now passing)
+- `agents/code-review/app/codeReview/context/markdown.py` - shared CommonMark fence tracker used by `context/spec.py` and `context/verifier.py` (S-208, DR-10)
 - `agents/code-review/app/codeReview/tests/fixtures/reports/`, `tests/helpers/reports.py` - fidelity-report fixtures (byte copy of `fidelity-report-S-170.md`, synthetic AC-7, no-heading, numbered, empty, bullet-list) and their loader (S-208)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,adr_002_head.md,README.md}` - ADR-002 route with a `## Status` heading (S-208)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
