@@ -212,6 +212,10 @@ on conflict (slug) do update
 --    runtime_arn is a placeholder until the first `agentcore deploy` (Wave B,
 --    S-214) sets it. It is deliberately NOT in the `do update` list, so
 --    re-running this seed never overwrites a deployed ARN with the placeholder.
+--    The row starts disabled (is_enabled = false, D-39): the placeholder ARN
+--    cannot be invoked. S-214 sets runtime_arn and is_enabled = true in one
+--    explicit update. is_enabled is NOT in the `do update` list either, so an
+--    operator's later enable survives re-running this seed.
 --    max_runtime_seconds (1800) MUST equal maxLifetime in
 --    agents/code-review/agentcore/agentcore.json and MAX_LIFETIME in the
 --    agent's config.py; grace_seconds (120) MUST equal its GRACE_SECONDS.
@@ -222,6 +226,7 @@ on conflict (slug) do update
 insert into agents (
   slug, name, description, version,
   runtime_arn, runtime_qualifier,
+  is_enabled,
   requires_repository, max_runtime_seconds, grace_seconds, start_timeout_seconds,
   default_params, params_schema
 )
@@ -232,7 +237,8 @@ values (
   '0.1.0',
   'pending-deploy:code-review',  -- placeholder; set by S-214 after the first deploy
   'DEFAULT',
-  true,
+  false,  -- is_enabled: disabled until S-214 deploys the runtime (D-39)
+  true,   -- requires_repository
   1800,  -- 30 min: MUST equal maxLifetime in agentcore.json
   120,   -- grace_seconds
   300,   -- start_timeout_seconds: queue clock (D9), NOT idleRuntimeSessionTimeout

@@ -245,6 +245,18 @@ def test_on_conflict_never_overwrites_the_deployed_runtime_arn(row):
     assert "runtime_arn" not in row["conflict"]
 
 
+def test_row_is_seeded_disabled_until_deploy(row):
+    # D-39: runtime_arn is a placeholder until S-214 deploys the runtime, so the
+    # row starts disabled; S-214 sets runtime_arn and is_enabled = true together.
+    assert row["columns"].get("is_enabled") is False, "is_enabled must be inserted as false"
+    assert row["columns"]["runtime_arn"] == "pending-deploy:code-review"
+
+
+def test_on_conflict_never_touches_is_enabled(row):
+    # D-39: an operator's later enable (or disable) survives re-applies.
+    assert "is_enabled" not in row["conflict"]
+
+
 def test_seed_and_migration_insert_the_same_row():
     seed = agent_rows(SEED)["code-review"]["columns"]
     mig = agent_rows(_migration())["code-review"]["columns"]
