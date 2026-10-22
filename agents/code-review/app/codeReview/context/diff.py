@@ -8,14 +8,20 @@ Flow (``diff_context``):
 
 1. ``classify`` sorts the PR's files into *reviewed* and *listed by name only*
    (lockfiles, generated paths, binaries, excluded workstream files) from the
-   path and the files-response metadata alone.
+   path and the files-response metadata alone. Both names of a rename are
+   classified: the new name decides reviewed vs name-only, and a previous name
+   matching the excluded-workstream, lockfile or generated rules withholds the
+   base (``base_withheld_reason``).
 2. ``check_size`` sums additions + deletions over reviewed files. Over
    ``max_diff_lines``, or a file listing cut at the 3,000-file cap, returns
    ``OverBudget`` and nothing else is fetched: no merge base, no content.
 3. ``expanded_diff`` reads the merge base through ``compare`` and fetches the
    merge-base and head blobs with a pool of ``MAX_WORKERS`` threads, then
    emits ``difflib.unified_diff(n=50)`` per file, the head contents, and the
-   changed head line ranges.
+   changed head line ranges. A file whose base is withheld is never fetched at
+   its previous name: it is diffed as if added (``/dev/null`` base, every head
+   line ``+``), so excluded content cannot leak as ``-`` lines (FR-10, AC-8)
+   and a rename out of an excluded path cannot hide new code from review.
 
 Late reclassification: a fetched blob with a NUL byte in its first 8 KB is
 binary, and a blob that cannot be fetched is "content unavailable". Both move
@@ -65,6 +71,7 @@ __all__ = [
     "FileDiff",
     "NameOnlyFile",
     "OverBudget",
+    "base_withheld_reason",
     "changed_lines",
     "changed_ranges",
     "check_size",
@@ -153,6 +160,10 @@ class FileDiff:
     diff: str
     head_content: str | None  # None for removed files
     changed_ranges: tuple[tuple[int, int], ...]
+    # The name-only rule (``excluded``, ``lockfile``, ``generated``) the
+    # previous name matched, when the base was withheld and the file was
+    # diffed as added; ``None`` otherwise. For the comment's context line.
+    base_withheld: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +209,18 @@ def path_reason(path: str) -> str | None:
     return None
 
 
+def base_withheld_reason(f: PullFile) -> str | None:
+    """The rule a rename's previous name matches, when its base must not be read.
+
+    ``None`` when there is no previous name or it is an ordinary path. The
+    size check still counts the file's additions and deletions as GitHub
+    reports them.
+    """
+    if f.previous_filename is None:
+        return None
+    return path_reason(f.previous_filename)
+
+
 def _looks_binary(f: PullFile) -> bool:
     """No ``patch`` and no line counts: GitHub's shape for a binary file.
 
@@ -209,7 +232,12 @@ def _looks_binary(f: PullFile) -> bool:
 
 
 def classify(files: Iterable[PullFile]) -> Classification:
-    """Split ``files`` into reviewed and name-only, keeping files-list order."""
+    """Split ``files`` into reviewed and name-only, keeping files-list order.
+
+    Only the head name (``filename``) decides this. A reviewed file whose
+    previous name is name-only stays reviewed with its base withheld (see
+    ``base_withheld_reason``), so a rename cannot hide new code from review.
+    """
     reviewed: list[PullFile] = []
     name_only: list[NameOnlyFile] = []
     for f in files:
@@ -378,11 +406,13 @@ def expanded_diff(
 
     merge_base = _validated_merge_base(client, pull)
 
-    # (file index, side) -> (path, ref). Base is skipped for added files, head
-    # for removed ones; renamed files read the base at previous_filename.
+    # (file index, side) -> (path, ref). Base is skipped for added files and
+    # for files whose previous name is name-only (withheld), head for removed
+    # ones; renamed files read the base at previous_filename.
+    withheld = [base_withheld_reason(f) for f in reviewed]
     jobs: list[tuple[int, str, str, str]] = []
     for i, f in enumerate(reviewed):
-        if f.status != "added":
+        if f.status != "added" and withheld[i] is None:
             jobs.append((i, "base", f.previous_filename or f.filename, merge_base))
         if f.status != "removed":
             jobs.append((i, "head", f.filename, pull.head_sha))
@@ -403,16 +433,19 @@ def expanded_diff(
             continue
         base_text, head_text = _decode(base_blob), _decode(head_blob)
         removed = f.status == "removed"
+        # A withheld base diffs as added: empty base, every head line "+".
+        diff_status = "added" if withheld[i] is not None else f.status
         files.append(
             FileDiff(
                 filename=f.filename,
                 status=f.status,
                 previous_filename=f.previous_filename,
                 diff=unified_diff(
-                    f.previous_filename or f.filename, f.filename, base_text, head_text, f.status
+                    f.previous_filename or f.filename, f.filename, base_text, head_text, diff_status
                 ),
                 head_content=None if removed else head_text,
                 changed_ranges=() if removed else changed_ranges(base_text, head_text),
+                base_withheld=withheld[i],
             )
         )
 

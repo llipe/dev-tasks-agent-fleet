@@ -16,7 +16,13 @@ from pathlib import Path
 
 from context.diff import DiffContext, NameOnlyFile, diff_context
 from github_client import GitHubClient
-from tests.helpers.github_stub import FIXTURES, fixture_json, json_response, load_fixture
+from tests.helpers.github_stub import (
+    FIXTURES,
+    StubResponse,
+    fixture_json,
+    json_response,
+    load_fixture,
+)
 
 SAMPLE = "sample-pr"
 GOLDEN = FIXTURES / SAMPLE / "expanded_diff.golden"
@@ -112,3 +118,44 @@ def test_excluded_workstream_file_content_is_never_fetched():
 
 def test_golden_file_is_checked_in():
     assert Path(GOLDEN).is_file()
+
+
+def test_excluded_workstream_file_renamed_away_is_never_fetched():
+    """TC-206-19, rename-away variant (FR-10 / AC-8).
+
+    The PR renames ``workstream/tasks-prd-widgets.md`` to ``docs/plan.md``.
+    The new name is reviewed, but the base at the excluded previous name is
+    never requested: the file is diffed as added from ``/dev/null``.
+    """
+    stub = load_fixture(SAMPLE)
+    files = fixture_json(SAMPLE, "pull_files_page1.json")
+    files.append(
+        {
+            "filename": "docs/plan.md",
+            "previous_filename": "workstream/tasks-prd-widgets.md",
+            "status": "renamed",
+            "additions": 2,
+            "deletions": 1,
+            "patch": "@@ -1 +1,2 @@\n-- [ ] secret plan\n+# Plan\n+public\n",
+        }
+    )
+    stub.add(
+        ("GET", "/repos/acme/widgets/pulls/42/files", (("page", "1"), ("per_page", "100"))),
+        json_response(files),
+    )
+    stub.add(
+        ("GET", "/repos/acme/widgets/contents/docs/plan.md", (("ref", HEAD),)),
+        StubResponse(200, b"# Plan\npublic\n"),
+    )
+    ctx = _run(stub)
+    assert not any("/contents/workstream" in c.path for c in stub.calls)
+    assert "secret plan" not in ctx.diff_text
+    plan = ctx.files[-1]
+    assert (plan.filename, plan.previous_filename, plan.base_withheld) == (
+        "docs/plan.md",
+        "workstream/tasks-prd-widgets.md",
+        "excluded",
+    )
+    assert plan.diff == "--- /dev/null\n+++ b/docs/plan.md\n@@ -0,0 +1,2 @@\n+# Plan\n+public\n"
+    assert ctx.changed_ranges["docs/plan.md"] == ((1, 2),)
+    assert ctx.changed_lines == 11  # GitHub's additions + deletions still count

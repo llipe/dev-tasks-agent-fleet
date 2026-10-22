@@ -8,9 +8,10 @@ file names, lone-CR and CRLF texts, invalid UTF-8 on the base side, the NUL
 scan on base and rename blobs, worker isolation in the content pool, a huge
 single-line file, and renames whose names carry a backslash or a newline.
 
-Two ``xfail(strict=True)`` tests pin source defects reported to ``developer``;
-each flips to XPASS (a failure) once the source is fixed, so the marker must
-then be removed.
+One ``xfail(strict=True)`` test pins a source defect reported to ``developer``
+(Unicode line separators in header names); it flips to XPASS (a failure) once
+the source is fixed, so the marker must then be removed. The rename-away
+defect it shared this note with is fixed and its test runs unmarked.
 """
 
 from __future__ import annotations
@@ -25,7 +26,9 @@ from context.diff import (
     NUL_SCAN_BYTES,
     NameOnlyFile,
     OverBudget,
+    changed_lines,
     changed_ranges,
+    check_size,
     classify,
     diff_context,
     expanded_diff,
@@ -96,12 +99,6 @@ def test_non_canonical_spellings_of_an_excluded_path_are_never_fetched(path):
     assert repo.content_calls() == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SOURCE DEFECT (FR-10/AC-8): classify() checks only `filename`; a file "
-    "renamed away from workstream/tasks-*.md is reviewed and its base content is "
-    "fetched at previous_filename and emitted as '-' lines.",
-)
 def test_rename_away_from_an_excluded_workstream_path_never_reads_the_excluded_content():
     repo = Repo(
         {("workstream/tasks-x.md", MB): "secret plan\n", ("docs/plan.md", HEAD): "public\n"}
@@ -109,6 +106,57 @@ def test_rename_away_from_an_excluded_workstream_path_never_reads_the_excluded_c
     ctx = _expand(repo, [_f("docs/plan.md", "renamed", prev="workstream/tasks-x.md")])
     assert not any("/contents/workstream/" in c.path for c in repo.content_calls())
     assert "secret plan" not in ctx.diff_text
+
+
+@pytest.mark.parametrize(
+    ("prev", "new", "rule", "secret"),
+    [
+        ("workstream/tasks-x.md", "docs/plan.md", "excluded", "secret plan"),
+        ("yarn.lock", "yarn.lock.old", "lockfile", "lock-secret@1.0.0"),
+        ("dist/a.js", "src/a.js", "generated", "minified_secret()"),
+    ],
+)
+def test_rename_away_from_a_name_only_path_diffs_the_head_as_added(prev, new, rule, secret):
+    """The base at a name-only previous name is never fetched (FR-10 / AC-8).
+
+    The new name is reviewed, so the head is diffed from ``/dev/null``: every
+    head line is ``+`` and the changed range is the whole head file. The
+    file is not made name-only, so a rename cannot hide new code from review.
+    """
+    repo = Repo({(prev, MB): f"{secret}\n", (new, HEAD): "one\ntwo\nthree\n"})
+    ctx = _expand(repo, [_f(new, "renamed", add=3, dele=1, prev=prev)])
+    assert [(c.path, c.params["ref"]) for c in repo.content_calls()] == [
+        (f"{P}/contents/{new}", HEAD)
+    ]
+    assert secret not in ctx.diff_text
+    (fd,) = ctx.files
+    assert (fd.filename, fd.status, fd.previous_filename) == (new, "renamed", prev)
+    assert fd.base_withheld == rule
+    assert fd.diff == f"--- /dev/null\n+++ b/{new}\n@@ -0,0 +1,3 @@\n+one\n+two\n+three\n"
+    assert fd.head_content == "one\ntwo\nthree\n"
+    assert fd.changed_ranges == ((1, 3),)
+    assert ctx.name_only == ()
+
+
+def test_rename_away_keeps_the_reported_line_counts_in_the_budget():
+    files = [_f("src/a.js", "renamed", add=7, dele=900, prev="dist/a.js")]
+    assert changed_lines(classify(files)) == 907
+    assert check_size(classify(files), max_diff_lines=906) == OverBudget(907, 1, 906)
+
+
+def test_rename_away_with_a_binary_head_is_still_moved_to_name_only():
+    repo = Repo({("src/a.bin", HEAD): b"\x00\x01"})
+    ctx = _expand(repo, [_f("src/a.bin", "renamed", prev="dist/a.bin")])
+    assert ctx.files == ()
+    assert ctx.name_only == (NameOnlyFile("src/a.bin", "renamed", "binary"),)
+    assert all("/contents/dist/" not in c.path for c in repo.content_calls())
+
+
+def test_ordinary_rename_has_no_base_withheld_note():
+    repo = Repo({("src/old.py", MB): "a\n", ("src/new.py", HEAD): "b\n"})
+    ctx = _expand(repo, [_f("src/new.py", "renamed", prev="src/old.py")])
+    assert ctx.files[0].base_withheld is None
+    assert ctx.files[0].diff.startswith("--- a/src/old.py\n+++ b/src/new.py\n")
 
 
 def test_rename_into_an_excluded_workstream_path_is_name_only_and_unfetched():
