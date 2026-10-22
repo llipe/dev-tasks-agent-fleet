@@ -7,28 +7,34 @@
 -- row and refreshes the contract columns.
 --
 -- runtime_arn is a placeholder until Wave B (S-214) deploys the AgentCore
--- runtime and sets it with an explicit update. runtime_arn and
--- runtime_qualifier are deliberately NOT refreshed on conflict, so
--- re-applying this migration after the deploy cannot clobber the real ARN.
--- is_enabled is not touched either, so an operator's disable survives.
+-- runtime, so the row is inserted DISABLED (is_enabled = false, D-39): the
+-- panel lists and invokes only enabled agents, and the placeholder ARN cannot
+-- be invoked. S-214 sets runtime_arn and is_enabled = true in one explicit
+-- update after the deploy. runtime_arn, runtime_qualifier, and is_enabled are
+-- deliberately NOT refreshed on conflict, so re-applying this migration after
+-- the deploy cannot clobber the real ARN or re-disable the agent, and an
+-- operator's later enable or disable survives.
 --
 -- Apply: local `supabase db reset` only. Prod apply waits for S-214 and an
 -- explicit user confirmation (infra-engineer).
 --
--- Verify:
---   select slug, params_schema, default_params, max_runtime_seconds
+-- Verify (expect is_enabled = false until S-214):
+--   select slug, is_enabled, runtime_arn, params_schema, default_params,
+--          max_runtime_seconds
 --     from agents where slug = 'code-review';
 --
 -- Rollback / impact:
 --   No runs reference it yet:
 --     delete from agents where slug = 'code-review';
---   Runs reference it (runs.agent_id is `on delete restrict`):
+--   Runs reference it (runs.agent_id is `on delete restrict`; only possible
+--   after S-214 enables the row):
 --     update agents set is_enabled = false where slug = 'code-review';
 -- =====================================================================
 
 insert into agents (
   slug, name, description, version,
   runtime_arn, runtime_qualifier,
+  is_enabled,
   requires_repository, max_runtime_seconds, grace_seconds, start_timeout_seconds,
   default_params, params_schema
 )
@@ -39,7 +45,8 @@ values (
   '0.1.0',
   'pending-deploy:code-review',  -- placeholder; set by S-214 after the first deploy
   'DEFAULT',
-  true,
+  false,  -- is_enabled: disabled until S-214 deploys the runtime (D-39)
+  true,   -- requires_repository
   1800,  -- 30 min: MUST equal maxLifetime in agentcore.json
   120,   -- grace_seconds
   300,   -- start_timeout_seconds: queue clock (D9), NOT idleRuntimeSessionTimeout

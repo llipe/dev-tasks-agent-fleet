@@ -146,16 +146,31 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — seeded code-review agent 
     });
   });
 
+  it("is seeded disabled with the placeholder runtime_arn (D-39)", async () => {
+    const row = await withDb((c) =>
+      c
+        .query<{
+          is_enabled: boolean;
+          runtime_arn: string;
+        }>(`select is_enabled, runtime_arn from agents where slug = 'code-review'`)
+        .then((r) => r.rows[0]),
+    );
+    expect(row).toBeDefined();
+    expect(row.is_enabled).toBe(false);
+    expect(row.runtime_arn).toBe("pending-deploy:code-review");
+  });
+
   it("applying the migration twice leaves exactly one row", async () => {
     const sql = codeReviewMigrationSql();
     const count = await withDb(async (c) => {
       await c.query(sql);
       await c.query(sql);
-      const r = await c.query<{ n: string }>(
-        `select count(*)::text as n from agents where slug = 'code-review'`,
+      const r = await c.query<{ n: string; enabled: boolean }>(
+        `select count(*)::text as n, bool_or(is_enabled) as enabled
+           from agents where slug = 'code-review'`,
       );
-      return Number(r.rows[0].n);
+      return { n: Number(r.rows[0].n), enabled: r.rows[0].enabled };
     });
-    expect(count).toBe(1);
+    expect(count).toEqual({ n: 1, enabled: false });
   });
 });

@@ -6,9 +6,10 @@ Audit status: **complete**, not blocked. AC-5 has its static evidence, but its l
 
 ## Changelog
 
-| Version | Date       | Change                                    | Author   |
-| ------- | ---------- | ----------------------------------------- | -------- |
-| 1.0     | 2026-10-22 | Initial Audit Mode report for S-204 #406. | verifier |
+| Version | Date       | Change                                              | Author   |
+| ------- | ---------- | --------------------------------------------------- | -------- |
+| 1.0     | 2026-10-22 | Initial Audit Mode report for S-204 #406.           | verifier |
+| 1.1     | 2026-10-22 | Add follow-up audit of PR #428 (D-39, resolves D4). | verifier |
 
 ## 1. Human-readable summary
 
@@ -81,3 +82,44 @@ No Critical or Major drift. No Unintended drift.
 | D6  | No action in S-204. Confirm the PR #425 body records the "matrix line only; runbook ships with S-214" judgment, and that S-214's runbook covers the seed-migration apply and rollback.                                                                                         | `product-engineer` via `activity-drift-reconciliation`; owner `developer` |
 | D7  | `planner` updates the Wave A row in the consolidated PR (`In progress`, spec v1.1, PR #425).                                                                                                                                                                                   | `product-engineer` / `planner`                                            |
 | D8  | No S-204 change. Track the security-analyst CVE-2026-114603 `pip-audit` failure separately. Optionally, make root `validate-py` run every package and fail at the end, so one package cannot hide another.                                                                     | `developer` (separate issue); `product-engineer` to file                  |
+
+## Follow-up: PR #428 (D-39)
+
+**Fidelity: High** · **Highest drift impact: Minor** · 2 drift items (0 Critical, 0 Major, 2 Minor), all non-blocking · D4 **resolved**
+Scope: S-204 / issue #406 follow-up · branch `story/S-204-seed-disabled` @ `ccedef4` · PR #428 into `integration/code-review-agent` · delivered scope `git diff origin/integration/code-review-agent...HEAD` (5 files, +84/−22)
+Audit status: **complete**, not blocked. Layer 2.5 and E2E evidence is static only (no Docker in this runtime).
+
+### Summary
+
+The Code Review agent's database entry now starts switched off. Before this change it started switched on while still pointing at a placeholder address, so it showed up first in the panel and could be run before it existed, which would fail. Now it stays hidden and cannot be run until the deploy story (S-214) gives it a real address and switches it on in the same step. Re-running the setup scripts never switches it back on or off, so an operator's later choice sticks. A test helper that turns all agents off and back on now restores only the agents that were on before, so it does not switch Code Review on by accident.
+
+### Per-requirement results
+
+| Req   | Description                                                        | Codebase evidence                                                                                                                                                                                | Workstream evidence                                     | Test evidence                                                                                                                                                                 | Result |
+| ----- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| D39-1 | Seed and migration insert `is_enabled = false`                     | `supabase/seed.sql` §4a and `supabase/migrations/20261022120000_seed_code_review_agent.sql` list `is_enabled` explicitly with `false`; `requires_repository` stays `true` (column order checked) | D-39 "Accepted" row                                     | `test_row_is_seeded_disabled_until_deploy[seed,migration]` and `test_seed_and_migration_insert_the_same_row` pass; verifier mutation (migration `false` to `true`) fails both | Pass   |
+| D39-2 | `is_enabled` stays out of the `on conflict` update list            | Both `do update set` lists cover name through `params_schema` only; `is_enabled`, `runtime_arn`, `runtime_qualifier` absent                                                                      | D-39; migration header rewritten to say so              | `test_on_conflict_never_touches_is_enabled[seed,migration]` pass; Layer 2.5 `applying the migration twice` now asserts `{ n: 1, enabled: false }` (static, not run)           | Pass   |
+| D39-3 | Placeholder ARN unchanged; disabled row is not invocable or listed | `runtime_arn = 'pending-deploy:code-review'`; panel gates on `is_enabled` in `api/agents/[slug]/invoke`, `api/internal/schedules/[id]/fire`, the invoke page, and `getEnabledAgents`             | Spec §5.4 rollback ("otherwise disable") still accurate | Layer 2.5 `is seeded disabled with the placeholder runtime_arn (D-39)` (static, not run)                                                                                      | Pass   |
+| D39-4 | E2E fleet toggle does not enable the disabled row                  | `panel/tests/e2e/fixtures/seed.ts` snapshots enabled ids before disabling, restores with `is_enabled = (id = any($1::uuid[]))` (`agents.id` is `uuid`), no-op without a prior disable            | qa-engineer fix                                         | `edge-cases.spec.ts` `afterEach` and per-test `setSeededAgentEnabled(true)` calls are now safe no-ops; E2E not run                                                            | Pass   |
+| D39-5 | S-214 sets `runtime_arn` and `is_enabled = true` together          | Out of scope for this PR (Wave B)                                                                                                                                                                | Not reflected in S-214's story or spec §5.1 (see F1)    | n/a                                                                                                                                                                           | Drift  |
+
+Re-run by verifier: `cd agents/code-review/app/codeReview && PATH=.venv/bin:$PATH make test` → **741 passed, 2 skipped**; `test_seed_contract.py` alone → 25 passed, 2 skipped. Reported by caller: package `validate` PASS (99.23%), panel `make validate-js` PASS on Node 26, qa-engineer 5/5 seed-contract mutations caught.
+
+### Drift catalog
+
+All items are **non-blocking** to PR #428 readiness and to issue #406 completion.
+
+| ID  | Description                                                                                                                                                                                                                                                                                                                                               | Impact | Intent     | Evidence                                                                                        |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------- | ----------------------------------------------------------------------------------------------- |
+| F1  | D-39 makes S-214 responsible for `is_enabled = true`, but S-214's checklist and steps still say only "apply the seed migration; set `runtime_arn`" and "the `agents` row exists with `runtime_arn` set". Spec §5.1 likewise says only "`runtime_arn` is set after the first deploy". Without a write-back, S-214 can deploy and leave the agent disabled. | Minor  | Unintended | `workstream/user-stories-prd-code-review-agent.md` S-214 (DoD, verification, step 4); spec §5.1 |
+| F2  | A comment in `panel/tests/e2e/schedule-dialog.spec.ts` still says the dialog defaults to "Code Review" since S-204. With the row disabled it is no longer listed, so the comment is stale. The explicit `selectOption("Dependency Update")` is still correct and harmless.                                                                                | Minor  | Unintended | `panel/tests/e2e/schedule-dialog.spec.ts` lines 34-35                                           |
+
+Other checks: no runbook-coverage finding (no setup, configuration, or migration steps beyond the existing migration edit; FR-49b threshold not met). No roadmap mismatch (this PR completes no phase or wave). `core/checks` (docs-structure, vocabulary) is not present in this repository, so neither check applies.
+
+### Recommendations
+
+| ID  | Next step                                                                                                                                                                                       | Route                                                  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| D4  | Resolved by PR #428 per D-39. No further action.                                                                                                                                                | no action needed                                       |
+| F1  | Expand S-214: its DoD, verification, and step 4 set `runtime_arn` **and** `is_enabled = true` in one update and verify both; add a changelog line to spec §5.1 and the stories doc citing D-39. | `product-engineer` via `activity-drift-reconciliation` |
+| F2  | Update or drop the stale comment in a later panel test change (optional; may ride with S-214).                                                                                                  | `developer`                                            |
