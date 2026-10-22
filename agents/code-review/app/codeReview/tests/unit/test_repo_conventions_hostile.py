@@ -9,7 +9,8 @@ the 10% bundle cap for any budget and any content; ADR fields that cannot
 forge extra lines in the index; the 401/403/429/5xx mapping and the
 ``AGENTS.md`` 403 fallback; ``warn`` payloads that carry no repository text.
 
-Strict ``xfail`` tests pin defects found in this pass.
+The defects this pass first pinned with strict ``xfail`` (QA S-208 D1-D4) are
+fixed, so every test here is a plain pass/fail test.
 """
 
 from __future__ import annotations
@@ -237,7 +238,7 @@ def test_warn_payloads_carry_only_a_validated_path_and_a_fixed_reason():
         assert safe.fullmatch(payload["path"])
 
 
-# -- defects pinned by this pass (strict xfail) -------------------------------------------
+# -- defects pinned by this pass, now fixed (QA S-208 D1-D4) ------------------------------
 
 
 def test_status_heading_scan_is_linear_in_the_number_of_lines():

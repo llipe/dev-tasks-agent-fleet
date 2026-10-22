@@ -9,8 +9,8 @@ untrusted text in ``Candidate.label()`` or in ``warn`` payloads, reads only of
 validated names at ``ref=head_sha``, the 401/403/404/429/5xx mapping, CR-only
 and mixed line endings, BOM and NUL, and Unicode look-alikes.
 
-Strict ``xfail`` tests pin defects found in this pass; each reason names the
-expected behavior so the fix flips the test to a pass.
+The defects this pass first pinned with strict ``xfail`` (QA S-208 D1-D4) are
+fixed, so every test here is a plain pass/fail test.
 """
 
 from __future__ import annotations
@@ -371,7 +371,7 @@ def test_a_report_path_that_is_a_directory_listing_is_not_parseable():
     assert ctx.reports[0].state == REPORT_NOT_PARSEABLE and ctx.candidates == ()
 
 
-# -- defects pinned by this pass (strict xfail) -----------------------------------------
+# -- defects pinned by this pass, now fixed (QA S-208 D1-D4) ----------------------------
 
 
 @pytest.mark.parametrize("ws", ["\x0b", "\x0c"])
