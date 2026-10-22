@@ -26,28 +26,33 @@
 - `agents/code-review/app/codeReview/render.py` - review, budget and failure comments (S-212)
 - `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
 - `agents/code-review/app/codeReview/tests/{unit,integration,fixtures,helpers}/**` - tests, recorded GitHub fixtures, fake Bedrock, seeded PRNG helper
-- `supabase/seed.sql`, `supabase/migrations/<ts>_seed_code_review_agent.sql` - `agents` row (S-204)
-- `.github/workflows/ci.yml`, `Makefile` - CI matrix and root aggregate (S-204)
-- `panel/tests/**` - CT-01 params parity cases on the panel side (S-204)
+- `agents/code-review/app/codeReview/tests/unit/{test_payload,test_config,test_layout,test_seed_contract,test_properties_params}.py` - S-204 tests (TC-204-*, CT-01 Python side, CT-02, RT-01)
+- `agents/code-review/app/codeReview/tests/unit/{test_credentials,test_credentials_real_jwt,test_heartbeat,test_scrubber,test_signal_backstop}.py` - sibling tests for the copied modules (S-204)
+- `agents/code-review/app/codeReview/tests/integration/test_invoke_skeleton.py` - skeleton invoke against a reporter sink (S-204)
+- `agents/code-review/app/codeReview/tests/fixtures/params_cases.json` - CT-01 shared params cases (S-204)
+- `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
+- `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
+- `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
+- `panel/tests/integration/seed-schema.test.ts` - TC-204-15 Layer 2.5 seed row check (S-204)
 
 ## Tasks
 
 - [ ] 1.0 Implement Story S-204 (#406): Agent scaffold, params, and agents seed · branch `story/S-204-agent-scaffold`
-  - [ ] 1.1 `[T]` [code-review] L1 `test_payload.py`: unwrap single and double `prompt` wrapper; every invalid param (`pr_number` 0/negative/string, limits out of range, unknown `reasoning_effort`, extra key, `params` absent); defaults (TC-204-\*)
-  - [ ] 1.2 `[T]` [code-review] L1 `test_config.py`: clock invariant pass and fail (`run_timeout_seconds` ≤ 900 ≤ 1800) (D-32)
-  - [ ] 1.3 `[T]` [code-review] `tests/integration/test_invoke_skeleton.py` with a reporter sink: invalid params → `INVALID_PARAMS`, no GitHub call
-  - [ ] 1.4 `[T]` [code-review, panel] CT-01 shared params case file run by the Python validator and the panel's Ajv `validateParams`
-  - [ ] 1.5 `[I]` [code-review] Copy `agent_reporter`, `credentials`, `heartbeat`, `signal_backstop`, `scrubber`, `config` from `security-analyst`; `pyproject.toml` pins `bedrock-agentcore`, `boto3`, `requests`, `PyJWT`, `cryptography` at sibling versions, no `strands-agents` (D-20, D-07)
-  - [ ] 1.6 `[I]` [code-review] `config.py` env vars (`SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `MODEL_ID`, `PANEL_BASE_URL`, `PRICE_INPUT_PER_MTOK`, `PRICE_OUTPUT_PER_MTOK`) and `assert_clock_invariant()` (D-29, D-32)
-  - [ ] 1.7 `[I]` [code-review] `main.py`: `unwrap_payload`, `validate_payload`, `apply_defaults`, skeleton `invoke` (opens `load_pr`, ends `failed`/`INTERNAL_ERROR` "not implemented") (D-21)
-  - [ ] 1.8 `[I]` [code-review] `Makefile` (sibling targets incl. `validate`), `Dockerfile` (no scanner toolchains), `.dockerignore`
-  - [ ] 1.9 `[I]` [supabase] Seed row in `supabase/seed.sql` and data migration `<ts>_seed_code_review_agent.sql` with the spec §5.1 `params_schema`/`default_params`, `on conflict (slug) do update`; set the operational columns to match the siblings (`max_runtime_seconds` = `maxLifetime` 1800, grace and start timeouts, `requires_repository`, name, version — test plan DF-09)
-  - [ ] 1.10 Migration lifecycle: rollback note in the PR (`delete … where slug = 'code-review'` or disable); apply **locally only** with `supabase db reset`; verify `select slug, params_schema from agents where slug = 'code-review'`; prod apply waits for S-214 with explicit user confirmation
-  - [ ] 1.11 `[I]` [repo root] Add the package to the `.github/workflows/ci.yml` matrix and the root `Makefile` (record in the PR body: matrix line only; FR-49a runbook ships with S-214)
-  - [ ] 1.12 Verify Acceptance Criteria: AC1 package copies; AC2 pinned deps; AC3 params validation; AC4 clock invariant; AC5 seed row; AC6 CI + root `Makefile`; AC7 skeleton invoke
-  - [ ] 1.13 Manual: `supabase db reset`; panel invoke form for `code-review` renders six params with defaults
-  - [ ] 1.14 Map each AC to test evidence in the PR body
-  - [ ] 1.15 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 1.1 `[T]` [code-review] L1 `test_payload.py`: unwrap single and double `prompt` wrapper; every invalid param (`pr_number` 0/negative/string, limits out of range, unknown `reasoning_effort`, extra key, `params` absent); defaults (TC-204-\*)
+  - [x] 1.2 `[T]` [code-review] L1 `test_config.py`: clock invariant pass and fail (`run_timeout_seconds` ≤ 900 ≤ 1800) (D-32)
+  - [x] 1.3 `[T]` [code-review] `tests/integration/test_invoke_skeleton.py` with a reporter sink: invalid params → `INVALID_PARAMS`, no GitHub call
+  - [x] 1.4 `[T]` [code-review, panel] CT-01 shared params case file run by the Python validator and the panel's Ajv `validateParams`
+  - [x] 1.5 `[I]` [code-review] Copy `agent_reporter`, `credentials`, `heartbeat`, `signal_backstop`, `scrubber`, `config` from `security-analyst`; `pyproject.toml` pins `bedrock-agentcore`, `boto3`, `requests`, `PyJWT`, `cryptography` at sibling versions, no `strands-agents` (D-20, D-07)
+  - [x] 1.6 `[I]` [code-review] `config.py` env vars (`SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `MODEL_ID`, `PANEL_BASE_URL`, `PRICE_INPUT_PER_MTOK`, `PRICE_OUTPUT_PER_MTOK`) and `assert_clock_invariant()` (D-29, D-32)
+  - [x] 1.7 `[I]` [code-review] `main.py`: `unwrap_payload`, `validate_payload`, `apply_defaults`, skeleton `invoke` (opens `load_pr`, ends `failed`/`INTERNAL_ERROR` "not implemented") (D-21)
+  - [x] 1.8 `[I]` [code-review] `Makefile` (sibling targets incl. `validate`), `Dockerfile` (no scanner toolchains), `.dockerignore`
+  - [x] 1.9 `[I]` [supabase] Seed row in `supabase/seed.sql` and data migration `<ts>_seed_code_review_agent.sql` with the spec §5.1 `params_schema`/`default_params`, `on conflict (slug) do update`; set the operational columns to match the siblings (`max_runtime_seconds` = `maxLifetime` 1800, grace and start timeouts, `requires_repository`, name, version — test plan DF-09)
+  - [ ] 1.10 Migration lifecycle: rollback note in the PR (`delete … where slug = 'code-review'` or disable); apply **locally only** with `supabase db reset`; verify `select slug, params_schema from agents where slug = 'code-review'`; prod apply waits for S-214 with explicit user confirmation — rollback note written (migration header + PR body); local apply NOT RUN in the S-204 runtime (no Supabase CLI/Docker), static contract pinned by `test_seed_contract.py`
+  - [x] 1.11 `[I]` [repo root] Add the package to the `.github/workflows/ci.yml` matrix and the root `Makefile` (record in the PR body: matrix line only; FR-49a runbook ships with S-214)
+  - [x] 1.12 Verify Acceptance Criteria: AC1 package copies; AC2 pinned deps; AC3 params validation; AC4 clock invariant; AC5 seed row; AC6 CI + root `Makefile`; AC7 skeleton invoke
+  - [ ] 1.13 Manual: `supabase db reset`; panel invoke form for `code-review` renders six params with defaults — NOT RUN in the S-204 runtime (no Supabase CLI/Docker); open for the reviewer
+  - [x] 1.14 Map each AC to test evidence in the PR body
+  - [x] 1.15 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
 - [ ] 2.0 Implement Story S-205 (#407): GitHub client with a write allowlist · branch `story/S-205-github-client`
   - [ ] 2.1 `[T]` [code-review] L1 `test_github_client.py`: each allowed call; every disallowed verb/path (`PUT`, `PATCH`, `DELETE`, `POST` to reviews, merge, labels, another issue's comments) raises `ForbiddenCall` before transport; CT-04 allowlist snapshot
