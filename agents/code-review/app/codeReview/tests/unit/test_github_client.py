@@ -1081,6 +1081,20 @@ def test_timeout_default_transport_is_a_requests_session():
     assert isinstance(client._transport, requests.Session)
 
 
+def test_default_transport_does_not_trust_env():
+    # trust_env=True would let a .netrc entry for api.github.com replace the
+    # Bearer header, and pick up proxy settings from the environment.
+    client = GitHubClient(TOKEN, ORG, REPO, PR)
+    assert client._transport.trust_env is False
+
+
+def test_injected_transport_is_left_untouched():
+    session = requests.Session()
+    client = GitHubClient(TOKEN, ORG, REPO, PR, transport=session)
+    assert client._transport is session
+    assert session.trust_env is True
+
+
 # ---------------------------------------------------------------------------
 # TC-205-07 / TC-205-14 — static scans
 # ---------------------------------------------------------------------------

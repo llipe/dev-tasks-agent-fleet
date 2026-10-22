@@ -143,12 +143,12 @@ ALLOWLIST: tuple[AllowedCall, ...] = (
     AllowedCall("post_comment", "POST", "/repos/{o}/{r}/issues/{n}/comments"),
 )
 
-_ORG_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
-_REPO_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
-_NUMBER_RE = re.compile(r"^[1-9][0-9]{0,9}$")
-_SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_ORG_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
+_REPO_RE = re.compile(r"[A-Za-z0-9._-]{1,100}")
+_NUMBER_RE = re.compile(r"[1-9][0-9]{0,9}")
+_SHA_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 # An already-encoded path segment: unreserved characters or %XX escapes only.
-_ENCODED_SEGMENT_RE = re.compile(r"^(?:[A-Za-z0-9_.~-]|%[0-9A-Fa-f]{2})+$")
+_ENCODED_SEGMENT_RE = re.compile(r"(?:[A-Za-z0-9_.~-]|%[0-9A-Fa-f]{2})+")
 _MAX_REF_LEN = 255
 _MAX_QUERY_INT = 10_000
 
@@ -157,15 +157,15 @@ def _fits(placeholder: str, segment: str, bound: Mapping[str, str]) -> bool:
     if placeholder in bound:
         return segment == bound[placeholder]
     if placeholder == "m":
-        return bool(_NUMBER_RE.match(segment))
+        return bool(_NUMBER_RE.fullmatch(segment))
     if placeholder == "base_sha...head_sha":
         base, sep, head = segment.partition("...")
-        return bool(sep) and bool(_SHA_RE.match(base)) and bool(_SHA_RE.match(head))
+        return bool(sep) and bool(_SHA_RE.fullmatch(base)) and bool(_SHA_RE.fullmatch(head))
     return False  # pragma: no cover - every template placeholder is handled above
 
 
 def _safe_encoded_segment(segment: str) -> bool:
-    if not _ENCODED_SEGMENT_RE.match(segment):
+    if not _ENCODED_SEGMENT_RE.fullmatch(segment):
         return False
     decoded = unquote(segment)
     return decoded not in {".", ".."} and "/" not in decoded and "\\" not in decoded
@@ -472,6 +472,17 @@ def _is_rate_limited(resp: Any) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _default_session() -> requests.Session:
+    """A session that ignores the environment.
+
+    With ``trust_env=True`` a ``.netrc`` entry for api.github.com would replace
+    the Bearer header, and proxy variables would reroute the token-bearing call.
+    """
+    session = requests.Session()
+    session.trust_env = False
+    return session
+
+
 class GitHubClient:
     """Allowlisted GitHub REST client bound to one repository and one PR."""
 
@@ -489,9 +500,9 @@ class GitHubClient:
     ) -> None:
         if not isinstance(token, str) or not token:
             raise ValueError("token is required")
-        if not isinstance(org, str) or not _ORG_RE.match(org):
+        if not isinstance(org, str) or not _ORG_RE.fullmatch(org):
             raise ValueError("invalid org")
-        if not isinstance(repo, str) or not _REPO_RE.match(repo) or repo in {".", ".."}:
+        if not isinstance(repo, str) or not _REPO_RE.fullmatch(repo) or repo in {".", ".."}:
             raise ValueError("invalid repo")
         if not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number < 1:
             raise ValueError("pr_number must be a positive integer")
@@ -499,7 +510,7 @@ class GitHubClient:
         self.org = org
         self.repo = repo
         self.pr_number = pr_number
-        self._transport: Any = transport if transport is not None else requests.Session()
+        self._transport: Any = transport if transport is not None else _default_session()
         self._sleep = sleep
         self._clock = clock
         self._timeout = _check_timeout(timeout)
@@ -535,7 +546,7 @@ class GitHubClient:
     def compare(self, base_sha: str, head_sha: str) -> Comparison:
         """Merge base of ``base_sha...head_sha`` (D-26)."""
         for sha in (base_sha, head_sha):
-            if not isinstance(sha, str) or not _SHA_RE.match(sha):
+            if not isinstance(sha, str) or not _SHA_RE.fullmatch(sha):
                 raise ForbiddenCall("compare requires full hex commit SHAs")
         resp = self._request(
             "GET", f"{self._prefix}/compare/{base_sha}...{head_sha}", not_found="raise"

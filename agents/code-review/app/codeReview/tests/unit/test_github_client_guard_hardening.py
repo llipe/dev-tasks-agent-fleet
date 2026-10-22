@@ -15,12 +15,9 @@ SN-01, SN-03, SN-04) with two things the stub-transport tests cannot show:
    lowercase percent escapes, case variants of the bound org/repo and of the
    host, whitespace around the method, non-ASCII digits, and trailing newlines.
 
-The trailing-newline cases are ``xfail(strict=True)``: the guard regexes use
-``$``, which also matches before a final ``\\n``, so a path or SHA ending in a
-newline passes the guard. ``requests`` then percent-encodes it as ``%0A`` on the
-wire, so it cannot reach another endpoint, but it is a request the allowlist
-was meant to refuse. Fix in ``github_client.py`` (``re.fullmatch`` or ``\\Z``);
-strict xfail turns red once fixed, so the marker must be removed with the fix.
+The trailing-newline cases pin a fixed QA gate finding: the guard regexes once
+anchored with ``$``, which also matches before a final ``\\n``, so a path or SHA
+ending in a newline passed the guard. The guard now uses ``re.fullmatch``.
 """
 
 from __future__ import annotations
@@ -39,11 +36,6 @@ ORG, REPO, PR = "acme", "widgets", 42
 R = f"/repos/{ORG}/{REPO}"
 HEAD = "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
 BASE = "3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c"
-
-TRAILING_NEWLINE_DEFECT = (
-    "guard regexes anchor with '$', which matches before a trailing newline; "
-    "github_client.py should use re.fullmatch or \\Z (QA gate finding, S-205)"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +327,6 @@ def test_bypass_variant_raises_before_transport(method, path):
         ("GET", f"{R}/compare/{BASE}...{HEAD}\n"),
     ],
 )
-@pytest.mark.xfail(strict=True, reason=TRAILING_NEWLINE_DEFECT)
 def test_bypass_trailing_newline_raises_before_transport(method, path):
     stub = StubTransport()  # no routes: a call that gets past the guard fails loudly
     client = GitHubClient(TOKEN, ORG, REPO, PR, transport=stub, sleep=lambda _s: None)
@@ -344,7 +335,6 @@ def test_bypass_trailing_newline_raises_before_transport(method, path):
     assert stub.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason=TRAILING_NEWLINE_DEFECT)
 def test_bypass_compare_rejects_sha_with_trailing_newline():
     stub = StubTransport()
     client = GitHubClient(TOKEN, ORG, REPO, PR, transport=stub, sleep=lambda _s: None)
@@ -354,17 +344,15 @@ def test_bypass_compare_rejects_sha_with_trailing_newline():
 
 
 @pytest.mark.parametrize(("org", "repo"), [(f"{ORG}\n", REPO), (ORG, f"{REPO}\n")])
-@pytest.mark.xfail(strict=True, reason=TRAILING_NEWLINE_DEFECT)
 def test_bypass_constructor_rejects_binding_with_trailing_newline(org, repo):
     with pytest.raises(ValueError):
         GitHubClient(TOKEN, org, repo, PR, transport=StubTransport())
 
 
-def test_bypass_trailing_newline_is_percent_encoded_on_the_wire():
-    """Bounds the xfail defect above: the newline cannot reach another endpoint."""
+def test_bypass_trailing_newline_never_reaches_the_wire():
+    """A SHA with a trailing newline is refused before ``requests`` sees it."""
     adapter = CaptureAdapter([(200, b'{"merge_base_commit": {"sha": "x"}}', {})])
     client = wire_client(adapter)
-    client.compare(BASE, HEAD + "\n")
-    (sent,) = adapter.sent
-    assert urlsplit(sent.url).path == f"{R}/compare/{BASE}...{HEAD}%0A"
-    assert "\n" not in sent.url and "\r" not in sent.url
+    with pytest.raises(ForbiddenCall):
+        client.compare(BASE, HEAD + "\n")
+    assert adapter.sent == []
