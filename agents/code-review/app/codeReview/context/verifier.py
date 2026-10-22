@@ -13,7 +13,8 @@ issue 403 in S-207; 401, rate limits and 5xx propagate unchanged.
 Parsing (``parse_drift``), on lines split at ``\\r\\n``, ``\\r`` or ``\\n``:
 
 - The drift section starts at the first line, outside a code fence, that
-  matches ``DRIFT_HEADING_RE`` (``^#{2,3}\\s+(Drift|Drift catalog)\\b``) and runs
+  matches ``DRIFT_HEADING_RE`` (``^#{2,3}\\s+(Drift|Drift catalog)\\b`` with an
+  optional numeric section prefix such as ``4.`` or ``3.2``, D-44) and runs
   to the next ATX heading of the same or a higher level (fewer or equal
   ``#``), also outside a fence, or to the end. None → ``not_parseable``; an
   empty report is ``not_parseable`` too.

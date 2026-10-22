@@ -783,6 +783,8 @@ _HOSTILE = {
     "long pipe row": "## Drift\n\n| a | b |\n| --- | --- |\n" + "|" * 200_000 + "\n",
     "long escaped row": "## Drift\n\n| a | b |\n| --- | --- |\n" + "\\|" * 100_000 + "\n",
     "delimiter run": "## Drift\n\n| a |\n|" + " -" * 100_000 + " x|\n",
+    "numeric prefix digits": "## " + "9" * 200_000 + " Drift\n",
+    "numeric prefix dots": "## " + "1." * 100_000 + " Drift\n",
     "heading spaces": "##" + " " * 200_000 + "Drifting\n",
     "many headings": "## Drift\n" + "### x\n" * 50_000,
     "word runs": "## Drift\n\n| a | b |\n| --- | --- |\n| "

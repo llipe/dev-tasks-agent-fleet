@@ -11,8 +11,8 @@ spec file names) is a one-file change pinned by the L1 tests:
 - spec resolution: explicit path, ``[PRD-<name>]`` title, ``prd:<name>`` label
   (D-24), and ``Spec §<n>`` citations used to trim the spec;
 - the story ID in a story issue title (``Story S-<id>``; S-208 reuses it);
-- verifier fidelity-report names, the drift heading, and the candidate words
-  (D-25, D-33; S-208);
+- verifier fidelity-report names, the drift heading (D-44), and the candidate
+  words (D-25, D-33; S-208);
 - the repository conventions sources: ``AGENTS.md``/``CLAUDE.md`` and the ADR
   title and ``Status`` line forms (PRD FR-11; S-208).
 
@@ -142,11 +142,17 @@ def issue_report_path(number: int) -> str:
 
 
 # Applied with ``match`` to each line (the spec's ``^`` anchor), outside code
-# fences. Case-sensitive; ``re.ASCII`` keeps ``\s`` to ASCII whitespace, so
-# ``##\u00a0Drift`` is not a drift heading. ``## 4. Drift catalog`` does not
-# match (DF-05, the spec regex as written). Linear: ``\s+`` is followed by a
-# literal it cannot match.
-DRIFT_HEADING_RE = re.compile(r"#{2,3}\s+(Drift|Drift catalog)\b", re.ASCII)
+# fences. Case-sensitive; ``re.ASCII`` keeps ``\s`` to ASCII whitespace and
+# ``\d`` to 0-9, so ``##\u00a0Drift`` and ``## \u0664. Drift`` are not drift
+# headings. D-44 (widening spec §8.3 step 4 / D-33) accepts an optional numeric
+# section prefix of 1-4 parts of 1-3 digits with an optional final dot and
+# whitespace after it (``## 4. Drift catalog``, ``## 3 Drift``, ``## 3.2. Drift``),
+# as the verifier template numbers its sections. The ``\b`` after ``Drift`` also
+# admits ``Drift Catalog``, ``Drift findings`` and ``Drift (rolled up)`` (pinned).
+# Linear: every quantified part is bounded or followed by a class it cannot match.
+DRIFT_HEADING_RE = re.compile(
+    r"#{2,3}\s+(?:\d{1,3}(?:\.\d{1,3}){0,3}\.?\s+)?(?:Drift catalog|Drift)\b", re.ASCII
+)
 # Whole, case-sensitive words, searched in a table data row. ``re.ASCII``: a
 # word character is ``[A-Za-z0-9_]``, so ``Non-critical``, ``CRITICAL`` and
 # ``Critical_1`` miss and ``Non-Critical`` and ``**Critical**`` hit (DF-05).
