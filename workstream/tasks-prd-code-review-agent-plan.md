@@ -34,6 +34,7 @@
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
 - `panel/tests/integration/seed-schema.test.ts` - TC-204-15 Layer 2.5 seed row check (S-204)
+- `panel/tests/e2e/schedule-dialog.spec.ts` - selects the agent explicitly now that "Code Review" sorts first (S-204)
 
 ## Tasks
 
