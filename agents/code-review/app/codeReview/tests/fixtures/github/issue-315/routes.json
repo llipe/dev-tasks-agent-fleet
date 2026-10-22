@@ -1,0 +1,29 @@
+[
+  {
+    "method": "GET",
+    "path": "/repos/llipe/dev-tasks-agent-fleet/pulls/330",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "pull.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/llipe/dev-tasks-agent-fleet/issues/315",
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "body_file": "issue_315.json"
+  },
+  {
+    "method": "GET",
+    "path": "/repos/llipe/dev-tasks-agent-fleet/contents/workstream/specification-prd-webhook-triggers.md",
+    "query": {
+      "ref": "4b8e2d6f0a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b"
+    },
+    "headers": {
+      "Content-Type": "application/vnd.github.raw; charset=utf-8"
+    },
+    "body_file": "specification-prd-webhook-triggers.md"
+  }
+]
