@@ -25,9 +25,9 @@
 
 ## Current Position
 
-- Next story: S-206 (#408), after the D-39 seed follow-up
-- Last merged PR: #426 (merge commit ff0abc9, merged_at 2026-10-22T21:58:15Z)
-- Integration branch HEAD: ff0abc9 (package `validate` green post-merge)
+- Next story: S-206 (#408)
+- Last merged PR: #428 (S-204 follow-up, D-39; merge commit 9bb7abd, merged_at 2026-10-22T22:10:14Z)
+- Integration branch HEAD: 9bb7abd + D-39 write-back commit
 
 ## Decisions Log
 
@@ -44,3 +44,4 @@
 - 2026-10-22: S-205 merge gates: developer gates PASS; qa-engineer coverage_gate PASS 99.23% (7c6c0e3, +~50 guard-bypass tests) found a trailing-newline anchoring defect, fixed in 7aa8340 (`fullmatch`, `trust_env=False`); verifier High / Minor, 7 drift items (d509dc6, `workstream/fidelity-report-S-205.md`); planner re-ran package validate. memo fields skipped(memo-unavailable).
 - 2026-10-22: User decisions: D-39 seed the row disabled until S-214 (follow-up PR before S-206); D-40 keep rejecting `pr_number: 7.0` (documented difference); no issue for the opentelemetry-api CVE — root `make validate` stays red on the pre-existing security-analyst audit and is reported as such in the consolidated PR.
 - 2026-10-22: Carry forward: S-206 treats `ForbiddenCall` on a backslash filename as content unavailable; S-207/S-208/S-213 map `GitHubNotFound` to not_applicable or skip, never a run error_code; S-213 decides whether a rate-limited 403 on the comment POST suppresses the failure comment (verifier recommends keying on exception type); S-214 enables the row (D-39).
+- 2026-10-22: S-204 follow-up #428 (D-39) merged: row seeded `is_enabled = false`. Gates: package validate PASS; panel `make validate-js` PASS on Node 26 (planner installed it via nvm); qa-engineer PASS and fixed an E2E fleet-toggle leak that re-enabled every agent (ccedef4); verifier High / Minor (6375069). Verifier F1 written back: spec v1.2 §5.1/§15, stories v1.3 S-204/S-214, issue #416. F2 (stale E2E comment) left as optional.

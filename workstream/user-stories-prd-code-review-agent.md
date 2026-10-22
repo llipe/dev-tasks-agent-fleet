@@ -7,6 +7,7 @@
 | 1.0     | 2026-10-22 | Initial stories from spec v1.0 / PRD v1.1. S-204–S-215 across Wave A (base agent) and Wave B (live).                                                                                                                                                                                                                            | product-engineer |
 | 1.1     | 2026-10-22 | Published as GitHub issues #406–#417; see `github-publication-prd-code-review-agent.md`.                                                                                                                                                                                                                                        | product-engineer |
 | 1.2     | 2026-10-22 | Spec v1.1 write-back (D-36–D-38, verifier DF-02–DF-04): S-208 candidate shape; S-209 priority fill, budget invariant, per-candidate nonce blocks; S-212 verifier rows from wrapper data and five-stage size guarantee; S-213 failure comment after `COMMENT_POST_FAILED`. Story titles aligned with the shortened issue titles. | product-engineer |
+| 1.3     | 2026-10-22 | D-39 write-back (verifier F1 on #428): S-214 sets `runtime_arn` and enables the row in one update.                                                                                                                                                                                                                              | product-engineer |
 
 Source: `docs/requirements/prd-code-review-agent.md` (v1.1), `workstream/specification-prd-code-review-agent.md` (v1.0), `workstream/decisions-code-review-agent.md` (D-01–D-35).
 
@@ -737,7 +738,7 @@ An `infra-engineer` pass (spec §15, PRD §12). The runbook ships in this PR (FR
 - [ ] Bedrock model access for Sol is enabled in `us-east-1` (or the inference profile's Regions); `MODEL_ID` set to the confirmed ID.
 - [ ] The panel `invoke-runtime` policy lists the new runtime ARN and `runtime-endpoint/DEFAULT` (issue #280 pattern).
 - [ ] The GitHub App has Issues read on the installation (confirmed, or the `bug-fix` Wave A change applied).
-- [ ] The seed migration is applied to prod with explicit confirmation; `agents.runtime_arn` set.
+- [ ] The seed migration is applied to prod with explicit confirmation; one explicit update sets `agents.runtime_arn` to the deployed ARN and `is_enabled = true` (the row is seeded disabled, D-39).
 - [ ] `docs/runbooks/code-review-deployment.md` covers deploy, model access, IAM, rotation, rollback (disable rule → disable agent → redeploy previous image), and a verification log table; `docs/runbooks/README.md` indexes it.
 - [ ] A panel manual invoke with a scratch PR number produces a comment.
 
@@ -765,14 +766,14 @@ An `infra-engineer` pass (spec §15, PRD §12). The runbook ships in this PR (FR
 - Migration artifact: from S-204.
 - Rollback/impact notes: as S-204.
 - Apply step: prod apply with explicit user confirmation.
-- Verification after apply: the `agents` row exists with `runtime_arn` set.
+- Verification after apply: the `agents` row exists with the deployed `runtime_arn` and `is_enabled = true`.
 
 #### Implementation Steps
 
 1. Write the CDK assertion test.
 2. Create the AgentCore project and CDK stack; plan and apply through `infra-engineer`.
 3. Enable model access; update the panel invoke policy; confirm the App grant.
-4. Apply the seed migration; set `runtime_arn`.
+4. Apply the seed migration; set `runtime_arn` and `is_enabled = true` in one update (D-39).
 5. Write the runbook; invoke once from the panel.
 
 #### Files to Create/Modify
