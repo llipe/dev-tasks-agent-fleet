@@ -62,6 +62,7 @@ from context.conventions import (
     story_report_path,
 )
 from context.issues import LinkedIssue, Warn
+from context.markdown import FenceTracker
 from context.tokens import estimate, truncate
 from github_client import GitHubClient, GitHubPermissionDenied
 
@@ -90,7 +91,6 @@ REPORT_PARSED = "parsed"
 # (report path, linked issue number, content or ``None`` for no such report)
 ReportRead = tuple[str, int, str | None]
 
-_FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})")
 _ATX_RE = re.compile(r" {0,3}(#{1,6})(?:[ \t]|$)")
 # One delimiter-row cell, stripped: ``---``, ``:---``, ``---:``, ``:-:``.
 _DELIMITER_CELL_RE = re.compile(r":?-+:?")
@@ -260,40 +260,6 @@ def is_candidate_row(line: str) -> bool:
     return bool(DRIFT_CRITICAL_RE.search(line)) and bool(DRIFT_UNINTENDED_RE.search(line))
 
 
-class _Fence:
-    """Tracks fenced code blocks (CommonMark).
-
-    An opener is 0-3 spaces then 3+ backticks or tildes; a backtick opener's
-    info string may not contain a backtick. A closer uses the same character,
-    is at least as long as the opener, and has only whitespace after it.
-    """
-
-    def __init__(self) -> None:
-        self.open: str | None = None
-
-    def step(self, line: str) -> bool:
-        """Feed one line; ``True`` when it is part of a fence (opener and closer too)."""
-        m = _FENCE_RE.match(line)
-        if self.open is not None:
-            if (
-                m is not None
-                and m.group(1)[0] == self.open[0]
-                and len(m.group(1)) >= len(self.open)
-                and not line[m.end() :].strip()
-            ):
-                self.open = None
-            return True
-        if m is not None:
-            fence = m.group(1)
-            # A backtick fence's info string may not contain a backtick
-            # (CommonMark); such a line is inline code, not a fence (QA D4).
-            if fence[0] == "`" and "`" in line[m.end() :]:
-                return False
-            self.open = fence
-            return True
-        return False
-
-
 def _heading_level(line: str) -> int:
     m = _ATX_RE.match(line)
     return len(m.group(1)) if m is not None else 0
@@ -302,7 +268,7 @@ def _heading_level(line: str) -> int:
 def parse_drift(text: str) -> DriftSection | None:
     """The drift section and its table rows, or ``None`` (not parseable)."""
     lines = _lines(text)
-    fence = _Fence()
+    fence = FenceTracker()
     start = None
     level = 0
     for k, (_, _, line) in enumerate(lines):
@@ -316,7 +282,7 @@ def parse_drift(text: str) -> DriftSection | None:
         return None
     end = len(lines)
     rows: list[DriftRow] = []
-    fence = _Fence()
+    fence = FenceTracker()
     width = 0  # cells in the current table's header; 0 when not in a table
     k = start + 1
     while k < len(lines):
