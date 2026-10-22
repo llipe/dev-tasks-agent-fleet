@@ -254,7 +254,14 @@ loaded with `load_fixture("sample-pr")`; no real tokens, accounts, or SHAs).
 Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`
-are patched at the module boundary as in the siblings.
+are patched at the module boundary as in the siblings. Because `StubTransport`
+sees the URL the client hands over, not the one `requests` sends, the guard's
+wire-level checks (`tests/unit/test_github_client_guard_hardening.py`) drive the
+client through a real `requests.Session` with a capturing adapter mounted for
+`http://`/`https://` and `trust_env = False`, and assert on the
+`PreparedRequest`; no socket is opened. A known defect pinned by a test is
+marked `xfail(strict=True)` with the defect in `reason`, so the fix turns it red
+and the marker is removed in the same change.
 
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real
