@@ -1,11 +1,13 @@
 # Roadmap
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are tracked in their own table below. This page indexes the PRDs, GitHub issues, and merged PRs. If it disagrees with them, they are correct and this page gets fixed.
 
 | PRD | Phase/Wave | Scope (one line) | Status | Issues/PRs | What's missing |
 | --- | --- | --- | --- | --- | --- |
+| [prd-code-review-agent](requirements/prd-code-review-agent.md) | Wave A — Base agent | `code-review` agent invoked by a `/review` PR comment: expanded diff + linked issues + spec + verifier drift, one Bedrock Converse call on a non-Anthropic model, wrapper-validated findings, one PR comment | Not started | #406–#415 (S-204–S-213) | Entire wave. PRD v1.1, spec v1.0, stories published; awaiting implementation |
+| [prd-code-review-agent](requirements/prd-code-review-agent.md) | Wave B — Live | Infra pass (runtime, IAM, Bedrock model access), `/review` webhook rule, runbook, live verification + 5-PR smoke | Not started | #416–#417 (S-214–S-215) | Entire wave. Prerequisite: GitHub App Issues read |
 | [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave A — Foundations, contract and claim | Infra change (Anthropic key, runtime + role, `invoke-runtime` IAM entry, App Issues write); sandbox spike on the deployed runtime (gates Wave B); panel `string-list` form control + DESIGN.md; agent scaffold + image, `agents` seed + params schema (label params), preflight checks, selection, claim + race check, disposition, reporting | Not started | #362–#372 (S-180…S-190); milestone v5.0 | Entire wave. PRD v1.3, spec v1.4, stories v1.4, task plan v1.4 (`workstream/tasks-prd-bug-fix-agent-plan.md`) and test plan v1.1 are ready, with drift findings DF-01–DF-28 reconciled (D-62–D-86). Implementation not started |
 | [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave B — Fix loop and validation | Confined `claude -p` run, change caps and forbidden paths, wrapper-run gates, red-to-green, Draft PR + `pull_request` artifact | Not started | #373–#377 (S-191…S-195); milestone v5.0 | Entire wave (S-191–S-195, published). Depends on Wave A and the S-182 sandbox spike passing |
 | [prd-bug-fix-agent](requirements/prd-bug-fix-agent.md) | Wave C — Recovery and live | Stale-claim sweep, schedule seed, deploy runbook, live verification on a fixture repo (fixable + unfixable bug) | Not started | #378–#380 (S-196…S-198); milestone v5.0 | Entire wave (S-196–S-198, published). Depends on Wave B |
