@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                              | Author           |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-10-22 | Initial stories from spec v1.0 / PRD v1.1. S-204–S-215 across Wave A (base agent) and Wave B (live). | product-engineer |
+| 1.1     | 2026-10-22 | Published as GitHub issues #406–#417; see `github-publication-prd-code-review-agent.md`.             | product-engineer |
 
 Source: `docs/requirements/prd-code-review-agent.md` (v1.1), `workstream/specification-prd-code-review-agent.md` (v1.0), `workstream/decisions-code-review-agent.md` (D-01–D-35).
 
