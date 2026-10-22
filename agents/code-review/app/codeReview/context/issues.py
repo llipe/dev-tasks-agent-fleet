@@ -14,8 +14,9 @@ Linked issues (S-207; spec §8.3 step 2, §13; D-22, D-23).
    issue, 404, 410 or 301 (``not_found``); a 403 (``permission``, which also sets
    ``issues_unavailable`` for the "issues unavailable (permission)" context
    line). A 401, a rate limit after retries, or a 5xx still propagates.
-3. Each body is cut at the first ``Task Checklist`` heading, inclusive to the
-   end (``strip_task_checklist``, the developer's plan is excluded, FR-10),
+3. Each body is cut at the first ``Task Checklist`` heading (ATX or setext,
+   as GitHub renders it, D-43), inclusive to the end (``strip_task_checklist``,
+   the developer's plan is excluded, FR-10),
    then capped at 8,000 estimated tokens with a ``[truncated]`` marker.
 
 Issue titles, labels, and bodies are untrusted repository text. Nothing here
@@ -34,9 +35,13 @@ from context.conventions import (
     BRANCH_ISSUE_RE,
     ISSUE_LINK_RE,
     ISSUE_TOKEN_CAP,
+    LINE_END_RE,
     MAX_ISSUE_NUMBER,
     MAX_LINKED_ISSUES,
+    SETEXT_UNDERLINE_RE,
     TASK_CHECKLIST_RE,
+    TASK_CHECKLIST_SETEXT_RE,
+    ZERO_WIDTH_RE,
 )
 from context.tokens import truncate
 from github_client import (
@@ -134,18 +139,37 @@ def linked_issue_numbers(body: str, head_ref: str) -> tuple[int, ...]:
     return tuple(dict.fromkeys(found))[:MAX_LINKED_ISSUES]
 
 
+def _lines(body: str) -> list[tuple[int, str]]:
+    """``(offset, line)`` pairs, split on ``\\r\\n``, ``\\r`` or ``\\n``, endings dropped."""
+    lines: list[tuple[int, str]] = []
+    start = 0
+    for end in LINE_END_RE.finditer(body):
+        lines.append((start, body[start : end.start()]))
+        start = end.end()
+    lines.append((start, body[start:]))
+    return lines
+
+
 def strip_task_checklist(body: str) -> str:
     """``body`` up to the first ``Task Checklist`` heading line, exclusive.
 
-    Line-based (split on ``\\n``); headings are case-sensitive and must be
-    levels 1-6. A matching line inside a code fence also cuts (EC-13). With no
-    match the body is returned unchanged.
+    Line-based: lines end at ``\\r\\n``, ``\\r`` or ``\\n``, and zero-width
+    characters are removed from a line before matching. A heading is an ATX line
+    (``TASK_CHECKLIST_RE``) or a setext text line followed by its underline, the
+    cut starting at the text line (D-43). Case-sensitive. Blockquotes, HTML and
+    bold lines are not headings. A matching line inside a code fence also cuts
+    (EC-13). With no match the body is returned unchanged.
     """
-    offset = 0
-    for line in body.split("\n"):
+    lines = [(offset, ZERO_WIDTH_RE.sub("", line)) for offset, line in _lines(body)]
+    for k, (offset, line) in enumerate(lines):
         if TASK_CHECKLIST_RE.fullmatch(line):
             return body[:offset]
-        offset += len(line) + 1
+        if (
+            k + 1 < len(lines)
+            and TASK_CHECKLIST_SETEXT_RE.fullmatch(line)
+            and SETEXT_UNDERLINE_RE.fullmatch(lines[k + 1][1])
+        ):
+            return body[:offset]
     return body
 
 

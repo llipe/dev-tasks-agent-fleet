@@ -25,7 +25,9 @@ Markdown headings (ATX, levels 1-6, outside code fences) and keeps
 (ii) the sections cited in an issue body as ``Spec §<n>[.<m>…]``: a heading
      whose number has the citation as a dotted prefix (``8`` keeps ``8`` and
      ``8.10`` but not ``80``; ``8.1`` keeps ``8.1.2`` but not ``8.10``), with
-     every deeper heading under it;
+     every deeper heading under it; only the first 200 distinct citations
+     count (``MAX_SPEC_CITATIONS``; ``SpecContext.citations_ignored`` counts
+     the rest);
 (iii) the sections whose heading or text names a linked story ID (from the
       ``Story S-<id>`` title) or a reviewed file path;
 
@@ -45,6 +47,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from context.conventions import (
+    MAX_SPEC_CITATIONS,
     PRD_LABEL_RE,
     PRD_TITLE_RE,
     SPEC_CITATION_RE,
@@ -87,6 +90,7 @@ class SpecContext:
     misses: tuple[str, ...]  # paths tried that returned 404, in request order
     citations: tuple[str, ...]  # ``Spec §`` numbers cited in the linked issues
     story_ids: tuple[str, ...]  # story IDs from the linked issue titles
+    citations_ignored: int = 0  # distinct citations past ``MAX_SPEC_CITATIONS``
 
     @property
     def spec(self) -> ResolvedSpec | None:
@@ -121,10 +125,17 @@ def spec_candidates(issue: LinkedIssue) -> tuple[str, ...]:
     return tuple(dict.fromkeys(candidates))
 
 
-def spec_citations(issues: Iterable[LinkedIssue]) -> tuple[str, ...]:
-    """``Spec §<n>`` numbers in the checklist-stripped bodies, deduped, in order."""
+def _distinct_citations(issues: Iterable[LinkedIssue]) -> tuple[str, ...]:
     found = [m.group(1) for i in issues for m in SPEC_CITATION_RE.finditer(i.stripped_body)]
     return tuple(dict.fromkeys(found))
+
+
+def spec_citations(issues: Iterable[LinkedIssue]) -> tuple[str, ...]:
+    """``Spec §<n>`` numbers in the checklist-stripped bodies, deduped, in order.
+
+    The first ``MAX_SPEC_CITATIONS`` distinct numbers; later ones are ignored.
+    """
+    return _distinct_citations(issues)[:MAX_SPEC_CITATIONS]
 
 
 def story_ids(issues: Iterable[LinkedIssue]) -> tuple[str, ...]:
@@ -144,7 +155,8 @@ def resolve_specs(
 ) -> SpecContext:
     """Resolve, fetch once, dedupe, and trim the specs of the linked issues."""
     reviewed = tuple(p for p in reviewed_paths if p)
-    citations = spec_citations(issues)
+    distinct = _distinct_citations(issues)
+    citations = distinct[:MAX_SPEC_CITATIONS]
     ids = story_ids(issues)
     cache: dict[str, str | None] = {}
     misses: list[str] = []
@@ -168,15 +180,17 @@ def resolve_specs(
             content, citations=citations, story_ids=ids, reviewed_paths=reviewed, cap_tokens=share
         )
         specs.append(ResolvedSpec(path, text, trimmed, truncated, estimate(content), number))
-    return SpecContext(tuple(specs), tuple(misses), citations, ids)
+    return SpecContext(tuple(specs), tuple(misses), citations, ids, len(distinct) - len(citations))
 
 
 # ---------------------------------------------------------------------------
 # Trimming
 # ---------------------------------------------------------------------------
 
-# ATX heading, applied with ``fullmatch`` to a line without its ``\n``.
-_HEADING_RE = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*\r?")
+# ATX heading, applied with ``fullmatch`` to a line without its ``\n``. The
+# title is captured greedily and ``rstrip``-ed of spaces, tabs and ``\r``: a lazy
+# title before ``[ \t]*`` backtracks quadratically over a long whitespace run.
+_HEADING_RE = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*))?\r?")
 _FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})")
 # The leading section number of a heading: ``8``, ``8.``, ``8.1``, ``8.1.2``.
 _NUMBER_RE = re.compile(r"(\d+(?:\.\d+)*)\.?(?=\s|$)")
@@ -214,13 +228,14 @@ def _split_sections(text: str) -> list[_Section]:
         if heading is None:
             sections[-1].body += line
             continue
-        number = _NUMBER_RE.match(heading.group(2) or "")
+        number = _NUMBER_RE.match((heading.group(2) or "").rstrip(" \t\r"))
         sections.append(_Section(line, len(heading.group(1)), number and number.group(1)))
     return sections
 
 
-def _cited(number: str | None, citations: Sequence[str]) -> bool:
-    return number is not None and any(number == c or number.startswith(c + ".") for c in citations)
+def _cited(number: str | None, exact: frozenset[str], prefixes: tuple[str, ...]) -> bool:
+    """``number`` equals a citation or has one as a dotted prefix (C-level checks)."""
+    return number is not None and (number in exact or number.startswith(prefixes))
 
 
 def _names_any(text: str, ids: Sequence[re.Pattern[str]], paths: Sequence[str]) -> bool:
@@ -239,11 +254,15 @@ def trim_spec(
     if estimate(text) <= cap_tokens:
         return text, False, False
     sections = _split_sections(text)
+    # Deduped and capped, so the cost is at most ``MAX_SPEC_CITATIONS`` x sections.
+    cited = tuple(dict.fromkeys(citations))[:MAX_SPEC_CITATIONS]
+    exact = frozenset(cited)
+    prefixes = tuple(c + "." for c in cited)
     id_patterns = [re.compile(r"\b" + re.escape(i) + r"(?!\d)") for i in story_ids]
     paths = [p for p in reviewed_paths if p]
     keep = [False] * len(sections)
     for i, section in enumerate(sections):
-        if _cited(section.number, citations):
+        if _cited(section.number, exact, prefixes):
             keep[i] = True
             j = i + 1
             while j < len(sections) and sections[j].level > section.level:

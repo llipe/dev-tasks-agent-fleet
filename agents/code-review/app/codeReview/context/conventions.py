@@ -6,7 +6,8 @@ change in the conventions (issue titles, the ``## Task Checklist`` heading,
 spec file names) is a one-file change pinned by the L1 tests:
 
 - closing links in a PR body and the ``issue/<N>-`` branch (D-22);
-- the task checklist the ``plan`` skill appends to a story issue (D-23);
+- the task checklist the ``plan`` skill appends to a story issue (D-23), and
+  the other forms GitHub renders as that heading (D-43);
 - spec resolution: explicit path, ``[PRD-<name>]`` title, ``prd:<name>`` label
   (D-24), and ``Spec §<n>`` citations used to trim the spec;
 - the story ID in a story issue title (``Story S-<id>``; S-208 reuses it).
@@ -25,7 +26,9 @@ __all__ = [
     "ISSUE_LINK_RE",
     "ISSUE_TOKEN_CAP",
     "MAX_ISSUE_NUMBER",
+    "LINE_END_RE",
     "MAX_LINKED_ISSUES",
+    "MAX_SPEC_CITATIONS",
     "PRD_LABEL_RE",
     "PRD_TITLE_RE",
     "SPEC_CITATION_RE",
@@ -33,7 +36,10 @@ __all__ = [
     "SPEC_SHARE_DENOMINATOR",
     "SPEC_SHARE_NUMERATOR",
     "STORY_TITLE_RE",
+    "SETEXT_UNDERLINE_RE",
     "TASK_CHECKLIST_RE",
+    "TASK_CHECKLIST_SETEXT_RE",
+    "ZERO_WIDTH_RE",
     "spec_path_for_prd",
 ]
 
@@ -41,21 +47,38 @@ __all__ = [
 
 # Over the PR body, case-insensitive. ``#`` must follow whitespace, so a
 # cross-repository ``owner/repo#N`` and a full issue URL never match.
+# ``(?:\s*:\s+|\s+)`` is the language of ``\s*:?\s+`` without its quadratic
+# backtracking over a long whitespace run not followed by ``#``. ``re.ASCII``
+# keeps ``\d`` to 0-9 and the case fold to ASCII, as GitHub links (no ``#\u0663``,
+# no ``clo\u017fes``).
 ISSUE_LINK_RE = re.compile(
-    r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.IGNORECASE
+    r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)(?:\s*:\s+|\s+)#(\d+)\b",
+    re.IGNORECASE | re.ASCII,
 )
 # Over the head ref, case-sensitive.
-BRANCH_ISSUE_RE = re.compile(r"^issue/(\d+)-")
+BRANCH_ISSUE_RE = re.compile(r"^issue/(\d+)-", re.ASCII)
 MAX_LINKED_ISSUES = 5
 # The issue numbers ``GitHubClient`` accepts (``[1-9][0-9]{0,9}``).
 MAX_ISSUE_NUMBER = 9_999_999_999
 ISSUE_TOKEN_CAP = 8_000
 
-# -- task checklist (D-23) -----------------------------------------------------
+# -- task checklist (D-23, D-43) ---------------------------------------------
 
-# Applied with ``fullmatch`` to each line of the body (split on ``\n``), so
-# ``\s`` never spans lines; a trailing ``\r`` from CRLF bodies is whitespace.
-TASK_CHECKLIST_RE = re.compile(r"#{1,6}\s+Task Checklist\s*")
+# The body is split into lines on ``\r\n``, ``\r`` or ``\n`` (the CommonMark line
+# endings), and each line has ``ZERO_WIDTH_RE`` removed before matching.
+LINE_END_RE = re.compile(r"\r\n|\r|\n")
+# U+200B-U+200D, U+2060, U+FEFF: invisible when rendered.
+ZERO_WIDTH_RE = re.compile("[\u200b-\u200d\u2060\ufeff]")
+# Applied with ``fullmatch`` to each line. Case-sensitive. An ATX heading
+# indented 0-3 spaces, levels 1-6, an optional closing ``#`` sequence; the words
+# separated or surrounded by any whitespace run (``\s``, so NBSP too). Linear in
+# the line length: each whitespace run is bounded by a literal it cannot match.
+TASK_CHECKLIST_RE = re.compile(r" {0,3}#{1,6}\s+Task\s+Checklist(?:\s+#+)?\s*")
+# A setext heading: this line, then a line matching ``SETEXT_UNDERLINE_RE``; the
+# cut starts at this line. 0-3 spaces of indentation (4 is a code block), then
+# any whitespace that is not a space or tab (NBSP), as for the ATX form.
+TASK_CHECKLIST_SETEXT_RE = re.compile(r" {0,3}(?![ \t])\s*Task\s+Checklist\s*")
+SETEXT_UNDERLINE_RE = re.compile(r" {0,3}(?:=+|-+)\s*")
 
 # -- spec (spec §8.3 step 3, D-24) --------------------------------------------
 
@@ -64,9 +87,12 @@ PRD_TITLE_RE = re.compile(r"^\[PRD-([A-Za-z0-9._-]+)\]")
 # Applied with ``fullmatch`` to each label name.
 PRD_LABEL_RE = re.compile(r"prd:([A-Za-z0-9._-]+)")
 # ``Spec §8``, ``Spec §8.1``, ``Spec §8.3.2`` (the issue-body citation form).
-SPEC_CITATION_RE = re.compile(r"\bSpec\s*§\s*(\d+(?:\.\d+)*)")
+SPEC_CITATION_RE = re.compile(r"\bSpec\s*§\s*(\d+(?:\.\d+)*)", re.ASCII)
+# Distinct citations used to trim a spec; later ones are ignored and counted
+# (``SpecContext.citations_ignored``), so trimming costs at most 200 x sections.
+MAX_SPEC_CITATIONS = 200
 # ``Story S-170`` in a story issue title.
-STORY_TITLE_RE = re.compile(r"\bStory (S-\d+)\b")
+STORY_TITLE_RE = re.compile(r"\bStory (S-\d+)\b", re.ASCII)
 # The spec block's share of ``max_context_tokens``: 30% (spec §8.3, §8.4).
 SPEC_SHARE_NUMERATOR = 3
 SPEC_SHARE_DENOMINATOR = 10

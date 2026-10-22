@@ -14,11 +14,10 @@ inputs the plan-level cases (TC-207-*) do not enumerate:
 - dedupe and the 5 cap with PRs and 404/410s mixed; the 30% cap with several
   specs; which HTTP statuses degrade and which propagate.
 
-Tests marked ``xfail(strict=True)`` pin a defect that needs a source change
-(reported to ``developer``); they flip to a hard failure once fixed, so the
-marker is removed deliberately. Tests named ``*_spec_literal`` pin behavior
-that follows the spec §8.3 regex literally but leaves an FR-10 gap; they are
-routed to ``product-engineer`` as spec findings, not source defects.
+The four defects this pass first pinned with ``xfail(strict=True)`` (CR-only
+line endings, the two quadratic regexes, non-ASCII digits and case folds) are
+fixed, and the rendered checklist heading forms follow planner decision D-43,
+so every test here is a plain pass/fail test.
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ from collections.abc import Callable
 
 import pytest
 
+from context.conventions import MAX_SPEC_CITATIONS
 from context.issues import (
     LinkedIssue,
     fetch_issues,
@@ -35,7 +35,15 @@ from context.issues import (
     linked_issues,
     strip_task_checklist,
 )
-from context.spec import _split_sections, resolve_specs, spec_candidates, spec_cap, trim_spec
+from context.spec import (
+    _split_sections,
+    resolve_specs,
+    spec_candidates,
+    spec_cap,
+    spec_citations,
+    story_ids,
+    trim_spec,
+)
 from context.tokens import estimate
 from github_client import GitHubApiError, GitHubClient, GitHubPermissionDenied, PullRequest
 from tests.helpers.github_stub import StubTransport, json_response, text_response
@@ -166,53 +174,62 @@ def test_checklist_text_in_the_title_is_only_the_title():
     assert all(SENTINEL not in v for v in values)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (FR-10): strip_task_checklist splits on '\\n' only. A body with "
-        "CR-only line endings (CommonMark line ending; GitHub renders the heading) "
-        "is one line, never matches, and the whole checklist reaches body, "
-        "stripped_body, citations, and the spec rule (a) request. Fix in "
-        "context/issues.py (split on \\r\\n|\\r|\\n)."
-    ),
-)
 def test_cr_only_line_endings_cut_the_checklist():
     body = "Intent.\r\r## Task Checklist\r" + BELOW.replace("\n", "\r")
     assert strip_task_checklist(body) == "Intent.\r\r"
     assert all(SENTINEL not in v for v in _all_returned_text(body))
 
 
-def test_cr_only_line_endings_currently_leak_through_every_field():
-    """Evidence for the defect above: the leak reaches the spec request too."""
-    body = "Intent.\r\r## Task Checklist\r" + BELOW.replace("\n", "\r")
-    values = _all_returned_text(body)
-    assert any(SENTINEL in v for v in values)
-    assert any("specification-prd-secret" in v for v in values)
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "   ## Task Checklist",  # indented 1-3 spaces: still an ATX heading in CommonMark
+        " # Task Checklist",
+        "## Task Checklist ##",  # closing sequence: still the heading "Task Checklist"
+        "## Task Checklist #######",
+        "Task Checklist\n--------------",  # setext H2
+        "Task Checklist\n==============",  # setext H1
+        "Task Checklist\n=",
+        "  Task Checklist  \n   ---  ",
+        "## Task  Checklist",  # two spaces render the same
+        "## Task\u00a0Checklist",  # NBSP between the words
+        "##\u00a0Task Checklist\u00a0",
+        "## Task\t\u00a0 Checklist",
+        "\u200b## Task Checklist",  # zero-width space removed before matching
+        "\ufeff## Task Checklist",  # BOM
+        "## Task \u2060Checklist\u200d",
+        "\u200cTask Checklist\n\u200b---",
+    ],
+)
+def test_rendered_checklist_headings_are_cut(heading):
+    """D-43: the forms GitHub renders as a "Task Checklist" heading are cut too."""
+    body = ABOVE + heading + "\n" + BELOW
+    assert strip_task_checklist(body) == ABOVE
+    assert all(SENTINEL not in v for v in _all_returned_text(body))
 
 
 @pytest.mark.parametrize(
     "heading",
     [
-        "   ## Task Checklist",  # indented 1-3 spaces: still an ATX heading in CommonMark
-        "## Task Checklist ##",  # closing sequence: still the heading "Task Checklist"
-        "Task Checklist\n--------------",  # setext H2
-        "Task Checklist\n==============",  # setext H1
         "> ## Task Checklist",  # heading inside a blockquote
         "<h2>Task Checklist</h2>",  # raw HTML heading
         "## **Task Checklist**",
-        "## Task  Checklist",  # two spaces render the same
-        "## Task Checklist",  # NBSP between the words
-        "## Task​Checklist",  # zero-width space
-        "​## Task Checklist",
-        "﻿## Task Checklist",  # BOM
+        "**Task Checklist**",
+        "    ## Task Checklist",  # 4 spaces: an indented code block, not a heading
+        "\t## Task Checklist",
+        "## Task Checklist#",  # no space before the closing sequence: part of the text
+        "## Task Checklist ## x",
+        "## Task\u200bChecklist",  # zero-width removed: "TaskChecklist", a different word
+        "## task  checklist",  # case-sensitive (D-23/D-24)
+        "\u00a0## Task Checklist",  # NBSP is no indentation: a paragraph
+        "Task Checklist\n=-=",  # underline must be one character repeated
+        "Task Checklist\n- [ ] x",
+        "Task Checklist\n\n---",  # blank line between: a thematic break, not setext
+        "Task Checklist (v2)\n---",
     ],
 )
-def test_rendered_checklist_headings_outside_the_regex_are_not_cut_spec_literal(heading):
-    """SPEC GAP (route to product-engineer): spec §8.3 step 2 defines the cut as
-    ``^#{1,6}\\s+Task Checklist\\s*$`` and the implementation follows it, so these
-    forms, which GitHub renders as a "Task Checklist" heading, are kept. The
-    dev-tasks ``plan`` skill only writes ``## Task Checklist``, so the gap needs a
-    hand-edited or hostile issue body to leak."""
+def test_non_heading_checklist_forms_are_not_cut(heading):
+    """Not a heading in the source, so not cut (D-43)."""
     body = ABOVE + heading + "\n" + BELOW
     assert strip_task_checklist(body) == body
 
@@ -264,30 +281,68 @@ def test_hostile_spec_outline_is_trimmed_quickly():
     assert trimmed and estimate(text) <= 500
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (DoS): ISSUE_LINK_RE `\\s*:?\\s+` backtracks quadratically over a "
-        "whitespace run after a closing keyword that is not followed by '#'. "
-        "'closes' + 65,536 spaces (GitHub's PR body maximum) took ~3.4 s locally. "
-        "Fix in context/conventions.py with an equivalent linear form, e.g. "
-        "`(?:\\s*:\\s+|\\s+)#` (same language)."
-    ),
-)
+def _numbered_spec(sections: int) -> str:
+    return "".join(f"## {i}.{i % 7} h\nx\n" for i in range(sections))
+
+
+def test_trim_spec_citation_cost_is_bounded():
+    """5,940 citations x 20,000 sections took 5.8 s before the cap; now bounded."""
+    spec = _numbered_spec(20_000)
+    citations = tuple(f"{i}.{i % 7}.9" for i in range(5_940))
+    start = time.perf_counter()
+    trim_spec(spec, citations=citations, story_ids=(), reviewed_paths=(), cap_tokens=500)
+    assert time.perf_counter() - start < 2.0
+
+
+def test_trim_spec_is_linear_when_sections_and_citations_grow_together():
+    """Citations x sections was quadratic; with the cap it is linear in the spec."""
+
+    def make(n: int) -> Callable[[], object]:
+        spec = _numbered_spec(n)
+        citations = tuple(f"{i}.{i % 7}.9" for i in range(n))
+        return lambda: trim_spec(
+            spec, citations=citations, story_ids=(), reviewed_paths=(), cap_tokens=50
+        )
+
+    assert _scales_linearly(make, 1_500)
+
+
+def test_citations_past_the_cap_are_ignored_and_duplicates_use_no_slot():
+    spec = "".join(f"## {i}.{i % 7} h\nbody-{i}. {'x' * 200}\n" for i in range(400))
+    cap = estimate(spec) // 2
+    misses = tuple(f"999.{i}" for i in range(MAX_SPEC_CITATIONS))
+    # Past the cap: "220" is the 201st distinct citation, so its body is dropped.
+    text, trimmed, _ = trim_spec(
+        spec, citations=(*misses, "220"), story_ids=(), reviewed_paths=(), cap_tokens=cap
+    )
+    assert trimmed
+    assert "## 220.3 h\n" in text and "body-220." not in text
+    # Duplicates first: still the 2nd distinct citation, so it is kept.
+    text, _, _ = trim_spec(
+        spec, citations=("999.0",) * 500 + ("220",), story_ids=(), reviewed_paths=(), cap_tokens=cap
+    )
+    assert "body-220." in text
+
+
+def test_resolve_specs_reports_the_ignored_citation_count():
+    body = " ".join(f"Spec §{i}" for i in range(1, MAX_SPEC_CITATIONS + 31)) + " Spec §1 Spec §2"
+    stub = StubTransport(default=text_response("# Spec\n"))
+    ctx = resolve_specs(
+        _client(stub),
+        [_issue(1, title="[PRD-a] t", body=body)],
+        HEAD,
+        reviewed_paths=(),
+        max_context_tokens=20_000,
+    )
+    assert len(ctx.citations) == MAX_SPEC_CITATIONS
+    assert ctx.citations[:2] == ("1", "2")
+    assert ctx.citations_ignored == 30
+
+
 def test_link_regex_is_linear_on_whitespace_runs():
     assert _scales_linearly(lambda n: lambda: linked_issue_numbers("closes" + " " * n, ""), 4_000)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (DoS): context/spec.py _HEADING_RE `(?:[ \\t]+(.*?))?[ \\t]*\\r?` "
-        "is quadratic on a heading line with a long inner whitespace run. "
-        "'# x' + 65,536 spaces + 'y' took ~24 s locally; the spec at head_sha is "
-        "PR-author controlled and has no size limit, and trim_spec runs whenever "
-        "the spec is over its cap. Fix: match greedily and rstrip the title."
-    ),
-)
 def test_spec_heading_split_is_linear_on_whitespace_runs():
     assert _scales_linearly(lambda n: lambda: _split_sections("# x" + " " * n + "y\n"), 2_000)
 
@@ -318,18 +373,16 @@ def test_cross_repo_link_forms_are_never_fetched():
     assert all(c.url.startswith("https://api.github.com/repos/acme/widgets/") for c in stub.calls)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (low): ISSUE_LINK_RE and BRANCH_ISSUE_RE use Unicode `\\d` and "
-        "IGNORECASE folding, so non-ASCII digits ('#\\u0663' -> 3, '#\\uff15' -> 5, "
-        "'issue/\\u0664-x' -> 4) and 'clo\\u017fes' (long s) link issues GitHub "
-        "does not link. Same repository only. Fix: re.ASCII on both regexes."
-    ),
-)
 def test_non_ascii_digits_and_case_folds_do_not_link():
     body = "closes #٣ fixes #５ cloſes #6"
     assert linked_issue_numbers(body, "issue/٤-x") == ()
+
+
+def test_non_ascii_digits_are_no_citation_or_story_id():
+    issue = _issue(title="Story S-\u0661\u0667\u0660: t", body="Spec §\u0668 and Spec §\uff19")
+    assert spec_citations([issue]) == ()
+    assert story_ids([issue]) == ()
+    assert linked_issue_numbers("closes #12", "issue/\u0664-x") == (12,)
 
 
 # ---------------------------------------------------------------------------

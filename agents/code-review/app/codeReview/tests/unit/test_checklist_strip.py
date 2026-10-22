@@ -2,9 +2,12 @@
 S-207 AC2 — the developer's task checklist is cut from each issue body
 (TC-207-07..09; spec §8.3 step 2, D-23, FR-10).
 
-The cut is the first line matching ``^#{1,6}\\s+Task Checklist\\s*$``
-(case-sensitive), inclusive, to the end of the body. Matching is line by line,
-so a heading inside a code fence also cuts (EC-13).
+The cut is the first ``Task Checklist`` heading line (case-sensitive),
+inclusive, to the end of the body: ``#{1,6}\\s+Task Checklist\\s*`` and, per
+planner decision D-43, the other forms GitHub renders as that heading
+(indentation, closing sequence, setext, whitespace and zero-width variants;
+see ``test_context_hostile_inputs``). Matching is line by line, so a heading
+inside a code fence also cuts (EC-13).
 """
 
 from __future__ import annotations
@@ -53,6 +56,17 @@ def test_cut_at_the_first_line():
 def test_crlf_body_is_cut_and_the_kept_part_is_unchanged():
     body = "Intent.\r\n\r\n## Task Checklist\r\n- [ ] 1.1\r\n"
     assert strip_task_checklist(body) == "Intent.\r\n\r\n"
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n", "\r"])
+def test_every_line_ending_cuts_and_keeps_the_part_above(eol):
+    body = eol.join(["Intent.", "", "## Task Checklist", "- [ ] 1.1", ""])
+    assert strip_task_checklist(body) == "Intent." + eol + eol
+
+
+def test_mixed_line_endings_cut_at_the_first_heading():
+    body = "Intent.\r\nmore\r\rTask Checklist\n---\r- [ ] 1.1\n"
+    assert strip_task_checklist(body) == "Intent.\r\nmore\r\r"
 
 
 def test_a_heading_inside_a_code_fence_also_cuts():

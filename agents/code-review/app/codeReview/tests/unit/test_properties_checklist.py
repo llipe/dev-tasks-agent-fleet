@@ -23,8 +23,9 @@ SEED = tactic_seed(409, 3)
 ITERATIONS = 2000
 
 # Oracle, written independently of the implementation: only spaces and tabs are
-# generated, so this is the spec regex restricted to that alphabet.
-_VALID = re.compile(r"#{1,6}[ \t]+Task Checklist[ \t]*\r?")
+# generated, so this is the D-43 ATX form restricted to that alphabet (0-3 spaces
+# of indentation; no setext underline is ever generated after a bare line).
+_VALID = re.compile(r" {0,3}#{1,6}[ \t]+Task Checklist[ \t]*\r?")
 
 NEAR_MISSES = [
     "task checklist",
