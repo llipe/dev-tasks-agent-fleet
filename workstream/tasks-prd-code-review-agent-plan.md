@@ -30,6 +30,9 @@
 - `agents/code-review/app/codeReview/tests/unit/{test_credentials,test_credentials_real_jwt,test_heartbeat,test_scrubber,test_signal_backstop}.py` - sibling tests for the copied modules (S-204)
 - `agents/code-review/app/codeReview/tests/integration/test_invoke_skeleton.py` - skeleton invoke against a reporter sink (S-204)
 - `agents/code-review/app/codeReview/tests/fixtures/params_cases.json` - CT-01 shared params cases (S-204)
+- `agents/code-review/app/codeReview/tests/unit/{test_github_client,test_contracts,test_properties_github_client,test_prng}.py` - S-205 tests (TC-205-\*, CT-04, CT-05 GitHub half, seeded allowlist property, PRNG helper)
+- `agents/code-review/app/codeReview/tests/helpers/{prng,github_stub}.py` - seeded PRNG helper (G-6) and `StubTransport` with the recorded-fixture loader (S-205)
+- `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/` - recorded GitHub responses for a sample PR, reused by S-206–S-213 (S-205)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
@@ -56,15 +59,15 @@
   - [x] 1.15 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
 - [ ] 2.0 Implement Story S-205 (#407): GitHub client with a write allowlist · branch `story/S-205-github-client`
-  - [ ] 2.1 `[T]` [code-review] L1 `test_github_client.py`: each allowed call; every disallowed verb/path (`PUT`, `PATCH`, `DELETE`, `POST` to reviews, merge, labels, another issue's comments) raises `ForbiddenCall` before transport; CT-04 allowlist snapshot
-  - [ ] 2.2 `[T]` [code-review] L1 retries (2 on 5xx/connection/secondary rate limit, `retry-after` honored, max 30 s), POST never retried; 404 contents → `None`; error mapping; token absent from exception text
-  - [ ] 2.3 `[T]` [code-review] Edge: paging stops at 30 pages; paths with spaces, `#`, `..` URL-encoded; secondary-rate-limit 403 vs. permission 403
-  - [ ] 2.4 `[I]` [code-review] `tests/helpers/prng.py` seeded `random.Random` helper (test plan G-6)
-  - [ ] 2.5 `[I]` [code-review] `github_client.py`: `GitHubClient(token, org, repo, pr_number)` with `get_pull`, `list_pull_files`, `compare`, `get_content_raw`, `list_dir`, `get_issue`, `post_pr_comment`; allowlist; errors `GitHubPermissionDenied`, `GitHubApiError`; request timeout (test plan DF-14)
-  - [ ] 2.6 `[I]` [code-review] Recorded fixtures under `tests/fixtures/github/` for a sample PR
-  - [ ] 2.7 Verify Acceptance Criteria: AC1 methods; AC2 allowlist and single write; AC3 retries; AC4 errors without token; AC5 URL-encoding
-  - [ ] 2.8 Map each AC to test evidence in the PR body
-  - [ ] 2.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 2.1 `[T]` [code-review] L1 `test_github_client.py`: each allowed call; every disallowed verb/path (`PUT`, `PATCH`, `DELETE`, `POST` to reviews, merge, labels, another issue's comments) raises `ForbiddenCall` before transport; CT-04 allowlist snapshot
+  - [x] 2.2 `[T]` [code-review] L1 retries (2 on 5xx/connection/secondary rate limit, `retry-after` honored, max 30 s), POST never retried; 404 contents → `None`; error mapping; token absent from exception text
+  - [x] 2.3 `[T]` [code-review] Edge: paging stops at 30 pages; paths with spaces, `#`, `..` URL-encoded; secondary-rate-limit 403 vs. permission 403
+  - [x] 2.4 `[I]` [code-review] `tests/helpers/prng.py` seeded `random.Random` helper (test plan G-6)
+  - [x] 2.5 `[I]` [code-review] `github_client.py`: `GitHubClient(token, org, repo, pr_number)` with `get_pull`, `list_pull_files`, `compare`, `get_content_raw`, `list_dir`, `get_issue`, `post_pr_comment`; allowlist; errors `GitHubPermissionDenied`, `GitHubApiError`; request timeout (test plan DF-14)
+  - [x] 2.6 `[I]` [code-review] Recorded fixtures under `tests/fixtures/github/` for a sample PR
+  - [x] 2.7 Verify Acceptance Criteria: AC1 methods; AC2 allowlist and single write; AC3 retries; AC4 errors without token; AC5 URL-encoding
+  - [x] 2.8 Map each AC to test evidence in the PR body
+  - [x] 2.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
 - [ ] 3.0 Implement Story S-206 (#408): Expanded diff and size check · branch `story/S-206-expanded-diff`
   - [ ] 3.1 `[T]` [code-review] L1 `test_classify.py`: lockfiles, generated paths, binaries, excluded workstream paths; near-misses (e.g. `lockfile.md`); property tactic over random paths (fixed seed)
