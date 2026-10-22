@@ -23,12 +23,15 @@ jobs:
         python-version: ["3.13", "3.14"]
         # One gate per Python agent. security-analyst was added at its PRD
         # close (S-141): its 700+ tests were previously unreachable from CI.
-        agent: [dependency-update, security-analyst]
+        # code-review joined at its scaffold (S-204), so it is gated from day one.
+        agent: [dependency-update, security-analyst, code-review]
         include:
           - agent: dependency-update
             package-dir: agents/dependency-update/app/dependencyUpdate
           - agent: security-analyst
             package-dir: agents/security-analyst/app/securityAnalyst
+          - agent: code-review
+            package-dir: agents/code-review/app/codeReview
     defaults:
       run:
         working-directory: ${{ matrix.package-dir }}

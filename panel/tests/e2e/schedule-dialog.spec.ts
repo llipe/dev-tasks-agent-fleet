@@ -31,6 +31,10 @@ test.describe("schedules — new/edit dialog", () => {
     const dialog = page.getByRole("dialog", { name: "New schedule" });
     await expect(dialog).toBeVisible();
 
+    // Pick the agent explicitly: the select is name-ordered and defaults to the
+    // first enabled agent, which is "Code Review" since S-204 seeded it.
+    await dialog.locator("#sch-agent").selectOption({ label: "Dependency Update" });
+
     // Repository is required for dependency-update — pick the first real option.
     await dialog.locator("#sch-repo").selectOption({ index: 1 });
 
@@ -78,6 +82,7 @@ test.describe("schedules — new/edit dialog", () => {
       .click();
     const dialog = page.getByRole("dialog", { name: "New schedule" });
 
+    await dialog.locator("#sch-agent").selectOption({ label: "Dependency Update" });
     await dialog.locator("#sch-repo").selectOption({ index: 1 });
     await dialog.getByLabel("Fix mode").selectOption("audit_only");
     await dialog.getByRole("tab", { name: "Every N hours" }).click();

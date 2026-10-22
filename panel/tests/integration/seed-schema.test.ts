@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { probeLocalDb, withDb } from "./db";
 
@@ -99,3 +101,61 @@ if (!probe.available) {
     it.skip(`SKIPPED: ${probe.reason}`, () => {});
   });
 }
+
+// ---------------------------------------------------------------------------
+// S-204 (#406) TC-204-15 — the `code-review` agents row, seeded by
+// supabase/seed.sql and the `*_seed_code_review_agent.sql` data migration.
+// Same Docker gate as above.
+// ---------------------------------------------------------------------------
+
+const MIGRATIONS_DIR = fileURLToPath(new URL("../../../supabase/migrations/", import.meta.url));
+
+function codeReviewMigrationSql(): string {
+  const found = readdirSync(MIGRATIONS_DIR).filter((f) =>
+    f.endsWith("_seed_code_review_agent.sql"),
+  );
+  expect(found).toHaveLength(1);
+  return readFileSync(`${MIGRATIONS_DIR}${found[0]}`, "utf8");
+}
+
+function migrationSchema(sql: string): unknown {
+  const match = /\$json\$([\s\S]*?)\$json\$/.exec(sql);
+  expect(match).not.toBeNull();
+  return JSON.parse(match![1]);
+}
+
+describe.skipIf(!probe.available)("panel Layer 2.5 — seeded code-review agent (S-204)", () => {
+  it("returns the spec §5.1 params_schema and its defaults", async () => {
+    const row = await withDb((c) =>
+      c
+        .query<{
+          params_schema: ParamsSchema;
+          default_params: Record<string, unknown>;
+        }>(`select params_schema, default_params from agents where slug = 'code-review'`)
+        .then((r) => r.rows[0]),
+    );
+    expect(row).toBeDefined();
+    expect(row.params_schema).toEqual(migrationSchema(codeReviewMigrationSql()));
+    expect(row.params_schema.required).toEqual(["pr_number"]);
+    expect(row.default_params).toEqual({
+      max_diff_lines: 2000,
+      max_context_tokens: 150000,
+      max_suggestions: 5,
+      run_timeout_seconds: 900,
+      reasoning_effort: "high",
+    });
+  });
+
+  it("applying the migration twice leaves exactly one row", async () => {
+    const sql = codeReviewMigrationSql();
+    const count = await withDb(async (c) => {
+      await c.query(sql);
+      await c.query(sql);
+      const r = await c.query<{ n: string }>(
+        `select count(*)::text as n from agents where slug = 'code-review'`,
+      );
+      return Number(r.rows[0].n);
+    });
+    expect(count).toBe(1);
+  });
+});
