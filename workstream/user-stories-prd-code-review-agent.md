@@ -2,10 +2,11 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                                                              | Author           |
-| ------- | ---------- | ---------------------------------------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-10-22 | Initial stories from spec v1.0 / PRD v1.1. S-204–S-215 across Wave A (base agent) and Wave B (live). | product-engineer |
-| 1.1     | 2026-10-22 | Published as GitHub issues #406–#417; see `github-publication-prd-code-review-agent.md`.             | product-engineer |
+| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                         | Author           |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.0     | 2026-10-22 | Initial stories from spec v1.0 / PRD v1.1. S-204–S-215 across Wave A (base agent) and Wave B (live).                                                                                                                                                                                                                            | product-engineer |
+| 1.1     | 2026-10-22 | Published as GitHub issues #406–#417; see `github-publication-prd-code-review-agent.md`.                                                                                                                                                                                                                                        | product-engineer |
+| 1.2     | 2026-10-22 | Spec v1.1 write-back (D-36–D-38, verifier DF-02–DF-04): S-208 candidate shape; S-209 priority fill, budget invariant, per-candidate nonce blocks; S-212 verifier rows from wrapper data and five-stage size guarantee; S-213 failure comment after `COMMENT_POST_FAILED`. Story titles aligned with the shortened issue titles. | product-engineer |
 
 Source: `docs/requirements/prd-code-review-agent.md` (v1.1), `workstream/specification-prd-code-review-agent.md` (v1.0), `workstream/decisions-code-review-agent.md` (D-01–D-35).
 
@@ -24,7 +25,7 @@ Source: `docs/requirements/prd-code-review-agent.md` (v1.1), `workstream/specifi
 
 ## Wave A — Base agent
 
-### Story S-204: Agent package scaffold, params contract, and `agents` seed
+### Story S-204: Agent scaffold, params, and agents seed
 
 **Priority:** Critical
 **Estimated Size:** M
@@ -171,7 +172,7 @@ The agent's only write is one comment (PRD FR-27, AC-10). Enforcing that in the 
 
 ---
 
-### Story S-206: Expanded diff, file classification, and size check
+### Story S-206: Expanded diff and size check
 
 **Priority:** Critical
 **Estimated Size:** M
@@ -304,7 +305,7 @@ Intent comes from issues and the spec (D-04); the developer's plan is excluded (
 
 ---
 
-### Story S-208: Verifier drift candidates and repo conventions
+### Story S-208: Verifier drift candidates and conventions
 
 **Priority:** High
 **Estimated Size:** S
@@ -324,7 +325,7 @@ D-25 names the report files; D-33 has the wrapper select candidates deterministi
 
 - [ ] For each linked issue, `fidelity-report-S-<id>.md` (story ID from `Story (S-\d+)` in the title) and `fidelity-report-issue-<N>.md` are read at `head_sha`; `*-rollup.md` is ignored (D-25).
 - [ ] The drift section is the first heading matching `^#{2,3}\s+(Drift|Drift catalog)\b`; absent → report state `not_parseable` (D-33).
-- [ ] Each table row in that section containing both `Critical` and `Unintended` as whole words becomes a candidate `V<k>` with its row text verbatim; numbering is global across reports (D-33).
+- [ ] Each table row in that section containing both `Critical` and `Unintended` as whole words becomes a candidate `V<k>` holding the report path, the row index, and the row text verbatim (≤ 300 estimated tokens); numbering is global across reports (D-33, D-38).
 - [ ] The whole drift section (≤ 4,000 tokens per report) is returned as context alongside the candidate list.
 - [ ] Conventions: head `AGENTS.md`, else `CLAUDE.md`, plus title and `Status` line of each `docs/adr/*.md` (≤ 50), capped at 10% of `max_context_tokens` (PRD FR-11).
 - [ ] No report → state `none` (PRD FR-17).
@@ -388,10 +389,12 @@ The rubric and system prompt encode the scope (PRD FR-14, FR-15, FR-20, FR-21), 
 #### Acceptance Criteria
 
 - [ ] `estimate(text) = ceil(len(text) / 3.5)` (D-27).
-- [ ] Blocks are added in spec §8.4 order with their caps; full files are added smallest first until `max_context_tokens`; dropped files are named; a diff that alone exceeds the budget returns `OverBudget` (PRD FR-6).
+- [ ] Spec §8.4 priority fill: instructions and diff are mandatory (`OverBudget` when they exceed `max_context_tokens`, PRD FR-6); optional blocks a–g each get `min(cap, remaining)`, are truncated at a line boundary or omitted, and are named in the context data; full files are added smallest first (D-37).
+- [ ] Invariant: `estimate(prompt) ≤ max_context_tokens` for every input, asserted before the Converse call; a violation raises `INTERNAL_ERROR`. Candidates dropped for budget are reported to S-211 as not shown to the model (D-37).
 - [ ] `rubric.md` v1 defines categories `correctness`, `edge_case`, `maintainability`, `intent`; the consequence rule; the out-of-scope list; the verifier boundary (PRD FR-14, FR-15, FR-20, FR-21).
 - [ ] The system prompt includes the rubric, the blocking contract, the PR-description-is-a-claim rule (PRD FR-12), the D-33 confirmation instruction, ranking, and the untrusted-data rule.
 - [ ] Each untrusted block is wrapped in `<<<UNTRUSTED <kind> <nonce>>>` … `<<<END <nonce>>>` with a per-run 16-hex nonce; content containing `<<<END` cannot close a block (PRD FR-13).
+- [ ] Each candidate's row text is in its own `<<<UNTRUSTED verifier-candidate V<k> <nonce>>>` block; outside the markers only IDs, report paths, and row indexes appear, never row text (D-38).
 - [ ] A prompt sink captures the final prompt for tests.
 
 #### Business Rules
@@ -406,11 +409,11 @@ The rubric and system prompt encode the scope (PRD FR-14, FR-15, FR-20, FR-21), 
 
 #### Testing Requirements
 
-- **Unit Tests:** `test_estimate.py`, `test_budget_fit.py` (order, caps, smallest-first, dropped list, diff-over-budget), `test_prompt.py` (all blocks present, nonce wrapping, forged `<<<END` inside content stays inside, candidates outside markers, rubric version).
+- **Unit Tests:** `test_estimate.py`, `test_budget_fit.py` (priority order, `min(cap, remaining)`, truncation and omission named, smallest-first files, diff-over-budget, invariant over random inputs at `max_context_tokens` 20,000), `test_prompt.py` (all blocks present, nonce wrapping, forged `<<<END` inside content stays inside, candidate IDs outside and row text inside per-candidate blocks, rubric version).
 - **Integration Tests:** prompt-capture assertions for AC-4, AC-6, AC-8 run in S-213.
 - **Manual/UI Testing:** read one rendered prompt for a fixture PR in the PR description.
 - **Edge-Case Matrix:** no issues, no spec, no reports; every block at cap; one huge file and many small ones.
-- **Acceptance-Criteria Mapping:** AC-1 → `test_estimate.py`; AC-2 → `test_budget_fit.py`; AC-3/AC-4 → `test_prompt.py::test_rubric_*`; AC-5 → `test_prompt.py::test_nonce_*`.
+- **Acceptance-Criteria Mapping:** AC-1 → `test_estimate.py`; AC-2/AC-3 → `test_budget_fit.py`; AC-4/AC-5 → `test_prompt.py::test_rubric_*`; AC-6 → `test_prompt.py::test_nonce_*`; AC-7 → `test_prompt.py::test_candidate_blocks_*`; AC-8 → `test_prompt.py::test_sink`.
 - **Execution Commands:** `make -C agents/code-review/app/codeReview test`.
 
 #### Implementation Steps
@@ -436,7 +439,7 @@ The rubric and system prompt encode the scope (PRD FR-14, FR-15, FR-20, FR-21), 
 
 ---
 
-### Story S-210: Bedrock Converse adapter with forced schema and fallbacks
+### Story S-210: Bedrock adapter, forced schema, fallbacks
 
 **Priority:** Critical
 **Estimated Size:** M
@@ -572,7 +575,7 @@ The wrapper enforces the contract instead of trusting the model (D-08, PRD FR-23
 
 ---
 
-### Story S-212: Comment rendering — review, budget, and failure comments
+### Story S-212: Review, budget, and failure comments
 
 **Priority:** High
 **Estimated Size:** S
@@ -591,10 +594,10 @@ Implements the layout in PRD FR-24 and spec §8.8, the size limit (D-28), the ru
 #### Acceptance Criteria
 
 - [ ] `render_review` produces the spec §8.8 layout: hidden marker, verdict header with short SHA, Blocking, Verifier, collapsed Suggestions, Context line, footer with out-of-scope list, model, rubric version, run link (PRD FR-24, FR-21).
-- [ ] Verifier section: counted candidates verbatim with status and reason, `not_reproduced` listed with reason, a count of other drift; "no verifier report" or "report not parseable" when applicable (PRD FR-16, FR-17).
+- [ ] Verifier section: counted candidates with status and reason, `not_reproduced` listed with reason, a count of other drift; "no verifier report" or "report not parseable" when applicable. Row text comes from the wrapper's parsed candidates, never from model output, and is neutralized like all other text (PRD FR-16, FR-17, D-38).
 - [ ] Context line names issues, spec (or "no spec found", "(trimmed)"), dropped full files, files listed by name only, "issues unavailable (permission)" when set.
 - [ ] Mentions neutralized (`@` + zero-width space), HTML escaped, backticks stripped from paths (spec §8.8).
-- [ ] Output ≤ 60,000 chars: suggestions dropped from the end, then blocking scenarios cut to 500 chars, then the truncation note (D-28).
+- [ ] Output ≤ 60,000 chars for every input, measured after escaping: stages (1) drop suggestions from the end, (2) scenarios to 500 and consequences to 200 chars, (3) verifier rows and reasons to 300 chars, (4) blocking findings beyond what fits as one-line entries, (5) hard cut at a line boundary; any stage adds the truncation note; the verdict header is never cut (D-28, D-36).
 - [ ] `render_budget` and `render_failure(error_code)` produce the spec §8.8 messages with the run link `PANEL_BASE_URL/runs/<run_id>` (D-29).
 
 #### Business Rules
@@ -607,7 +610,7 @@ Implements the layout in PRD FR-24 and spec §8.8, the size limit (D-28), the ru
 
 #### Testing Requirements
 
-- **Unit Tests:** `test_render.py`: clear and blocking layouts; empty sections omitted; verifier states; mention and HTML neutralization; 60k truncation stages; budget and failure messages.
+- **Unit Tests:** `test_render.py`: clear and blocking layouts; empty sections omitted; verifier states; mention and HTML neutralization; each of the five size stages; worst case at schema maxima with escape-heavy text (all `<`) stays ≤ 60,000 chars; verifier rows taken from wrapper data even when the model's `reason` quotes other text; budget and failure messages.
 - **Integration Tests:** S-213.
 - **Manual/UI Testing:** paste a rendered snapshot into a GitHub comment preview on a scratch PR and check the layout.
 - **Edge-Case Matrix:** 0 findings; 40 findings with 1,500-char scenarios; a title containing `</details>`; `@everyone` in a scenario.
@@ -637,7 +640,7 @@ Implements the layout in PRD FR-24 and spec §8.8, the size limit (D-28), the ru
 
 ---
 
-### Story S-213: Pipeline wiring, outcomes, artifact, and failure path
+### Story S-213: Pipeline wiring, outcomes, and failure path
 
 **Priority:** Critical
 **Estimated Size:** L
@@ -661,7 +664,7 @@ Replaces S-204's placeholder with the spec §8.1 pipeline, outcomes (PRD FR-29),
 - [ ] Over budget → budget comment, `succeeded`/`not_applicable`, no Converse call (AC-5).
 - [ ] Verdict `clear` → `no_findings`; `blocking` → `needs_review` (PRD FR-29).
 - [ ] One `audit_report` artifact with spec §5.2 metadata, scrubbed; `runs.metrics` per spec §5.3 (PRD FR-30, FR-31).
-- [ ] Each error in spec §13 ends `failed` with its code; the `finally` path posts the failure comment where the table says so; a failed failure-comment is logged and does not change the outcome (PRD FR-26, AC-11).
+- [ ] Each error in spec §13 ends `failed` with its code; the `finally` path posts the failure comment where the table says so, including one short failure comment after `COMMENT_POST_FAILED` unless the POST failed with 401/403; a failed failure-comment is logged and does not change the outcome (PRD FR-26, AC-11, D-36).
 - [ ] A run-level deadline `start + run_timeout_seconds − 60 s` bounds each step; reaching it → `RUN_TIMEOUT`; heartbeat wraps the fetch and Converse steps (D-32).
 - [ ] Each `/review` posts a new comment; earlier comments are never edited (PRD FR-25).
 - [ ] Prompt capture shows: ±50 context and full files (AC-4); #315 issue without checklist and its spec (AC-6); no excluded-file content (AC-8); injection text inside nonce markers (AC-13 static).
@@ -679,7 +682,7 @@ Replaces S-204's placeholder with the spec §8.1 pipeline, outcomes (PRD FR-29),
 #### Testing Requirements
 
 - **Unit Tests:** `test_outcomes.py` (verdict → outcome mapping; error → code → comment-or-not table), `test_deadline.py`.
-- **Integration Tests:** `test_pipeline_e2e.py` on recorded fixtures + fake Bedrock: clear review; blocking review; AC-7 verifier (Critical+Unintended confirmed → blocking; Major not listed); AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` → no second post; artifact and metrics shape; prompt-capture assertions.
+- **Integration Tests:** `test_pipeline_e2e.py` on recorded fixtures + fake Bedrock: clear review; blocking review; AC-7 verifier (Critical+Unintended confirmed → blocking; Major not listed); AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` → one short failure comment, and none after a 401/403; artifact and metrics shape; prompt-capture assertions.
 - **Manual/UI Testing:** run the agent locally (`agentcore dev` or `python main.py` with a fixture payload) against a scratch PR in a test repo, using a personal token, before Wave B.
 - **Edge-Case Matrix:** deadline hit during Converse; SIGTERM during `post`; PR closed between invoke and `load_pr`; PR with only lockfile changes; force-push after `load_pr` (review stays on captured SHA).
 - **Acceptance-Criteria Mapping:** AC-1 → `test_steps`; AC-2 → `test_closed_pr`, `test_draft_pr`, `test_no_ci_read`; AC-3 → `test_sha_pinned`; AC-4 → `test_budget_path`; AC-5 → `test_outcomes.py`; AC-6 → `test_artifact_metrics`; AC-7 → `test_errors_*`; AC-8 → `test_deadline.py`; AC-9 → `test_new_comment_each_run`; AC-10 → `test_prompt_capture_*`.
@@ -711,7 +714,7 @@ Replaces S-204's placeholder with the spec §8.1 pipeline, outcomes (PRD FR-29),
 
 ## Wave B — Live
 
-### Story S-214: Runtime infrastructure, IAM, and deployment runbook
+### Story S-214: Runtime infrastructure, IAM, and runbook
 
 **Priority:** Critical
 **Estimated Size:** M
@@ -791,7 +794,7 @@ An `infra-engineer` pass (spec §15, PRD §12). The runbook ships in this PR (FR
 
 ---
 
-### Story S-215: `/review` webhook rule, live verification, and close-out
+### Story S-215: `/review` rule and live verification
 
 **Priority:** Critical
 **Estimated Size:** M
