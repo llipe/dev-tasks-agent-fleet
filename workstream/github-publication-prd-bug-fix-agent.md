@@ -4,6 +4,7 @@
 
 | Version | Date       | Summary                       | Author           |
 | ------- | ---------- | ----------------------------- | ---------------- |
+| 2.0 | 2026-10-22 | PRD v2.0 (issue mode). #365, #369 and #378 closed as not planned; 12 issues rewritten (#367, #368, #379 and #380 retitled); S-199 published as #420; follow-up #421 (Settings UI for the Projects token) outside the milestone. Execution: `gh-cli` through `github-ops`. | product-engineer |
 | 1.1 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). Issues #326–#349 from the superseded line are closed as superseded, each pointing to its counterpart in #362–#380. | product-engineer |
 | 1.0     | 2026-10-20 | 19 stories published (#362–#380). | product-engineer |
 
@@ -47,3 +48,30 @@
 - **No assignee, no epic.** This was the user's choice. `planner` assigns at execution.
 - **Execution method:** `gh-cli`, delegated to the `github-ops` subagent. The bodies were passed with `--body-file`.
 - **Assisted-by:** not applicable. No PR was created and no issue was closed.
+
+## v2.0 State (2026-10-22)
+
+| Story | Title | Issue | State | Labels |
+| ----- | ----- | ----- | ----- | ------ |
+| S-180 | Agent scaffold, image, and sandbox policy | [#362](https://github.com/llipe/dev-tasks-agent-fleet/issues/362) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-181 | Infra: key, runtime, invoke policy, App issues | [#363](https://github.com/llipe/dev-tasks-agent-fleet/issues/363) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, scope:infra, size:M, story |
+| S-182 | Sandbox spike on the deployed runtime | [#364](https://github.com/llipe/dev-tasks-agent-fleet/issues/364) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-183 | Panel string-list schema-form control | [#365](https://github.com/llipe/dev-tasks-agent-fleet/issues/365) | closed | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, scope:panel, size:M, story |
+| S-184 | Agents seed row, params schema, typed params | [#366](https://github.com/llipe/dev-tasks-agent-fleet/issues/366) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, scope:infra, size:S, story |
+| S-185 | Refusal checks and marked reply | [#367](https://github.com/llipe/dev-tasks-agent-fleet/issues/367) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:S, story |
+| S-186 | Markers, reactions, idempotent disposition | [#368](https://github.com/llipe/dev-tasks-agent-fleet/issues/368) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-187 | Selection: oldest ready bug, linked-PR skip | [#369](https://github.com/llipe/dev-tasks-agent-fleet/issues/369) | closed | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-188 | Claim with post-claim race check | [#370](https://github.com/llipe/dev-tasks-agent-fleet/issues/370) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-189 | Checkout, repo gate, toolchain, gate runner | [#371](https://github.com/llipe/dev-tasks-agent-fleet/issues/371) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-190 | Orchestration and outcomes through the claim | [#372](https://github.com/llipe/dev-tasks-agent-fleet/issues/372) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-191 | Fix runner: confined claude -p | [#373](https://github.com/llipe/dev-tasks-agent-fleet/issues/373) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:L, story |
+| S-192 | Change validation: caps, paths, gates | [#374](https://github.com/llipe/dev-tasks-agent-fleet/issues/374) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-193 | Red-to-green on the changed tests | [#375](https://github.com/llipe/dev-tasks-agent-fleet/issues/375) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-194 | Draft PR, artifact, and fix-loop enablement | [#376](https://github.com/llipe/dev-tasks-agent-fleet/issues/376) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:critical, size:M, story |
+| S-195 | In-container confinement tests (AC-5, AC-6) | [#377](https://github.com/llipe/dev-tasks-agent-fleet/issues/377) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:S, story |
+| S-196 | Stale-claim sweep | [#378](https://github.com/llipe/dev-tasks-agent-fleet/issues/378) | closed | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:M, story |
+| S-197 | Deploy script and runbook (webhook rule, board) | [#379](https://github.com/llipe/dev-tasks-agent-fleet/issues/379) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, scope:infra, size:M, story |
+| S-198 | Live verification on the fixture repo | [#380](https://github.com/llipe/dev-tasks-agent-fleet/issues/380) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:S, story |
+| S-199 | Projects v2 board updates | [#420](https://github.com/llipe/dev-tasks-agent-fleet/issues/420) | open | agent:bug-fix, phase:control-plane, prd:bug-fix-agent, priority:high, size:M, story |
+
+- Follow-up outside the milestone: [#421](https://github.com/llipe/dev-tasks-agent-fleet/issues/421) `[panel] Settings UI to update the Projects token secret` (D-99).
