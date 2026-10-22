@@ -1,0 +1,403 @@
+{
+  "description": "CT-01 shared params cases (test plan v1.1 \u00a76). Evaluated by the Python runtime validator (tests/unit/test_payload.py) and by the panel's Ajv validateParams (panel/tests/unit/code-review-params-parity.test.ts) against the params_schema parsed from supabase/seed.sql. A case with \"absent\": true omits params entirely. Integral floats such as 7.0 are deliberately not here: JSON.parse turns 7.0 into 7, so the two sides cannot see the same value; TC-204-06 covers 7.0 on the Python side only.",
+  "cases": [
+    {
+      "id": "pr_number-only",
+      "valid": true,
+      "params": {
+        "pr_number": 1
+      }
+    },
+    {
+      "id": "pr_number-large",
+      "valid": true,
+      "params": {
+        "pr_number": 2147483647
+      }
+    },
+    {
+      "id": "max_diff_lines-min",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 100
+      }
+    },
+    {
+      "id": "max_diff_lines-max",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 10000
+      }
+    },
+    {
+      "id": "max_diff_lines-default",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 2000
+      }
+    },
+    {
+      "id": "max_context_tokens-min",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 20000
+      }
+    },
+    {
+      "id": "max_context_tokens-max",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 400000
+      }
+    },
+    {
+      "id": "max_context_tokens-default",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 150000
+      }
+    },
+    {
+      "id": "max_suggestions-min",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_suggestions": 0
+      }
+    },
+    {
+      "id": "max_suggestions-max",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_suggestions": 20
+      }
+    },
+    {
+      "id": "max_suggestions-default",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_suggestions": 5
+      }
+    },
+    {
+      "id": "run_timeout_seconds-min",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "run_timeout_seconds": 120
+      }
+    },
+    {
+      "id": "run_timeout_seconds-max",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "run_timeout_seconds": 900
+      }
+    },
+    {
+      "id": "run_timeout_seconds-default",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "run_timeout_seconds": 900
+      }
+    },
+    {
+      "id": "reasoning_effort-low",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "id": "reasoning_effort-medium",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": "medium"
+      }
+    },
+    {
+      "id": "reasoning_effort-high",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "id": "all-fields-defaults",
+      "valid": true,
+      "params": {
+        "pr_number": 42,
+        "max_diff_lines": 2000,
+        "max_context_tokens": 150000,
+        "max_suggestions": 5,
+        "run_timeout_seconds": 900,
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "id": "params-absent",
+      "valid": false,
+      "absent": true
+    },
+    {
+      "id": "params-empty-object",
+      "valid": false,
+      "params": {}
+    },
+    {
+      "id": "pr_number-missing-with-other-keys",
+      "valid": false,
+      "params": {
+        "max_diff_lines": 2000
+      }
+    },
+    {
+      "id": "pr_number-zero",
+      "valid": false,
+      "params": {
+        "pr_number": 0
+      }
+    },
+    {
+      "id": "pr_number-negative",
+      "valid": false,
+      "params": {
+        "pr_number": -1
+      }
+    },
+    {
+      "id": "pr_number-string",
+      "valid": false,
+      "params": {
+        "pr_number": "1"
+      }
+    },
+    {
+      "id": "pr_number-fractional",
+      "valid": false,
+      "params": {
+        "pr_number": 1.5
+      }
+    },
+    {
+      "id": "pr_number-true",
+      "valid": false,
+      "params": {
+        "pr_number": true
+      }
+    },
+    {
+      "id": "pr_number-false",
+      "valid": false,
+      "params": {
+        "pr_number": false
+      }
+    },
+    {
+      "id": "pr_number-null",
+      "valid": false,
+      "params": {
+        "pr_number": null
+      }
+    },
+    {
+      "id": "pr_number-array",
+      "valid": false,
+      "params": {
+        "pr_number": [
+          1
+        ]
+      }
+    },
+    {
+      "id": "pr_number-object",
+      "valid": false,
+      "params": {
+        "pr_number": {
+          "n": 1
+        }
+      }
+    },
+    {
+      "id": "max_diff_lines-below-min",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 99
+      }
+    },
+    {
+      "id": "max_diff_lines-above-max",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 10001
+      }
+    },
+    {
+      "id": "max_context_tokens-below-min",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 19999
+      }
+    },
+    {
+      "id": "max_context_tokens-above-max",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 400001
+      }
+    },
+    {
+      "id": "max_suggestions-below-min",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_suggestions": -1
+      }
+    },
+    {
+      "id": "max_suggestions-above-max",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_suggestions": 21
+      }
+    },
+    {
+      "id": "run_timeout_seconds-below-min",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "run_timeout_seconds": 119
+      }
+    },
+    {
+      "id": "run_timeout_seconds-above-max",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "run_timeout_seconds": 901
+      }
+    },
+    {
+      "id": "max_diff_lines-bool",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": true
+      }
+    },
+    {
+      "id": "max_suggestions-string",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_suggestions": "5"
+      }
+    },
+    {
+      "id": "run_timeout_seconds-fractional",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "run_timeout_seconds": 600.5
+      }
+    },
+    {
+      "id": "reasoning_effort-HIGH",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": "HIGH"
+      }
+    },
+    {
+      "id": "reasoning_effort-empty",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": ""
+      }
+    },
+    {
+      "id": "reasoning_effort-null",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": null
+      }
+    },
+    {
+      "id": "reasoning_effort-max",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": "max"
+      }
+    },
+    {
+      "id": "reasoning_effort-integer",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "reasoning_effort": 1
+      }
+    },
+    {
+      "id": "unknown-key",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "foo": 1
+      }
+    },
+    {
+      "id": "unknown-key-null",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "comment_id": null
+      }
+    },
+    {
+      "id": "params-list",
+      "valid": false,
+      "params": [
+        {
+          "pr_number": 1
+        }
+      ]
+    },
+    {
+      "id": "params-string",
+      "valid": false,
+      "params": "{\"pr_number\":1}"
+    },
+    {
+      "id": "params-null",
+      "valid": false,
+      "params": null
+    },
+    {
+      "id": "params-number",
+      "valid": false,
+      "params": 1
+    }
+  ]
+}
