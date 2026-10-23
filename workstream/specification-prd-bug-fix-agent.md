@@ -4,6 +4,7 @@
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108). New §8.11 covers trigger-side changes: the `agents.guardrail_scope` migration and the `public.webhook_guardrail` change, and the panel's best-effort 👎 reaction on matched-but-blocked deliveries. §3, §7, §15 and §16 updated. | product-engineer |
 | 2.0 | 2026-10-22 | **Issue-mode rewrite** for PRD v2.0. WHAT decisions are D-88–D-102; HOW decisions D-103–D-106 come from the `activity-grill` session confirmed by @llipe on 2026-10-22. Changes: the trigger is a `/bug-fix` webhook rule or a manual invoke (§4, §6). Params are reduced (§5.2). Preflight and selection are replaced by the refusal checks with a marked reply (§8.2, D-92, D-104). The claim, success and disposition signals are reactions plus marker comments, with no labels or assignee (§8.3, §8.6, §8.8, D-93). The sweep (§8.4) and selection (§8.5) are removed (D-94). New §8.10 covers Projects v2 board updates (D-97–D-103). The `string-list` UI is removed (§10, D-95). The spike gains a board probe (§12, D-105). Rollout is restated in the new waves (§15, D-106). The fix loop (§8.7) and confinement (§12) are unchanged. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
 | 1.4     | 2026-10-20 | Drift reconciliation of verifier DF-20 to DF-28, accepted by @llipe on 2026-10-20 (D-79–D-86). §8.4: the sweep is scoped to the current lock episode and acts only on App-applied locks. §8.3: multi-run marker block. §8.6 and §8.8: failure precedence, with the disposition only after confirmed ownership. §5.2: agent-side bounds. §8.7: symlinks and gitlinks are rejected, `info/exclude` is narrowed, a parent-chain `lstat` runs, and path matching is case-insensitive. §8.8: comments are neutralized. Stale wording fixed (§2, §4, §8.6). | product-engineer |
@@ -43,7 +44,7 @@ It runs a headless `claude -p` subprocess only to reproduce, test, and fix. That
 
 | Repository | Role | Scope of Changes |
 | ---------- | ---- | ---------------- |
-| `llipe/dev-tasks-agent-fleet` | Agent, data, infra, docs | New `agents/bug-fix/` (wrapper, image, managed policy, tests, `agentcore.json`); a seed migration for the `agents` row; the runbook (with the recommended `/bug-fix` webhook rule); an infra change record. **No panel code change** (D-95). |
+| `llipe/dev-tasks-agent-fleet` | Agent, data, infra, docs | New `agents/bug-fix/` (wrapper, image, managed policy, tests, `agentcore.json`); a seed migration for the `agents` row; the runbook (with the recommended `/bug-fix` webhook rule); an infra change record. Panel trigger changes for S-200: the `guardrail_scope` migration, the guardrail function, and the 👎 reaction (D-107, D-108). |
 | Target repos (fleet-managed) | Consumers | Draft PRs, comments and reactions written by the agent; their linked Projects v2 board card, if any. |
 | GitHub App configuration | External | **Issues: read and write**, for comments and reactions, accepted per installation (D-58). |
 | GitHub user account `llipe` | External | A classic PAT with only the `project` scope, for user-owned boards (D-98, D-99). |
@@ -174,6 +175,7 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 | --------- | ----------- | --- | ------- |
 | Wrapper (uid `wrapper`) | Runtime role → Secrets Manager; App token; Projects PAT; Supabase key | Everything in §6; spawn sandboxed subprocesses | Run model output or repo scripts in its own process or with its own env |
 | `claude -p` (uid `fixer`) | `ANTHROPIC_API_KEY` only (D-50) | Read and edit the checkout; run allowed Bash inside the sandbox; reach the Anthropic API | AWS credentials, the container-credential endpoint, the link-local range, `git push`, `gh`, `curl`/`wget`, `WebFetch`, secrets on disk |
+| Panel (Fly), webhook trigger | Panel AWS role → Secrets Manager (App PEM only, D-108) | Mint an installation token; add one 👎 reaction to a matched-but-blocked `issue_comment` | Any other GitHub call; post comments; read other secrets |
 | Repo scripts (uid `fixer`) | None | Install, gates and changed tests, with network to package registries only | The same exclusions as the CLI |
 
 - **Who may trigger** is the webhook rule's business (D-91). The agent checks nothing about the commenter.
@@ -371,6 +373,20 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 4. **In the disposition:** Status → `status_ready`.
 5. **Each call** has a 10-second timeout and no retries. Any error is logged as a `run_event` and skipped. `runs.metrics.board` records `{board: "owner/number" | null, reason, transitions: [{to, ok, error?}]}`.
 
+### 8.11 Trigger-side changes (S-200, D-107, D-108)
+
+**Guardrail scope (D-107).** A migration adds `agents.guardrail_scope text not null default 'repo' check (guardrail_scope in ('repo','issue'))`. `public.webhook_guardrail(agent, repo)` then works as follows:
+- for an `issue` scope, it returns `concurrency_cap` when G4 is full, or null otherwise;
+- for a `repo` scope, it keeps the current G1, G5 and G4 order unchanged.
+
+The bug-fix seed (S-184) sets `issue`. Other agents keep `repo`, so their behaviour doesn't change.
+
+**Blocked reaction (D-108).** `panel/lib/webhooks/fire.ts` and `dispatch.ts` call an injected `reactBlocked(delivery)` when an `issue_comment` delivery **matched a rule** but no run started (`skipped:concurrency_cap`, a rule disabled by its breaker, or `route_rejected`).
+- The new `panel/lib/github/app-token.ts` mints an installation token. It reads the App PEM from Secrets Manager, signs an RS256 JWT, calls `POST /app/installations/{id}/access_tokens`, and caches the token for under 50 minutes.
+- `reactBlocked` then makes one `POST /repos/{o}/{r}/issues/comments/{comment.id}/reactions` call with `{"content": "-1"}`.
+- It has a 5-second timeout and no retries. The result goes on the delivery row (`reaction: ok | failed | skipped`) and never changes the delivery outcome.
+- `no_match` deliveries and non-`issue_comment` events are never touched.
+
 ## 9. Integration Details
 
 - **GitHub (App).** REST and GraphQL go through `github_client.py`, with the installation token refreshed when stale and 5xx and secondary rate limits retried 3 times (D-67).
@@ -483,6 +499,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 **Wave B** (unchanged): S-191 fix runner, S-192 validation, S-193 red-to-green, S-194 Draft PR (🚀 plus a PR comment), S-195 in-container confinement.
 
 **Wave C:**
+- S-200 trigger guardrail scope and the blocked reaction (panel plus migration; the panel's secret access goes through `infra-engineer`);
 - S-199 Projects v2 board updates;
 - S-197 deploy script and runbook (the recommended webhook rule, linking a board, token rotation), shipped with the deploy script (FR-49a);
 - S-198 live verification.
@@ -503,6 +520,8 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | Python install has no contract (OQ-1) | Resolved in S-189 task 10.1 |
 | The Anthropic key's spend | Dedicated key with a cap; per-run limits; cost recorded in `runs.metrics` |
 | Wrapper git reading `fixer`-controlled state | D-62 |
+| The panel holding the App private key (D-108) | Role scoped to the one secret; a single reaction call; best effort; token cached briefly in memory only |
+| Per-repo guardrails silently skipping `/bug-fix` (DF-29) | `guardrail_scope = 'issue'` (D-107); AC-25 |
 | The PAT expires or is revoked | Best effort, so runs continue without board updates; Settings UI follow-up for rotation (D-99) |
 
 ## 17. Open Questions
@@ -543,6 +562,8 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-104 | Marked refusal reply, fixed text per code, no reaction. |
 | D-105 | Spike board probe on linked board #5, with cleanup. |
 | D-106 | Story and issue mapping for v2.0. |
+| D-107 | `agents.guardrail_scope`; G1/G5 lifted for issue-scoped agents; G4 stays. |
+| D-108 | The panel adds 👎 on matched-but-blocked deliveries. |
 
 WHAT-phase decisions (D-01–D-46, D-88–D-102) are consumed through the PRD. D-47, D-48, D-57, D-59, D-68, D-69, D-71, D-75 and D-79 are superseded by v2.0.
 

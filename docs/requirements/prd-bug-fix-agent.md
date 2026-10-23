@@ -8,6 +8,7 @@
 
 | Version | Date       | Summary | Author |
 | ------- | ---------- | ------- | ------ |
+| 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (Critical), accepted by @llipe. The webhook trigger's per-repo G1/G5 guardrails no longer apply to issue-scoped agents (`agents.guardrail_scope = 'issue'`, D-107). A `/bug-fix` that the trigger blocks gets a 👎 reaction from the panel (D-108). New FR-35–FR-36 and AC-25–AC-26; the panel is now an affected component. | product-engineer |
 | 2.0 | 2026-10-22 | **Issue-mode rewrite** from the WHAT session D-88–D-102, confirmed by @llipe on 2026-10-21. A run is now triggered by a `/bug-fix` comment through the webhook trigger (PR #398) and works on that one issue in a single shot (D-90). Removed: labels, selection queue, schedules, assignee, stale-claim sweep, `string-list` UI (D-90, D-93–D-96). Who may trigger is set by webhook configuration (D-91). Five refusal cases, each with a reply (D-92). The claim is now reactions plus marker comments (D-93). Projects v2 board updates are added, using a `project`-scoped PAT and auto-detecting the linked board, on a best-effort basis (D-97–D-102). The rules of engagement are unchanged. FR and AC numbers are kept: removed items are marked, and new ones are FR-28–FR-34 and AC-19–AC-24. | product-engineer |
 | 1.4 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
 | 1.3     | 2026-10-20 | Drift reconciliation of verifier findings DF-08, DF-11, DF-16 and DF-18, with wording confirmed by @llipe on 2026-10-20. AC-4 now applies to the *selected* issue (D-72). AC-6 excludes the spend-capped Anthropic key (D-66). FR-18 and AC-9 now say `audit` never blocks (D-73). FR-12 and AC-14 now name `run_budget_minutes` (default 55) inside the 60-minute runtime lifetime (D-74). | product-engineer |
@@ -52,7 +53,7 @@ flowchart TD
 
 | Repo | Role / Impact |
 | ---- | ------------- |
-| `llipe/dev-tasks-agent-fleet` | **Primary.** New `agents/bug-fix/`: AgentCore project, Python wrapper, an image with Node, Python, the Claude Code CLI and the sandbox runtime, and the managed Claude Code policy. Also: the `agents` seed row and params schema, the panel `invoke-runtime` IAM entry, the runbook (including the recommended webhook rule, D-91), tests and roadmap. **No panel UI change** (D-95). |
+| `llipe/dev-tasks-agent-fleet` | **Primary.** Panel webhook trigger: `agents.guardrail_scope` migration and guardrail change (D-107), plus a best-effort 👎 reaction on blocked deliveries (D-108). New `agents/bug-fix/`: AgentCore project, Python wrapper, an image with Node, Python, the Claude Code CLI and the sandbox runtime, and the managed Claude Code policy. Also: the `agents` seed row and params schema, the panel `invoke-runtime` IAM entry, the runbook (including the recommended webhook rule, D-91), tests and roadmap. **No panel UI change** (D-95). |
 | Target repos (fleet-managed) | **Consumers.** Must have dev-tasks installed (`.claude/agents/developer.md`) and expose the four gates (D-06, D-19). They change only through the agent's Draft PRs, comments and reactions. A linked Projects v2 board, if any, has its cards moved (D-102). |
 | `llipe/dev-tasks` | **Reference.** Source of the `developer` definition and the `github-ops` branch conventions. Its Projects board conventions (#5 "Dev-tasks") give the default status names (D-100). |
 
@@ -157,6 +158,8 @@ flowchart TD
   - `issue_number` from `issue.number`, and `trigger_comment_id` from `comment.id`.
 - **FR-29.** Who may trigger a run SHALL be decided by the webhook rule's configuration alone. The agent SHALL NOT check the commenter's permission (D-91).
 - **FR-30.** Schedules SHALL NOT be a supported trigger. No schedule is seeded or recommended (D-96).
+- **FR-35.** **Guardrail scope.** `agents` SHALL have a `guardrail_scope` (`repo` default, or `issue`). For agents with `issue` scope, the webhook trigger SHALL NOT apply the per-repo G1 (active run) and G5 (open PR) guardrails; G4 (the shared concurrency cap) still applies. `bug-fix` is seeded with `issue` scope, and its own refusals `active_run` and `linked_pr` are the per-issue equivalents (D-107).
+- **FR-36.** **Blocked reaction.** When an `issue_comment` delivery matched a rule but no run started (G4 concurrency cap, a rule disabled by its breaker, or `route_rejected`), the panel SHALL add a 👎 reaction to the triggering comment, best effort, using a GitHub App installation token. It SHALL NOT react to `no_match` deliveries and SHALL NOT post a comment (D-108).
 
 ### 7.10 Projects v2 board (new in v2.0)
 
@@ -263,6 +266,8 @@ flowchart LR
 - **AC-21 (board: linked).** In a repo with exactly one linked board, the issue's card is `In progress` after the claim, `In review` after the Draft PR, or `Ready` after a disposition. An issue with no card is added to the board (D-102).
 - **AC-22 (board: none or ambiguous).** In a repo with no linked board, no board call is made beyond detection. With several linked boards and no `project` param, no card moves and a `run_event` asks for the override (D-102).
 - **AC-23 (board: best effort).** With the Projects token missing or invalid, or the status name not on the board, the run outcome matches the same run without a board, and the problem is a `run_event` (D-99).
+- **AC-25 (no repo-wide block).** With a bug-fix Draft PR already open for issue #A, and while a run is active on issue #B, `/bug-fix` on issue #C in the same repo starts a run. `/bug-fix` on #A or #B is refused by the agent with a reply (`linked_pr`, `active_run`), not skipped silently by the trigger (D-107).
+- **AC-26 (blocked reaction).** When the shared concurrency cap is full, or the rule is disabled by its breaker, a `/bug-fix` comment gets a 👎 reaction and no run. A comment that matches no rule gets no reaction. A reaction failure is recorded on the delivery and changes nothing else (D-108).
 - **AC-24 (crash then retry).** After a run is killed outright and the reaper marks it `timed_out`, a new `/bug-fix` on the same issue proceeds; refusal (d) no longer applies (D-94).
 
 ## 14. Success Metrics
@@ -296,6 +301,7 @@ Initial targets, calibrated after the first 5–10 real runs:
 
 - **Threat: untrusted input.** Issue text is untrusted input to a model with a shell (D-11). **Mitigation:** FR-9, FR-10, and the wrapper-side validation of every output (FR-13–FR-19). The worst case is a bad Draft PR that a human reviews.
 - **Threat: who can trigger.** On a public repo, anyone who can comment could trigger a run if the webhook rule allows it. **Mitigation:** the runbook's rule restricts `author_association` (FR-28, FR-29). The Anthropic key's spend cap bounds the cost of a misconfigured rule.
+- **Panel holds the App key** (D-108). The internet-facing panel can now read the GitHub App private key, solely to add the 👎 reaction. Its role is scoped to that one secret, and the call is limited to one reaction per matched-but-blocked delivery. This is an accepted trade-off.
 - **New secret.** The Projects PAT stays in the wrapper only, has the `project` scope only, and is scrubbed from logs (FR-34).
 - **Repository-controlled code runs in the container.** The target repo's scripts execute sandboxed and see no secrets (FR-9).
 - **Forbidden paths** (FR-14) stop the agent from changing the guards it runs under.
@@ -360,6 +366,8 @@ For the HOW phase (spec v2.0):
 | D-100 | Board #5 Status options. |
 | D-101 | Linked-board detection works; board moves can't trigger runs. |
 | D-102 | Auto-detected board, default status mapping, optional overrides. |
+| D-107 | `agents.guardrail_scope = 'issue'` lifts G1/G5 for bug-fix; G4 stays. |
+| D-108 | The panel adds 👎 on matched-but-blocked deliveries; best effort; App PEM read. |
 
 ## Vocabulary
 
