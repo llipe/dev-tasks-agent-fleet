@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(gh:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "WebFetch",
+      "WebSearch",
+      "Read(//proc/**)",
+      "Edit(//proc/**)",
+      "Read(//etc/claude-code/**)",
+      "Edit(//etc/claude-code/**)",
+      "Read(//work/secrets/**)",
+      "Edit(//work/secrets/**)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "registry.yarnpkg.com",
+        "pypi.org",
+        "files.pythonhosted.org"
+      ],
+      "allowLocalBinding": false
+    }
+  }
+}
