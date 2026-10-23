@@ -24,7 +24,7 @@
 - `agents/code-review/app/codeReview/{budget,prompt}.py`, `rubric.md` - priority fill and asserted invariant, prompt with nonce blocks and per-candidate blocks, prompt sink, rubric v1 (S-209)
 - `agents/code-review/app/codeReview/findings_schema.py` - `submit_review` schema as data, spec §6.3 verbatim (S-209); schema-driven `validate_review` and strict `parse_review_json` (S-210)
 - `agents/code-review/app/codeReview/context/{tokens,diff}.py` - S-209 adds `estimate_len`, the public `escape_path`, and the `OverBudget` token fields (`reason="tokens"`)
-- `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter: forced `submit_review`, toolChoice/reasoning/context-length retries, one repair call, per-call budget invariant (D-47), metrics, typed errors, `make_client` (S-210)
+- `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter: forced `submit_review`, toolChoice/reasoning/context-length retries, one repair call, per-call budget invariant (D-47), metrics, typed errors, `make_client` and per-call deadline-sized clients via `client_factory` (S-210, QA fixes)
 - `agents/code-review/app/codeReview/validate.py` - findings validation and verdict (S-211)
 - `agents/code-review/app/codeReview/render.py` - review, budget and failure comments (S-212)
 - `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
@@ -53,6 +53,7 @@
 - `agents/code-review/app/codeReview/tests/fixtures/bedrock.py` - `FakeConverse`, a scripted, recording fake `bedrock-runtime` client with botocore `ClientError` shapes; reused by S-213 (S-210)
 - `agents/code-review/app/codeReview/tests/helpers/bedrock_run.py` - harness driving `bedrock_adapter.review` with a counter nonce factory, a stepping clock, and a warn/sink recorder (S-210)
 - `agents/code-review/app/codeReview/tests/unit/{test_bedrock_adapter,test_findings_schema,test_properties_bedrock}.py`, `tests/unit/test_contracts.py` (CT-08 section) - S-210 tests (TC-210-\*, CT-06, CT-07, CT-08, RT-11 seed 412001, RT-11b seed 412002)
+- `agents/code-review/app/codeReview/tests/unit/test_bedrock_hostile.py` - S-210 QA adversarial suite (exhaustive outcome walk, seeds 412003/412004, wire-level botocore retry and deadline checks, Stubber fidelity); all six defect pins fixed
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
