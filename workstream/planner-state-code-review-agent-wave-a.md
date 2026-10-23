@@ -6,7 +6,7 @@
 - Integration branch: `integration/code-review-agent` (from `main` @ dc89014)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-22
-- Last updated: 2026-10-23 (S-210 merged)
+- Last updated: 2026-10-23 (S-211 merged)
 
 ## Story Status
 
@@ -19,15 +19,15 @@
 | 5        | S-208    | #410    | ✅ Merged  | #431 | `story/S-208-verifier-candidates` |
 | 6        | S-209    | #411    | ✅ Merged  | #432 | `story/S-209-budget-prompt`       |
 | 7        | S-210    | #412    | ✅ Merged  | #435 | `story/S-210-bedrock-adapter`     |
-| 8        | S-211    | #413    | ⏳ Pending | —    | `story/S-211-findings-validation` |
+| 8        | S-211    | #413    | ✅ Merged  | #436 | `story/S-211-findings-validation` |
 | 9        | S-212    | #414    | ⏳ Pending | —    | `story/S-212-comment-render`      |
 | 10       | S-213    | #415    | ⏳ Pending | —    | `story/S-213-pipeline-wiring`     |
 
 ## Current Position
 
-- Next story: S-211 (#413)
-- Last merged PR: #435 (merge commit 72f04be)
-- Integration branch HEAD: 72f04be + checkpoint commit (package `validate` green post-merge)
+- Next story: S-212 (#414)
+- Last merged PR: #436 (merge commit 089ca51)
+- Integration branch HEAD: 089ca51 + checkpoint commit (package `validate` green post-merge)
 
 ## Decisions Log
 
@@ -61,3 +61,6 @@
 - 2026-10-23: S-210 merge gates. Developer gates PASS. qa-engineer `coverage_gate` PASS (287d585) found 6 defects, all fixed. High: a call could outlast the deadline; each call now gets a fresh client sized per call, with a 13 s backoff reserve. Medium: 4 HTTP attempts became `total_max_attempts` 3. Low: retry classification (reasoning first), unbounded cost math, RecursionError, RUN_TIMEOUT past the deadline. Verifier High, highest drift Minor, 13 items (7ae5149). Merged #435 at 72f04be.
 - 2026-10-23: Spec write-back backlog adds S-210 DR-1 to DR-10: retry rules, the D-47 per-call check, repair shape and the `model-output` kind, repair room at small B, the stricter per-call deadline, the error-mapping additions, strict JSON, OpenAI ID detection, metrics, and test-plan/matrix lag. Undetermined: DR-11 goes to S-213, DR-12 to S-212, DR-13 to S-215.
 - 2026-10-23: Carry forward. S-211: reviewed files come from `result.context`, never from `full_files_included`; expect duplicate candidate IDs and duplicate or huge ranks; normalize `file` with `escape_path`; a dropped candidate always blocks. S-212: fixed failure text per error code; the context line says why full files were left out (DR-12). S-213: `review(client_factory=make_client, deadline=, clock=)`; map errors on `.code`; up to 3 sink prompts; define `estimated_input_tokens` for multi-call runs (DR-11); reuse the Stubber pattern. S-214: `MODEL_ID` must be a system-defined profile ID (DR-8). S-215: capture real refusal messages, check repair at small B, measure p95 latency.
+- 2026-10-23: S-211 merge gates: developer PASS; planner overrode the removed-file rule (D-52, TC-211-05); qa-engineer coverage_gate PASS (38616dc) found QA-211-D1, a location bypass through a huge span, fixed as D-50; QA-211-Q1 blank placeholders became D-51; `escape_path` made injective; verifier High / Minor with 9 items (63a8818), and DR-2, a false downgrade of a fully changed long span, closed by an exemption, a prompt sentence and the `downgraded_span` counter. Merged #436 at 089ca51. D-50..D-52 logged.
+- 2026-10-23: Spec write-back backlog adds S-211 DR-1 and DR-3 to DR-9: D-50, D-51, removed files, path matching, rule details, the four candidate statuses, the metrics shape, and the test-plan/matrix lag.
+- 2026-10-23: Carry forward to S-212: neutralize raw model text and paths; render huge line numbers compactly; show the model reason only when `reason_from_model`; word `outside_diff` as not located in the diff; render a `dropped_for_budget` or `not_checked` candidate as not checked by the model. Carry forward to S-213: call `validate_result` with the same DiffContext; map SchemaViolation and ValueError to INTERNAL_ERROR; build `verifier[]` from `v.candidates`; merge `v.metrics()`.
