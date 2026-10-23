@@ -6,28 +6,28 @@
 - Integration branch: `integration/code-review-agent` (from `main` @ dc89014)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-22
-- Last updated: 2026-10-23 (S-212 merged)
+- Last updated: 2026-10-23 (S-213 merged; Wave A stories complete)
 
 ## Story Status
 
-| Sequence | Story ID | Issue # | Status     | PR   | Branch                            |
-| -------- | -------- | ------- | ---------- | ---- | --------------------------------- |
-| 1        | S-204    | #406    | ✅ Merged  | #425 | `story/S-204-agent-scaffold`      |
-| 2        | S-205    | #407    | ✅ Merged  | #426 | `story/S-205-github-client`       |
-| 3        | S-206    | #408    | ✅ Merged  | #429 | `story/S-206-expanded-diff`       |
-| 4        | S-207    | #409    | ✅ Merged  | #430 | `story/S-207-issues-spec`         |
-| 5        | S-208    | #410    | ✅ Merged  | #431 | `story/S-208-verifier-candidates` |
-| 6        | S-209    | #411    | ✅ Merged  | #432 | `story/S-209-budget-prompt`       |
-| 7        | S-210    | #412    | ✅ Merged  | #435 | `story/S-210-bedrock-adapter`     |
-| 8        | S-211    | #413    | ✅ Merged  | #436 | `story/S-211-findings-validation` |
-| 9        | S-212    | #414    | ✅ Merged  | #437 | `story/S-212-comment-render`      |
-| 10       | S-213    | #415    | ⏳ Pending | —    | `story/S-213-pipeline-wiring`     |
+| Sequence | Story ID | Issue # | Status    | PR   | Branch                            |
+| -------- | -------- | ------- | --------- | ---- | --------------------------------- |
+| 1        | S-204    | #406    | ✅ Merged | #425 | `story/S-204-agent-scaffold`      |
+| 2        | S-205    | #407    | ✅ Merged | #426 | `story/S-205-github-client`       |
+| 3        | S-206    | #408    | ✅ Merged | #429 | `story/S-206-expanded-diff`       |
+| 4        | S-207    | #409    | ✅ Merged | #430 | `story/S-207-issues-spec`         |
+| 5        | S-208    | #410    | ✅ Merged | #431 | `story/S-208-verifier-candidates` |
+| 6        | S-209    | #411    | ✅ Merged | #432 | `story/S-209-budget-prompt`       |
+| 7        | S-210    | #412    | ✅ Merged | #435 | `story/S-210-bedrock-adapter`     |
+| 8        | S-211    | #413    | ✅ Merged | #436 | `story/S-211-findings-validation` |
+| 9        | S-212    | #414    | ✅ Merged | #437 | `story/S-212-comment-render`      |
+| 10       | S-213    | #415    | ✅ Merged | #438 | `story/S-213-run-pipeline`        |
 
 ## Current Position
 
-- Next story: S-213 (#415)
-- Last merged PR: #437 (merge commit f1c2990)
-- Integration branch HEAD: f1c2990 + checkpoint commit (package `validate` green post-merge)
+- Next story: none. All Wave A stories are merged; next is Phase 5 (wrap-up and the consolidated PR)
+- Last merged PR: #438 (merge commit af35dca)
+- Integration branch HEAD: af35dca + checkpoint commit (package `validate` green post-merge)
 
 ## Decisions Log
 
@@ -73,3 +73,18 @@
   - Record canonical_code(code).
   - Set comment_chars and comment_truncated from Rendered, and warn on truncation.
   - Scrub before posting.
+- 2026-10-23: S-213 merge gates. Developer PASS. qa-engineer coverage_gate PASS (532d328) found 7 defects, all fixed:
+  - BaseException left the run silent;
+  - a second comment after a posted review;
+  - unscrubbed BaseException paths;
+  - the failure path was not hardened;
+  - a 2xx with an unreadable body;
+  - path cuts split secrets;
+  - INVALID_PARAMS raised from inside the pipeline.
+    The post-phase timeout split was added on top. Verifier High / Minor, 12 items (282b818); no functional Wave A gap. Manual 10.7 NOT RUN (no token). Merged #438 at af35dca.
+- 2026-10-23: For the user in the Phase 5 batch:
+  - DR-5: a lost POST response gives a review plus a failure note;
+  - FR-20: rubric version on notes and on budget/failure comments (S-212 DR-8, S-213 DR-9);
+  - FR-24: section order (DF-01);
+  - FR-9: amendment (D-49).
+    Spec write-back adds S-213 DR-1..4, DR-6..8 and DR-10; docs: DR-11; roadmap: DR-12.
