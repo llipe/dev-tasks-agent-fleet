@@ -162,6 +162,16 @@ SCENARIO_CUT = 500  # stage 2
 CONSEQUENCE_CUT = 200  # stage 2
 VERIFIER_CUT = 300  # stage 3, rows and reasons
 PATH_MAX = 400  # a finding's path (the schema's ``file`` maxLength)
+# Fixed caps on every other rendered field (QA residual 4), so no single field
+# can push the Context line past the stage-5 cut. The schema maxima for model
+# fields, S-208's candidate cap for rows (300 estimated tokens), 200 or less
+# for everything else.
+TITLE_MAX = 200
+SCENARIO_MAX = 1_500
+CONSEQUENCE_MAX = 500
+ROW_MAX = 1_050
+REASON_MAX = 300
+LABEL_MAX = 60  # IDs, categories, statuses, name-only reasons, withheld rules, issue refs
 CONTEXT_PATH_MAX = 200  # a path in the context line, the Verifier section, the budget comment
 MODEL_MAX = 200
 VERSION_MAX = 20
@@ -318,13 +328,13 @@ def _code_text(text: str, limit: int | None) -> str:
     return _escaped_path(text, limit).translate(_CODE)
 
 
-def code_span(text: str, limit: int | None = None, *, empty: str = "(unknown)") -> str:
+def code_span(text: str, limit: int = CONTEXT_PATH_MAX, *, empty: str = "(unknown)") -> str:
     """``text`` as an inline code span that always closes (module docstring)."""
     inner = _code_text(text, limit)
     return f"`{inner}`" if inner.strip() else empty
 
 
-def _plain(text: str, limit: int | None = None, *, empty: str = "(none)") -> str:
+def _plain(text: str, limit: int, *, empty: str = "(none)") -> str:
     out = neutralize(text, limit)
     return out if out else empty
 
@@ -420,23 +430,24 @@ def _location(f: Finding) -> str:
 
 def _lead(f: Finding, title: str | None = None) -> str:
     if title is None:
-        title = _plain(f.title, empty="(untitled)")
-    return f"**{_plain(f.id)} · {_plain(f.category)} · {_location(f)}** — {title}"
+        title = _plain(f.title, TITLE_MAX, empty="(untitled)")
+    fid, category = _plain(f.id, LABEL_MAX), _plain(f.category, LABEL_MAX)
+    return f"**{fid} · {category} · {_location(f)}** — {title}"
 
 
 def _blocking_full(f: Finding, lead: str, cut: bool) -> str:
-    scenario = _plain(f.failure_scenario, SCENARIO_CUT if cut else None)
-    consequence = _plain(f.consequence, CONSEQUENCE_CUT if cut else None)
+    scenario = _plain(f.failure_scenario, SCENARIO_CUT if cut else SCENARIO_MAX)
+    consequence = _plain(f.consequence, CONSEQUENCE_CUT if cut else CONSEQUENCE_MAX)
     return f"{lead}\n\n- **Fails when:** {scenario}\n- **Consequence:** {consequence}"
 
 
 def _suggestion(f: Finding) -> str:
-    title = _plain(f.title, empty="(untitled)")
+    title = _plain(f.title, TITLE_MAX, empty="(untitled)")
     sep = " " if title.endswith(_END_PUNCT) else ". "
     tag = ""
     if f.downgraded is not None:
         tag = _DOWNGRADE_TAGS.get(f.downgraded, " (Downgraded.)")
-    return f"{_lead(f, title)}{sep}{_plain(f.consequence)}{tag}"
+    return f"{_lead(f, title)}{sep}{_plain(f.consequence, CONSEQUENCE_MAX)}{tag}"
 
 
 BLOCKING_HEADING = "### Blocking"
@@ -514,18 +525,17 @@ def _fit_suggestions(fixed: int, entries: Sequence[str], limit: int) -> int:
 
 
 def _candidate_line(c: CandidateStatus, cut: bool, paths: dict[str, str]) -> str:
-    limit = VERIFIER_CUT if cut else None
-    label = _STATUS_LABELS.get(c.status) or _plain(c.status)
-    row = _plain(c.candidate.text, limit, empty="(empty row)")
+    label = _STATUS_LABELS.get(c.status) or _plain(c.status, LABEL_MAX)
+    row = _plain(c.candidate.text, VERIFIER_CUT if cut else ROW_MAX, empty="(empty row)")
     if c.reason_from_model:
-        reason = _plain(c.reason, limit, empty="(no reason given)")
+        reason = _plain(c.reason, VERIFIER_CUT if cut else REASON_MAX, empty="(no reason given)")
     else:
         reason = NOT_CHECKED
     report = c.candidate.report_path
     path = paths.get(report)
     if path is None:
         path = paths[report] = code_span(report, CONTEXT_PATH_MAX)
-    return f"- **{_plain(c.id)} ({label})** from {path}: {row} — {reason}"
+    return f"- **{_plain(c.id, LABEL_MAX)} ({label})** from {path}: {row} — {reason}"
 
 
 def _verifier_section(
@@ -598,11 +608,11 @@ def _note_suffix(note: BlockNote) -> str:
 def _issue_ref(ref: str | None) -> str:
     if ref is not None and _ISSUE_REF_RE.fullmatch(ref):
         return ref
-    return _plain(ref or "", empty="(unknown)")
+    return _plain(ref or "", LABEL_MAX, empty="(unknown)")
 
 
 def _name_only_label(f: NameOnlyFile) -> str:
-    label = _NAME_ONLY_LABELS.get(f.reason) or _plain(f.reason.replace("_", " "))
+    label = _NAME_ONLY_LABELS.get(f.reason) or _plain(f.reason.replace("_", " "), LABEL_MAX)
     if f.detail:
         label += ": " + _plain(f.detail, CONTEXT_PATH_MAX)
     return f"{code_span(f.filename, CONTEXT_PATH_MAX, empty='(no name)')} ({label})"
@@ -614,7 +624,7 @@ def _path(p: str | None) -> str:
 
 def _withheld_label(f: FileDiff) -> str:
     rule = f.base_withheld or ""
-    label = _WITHHELD_LABELS.get(rule) or "previous name is " + _plain(rule)
+    label = _WITHHELD_LABELS.get(rule) or "previous name is " + _plain(rule, LABEL_MAX)
     return f"{_path(f.filename)} ({label})"
 
 

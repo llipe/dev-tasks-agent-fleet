@@ -993,25 +993,34 @@ def test_truncate_worst_case_at_schema_maxima_escape_heavy():
 
 
 def test_truncate_exactly_60000_untouched_and_60001_truncated():
-    """TC-212-15."""
+    """TC-212-15, tuned with schema-valid scenario lengths (≤ 1,500)."""
     fx = clear_fixture()
-    blocking = [finding(f"B{k}", failure_scenario=_filler(1500)) for k in range(1, 31)]
-    fx["validation"] = validation(blocking)
-    base = _len_unlimited(fx)
-    assert base < MAX_COMMENT_CHARS
-    gap = MAX_COMMENT_CHARS - base
-    pad = finding("S1", title="t", consequence=_filler(gap - 1))
-    fx["validation"] = validation(blocking, [pad])
-    probe = _len_unlimited(fx)
-    exact = finding("S1", title="t", consequence=_filler(gap - 1 + MAX_COMMENT_CHARS - probe))
-    fx["validation"] = validation(blocking, [exact])
+    lengths = [1500] * 40
+    fx["validation"] = validation(
+        [finding(f"B{k}", failure_scenario=_filler(1500)) for k in range(1, 41)]
+    )
+    excess = _len_unlimited(fx) - MAX_COMMENT_CHARS
+    assert excess > 0
+    for k in range(40):  # shrink scenarios from the front until the body is exactly 60,000
+        take = min(excess, lengths[k] - 1)
+        lengths[k] -= take
+        excess -= take
+        if not excess:
+            break
+
+    def build(extra: int) -> None:
+        sizes = [lengths[0] + extra, *lengths[1:]]
+        fx["validation"] = validation(
+            [finding(f"B{k + 1}", failure_scenario=_filler(n)) for k, n in enumerate(sizes)]
+        )
+
+    build(0)
     out = review(fx)
     assert len(out.body) == MAX_COMMENT_CHARS
     assert not out.truncated and NOTE not in out.body
-    over = finding("S1", title="t", consequence=exact.consequence + "x")
-    fx["validation"] = validation(blocking, [over])
+    build(1)
     out = review(fx)
-    assert out.truncated and out.stages == (1,)
+    assert out.truncated and out.stages == (2,)
     assert len(out.body) <= MAX_COMMENT_CHARS
 
 
