@@ -528,14 +528,6 @@ def test_code_span_never_holds_a_backtick_lt_or_line_break():
         assert not any(c in inner for c in BIDI), raw
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-212-D1: neutralize breaks '#<n>' but not GitHub's 'GH-<n>' issue reference, "
-        "so model or repository text can still cross-reference issues and PRs of the repo "
-        "(PR #437 decision 13). Expected: 'GH-<n>' gets a U+200B like '#'."
-    ),
-)
 def test_gh_prefixed_issue_reference_is_broken_in_content():
     assert not re.search(r"(?<![A-Za-z0-9])GH-\d", neutralize("see GH-414 and (GH-437)"))
     out = _review({"validation": validation([finding("B1", title="Regression of GH-414")])})

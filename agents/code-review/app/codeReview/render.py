@@ -30,8 +30,8 @@ two functions, after any length cut, so a cut can never split an escape:
 - ``neutralize`` for plain text: C0/C1 controls and line separators become a
   space and bidi controls are removed (so content stays on its line and in
   its slot); ``&``, ``<`` and ``>`` become entities; ``@`` is followed by
-  U+200B (no ping, no email autolink); ``#`` is followed by U+200B (no
-  heading, no issue cross-reference); the Markdown punctuation
+  U+200B (no ping, no email autolink); ``#`` and a ``GH-`` before a digit are followed by U+200B
+  (no heading, no issue cross-reference); the Markdown punctuation
   ``\\ ` * _ [ ] ! | ~ $`` is backslash-escaped (no emphasis, code, links,
   images, tables, strikethrough or math); ``://`` and ``www.`` get a U+200B so
   GitHub's extended autolinks cannot form. Surrounding whitespace is stripped.
@@ -238,6 +238,8 @@ _CODE |= {
 }
 _SCHEME_RE = re.compile(r"://")
 _WWW_RE = re.compile(r"([Ww][Ww][Ww])\.")
+# GitHub's ``GH-<n>`` issue reference, any case, not inside a word (QA-212-D1).
+_GH_REF_RE = re.compile(r"(?<![A-Za-z0-9])([Gg][Hh]-)(?=[0-9])")
 _END_PUNCT = (".", "!", "?", _ELLIPSIS)
 
 _T = TypeVar("_T")
@@ -284,7 +286,8 @@ def neutralize(text: str, limit: int | None = None) -> str:
     """Plain model or repository text, inert in any Markdown slot (module docstring)."""
     out = _cut(text, limit).translate(_PLAIN).strip()
     out = _SCHEME_RE.sub(":" + _ZW + "//", out)
-    return _WWW_RE.sub(r"\1" + _ZW + ".", out)
+    out = _WWW_RE.sub(r"\1" + _ZW + ".", out)
+    return _GH_REF_RE.sub(r"\1" + _ZW, out)
 
 
 # What ``context.diff.escape_path`` rewrites; without one, it is the identity.
