@@ -617,7 +617,7 @@ Counts (`ValidationCounts.as_metrics()`) are numbers and enum keys only; `findin
   1. keep the longest suggestion prefix that fits, "Suggestions (k of n)", and no `<details>` at k = 0;
   2. cut each blocking `failure_scenario` to 500 and each `consequence` to 200;
   3. cut each verifier row and reason to 300;
-  4. render blocking findings in rank order with full detail while they fit; then "N more blocking findings are listed by title only:" followed by bold one-line entries `- **B7 · correctness · \`path:line\`\*\* — title`;
+  4. render blocking findings in rank order with full detail while they fit; then "N more blocking findings are listed by title only:" followed by bold one-line entries ``- **B7 · correctness · `path:line`** — title``;
   5. keep the marker and header (head) and the note and footer (bottom), and cut the middle at a line boundary: blocking entries are cut whole and "and N more blocking findings not shown." counts the rest; verifier candidates are cut whole and "and N more verifier candidates not shown." counts the rest, or "N verifier candidates not shown." when none fits (fc12bb7). Every blocking finding and every counted candidate is rendered or counted.
 
   Any applied stage adds "Truncated; the full review is in the run's audit report." before the footer. The verdict header is never cut and the verdict never changes.
