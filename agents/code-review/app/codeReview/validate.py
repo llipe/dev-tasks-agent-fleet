@@ -30,12 +30,16 @@ linear in the input (the review is model output and untrusted).
 
 1. *Location.* ``file`` is matched to a reviewed path (``match_reviewed``);
    no match → dropped, ``reason: "not_reviewed"`` (DF-07). ``line_end <
-   line_start`` is swapped. A ``blocking`` finding whose span does not
-   intersect a changed range widened by ±3 lines → ``suggestion``,
-   ``downgraded: "outside_diff"``. A reviewed file with no changed range (a
-   pure rename, or a removed file: no head lines to anchor it) is outside the
-   diff. A finding on a removed reviewed file is kept (planner decision on
-   TC-211-05: "you deleted foo() and bar.py still calls it" is valuable).
+   line_start`` is swapped. A ``blocking`` finding is *located in the diff*
+   when its span intersects a changed range widened by ±3 lines **and** spans
+   at most ``MAX_BLOCKING_SPAN`` (200) lines, ``line_end - line_start + 1``
+   (D-50: a span of a whole file around one changed line points at no changed
+   code). Not located → ``suggestion``, ``downgraded: "outside_diff"``; the
+   reason covers both cases, so the artifact enum is unchanged. A reviewed
+   file with no changed range (a pure rename, or a removed file: no head
+   lines to anchor it) is outside the diff. A finding on a removed reviewed
+   file is kept (planner decision on TC-211-05: "you deleted foo() and bar.py
+   still calls it" is valuable).
 2. *Scenario.* A finding still ``blocking`` with a blank ``failure_scenario``
    → ``suggestion``, ``downgraded: "no_scenario"``. A finding failing both
    checks is ``outside_diff`` (rule 1 applies first).
@@ -68,9 +72,10 @@ first file in diff order wins. A kept finding's ``file`` is the canonical
 reviewed path (raw repository text: S-212 neutralizes it).
 
 **Lines and ranks** are Python ints of any size (the schema has no maximum).
-They are only compared, never converted or used in arithmetic beyond ±3 on
-the ranges, so ``10**300`` costs nothing and is kept exactly. A span from 1 to
-``10**300`` intersects every range (spec literal). The location check uses a
+They are only compared or subtracted (±3 on the ranges, the span length),
+never converted or clamped, so ``10**300`` costs nothing and is kept exactly.
+A span from 1 to ``10**300`` intersects every range but is longer than
+``MAX_BLOCKING_SPAN``, so it is not a location (D-50). The location check uses a
 bisect over the merged ranges, so it is ``O(log R)`` per finding.
 
 **Verdict** (spec §8.7, D-33, D-37; ``candidate_statuses``):
@@ -122,6 +127,7 @@ __all__ = [
     "DROP_NO_CONSEQUENCE",
     "DROP_REASONS",
     "LOCATION_WINDOW",
+    "MAX_BLOCKING_SPAN",
     "NOT_CHECKED_REASON",
     "REASON_MAX_CHARS",
     "STATUS_CONFIRMED",
@@ -146,6 +152,7 @@ __all__ = [
 ]
 
 LOCATION_WINDOW = 3  # spec §8.6 step 2: changed range widened by ±3 lines
+MAX_BLOCKING_SPAN = 200  # D-50: longest span, in lines, a blocking finding may have
 
 BLOCKING, SUGGESTION = SEVERITIES
 
@@ -389,7 +396,10 @@ class _Ranges:
 
 
 def in_changed_range(line_start: int, line_end: int, ranges: Iterable[tuple[int, int]]) -> bool:
-    """True when the (swapped if needed) span meets a range widened by ±3."""
+    """True when the (swapped if needed) span meets a range widened by ±3.
+
+    Intersection only: ``validate`` also applies ``MAX_BLOCKING_SPAN`` (D-50).
+    """
     return _Ranges(ranges).hits(line_start, line_end)
 
 
@@ -558,7 +568,7 @@ def validate(
             ranges = prepared.get(name)
             if ranges is None:
                 ranges = prepared[name] = _Ranges(changed_ranges[name])
-            if not ranges.hits(start, end):
+            if end - start + 1 > MAX_BLOCKING_SPAN or not ranges.hits(start, end):
                 reason = DOWNGRADE_OUTSIDE_DIFF
             elif is_blank(raw["failure_scenario"]):
                 reason = DOWNGRADE_NO_SCENARIO
