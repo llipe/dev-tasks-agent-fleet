@@ -18,9 +18,10 @@ Seeded tactics use ``tests/helpers/prng.py`` with seeds ``413 x 1000 + k``:
 Replay one iteration: ``PRNG_SEED=<seed> PRNG_ITER=<i> make test-unit -k <test>``.
 
 Pinned defects (``xfail(strict=True)``; the fix turns XPASS into a failure,
-so the marker must be removed with it):
+so the marker must be removed with it). Fixed: QA-211-D1 by D-50 (a blocking
+span is at most ``MAX_BLOCKING_SPAN`` = 200 lines), so its marker is gone.
 
-- QA-211-D1, location bypass by a huge span. Pinned decision 8 says "a span
+- QA-211-D1 (fixed, D-50), location bypass by a huge span. Pinned decision 8 says "a span
   from 1 to ``10**300`` intersects every range". So a blocking finding whose
   span is ``[1, 10**300]`` passes the location check on every reviewed file
   that has at least one changed line, wherever the changed line is. For such
@@ -119,15 +120,6 @@ def only(result):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-211-D1: a blocking span around a single changed line passes the "
-        "location check whatever its length (pinned decision 8), so the span no "
-        "longer locates the finding. Needs a planner-chosen bound (maximum span "
-        "length, or an endpoint inside the ±3 window)."
-    ),
-)
 @pytest.mark.parametrize(
     ("start", "end"),
     [(1, 10**300), (10**300, 1), (1, 10**6)],

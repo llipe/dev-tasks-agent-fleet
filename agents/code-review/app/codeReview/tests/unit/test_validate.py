@@ -327,8 +327,9 @@ def test_tc211_03_a_blocking_finding_inside_a_changed_range_stays_blocking():
         (50, 99, True),
         (50, 96, False),
         (109, 200, False),
-        (108, 500, True),
-        (1, 1000, True),
+        (108, 307, True),  # span 200: the D-50 maximum
+        (108, 308, False),  # span 201
+        (1, 1000, False),  # intersects, but span 1000 > 200 (D-50)
     ],
 )
 def test_tc211_04_the_plus_minus_three_boundary_on_both_sides(start, end, blocking):
@@ -378,13 +379,40 @@ def test_huge_line_numbers_are_compared_exactly_without_overflow():
     # Far past every range: outside.
     kept = only(run([finding(line_start=huge, line_end=huge + 1)]))
     assert kept.downgraded == DOWNGRADE_OUTSIDE_DIFF
-    # A span from 1 to 10**300 covers the range: it intersects (spec literal).
+    # A span from 1 to 10**300 intersects, but it is not a location (D-50).
     kept = only(run([finding(line_start=1, line_end=huge)]))
-    assert kept.severity == "blocking"
+    assert (kept.severity, kept.downgraded) == ("suggestion", DOWNGRADE_OUTSIDE_DIFF)
     assert kept.line_end == huge  # kept exactly, never clamped or converted
     # Swapped huge span.
     kept = only(run([finding(line_start=huge, line_end=103)]))
-    assert (kept.line_start, kept.line_end, kept.severity) == (103, huge, "blocking")
+    assert (kept.line_start, kept.line_end, kept.severity) == (103, huge, "suggestion")
+
+
+def test_d50_a_blocking_span_is_at_most_200_lines():
+    import validate as module
+
+    assert module.MAX_BLOCKING_SPAN == 200
+    # Inside the changed range [100, 105], spans of exactly 200 and 201 lines.
+    kept = only(run([finding(line_start=1, line_end=200)]))
+    assert (kept.severity, kept.downgraded) == ("blocking", None)
+    kept = only(run([finding(line_start=1, line_end=201)]))
+    assert (kept.severity, kept.downgraded) == ("suggestion", DOWNGRADE_OUTSIDE_DIFF)
+    # Swapped: the span is measured after the swap.
+    kept = only(run([finding(line_start=201, line_end=1)]))
+    assert kept.downgraded == DOWNGRADE_OUTSIDE_DIFF
+    # One line is span 1.
+    kept = only(run([finding(line_start=103, line_end=103)]))
+    assert kept.severity == "blocking"
+
+
+def test_d50_a_long_span_with_a_blank_scenario_is_outside_diff_first():
+    kept = only(run([finding(line_start=1, line_end=500, failure_scenario="")]))
+    assert kept.downgraded == DOWNGRADE_OUTSIDE_DIFF
+
+
+def test_d50_the_span_bound_does_not_touch_suggestions():
+    kept = only(run([finding(severity="suggestion", line_start=1, line_end=10**6)]))
+    assert (kept.severity, kept.downgraded) == ("suggestion", None)
 
 
 def test_the_location_check_is_fast_with_many_ranges_and_huge_lines():

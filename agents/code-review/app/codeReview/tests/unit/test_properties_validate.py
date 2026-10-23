@@ -9,8 +9,8 @@ and consequence, duplicate and huge ranks) and random candidates and checks
 
 Properties (oracle-free or metamorphic, with an independent location oracle):
 
-- no output blocking finding lies outside the ±3-widened ranges or has a
-  blank scenario; no output finding has a blank consequence;
+- no output blocking finding lies outside the ±3-widened ranges, spans more
+  than 200 lines (D-50), or has a blank scenario; no output finding has a blank consequence;
 - suggestions ≤ ``max_suggestions``; blocking findings are never capped (the
   output keeps every finding the oracle says must stay blocking);
 - IDs are contiguous ``B1..Bn``, ``S1..Sm``, in (rank, model order);
@@ -158,6 +158,7 @@ def _oracle_must_block(f: dict, ranges: dict) -> bool:
         name is not None
         and f["severity"] == "blocking"
         and _oracle_in_diff(f["line_start"], f["line_end"], ranges[name])
+        and abs(f["line_end"] - f["line_start"]) + 1 <= 200  # D-50
         and not _oracle_blank(f["failure_scenario"])
         and not _oracle_blank(f["consequence"])
     )
@@ -170,6 +171,7 @@ def _check(case: dict, result) -> None:
         assert f.file in ranges
         assert _oracle_in_diff(f.line_start, f.line_end, ranges[f.file])
         assert f.line_start <= f.line_end
+        assert f.line_end - f.line_start + 1 <= 200  # D-50
         assert not _oracle_blank(f.failure_scenario)
     for f in result.findings:
         assert not _oracle_blank(f.consequence)
