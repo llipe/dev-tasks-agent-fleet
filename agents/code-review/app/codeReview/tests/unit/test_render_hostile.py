@@ -34,6 +34,7 @@ until the marker is removed. The randomized tactic uses seed 414002
 from __future__ import annotations
 
 import enum
+import importlib.util
 import random
 import re
 import time
@@ -84,7 +85,11 @@ from validate import (
     STATUS_NOT_REPRODUCED,
 )
 
-ZW = "​"
+# markdown-it-py is a transitive dev dependency (through pip-audit). Without
+# it only the text-node checks are skipped, never the body-level ones, and
+# ``test_markdown_it_is_available_for_text_node_checks`` shows as skipped.
+HAS_MARKDOWN_IT = importlib.util.find_spec("markdown_it") is not None
+ZW = "\u200b"
 MARKER_LINE = f"<!-- code-review-agent:v1 run={RUN_ID} sha={HEAD} -->"
 # What S-213 should parse: the marker anchored at the start of the body.
 ANCHORED_MARKER = re.compile(
@@ -213,7 +218,7 @@ ATOMS = [
     "⁦",
     "‏",
     "؜",
-    "​",
+    "\u200b",
     "⁠",
     "﻿",
     "\U000e0041",  # TAG LATIN CAPITAL LETTER A (invisible)
@@ -286,7 +291,10 @@ def _plain_checks(body: str, limit: int, ctx: str = "") -> None:
 
 def _md_checks(body: str, ctx: str = "") -> None:
     """GitHub's post-parse filters run on text nodes; check exactly those."""
-    markdown_it = pytest.importorskip("markdown_it")
+    if not HAS_MARKDOWN_IT:
+        return
+    import markdown_it
+
     md = markdown_it.MarkdownIt("commonmark").enable("table").enable("strikethrough")
     tokens = md.parse(body)
     flat = [t for tok in tokens for t in ([tok] + list(tok.children or []))]
@@ -323,6 +331,11 @@ def _md_checks(body: str, ctx: str = "") -> None:
 # ---------------------------------------------------------------------------
 # 1. Neutralization against GitHub's renderer
 # ---------------------------------------------------------------------------
+
+
+def test_markdown_it_is_available_for_text_node_checks():
+    """Visible skip if the text-node checks in this module are not running."""
+    pytest.importorskip("markdown_it")
 
 
 def _text(rng: random.Random, limit: int) -> str:
@@ -855,7 +868,7 @@ def test_failure_every_section13_code_is_one_fixed_line(code):
         "RUN_TIMEOUT`). @everyone <b>x</b> (`",
         "GITHUB_NOT_FOUND",
         "‮RUN_TIMEOUT",
-        "RUN_TIMEOUT​",
+        "RUN_TIMEOUT\u200b",
         "ＲＵＮ_TIMEOUT",
         b"RUN_TIMEOUT",
         42,
@@ -933,7 +946,7 @@ HOSTILE_PANEL_URLS = [
     " https://x.example",
     "https://x.example\n",
     "https://x.example\t",
-    "https://x.example/​",
+    "https://x.example/\u200b",
     "https://x.example/‮",
     "https://-x.example",
     "https://x.example.",
