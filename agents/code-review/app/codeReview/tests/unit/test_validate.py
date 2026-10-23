@@ -132,15 +132,64 @@ def _result(findings, checks=(), shown=(), dropped=(), full_files_included=()):
 
 @pytest.mark.parametrize(
     "path",
-    ["pnpm-lock.yaml", "workstream/tasks-x.md", "img/logo.png", "src/huge.py", "src/gone.py"],
+    ["pnpm-lock.yaml", "workstream/tasks-x.md", "img/logo.png", "src/huge.py"],
 )
-def test_tc211_01_name_only_and_removed_files_are_not_reviewed_even_when_blocking(path):
-    # Name-only (lockfile, excluded, binary, content unavailable) and removed
-    # files have no head content in the diff, so they are not reviewed.
+def test_tc211_01_name_only_files_are_not_reviewed_even_when_blocking(path):
+    # Name-only files (lockfile, excluded, binary, content unavailable,
+    # including files moved there after the fetch) are not reviewed.
     result = validate_result(_result([finding(file=path)]), _diff_context(), max_suggestions=5)
     assert result.findings == ()
     assert [d.reason for d in result.dropped] == [DROP_NOT_REVIEWED]
     assert result.verdict == VERDICT_CLEAR
+
+
+@pytest.mark.parametrize("raw", ["src/gone.py", "./src/gone.py", "`src/gone.py`"])
+def test_tc211_05_a_blocking_finding_on_a_removed_file_is_kept_as_outside_diff(raw):
+    # Planner decision (TC-211-05): a removed reviewed file is part of the
+    # reviewed diff ("you deleted foo() and bar.py still calls it"), but it has
+    # no head lines to anchor a blocking finding.
+    result = validate_result(
+        _result([finding(file=raw, line_start=1, line_end=1)]), _diff_context(), max_suggestions=5
+    )
+    kept = only(result)
+    assert (kept.severity, kept.downgraded, kept.file) == (
+        "suggestion",
+        DOWNGRADE_OUTSIDE_DIFF,
+        "src/gone.py",
+    )
+    assert result.verdict == VERDICT_CLEAR
+
+
+def test_a_suggestion_on_a_removed_file_stays_a_suggestion():
+    result = validate_result(
+        _result([finding(severity="suggestion", file="src/gone.py")]),
+        _diff_context(),
+        max_suggestions=5,
+    )
+    kept = only(result)
+    assert (kept.severity, kept.downgraded) == ("suggestion", None)
+
+
+def test_a_blank_consequence_on_a_removed_file_still_drops_the_finding():
+    result = validate_result(
+        _result([finding(file="src/gone.py", consequence=" ")]), _diff_context(), max_suggestions=5
+    )
+    assert result.findings == ()
+    assert [d.reason for d in result.dropped] == [DROP_NO_CONSEQUENCE]
+
+
+def test_a_removed_file_moved_to_name_only_is_not_reviewed():
+    # Late name-only (binary removed file): absent from DiffContext.files.
+    diff = _diff_context()
+    diff = DiffContext(
+        diff.head_sha,
+        diff.merge_base_sha,
+        diff.changed_lines,
+        diff.files,
+        (*diff.name_only, NameOnlyFile("old.bin", "removed", "binary")),
+    )
+    result = validate_result(_result([finding(file="old.bin")]), diff, max_suggestions=5)
+    assert [d.reason for d in result.dropped] == [DROP_NOT_REVIEWED]
 
 
 def test_reviewed_files_come_from_the_diff_not_from_full_files_included():

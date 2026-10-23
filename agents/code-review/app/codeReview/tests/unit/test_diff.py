@@ -312,6 +312,23 @@ def test_diff_text_concatenates_file_diffs_in_files_list_order():
     assert ctx.changed_ranges == {"b.py": ((1, 1),), "a.py": ((1, 1),)}
 
 
+def test_removed_paths_lists_reviewed_removed_files_only():
+    # S-211 (TC-211-05): a removed reviewed file is part of the reviewed diff.
+    # A removed file moved to name-only after the fetch (binary) is not.
+    repo = Repo(
+        {
+            ("a.py", MB): "x\n",
+            ("a.py", HEAD): "y\n",
+            ("gone.py", MB): "g\n",
+            ("old.bin", MB): b"\x00",
+        }
+    )
+    files = [_f("a.py"), _f("gone.py", "removed"), _f("old.bin", "removed"), _f("yarn.lock")]
+    ctx = _expand(repo, files)
+    assert ctx.removed_paths == ("gone.py",)
+    assert "gone.py" not in ctx.changed_ranges
+
+
 # -- TC-206-03 binary by NUL in the first 8 KB -----------------------------------
 
 
