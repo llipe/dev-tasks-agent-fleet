@@ -6,7 +6,7 @@
 - Integration branch: `integration/code-review-agent` (from `main` @ dc89014)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-22
-- Last updated: 2026-10-23 (S-209 merged)
+- Last updated: 2026-10-23 (S-210 merged)
 
 ## Story Status
 
@@ -18,16 +18,16 @@
 | 4        | S-207    | #409    | ✅ Merged  | #430 | `story/S-207-issues-spec`         |
 | 5        | S-208    | #410    | ✅ Merged  | #431 | `story/S-208-verifier-candidates` |
 | 6        | S-209    | #411    | ✅ Merged  | #432 | `story/S-209-budget-prompt`       |
-| 7        | S-210    | #412    | ⏳ Pending | —    | `story/S-210-bedrock-adapter`     |
+| 7        | S-210    | #412    | ✅ Merged  | #435 | `story/S-210-bedrock-adapter`     |
 | 8        | S-211    | #413    | ⏳ Pending | —    | `story/S-211-findings-validation` |
 | 9        | S-212    | #414    | ⏳ Pending | —    | `story/S-212-comment-render`      |
 | 10       | S-213    | #415    | ⏳ Pending | —    | `story/S-213-pipeline-wiring`     |
 
 ## Current Position
 
-- Next story: S-210 (#412)
-- Last merged PR: #432 (merge commit 697e4b1)
-- Integration branch HEAD: 697e4b1 + checkpoint commit (package `validate` green post-merge)
+- Next story: S-211 (#413)
+- Last merged PR: #435 (merge commit 72f04be)
+- Integration branch HEAD: 72f04be + checkpoint commit (package `validate` green post-merge)
 
 ## Decisions Log
 
@@ -58,3 +58,6 @@
 - 2026-10-23: Spec write-back backlog adds S-209 DR-1 to DR-8 (pinned budget and prompt contract; test plan and matrix still number AC1–AC6; TC-209-13 kind list). For the user: DR-9 (FR-9 verdict line), DR-11 (CJK and emoji token under-count versus D-27 and R4), DR-12 (output tokens and the repair payload sit outside `max_context_tokens`; this blocks S-210 AC4–AC6).
 - 2026-10-23: Carry forward. S-210: send `Prompt.system_blocks()` and `fallback_system_blocks()` exactly; the R4 retry is `build_prompt(include_full_files=False)` and passes its ContextData downstream; never retry the INTERNAL_ERROR types; log the second context-length rejection distinctly. S-211: a dropped candidate always blocks; ignore checks for IDs outside `shown_candidates`; normalize `file` with `escape_path`. S-212: token-path OverBudget wording; notes include the `empty` and `name-only` cases; rubric_version in the footer; neutralize paths. S-213: two OverBudget paths; inject the sink; log per-block token counts.
 - 2026-10-23: User decisions: D-47 (DR-12, B caps every call; the repair call is rebuilt without full files and the echoed output is cut to fit; B + 16k must fit the model window, checked in S-215), D-48 (DR-11, accept and record; S-210 logs the second context-length rejection distinctly), D-49 (DR-9, amend PRD FR-9 to drift section only). All three go into the batched spec and PRD write-back.
+- 2026-10-23: S-210 merge gates. Developer gates PASS. qa-engineer `coverage_gate` PASS (287d585) found 6 defects, all fixed. High: a call could outlast the deadline; each call now gets a fresh client sized per call, with a 13 s backoff reserve. Medium: 4 HTTP attempts became `total_max_attempts` 3. Low: retry classification (reasoning first), unbounded cost math, RecursionError, RUN_TIMEOUT past the deadline. Verifier High, highest drift Minor, 13 items (7ae5149). Merged #435 at 72f04be.
+- 2026-10-23: Spec write-back backlog adds S-210 DR-1 to DR-10: retry rules, the D-47 per-call check, repair shape and the `model-output` kind, repair room at small B, the stricter per-call deadline, the error-mapping additions, strict JSON, OpenAI ID detection, metrics, and test-plan/matrix lag. Undetermined: DR-11 goes to S-213, DR-12 to S-212, DR-13 to S-215.
+- 2026-10-23: Carry forward. S-211: reviewed files come from `result.context`, never from `full_files_included`; expect duplicate candidate IDs and duplicate or huge ranks; normalize `file` with `escape_path`; a dropped candidate always blocks. S-212: fixed failure text per error code; the context line says why full files were left out (DR-12). S-213: `review(client_factory=make_client, deadline=, clock=)`; map errors on `.code`; up to 3 sink prompts; define `estimated_input_tokens` for multi-call runs (DR-11); reuse the Stubber pattern. S-214: `MODEL_ID` must be a system-defined profile ID (DR-8). S-215: capture real refusal messages, check repair at small B, measure p95 latency.
