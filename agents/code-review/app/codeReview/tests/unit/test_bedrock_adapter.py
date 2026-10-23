@@ -1173,3 +1173,66 @@ def test_defensive_repair_calls_count_only_a_sent_repair(monkeypatch):
     with pytest.raises(CallBudgetExceeded) as exc:
         run(fake)
     assert exc.value.metrics.repair_calls == 0 and exc.value.metrics.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# QA residuals, planner decisions (red pins; each fix removes its marker)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "RESIDUAL 5 (planner): a message naming both the reasoning field and tool use is "
+        "classified toolChoice, so the run loses forced mode; prefer the reasoning retry."
+    ),
+    raises=AssertionError,
+)
+def test_residual_reasoning_and_tool_use_in_one_message_prefers_the_reasoning_retry():
+    message = "Unknown parameter: reasoning_effort is not supported with tool use."
+    fake = FakeConverse([validation_error(message), _ok()])
+    result = run(fake)
+    assert "toolConfig" in fake.requests[1]
+    assert "additionalModelRequestFields" not in fake.requests[1]
+    assert result.output_mode == OUTPUT_FORCED_SCHEMA
+    assert result.reasoning_effort_applied is False
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "RESIDUAL 4 (planner): past the deadline, a connect timeout, ModelTimeoutException "
+        "or throttling must be RUN_TIMEOUT, as a read timeout is."
+    ),
+    raises=AssertionError,
+)
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectTimeoutError(endpoint_url="https://bedrock-runtime.example"),
+        client_error("ModelTimeoutException", "slow", status=408),
+        throttled(),
+    ],
+    ids=["connect-timeout", "model-timeout", "throttling"],
+)
+def test_residual_timeouts_and_throttling_past_the_deadline_are_run_timeout(error):
+    clock = Clock(step=10.0, start=0.0)
+    with pytest.raises(BedrockError) as exc:
+        run(FakeConverse([error]), clock=clock, deadline=5.0)
+    assert isinstance(exc.value, BedrockTimeout)
+    assert exc.value.code == "RUN_TIMEOUT"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectTimeoutError(endpoint_url="https://bedrock-runtime.example"),
+        client_error("ModelTimeoutException", "slow", status=408),
+        throttled(),
+    ],
+    ids=["connect-timeout", "model-timeout", "throttling"],
+)
+def test_residual_timeouts_and_throttling_before_the_deadline_stay_bedrock_error(error):
+    with pytest.raises(BedrockError) as exc:
+        run(FakeConverse([error]), clock=Clock(step=1.0, start=0.0), deadline=500.0)
+    assert exc.value.code == "BEDROCK_ERROR"
