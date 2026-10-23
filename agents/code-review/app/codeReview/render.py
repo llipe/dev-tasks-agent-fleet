@@ -28,9 +28,11 @@ spec paths, file names, the model ID and rubric version) goes through one of
 two functions, after any length cut, so a cut can never split an escape:
 
 - ``neutralize`` for plain text: C0/C1 controls and line separators become a
-  space and bidi controls are removed (so content stays on its line and in
-  its slot); ``&``, ``<`` and ``>`` become entities; ``@`` is followed by
-  U+200B (no ping, no email autolink); ``#`` and a ``GH-`` before a digit are followed by U+200B
+  space; bidi controls, zero-width characters (U+200B-U+200D, U+2060,
+  U+FEFF) and tag characters (U+E0000-U+E007F) are removed, so content stays
+  on its line and in its slot and the only U+200B are the wrapper's; ``&``,
+  ``<`` and ``>`` become entities; ``@`` is followed by U+200B (no ping, no
+  email autolink); ``#``, and ``GH-`` before a digit, are followed by U+200B
   (no heading, no issue cross-reference); the Markdown punctuation
   ``\\ ` * _ [ ] ! | ~ $`` is backslash-escaped (no emphasis, code, links,
   images, tables, strikethrough or math); ``://`` and ``www.`` get a U+200B so
@@ -38,8 +40,9 @@ two functions, after any length cut, so a cut can never split an escape:
 - ``code_span`` for text shown inside inline code (paths, the model ID):
   ``context.diff.escape_path`` first (controls, backslash and line separators
   as escapes, as in the diff the model saw), every backtick removed, bidi
-  controls removed, then ``&``, ``<`` and ``>`` as entities and ``@`` with
-  U+200B. Backslash escapes do not work inside code spans, so nothing else is
+  controls and the same invisible characters removed, then ``&``, ``<`` and
+  ``>`` as entities and ``@`` with U+200B. Backslash escapes do not work
+  inside code spans, so nothing else is
   escaped; entities are shown literally there (a path holding ``<`` reads
   ``&lt;``), which is accepted for the rare path that holds one. An empty
   result renders "(unknown)" instead of an empty code span, which would not
@@ -223,7 +226,12 @@ _BIDI = (0x061C, 0x200E, 0x200F, *range(0x202A, 0x202F), *range(0x2066, 0x206A))
 _SPACED: dict[int, str | None] = dict.fromkeys(range(0x20), " ")
 _SPACED |= dict.fromkeys(range(0x7F, 0xA0), " ")
 _SPACED |= {0x2028: " ", 0x2029: " "}
-_DROPPED: dict[int, str | None] = dict.fromkeys(_BIDI)
+# Invisible characters in content (QA residual 5): zero-width space, non-joiner
+# and joiner, word joiner, BOM, and the Unicode tag block. Removed in the same
+# translate pass that inserts the wrapper's own U+200B, so only those remain.
+# Variation selectors are kept (they change how an emoji looks, not the text).
+_INVISIBLE = (0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, *range(0xE0000, 0xE0080))
+_DROPPED: dict[int, str | None] = dict.fromkeys((*_BIDI, *_INVISIBLE))
 _MARKUP = {
     "&": "&amp;",
     "<": "&lt;",
