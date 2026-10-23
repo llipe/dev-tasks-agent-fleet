@@ -26,7 +26,7 @@
 - `agents/code-review/app/codeReview/context/{tokens,diff}.py` - S-209 adds `estimate_len`, the public `escape_path`, and the `OverBudget` token fields (`reason="tokens"`)
 - `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter: forced `submit_review`, toolChoice/reasoning/context-length retries, one repair call, per-call budget invariant (D-47), metrics, typed errors, `make_client` and per-call deadline-sized clients via `client_factory` (S-210, QA fixes)
 - `agents/code-review/app/codeReview/validate.py` - findings validation and verdict: `validate`, `validate_result`, `Validation`, per-candidate `CandidateStatus`, metrics counts (S-211)
-- `agents/code-review/app/codeReview/render.py` - review, budget and failure comments (S-212)
+- `agents/code-review/app/codeReview/render.py` - review, budget and failure comments: `render_review` (→ `Rendered`), `render_budget`, `render_failure`, `neutralize`, `code_span`, `run_link` (S-212)
 - `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
 - `agents/code-review/app/codeReview/tests/{unit,integration,fixtures,helpers}/**` - tests, recorded GitHub fixtures, fake Bedrock, seeded PRNG helper
 - `agents/code-review/app/codeReview/tests/unit/{test_payload,test_config,test_layout,test_seed_contract,test_properties_params}.py` - S-204 tests (TC-204-*, CT-01 Python side, CT-02, RT-01)
@@ -55,6 +55,8 @@
 - `agents/code-review/app/codeReview/tests/unit/{test_bedrock_adapter,test_findings_schema,test_properties_bedrock}.py`, `tests/unit/test_contracts.py` (CT-08 section) - S-210 tests (TC-210-\*, CT-06, CT-07, CT-08, RT-11 seed 412001, RT-11b seed 412002)
 - `agents/code-review/app/codeReview/tests/unit/{test_validate,test_verdict,test_properties_validate}.py` - S-211 tests (TC-211-\*, RT-08 seed 413001)
 - `agents/code-review/app/codeReview/tests/unit/test_validate_hostile.py` - S-211 QA hostile suite (seeds 413002-413005); D-50, D-51 and the escape gap fixed, 0 xfails
+- `agents/code-review/app/codeReview/tests/unit/{test_render,test_properties_render}.py`, `tests/unit/__snapshots__/{review_blocking,review_clear,budget_lines,budget_tokens,failure}.md` - S-212 tests (TC-212-\*, RT-06 seed 414001) and byte-compared snapshots
+- `agents/code-review/app/codeReview/tests/helpers/render_inputs.py` - renderer-input factories (`Validation`, `ContextData`, `DiffContext`, `VerifierContext`) and the snapshot fixtures (S-212)
 - `agents/code-review/app/codeReview/tests/unit/test_bedrock_hostile.py` - S-210 QA adversarial suite (exhaustive outcome walk, seeds 412003/412004, wire-level botocore retry and deadline checks, Stubber fidelity); all six defect pins fixed
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
@@ -151,14 +153,14 @@
   - [x] 8.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 - [ ] 9.0 Implement Story S-212 (#414): Review, budget, and failure comments · branch `story/S-212-comment-render`
-  - [ ] 9.1 `[T]` [code-review] L1 `test_render.py` snapshots: clear and blocking layouts; empty sections omitted; verifier states with rows from wrapper data (D-38); context line; mention, HTML, backtick neutralization
-  - [ ] 9.2 `[T]` [code-review] L1 size guarantee: each of the five stages; worst case at schema maxima with escape-heavy text stays ≤ 60,000 (TC-212-14); truncation property tactic (RT-06) (D-36)
-  - [ ] 9.3 `[T]` [code-review] L1 budget and failure messages with the run link (D-29)
-  - [ ] 9.4 `[I]` [code-review] `render.py` (D-28, D-36)
-  - [ ] 9.5 Verify Acceptance Criteria: AC1 layout; AC2 verifier; AC3 context line; AC4 neutralization; AC5 size; AC6 messages
-  - [ ] 9.6 Manual: paste a rendered snapshot into a GitHub comment preview and check the layout
-  - [ ] 9.7 Map each AC to test evidence in the PR body
-  - [ ] 9.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 9.1 `[T]` [code-review] L1 `test_render.py` snapshots: clear and blocking layouts; empty sections omitted; verifier states with rows from wrapper data (D-38); context line; mention, HTML, backtick neutralization (snapshots hand-written in `tests/unit/__snapshots__/`, compared byte for byte)
+  - [x] 9.2 `[T]` [code-review] L1 size guarantee: each of the five stages; worst case at schema maxima with escape-heavy text stays ≤ 60,000 (TC-212-14); truncation property tactic (RT-06 in `test_properties_render.py`, seed 414001) (D-36)
+  - [x] 9.3 `[T]` [code-review] L1 budget and failure messages with the run link (D-29)
+  - [x] 9.4 `[I]` [code-review] `render.py` (D-28, D-36)
+  - [x] 9.5 Verify Acceptance Criteria: AC1 layout; AC2 verifier; AC3 context line; AC4 neutralization; AC5 size; AC6 messages
+  - [x] 9.6 Manual: paste a rendered snapshot into a GitHub comment preview and check the layout (passed: the blocking snapshot posted on PR #437, comment 6369319634)
+  - [x] 9.7 Map each AC to test evidence in the PR body
+  - [x] 9.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 - [ ] 10.0 Implement Story S-213 (#415): Pipeline wiring, outcomes, and failure path · branch `story/S-213-pipeline-wiring`
   - [ ] 10.1 `[T]` [code-review] L1 `test_outcomes.py` (verdict → outcome; error → code → comment-or-not table incl. `COMMENT_POST_FAILED` → one short failure comment unless 401/403) and `test_deadline.py` (D-36, D-32)
