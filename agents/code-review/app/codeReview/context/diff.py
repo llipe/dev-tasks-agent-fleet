@@ -210,6 +210,16 @@ class DiffContext:
         """Changed head line ranges per reviewed, non-removed file (S-211)."""
         return {f.filename: f.changed_ranges for f in self.files if f.head_content is not None}
 
+    @property
+    def removed_paths(self) -> tuple[str, ...]:
+        """Reviewed files the PR removes, in files-list order (S-211).
+
+        Part of the reviewed diff, with no head lines: a finding on one is
+        kept, and a blocking one is ``outside_diff``. A removed file moved to
+        name-only after the fetch (binary, content unavailable) is not here.
+        """
+        return tuple(f.filename for f in self.files if f.head_content is None)
+
 
 # ---------------------------------------------------------------------------
 # Classification and size check (spec §8.2)

@@ -15,13 +15,14 @@ linear in the input (the review is model output and untrusted).
   re-checked with ``findings_schema.validate_review``; a violation raises
   ``SchemaViolation``, which is a bug upstream (``INTERNAL_ERROR``).
 - ``changed_ranges``: per reviewed file, its changed head line ranges
-  (``DiffContext.changed_ranges``: reviewed, fetched, non-removed files,
-  1-based inclusive, merged and sorted; EC-07's deletion anchor included).
-  Its keys are the reviewed files. They never come from
+  (1-based inclusive; EC-07's deletion anchor included). Its keys are the
+  reviewed files. ``validate_result`` builds it from the diff:
+  ``DiffContext.changed_ranges`` (reviewed, fetched, non-removed files) plus
+  each of ``DiffContext.removed_paths`` with no range. They never come from
   ``ContextData.full_files_included``, which is empty after an R4 retry or a
   repair although the files are still reviewed. Name-only files (lockfiles,
-  generated, binary, excluded, content unavailable) and removed files are not
-  keys, so a finding on them is dropped.
+  generated, binary, excluded, content unavailable, including removed files
+  moved there after the fetch) are not keys, so a finding on them is dropped.
 - ``shown_candidates`` / ``dropped_candidates``: ``ContextData``'s candidates
   of the call that produced the accepted output.
 
@@ -32,7 +33,9 @@ linear in the input (the review is model output and untrusted).
    line_start`` is swapped. A ``blocking`` finding whose span does not
    intersect a changed range widened by ±3 lines → ``suggestion``,
    ``downgraded: "outside_diff"``. A reviewed file with no changed range (a
-   pure rename) is outside the diff.
+   pure rename, or a removed file: no head lines to anchor it) is outside the
+   diff. A finding on a removed reviewed file is kept (planner decision on
+   TC-211-05: "you deleted foo() and bar.py still calls it" is valuable).
 2. *Scenario.* A finding still ``blocking`` with a blank ``failure_scenario``
    → ``suggestion``, ``downgraded: "no_scenario"``. A finding failing both
    checks is ``outside_diff`` (rule 1 applies first).
@@ -475,6 +478,9 @@ class _Diff(Protocol):
     @property
     def changed_ranges(self) -> Mapping[str, tuple[tuple[int, int], ...]]: ...
 
+    @property
+    def removed_paths(self) -> tuple[str, ...]: ...
+
 
 @dataclass
 class _Kept:
@@ -614,12 +620,17 @@ def validate(
 def validate_result(result: _Result, diff: _Diff, *, max_suggestions: int) -> Validation:
     """``validate`` on a ``ReviewResult`` and the run's ``DiffContext``.
 
-    Reviewed files and changed ranges come from ``diff``; the candidates come
-    from ``result.context`` (the call that produced the accepted output).
+    Reviewed files are ``diff.changed_ranges``' keys plus ``diff.removed_paths``
+    (with no range, so a blocking finding there is ``outside_diff``); the
+    candidates come from ``result.context`` (the call that produced the
+    accepted output).
     """
+    reviewed: dict[str, Iterable[tuple[int, int]]] = dict(diff.changed_ranges)
+    for path in diff.removed_paths:
+        reviewed.setdefault(path, ())
     return validate(
         result.findings,
-        changed_ranges=diff.changed_ranges,
+        changed_ranges=reviewed,
         shown_candidates=result.context.shown_candidates,
         dropped_candidates=result.context.dropped_candidates,
         max_suggestions=max_suggestions,
