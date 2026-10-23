@@ -724,3 +724,13 @@ def test_nonce_error_reports_the_attempts_made():
             nonce_factory=lambda: NONCE,
         )
     assert f"in {prompt.MAX_NONCE_ATTEMPTS} attempts" in str(exc.value)
+
+
+def test_rubric_intent_is_not_an_ac_coverage_check():
+    # DR-10 / D-46: `intent` judges how the code does what it is meant to do
+    # (FR-12, FR-15); a missing requirement is verifier scope (FR-14, D-06).
+    line = next(x for x in rubric_text().splitlines() if x.startswith("- `intent` — "))
+    assert "not implemented at all is verifier scope" in line
+    assert "but in a way that is wrong or different" in line
+    assert "the description contradicts the diff" in line
+    assert line in system_prompt()
