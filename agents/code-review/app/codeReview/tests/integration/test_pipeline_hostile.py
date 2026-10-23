@@ -439,14 +439,6 @@ def _reporter_log_raises_on(monkeypatch: pytest.MonkeyPatch, message: str) -> No
     monkeypatch.setattr(agent_reporter.RunReporter, "log", log)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-01: _fail logs the 'run failed' event before the failure comment; "
-        "if that log raises, the failure comment is never attempted and main.invoke "
-        "records INTERNAL_ERROR with the raw exception text instead of the original code"
-    ),
-)
 @pytest.mark.parametrize("where", ["run-failed-event", "render_failure", "scrub-forms"])
 def test_an_exception_inside_the_failure_path_keeps_the_code_and_the_comment(h, monkeypatch, where):
     """Reproducer: compare returns 500 (GITHUB_API_ERROR), then the failure path breaks."""

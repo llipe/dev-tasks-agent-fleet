@@ -563,12 +563,16 @@ class _Events:
         self._lock = threading.Lock()
 
     def log(self, level: str, message: str, gate: _Gate | None = None, **data: Any) -> None:
+        """Never raises: an event that cannot be written is lost, the run goes on (QA-213-01)."""
         with self._lock:
             if gate is not None and not gate.open:
                 return
-            self._run.log(
-                scrub(message, self._secrets), level=level, **scrub_value(data, self._secrets)
-            )
+            try:
+                self._run.log(
+                    scrub(message, self._secrets), level=level, **scrub_value(data, self._secrets)
+                )
+            except Exception:  # noqa: BLE001 - reporting must never break the run
+                return
 
     def info(self, message: str, **data: Any) -> None:
         self.log("info", message, **data)
@@ -1040,39 +1044,67 @@ class Pipeline:
         )
         return PipelineResult(STATUS_SUCCEEDED, outcome, verdict=verdict, comment_url=comment_url)
 
-    def _fail(self, exc: Exception) -> PipelineResult:
-        code = error_code_for(exc, step=self._step_key)
+    def _fail(self, exc: BaseException) -> PipelineResult:
+        """End the run failed with ``exc``'s §13 code. Each part is guarded (QA-213-01):
+        a broken event, renderer or scrubber never stops the failure comment or the
+        terminal write, and never changes the code."""
+        try:
+            code = error_code_for(exc, step=self._step_key)
+        except Exception:  # noqa: BLE001
+            code = "INTERNAL_ERROR"
+        if not isinstance(exc, Exception):  # KeyboardInterrupt, SystemExit (QA-213-02)
+            code = "INTERNAL_ERROR"
         step = self._step_key or "start"
-        self._record_calls(getattr(exc, "metrics", None))
-        status = getattr(exc, "status", None)
-        if status is None:
-            status = getattr(getattr(exc, "cause", None), "status", None)
+        with contextlib.suppress(Exception):
+            self._record_calls(getattr(exc, "metrics", None))
         self._events.error(
             f"run failed: {code}",
             code=code,
             step=step,
             error=type(exc).__name__,
-            status=status if isinstance(status, int) and not isinstance(status, bool) else None,
+            status=_status(exc),
         )
-        if wants_failure_comment(code, exc):
+        try:
+            wanted = wants_failure_comment(code, exc)
+        except Exception:  # noqa: BLE001
+            wanted = True
+        if wanted:
             self._failure_comment(code)
+        try:
+            metrics = self._final_metrics()
+        except Exception:  # noqa: BLE001
+            metrics = _empty_metrics()
         self.run_reporter.fail(
             error_code=code,
             error_message=self._message(exc, code, step),
             outcome=OUTCOME_NOT_APPLICABLE,
-            metrics=self._final_metrics(),
+            metrics=metrics,
         )
         return PipelineResult(STATUS_FAILED, OUTCOME_NOT_APPLICABLE, error_code=code)
 
-    def _message(self, exc: Exception, code: str, step: str) -> str:
+    def _message(self, exc: BaseException, code: str, step: str) -> str:
         """``<code> in step <step>: <class>``; only the wrapper's own safe texts are added."""
         message = f"{code} in step {step}: {type(exc).__name__}"
-        status = getattr(exc, "status", None)
-        if isinstance(status, int) and not isinstance(status, bool):
-            message += f" (HTTP {status})"
-        if isinstance(exc, BedrockAdapterError | RunTimeout | CommentPostFailed):
-            message += f": {exc}"
-        return scrub(message, self.secrets)[:MESSAGE_MAX]
+        try:
+            status = _status(exc)
+            if status is not None:
+                message += f" (HTTP {status})"
+            if isinstance(exc, BedrockAdapterError | RunTimeout | CommentPostFailed):
+                message += f": {exc}"
+            return scrub(message, self.secrets)[:MESSAGE_MAX]
+        except Exception:  # noqa: BLE001
+            return f"{code} in step {step}: {type(exc).__name__}"[:MESSAGE_MAX]
+
+    def _failure_body(self, code: str) -> str:
+        """The rendered, scrubbed failure line; on any error, the fixed minimal line."""
+        try:
+            return self._scrub_body(
+                render_failure(
+                    code, run_id=self.request.run_id, panel_base_url=self.settings.panel_base_url
+                )
+            )
+        except Exception:  # noqa: BLE001 - QA-213-01
+            return f"Code review failed (`{canonical_code(code)}`).\n"
 
     def _failure_comment(self, code: str) -> None:
         """D-13: one best-effort failure comment; a failure here is logged, nothing more."""
@@ -1082,22 +1114,28 @@ class Pipeline:
         if self._token is None:
             self._events.error("failure comment not posted: no GitHub token", code=code)
             return
-        body = self._scrub_body(
-            render_failure(
-                code, run_id=self.request.run_id, panel_base_url=self.settings.panel_base_url
-            )
-        )
+        body = self._failure_body(code)
         try:
             # A fresh client: a worker abandoned at the deadline may still hold the
             # run's client, and a requests.Session is not shared across threads.
             self._github().post_pr_comment(body)
         except Exception as exc:  # noqa: BLE001 - best effort (D-13)
-            status = getattr(exc, "status", None)
             self._events.error(
                 "failure comment not posted",
                 code=code,
                 error=type(exc).__name__,
-                status=status if isinstance(status, int) and not isinstance(status, bool) else None,
+                status=_status(exc),
             )
             return
         self._events.info("failure comment posted", code=code)
+
+
+def _status(exc: BaseException) -> int | None:
+    """The HTTP status ``exc`` (or its ``cause``) carries, if it is a plain int."""
+    for value in (
+        getattr(exc, "status", None),
+        getattr(getattr(exc, "cause", None), "status", None),
+    ):
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
