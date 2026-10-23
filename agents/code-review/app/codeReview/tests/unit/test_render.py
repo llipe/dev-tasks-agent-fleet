@@ -1391,8 +1391,9 @@ def test_stage5_keeps_every_blocking_one_liner_when_the_list_fits():
     assert 5 in out.stages and len(out.body) <= MAX_COMMENT_CHARS
     assert "5 more blocking findings are listed by title only:" in out.body
     assert len(re.findall(r"^- \*\*B\d+ · ", out.body, re.M)) == 5
-    assert "not shown" not in out.body
+    assert "blocking findings not shown" not in out.body
     assert "### Verifier" in out.body
+    assert _counted_candidates(out.body) == 2999  # DR-4: the cut candidates are counted
 
 
 def test_stage5_helpers_cut_lines_and_trim_blocking():

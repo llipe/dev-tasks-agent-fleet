@@ -57,7 +57,8 @@ Verifier rows come from the wrapper's ``Candidate.text``, never from model
 output (D-38); the model's reason is shown only when
 ``CandidateStatus.reason_from_model``, otherwise "not checked by the model".
 
-**Size guarantee** (D-28, D-36). The body is measured after neutralization.
+**Size guarantee** (D-28, D-36). The body is measured after neutralization, with
+``comment_size`` (the larger of code points and UTF-16 units, DR-9).
 While it is over ``MAX_COMMENT_CHARS`` (60,000; GitHub's limit is 65,536) the
 next stage applies, in order, each one recorded in ``Rendered.stages`` only
 when it changed something:
@@ -70,9 +71,12 @@ when it changed something:
    and the rest as one-line entries after "N more blocking findings are
    listed by title only:";
 5. hard cut the middle of the body at the last line boundary that fits;
-   blocking findings are cut as whole one-line entries, the lead-in states
-   how many are listed and "and N more blocking findings not shown." counts
-   the rest, so every blocking finding is rendered or counted.
+   blocking findings and verifier candidates are cut as whole entries, the
+   blocking lead-in states how many are listed, and "and N more blocking
+   findings not shown." / "and N more verifier candidates not shown." count
+   the rest (with no candidate left, the line "N verifier candidates not
+   shown." stays), so every blocking finding and counted candidate is
+   rendered or counted.
 
 Cuts count characters of the raw text, the ellipsis included. Any applied
 stage adds ``TRUNCATION_NOTE`` before the footer. The marker, the verdict
@@ -151,6 +155,7 @@ __all__ = [
     "Rendered",
     "canonical_code",
     "code_span",
+    "comment_size",
     "format_line",
     "neutralize",
     "render_budget",
@@ -296,6 +301,17 @@ _WITHHELD_LABELS = {
 # ---------------------------------------------------------------------------
 # Text
 # ---------------------------------------------------------------------------
+
+
+def comment_size(text: str) -> int:
+    """The size the 60,000 limit is checked against (DR-9).
+
+    ``max(code points, UTF-16 code units)``. GitHub's counting unit for its
+    65,536 limit is unverified; UTF-16 units are never fewer than code points
+    (an astral character such as an emoji counts 2), so this is the UTF-16
+    length, which is additive over concatenation like ``len``.
+    """
+    return len(text.encode("utf-16-le")) // 2
 
 
 def _cut(text: str, limit: int | None) -> str:
@@ -487,7 +503,7 @@ def _fit_blocking(fixed: int, full: Sequence[str], lines: Sequence[str], limit: 
     n = len(full)
     suffix = [0] * (n + 1)  # len("\n".join(lines[j:]))
     for i in range(n - 1, -1, -1):
-        suffix[i] = len(lines[i]) + (suffix[i + 1] + 1 if i < n - 1 else 0)
+        suffix[i] = comment_size(lines[i]) + (suffix[i + 1] + 1 if i < n - 1 else 0)
     head = 0  # sum(2 + len(full[i]) for i < j)
     best = 0
     for j in range(n):
@@ -496,7 +512,7 @@ def _fit_blocking(fixed: int, full: Sequence[str], lines: Sequence[str], limit: 
         if fixed + 2 + size > limit:
             break
         best = j
-        head += 2 + len(full[j])
+        head += 2 + comment_size(full[j])
     return best
 
 
@@ -521,7 +537,7 @@ def _fit_suggestions(fixed: int, entries: Sequence[str], limit: int) -> int:
     total = 0  # sum(len(entries[i]) for i < k) + 2 * (k - 1)
     best = 0
     for k in range(1, n):
-        total += len(entries[k - 1]) + (2 if k > 1 else 0)
+        total += comment_size(entries[k - 1]) + (2 if k > 1 else 0)
         size = 2 + len(_details_open(k, n)) + total + len(_DETAILS_CLOSE)
         if fixed + size > limit:
             break
@@ -548,12 +564,22 @@ def _candidate_line(c: CandidateStatus, cut: bool, paths: dict[str, str]) -> str
     return f"- **{_plain(c.id, LABEL_MAX)} ({label})** from {path}: {row} — {reason}"
 
 
-def _verifier_section(
+VERIFIER_HEADING = "### Verifier"
+
+
+def _verifier_text(parts: tuple[list[str], list[str]] | str) -> str:
+    if isinstance(parts, str):
+        return parts
+    return VERIFIER_HEADING + "\n\n" + "\n".join([*parts[0], *parts[1]])
+
+
+def _verifier_parts(
     validation: Validation,
     context: ContextData,
     verifier: VerifierContext | None,
     cut: bool,
-) -> str:
+) -> tuple[list[str], list[str]] | str:
+    """(candidate lines, report-state lines) for the section, or the one-line form."""
     reports: tuple[VerifierReport, ...] = verifier.reports if verifier is not None else ()
     state = verifier.state if verifier is not None else context.verifier_state
     unavailable = context.verifier_unavailable or (verifier is not None and verifier.unavailable)
@@ -563,7 +589,8 @@ def _verifier_section(
 
     if candidates or parsed or state == REPORT_PARSED:
         paths: dict[str, str] = {}
-        items = [_candidate_line(c, cut, paths) for c in candidates]
+        cand_lines = [_candidate_line(c, cut, paths) for c in candidates]
+        items: list[str] = []
         for r in parsed:
             if not r.candidates:
                 items.append(
@@ -577,9 +604,9 @@ def _verifier_section(
         if other:
             where = "reports" if len(parsed) > 1 else "report"
             items.append(f"- Other drift: {_counted(other, 'item')}, see the {where}.")
-        if not items:
+        if not items and not cand_lines:
             items.append("- No Critical Unintended drift.")
-        return "### Verifier\n\n" + "\n".join(items)
+        return cand_lines, items
 
     if unparseable or state == REPORT_NOT_PARSEABLE:
         names = _Names(CONTEXT_MAX_CHARS).join([r.path for r in unparseable], _path)
@@ -739,7 +766,7 @@ class Rendered:
     @property
     def chars(self) -> int:
         """``runs.metrics.comment_chars``."""
-        return len(self.body)
+        return comment_size(self.body)
 
 
 def _join(parts: Iterable[str | None]) -> str:
@@ -788,7 +815,8 @@ def render_review(
     full = [_blocking_full(f, lead, False) for f, lead in zip(blocking, leads, strict=True)]
     lines: list[str] = []
     entries = [_suggestion(f) for f in suggestions]
-    verifier_text = _verifier_section(validation, context, verifier, False)
+    parts = _verifier_parts(validation, context, verifier, False)
+    verifier_text = _verifier_text(parts)
     k, j = len(entries), len(blocking)
 
     def assemble(note: bool, *, with_suggestions: bool = True, with_blocking: bool = True) -> str:
@@ -805,16 +833,16 @@ def render_review(
         )
 
     body = assemble(False)
-    if len(body) <= limit:
+    if comment_size(body) <= limit:
         return Rendered(body)
     stages: list[int] = []
 
     # Stage 1: drop suggestions from the end.
     if entries:
         stages.append(1)
-        k = _fit_suggestions(len(assemble(True, with_suggestions=False)), entries, limit)
+        k = _fit_suggestions(comment_size(assemble(True, with_suggestions=False)), entries, limit)
         body = assemble(True)
-        if len(body) <= limit:
+        if comment_size(body) <= limit:
             return Rendered(body, tuple(stages))
 
     # Stage 2: cut blocking scenarios and consequences.
@@ -823,25 +851,26 @@ def render_review(
         stages.append(2)
         full = cut_full
         body = assemble(True)
-        if len(body) <= limit:
+        if comment_size(body) <= limit:
             return Rendered(body, tuple(stages))
 
     # Stage 3: cut verifier rows and reasons.
-    cut_verifier = _verifier_section(validation, context, verifier, True)
+    cut_parts = _verifier_parts(validation, context, verifier, True)
+    cut_verifier = _verifier_text(cut_parts)
     if cut_verifier != verifier_text:
         stages.append(3)
-        verifier_text = cut_verifier
+        parts, verifier_text = cut_parts, cut_verifier
         body = assemble(True)
-        if len(body) <= limit:
+        if comment_size(body) <= limit:
             return Rendered(body, tuple(stages))
 
     # Stage 4: the blocking findings that do not fit become one-line entries.
     if blocking:
         stages.append(4)
         lines = ["- " + lead for lead in leads]
-        j = _fit_blocking(len(assemble(True, with_blocking=False)), full, lines, limit)
+        j = _fit_blocking(comment_size(assemble(True, with_blocking=False)), full, lines, limit)
         body = assemble(True)
-        if len(body) <= limit:
+        if comment_size(body) <= limit:
             return Rendered(body, tuple(stages))
 
     # Stage 5: hard cut at the last line boundary that fits. Blocking findings
@@ -849,31 +878,86 @@ def render_review(
     stages.append(5)
     top = head + "\n\n"
     bottom = "\n\n" + TRUNCATION_NOTE + "\n\n" + footer + "\n"
-    room = limit - len(top) - len(bottom)
+    room = limit - comment_size(top) - comment_size(bottom)
+    n_cands = len(parts[0]) if isinstance(parts, tuple) else 0
+    reserve = 2 + comment_size(_v_not_shown(n_cands, 0)) if n_cands else 0
+    sections: list[str] = []
+    left = room
     if blocking:  # stage 4 ran and fitted no full entry, so ``j == 0``
         section = _blocking_section(full, lines, 0)
-        if len(section) <= room:
-            rest = _cut_lines(
-                _join([verifier_text, context_line]).rstrip("\n"), room - len(section) - 2
-            )
-            middle = section + ("\n\n" + rest if rest else "")
-        else:
-            middle = _trim_blocking(lines, room)
+        if comment_size(section) + reserve > left:
+            section = _trim_blocking(lines, left - reserve)
+        sections.append(section)
+        left -= comment_size(section) + 2
+    if isinstance(parts, tuple):
+        v_text = _trim_verifier(parts[0], parts[1], left)
     else:
-        middle = _cut_lines(body[len(top) : len(body) - len(bottom)], room)
+        v_text = _cut_lines(parts, left)
+    sections.append(v_text)
+    left -= comment_size(v_text) + 2
+    sections.append(_cut_lines(context_line, left))
+    middle = "\n\n".join(t for t in sections if t)
     body = top + middle + bottom if middle else head + bottom
     return Rendered(body, tuple(stages))
 
 
 def _cut_lines(text: str, room: int) -> str:
-    """``text`` cut at the last line boundary within ``room`` characters."""
-    if len(text) <= room:
-        return text
-    if room <= 0:
-        return ""
-    piece = text[: room + 1]
-    cut = piece.rfind("\n")
-    return piece[:cut].rstrip("\n") if cut >= 0 else ""
+    """``text`` cut at the last line boundary within ``room`` (``comment_size``)."""
+    kept: list[str] = []
+    used = -1  # the first line has no newline before it
+    for line in text.split("\n"):
+        size = comment_size(line) + 1
+        if used + size > room:
+            break
+        kept.append(line)
+        used += size
+    return "\n".join(kept).rstrip("\n")
+
+
+def _v_not_shown(rest: int, listed: int) -> str:
+    noun = "candidate" if rest == 1 else "candidates"
+    if listed:
+        return f"and {format_line(rest)} more verifier {noun} not shown."
+    return f"{format_line(rest)} verifier {noun} not shown."
+
+
+def _trim_verifier(cands: Sequence[str], others: Sequence[str], room: int) -> str:
+    """The Verifier section cut to whole candidate entries, the rest counted (DR-4).
+
+    Candidate lines first, while they fit beside "and N more verifier
+    candidates not shown."; then the report-state lines that still fit. With
+    no room for a candidate line, only "N verifier candidates not shown."
+    remains, which the caller has reserved room for. Every counted candidate
+    is rendered or counted.
+    """
+    whole = VERIFIER_HEADING + "\n\n" + "\n".join([*cands, *others])
+    if comment_size(whole) <= room:
+        return whole
+    n = len(cands)
+    if n == 0:
+        return _cut_lines(whole, room)
+    best, total = 0, 0
+    for k in range(1, n + 1):
+        total += comment_size(cands[k - 1]) + (1 if k > 1 else 0)
+        size = len(VERIFIER_HEADING) + 2 + total
+        if k < n:
+            size += 2 + comment_size(_v_not_shown(n - k, k))
+        if size > room:
+            break
+        best = k
+    if best == 0:
+        return _v_not_shown(n, 0)
+    text = VERIFIER_HEADING + "\n\n" + "\n".join(cands[:best])
+    if best < n:
+        text += "\n\n" + _v_not_shown(n - best, best)
+    used, sep = comment_size(text), "\n\n"
+    for line in others:
+        if used + len(sep) + comment_size(line) > room:
+            break
+        text += sep + line
+        used += len(sep) + comment_size(line)
+        sep = "\n"
+    return text
 
 
 def _not_shown(rest: int, listed: int) -> str:
@@ -892,7 +976,7 @@ def _trim_blocking(lines: Sequence[str], room: int) -> str:
     n = len(lines)
     best, total = 0, 0
     for m in range(1, n + 1):
-        total += len(lines[m - 1]) + (1 if m > 1 else 0)
+        total += comment_size(lines[m - 1]) + (1 if m > 1 else 0)
         size = len(BLOCKING_HEADING) + 2 + len(_more(m)) + 2 + total
         if m < n:
             size += 2 + len(_not_shown(n - m, m))
