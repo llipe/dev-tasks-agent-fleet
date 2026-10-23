@@ -999,3 +999,114 @@ def test_client_is_built_with_standard_retries_and_the_read_timeout(monkeypatch)
 )
 def test_client_read_timeout_is_min_600_and_remaining(remaining, expected):
     assert read_timeout_for(remaining) == expected
+
+
+# ---------------------------------------------------------------------------
+# CT-06 request shape and CT-07 response shape (task 7.2)
+# ---------------------------------------------------------------------------
+
+_FORCED_KEYS = {
+    "modelId",
+    "system",
+    "messages",
+    "inferenceConfig",
+    "toolConfig",
+    "additionalModelRequestFields",
+}
+
+
+def test_ct06_forced_fallback_and_repair_key_sets():
+    fake = FakeConverse(
+        [_ok(), tool_choice_rejected(), text_response("bad"), text_response(_json(valid_review()))]
+    )
+    run(fake)
+    run(fake)
+    forced, fallback_rejected, fallback, repair = fake.requests
+    assert set(forced) == _FORCED_KEYS == set(fallback_rejected)
+    assert set(fallback) == _FORCED_KEYS - {"toolConfig"}
+    assert set(repair) == _FORCED_KEYS - {"toolConfig"}
+    for req in fake.requests:
+        assert req["inferenceConfig"] == {"maxTokens": 16000}
+        assert "guardrailConfig" not in req and "promptVariables" not in req
+        if "toolConfig" in req:
+            assert [t["toolSpec"]["name"] for t in req["toolConfig"]["tools"]] == ["submit_review"]
+            assert req["toolConfig"]["toolChoice"]["tool"]["name"] == "submit_review"
+
+
+def test_ct06_reasoning_retry_drops_only_the_reasoning_field():
+    fake = FakeConverse([reasoning_rejected(), _ok()])
+    run(fake)
+    first, second = fake.requests
+    assert set(second) == set(first) - {"additionalModelRequestFields"}
+    assert {k: v for k, v in first.items() if k != "additionalModelRequestFields"} == second
+
+
+def test_ct06_messages_hold_one_user_turn_with_one_text_block():
+    fake = FakeConverse([_ok()])
+    run(fake)
+    (req,) = fake.requests
+    assert len(req["messages"]) == 1
+    assert req["messages"][0]["role"] == "user"
+    assert list(req["messages"][0]["content"][0]) == ["text"]
+    assert len(req["system"]) == 1 and list(req["system"][0]) == ["text"]
+
+
+def test_ct07_tool_input_as_a_json_string_is_parsed():
+    fake = FakeConverse([tool_use_response(_json(valid_review(2)))])
+    result = run(fake)
+    assert result.findings == valid_review(2) and result.repair_calls == 0
+
+
+def test_ct07_tool_input_as_an_invalid_json_string_goes_to_repair():
+    fake = FakeConverse([tool_use_response("{not json"), _ok()])
+    assert run(fake).repair_calls == 1
+
+
+def test_ct07_extra_blocks_before_the_tool_use_are_ignored():
+    resp = tool_use_response(
+        valid_review(),
+        before=[
+            {"reasoningContent": {"reasoningText": {"text": "thinking"}}},
+            {"text": "Here is my review."},
+            {"toolUse": {"toolUseId": "t0", "name": "other", "input": {}}},
+        ],
+    )
+    assert run(FakeConverse([resp])).findings == valid_review()
+
+
+def test_ct07_the_first_submit_review_block_wins():
+    second = {"toolUse": {"toolUseId": "t2", "name": "submit_review", "input": {"x": 1}}}
+    resp = tool_use_response(valid_review(3))
+    resp["output"]["message"]["content"].append(second)
+    assert run(FakeConverse([resp])).findings == valid_review(3)
+
+
+@pytest.mark.parametrize("stop", ["tool_use", "end_turn", "stop_sequence", None])
+def test_ct07_accepted_stop_reasons(stop):
+    resp = tool_use_response(valid_review())
+    if stop is None:
+        del resp["stopReason"]
+    else:
+        resp["stopReason"] = stop
+    assert run(FakeConverse([resp])).repair_calls == 0
+
+
+@pytest.mark.parametrize(
+    "stop",
+    ["max_tokens", "content_filtered", "guardrail_intervened", "model_context_window_exceeded"],
+)
+def test_ct07_other_stop_reasons_are_invalid_output(stop):
+    fake = FakeConverse([tool_use_response(valid_review(), stop_reason=stop), _ok()])
+    assert run(fake).repair_calls == 1
+
+
+def test_ct07_no_usage_gives_null_metrics_not_a_crash():
+    resp = tool_use_response(valid_review(), usage=None)
+    metrics = run(FakeConverse([resp])).metrics.as_metrics()
+    assert metrics["input_tokens"] is None and metrics["output_tokens"] is None
+
+
+def test_ct07_text_with_no_tool_use_in_forced_mode_goes_to_repair():
+    fake = FakeConverse([text_response(_json(valid_review())), _ok()])
+    result = run(fake)
+    assert result.repair_calls == 1 and result.output_mode == OUTPUT_FORCED_SCHEMA

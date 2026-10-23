@@ -4,15 +4,19 @@ CT-05 (S-205, S-206) — GitHub response consumer contract.
 The client reads only the fields spec §6.2 names and normalizes them into typed
 results. Each contract gets a valid case (the recorded ``sample-pr`` fixtures),
 a missing-field case, a type-mismatch case, and an extra-field case.
-S-206 extends this module for the files/diff consumer.
+S-206 extends this module for the files/diff consumer. S-210 adds CT-08, the
+``submit_review`` output schema (spec §6.3), shared with S-211.
 """
 
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 
 import pytest
 
+from findings_schema import CATEGORIES, SUBMIT_REVIEW_SCHEMA, SchemaViolation, validate_review
 from github_client import GitHubApiError, GitHubClient
 from tests.helpers.github_stub import StubTransport, fixture_json, json_response
 
@@ -228,3 +232,127 @@ def test_issue_extra_fields_ignored():
     body = issue_body()
     body["reactions"] = {"+1": 3}
     assert _client(ISSUE, body).get_issue(41).number == 41
+
+
+# ---------------------------------------------------------------------------
+# CT-08 (S-210, S-211) — the ``submit_review`` output schema
+# ---------------------------------------------------------------------------
+
+_SPEC = (
+    Path(__file__).resolve().parents[6] / "workstream" / "specification-prd-code-review-agent.md"
+)
+
+
+def _finding(**overrides) -> dict:
+    out = {
+        "severity": "suggestion",
+        "category": "maintainability",
+        "file": "src/app.py",
+        "line_start": 3,
+        "line_end": 4,
+        "title": "t",
+        "failure_scenario": "",
+        "consequence": "c",
+        "rank": 1,
+    }
+    out.update(overrides)
+    return out
+
+
+def _review(findings=None, checks=None) -> dict:
+    return {
+        "findings": [_finding()] if findings is None else findings,
+        "verifier_checks": [] if checks is None else checks,
+    }
+
+
+def test_ct08_constant_equals_spec_6_3_verbatim():
+    text = _SPEC.read_text(encoding="utf-8")
+    block = text.split("Output schema (`submit_review.inputSchema`):", 1)[1]
+    block = block.split("```json\n", 1)[1].split("\n```", 1)[0]
+    assert json.loads(block) == SUBMIT_REVIEW_SCHEMA
+
+
+def test_ct08_minimal_and_full_objects_validate():
+    assert validate_review({"findings": [], "verifier_checks": []}) == {
+        "findings": [],
+        "verifier_checks": [],
+    }
+    full = _review(
+        findings=[
+            _finding(
+                rank=k + 1,
+                severity=("blocking", "suggestion")[k % 2],
+                category=CATEGORIES[k % 4],
+                file="f" * 400,
+                title="t" * 200,
+                failure_scenario="s" * 1500,
+                consequence="c" * 500,
+            )
+            for k in range(40)
+        ],
+        checks=[
+            {"candidate_id": "V1", "status": "confirmed", "reason": "r" * 300},
+            {"candidate_id": "V20", "status": "not_reproduced", "reason": ""},
+        ],
+    )
+    assert validate_review(full) is full
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"verifier_checks": []},
+        {"findings": []},
+        *[
+            _review(findings=[{k: v for k, v in _finding().items() if k != missing}])
+            for missing in _finding()
+        ],
+        _review(checks=[{"candidate_id": "V1", "status": "confirmed"}]),
+    ],
+)
+def test_ct08_missing_required_is_invalid(value):
+    with pytest.raises(SchemaViolation) as exc:
+        validate_review(value)
+    assert exc.value.rule == "required"
+
+
+@pytest.mark.parametrize(
+    ("value", "rule"),
+    [
+        (_review(findings=[_finding(line_start="3")]), "type"),
+        (_review(findings=[_finding(severity="high")]), "enum"),
+        (_review(checks=[{"candidate_id": "v1", "status": "confirmed", "reason": ""}]), "pattern"),
+        (_review(findings=[_finding(rank=1.0)]), "type"),
+        (_review(findings=[_finding(rank=True)]), "type"),
+        (_review(findings=[_finding(title=None)]), "type"),
+        (_review(findings={"0": _finding()}), "type"),
+        (_review(findings=[_finding()] * 41), "maxItems"),
+        (_review(findings=[_finding(category="style")]), "enum"),
+        (_review(findings=[_finding(line_end=0)]), "minimum"),
+    ],
+)
+def test_ct08_type_and_value_mismatches_are_invalid(value, rule):
+    with pytest.raises(SchemaViolation) as exc:
+        validate_review(value)
+    assert exc.value.rule == rule
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        _review(findings=[{**_finding(), "verdict": "blocking"}]),
+        _review(findings=[{**_finding(), "confidence": 0.9}]),
+        {**_review(), "verdict": "clear"},
+        _review(checks=[{"candidate_id": "V1", "status": "confirmed", "reason": "", "x": 1}]),
+    ],
+)
+def test_ct08_extra_keys_are_invalid(value):
+    with pytest.raises(SchemaViolation) as exc:
+        validate_review(value)
+    assert exc.value.rule == "additional"
+
+
+def test_ct08_line_end_before_line_start_passes_the_schema():
+    """Handled by S-211's location check, not the schema."""
+    validate_review(_review(findings=[_finding(line_start=9, line_end=2)]))
