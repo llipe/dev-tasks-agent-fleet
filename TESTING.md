@@ -56,7 +56,7 @@ either fails.
 | Layer    | Name                      | Scope                                                                                                                             | Status |
 | -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | 1        | Deterministic foundations | Unit tests and schema/contract assertions with no network, database, or wall-clock dependency.                                    | configured — `dependency-update`, `security-analyst`, and `code-review` `tests/unit/` (pytest `unit` marker); `panel` Vitest `unit` project (`panel/tests/unit/`). |
-| 2        | Constrained model/tool    | CLI, filesystem, subprocess, component, and fixture tests with external providers replaced by deterministic fixtures or stubs. | configured — `dependency-update` and `security-analyst` `tests/component/` (pytest `component` marker; `security-analyst`'s mock `subprocess.run` for all five scanners and drive `main.invoke()` end to end); `code-review` `tests/integration/` (pytest `integration` marker; drives `main.invoke()` against a reporter sink with the `requests` transport stubbed, and context assembly — `context/diff.py` from S-206, `context/issues.py` and `context/spec.py` from S-207 — through the real `GitHubClient` over recorded fixtures (`sample-pr` with a hand-written golden diff; `issue-315` with the #315 issue shape and the webhook-triggers spec)); `panel` Vitest `component` project (`panel/tests/component/`, jsdom, mocked externals). |
+| 2        | Constrained model/tool    | CLI, filesystem, subprocess, component, and fixture tests with external providers replaced by deterministic fixtures or stubs. | configured — `dependency-update` and `security-analyst` `tests/component/` (pytest `component` marker; `security-analyst`'s mock `subprocess.run` for all five scanners and drive `main.invoke()` end to end); `code-review` `tests/integration/` (pytest `integration` marker; drives `main.invoke()` against a reporter sink with the `requests` transport stubbed, and context assembly — `context/diff.py` from S-206, `context/issues.py` and `context/spec.py` from S-207, and the S-209 prompt built on top of them — through the real `GitHubClient` over recorded fixtures (`sample-pr` with a hand-written golden diff; `issue-315` with the #315 issue shape and the webhook-triggers spec)); `panel` Vitest `component` project (`panel/tests/component/`, jsdom, mocked externals). |
 | 2.5      | Integration               | Real database, migrations, RLS, and schema contracts without a mocked data layer.                                                 | **configured** — `panel` Vitest `integration` project (`panel/tests/integration/`), against a real local Postgres brought up by the Supabase CLI (`supabase start` / `supabase db reset`). Docker-gated via `panel/tests/integration/db.ts` (`probeLocalDb`); see CI-vs-local gating below. Not applicable to `dependency-update` (no owned database) or the CDK package. |
 | E2E      | End-to-end                | Playwright full-stack browser scenarios.                                                                                          | **configured** — `panel/playwright.config.ts` + `panel/tests/e2e/` (retries 0, one worker, headless in CI, `webServer` = `next dev`), driving the browser against the real local Supabase stack with AgentCore stubbed at the HTTP boundary. |
 | Contract | Contract validation       | `dt verify` API-spec diff, impact, and drift checks.                                                                              | not configured; no repository API spec (`panel` has no OpenAPI surface yet). |
@@ -257,6 +257,14 @@ plus synthetic AC-7, no-heading, numbered-heading, empty, and bullet-list
 reports, described in that directory's `README.md`) and are loaded with
 `tests/helpers/reports.py::report_text(<file name>)`, which decodes the bytes so
 line endings are exactly the ones on disk.
+The budget and prompt tests (S-209) build the readers' outputs directly with
+`tests/helpers/prompt_inputs.py` (`inputs()`, `diff_ctx()`, `issue()`,
+`candidate()`, and friends; no GitHub) and read a rendered prompt back with
+`parse_blocks(user, nonce)`, an independent splitter on the run's nonce that
+fails on an unclosed block or a stray end marker. Inject `nonce=` (16 lowercase
+hex) and, for forced collisions, `nonce_factory=`; never assert on a random
+nonce. `tests/integration/test_prompt_sample_pr.py::render_sample_prompt()`
+renders the `sample-pr` prompt with a fixed nonce through the real readers.
 Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`
@@ -269,7 +277,8 @@ client through a real `requests.Session` with a capturing adapter mounted for
 marked `xfail(strict=True)` with the defect in `reason`, so the fix turns it red
 and the marker is removed in the same change.
 Hostile-input suites for repository-controlled text (S-208:
-`tests/unit/test_verifier_hostile.py`, `tests/unit/test_repo_conventions_hostile.py`)
+`tests/unit/test_verifier_hostile.py`, `tests/unit/test_repo_conventions_hostile.py`;
+S-209: `tests/unit/test_prompt.py::test_hostile_content_builds_quickly`)
 are the one sanctioned Layer 1 use of `time.perf_counter`: a regex-cost or
 quadratic-scan test may assert an elapsed bound on a 100k+ line input. The bound
 must hold with at least 3x margin under `make test-cov` (coverage tracing), and
