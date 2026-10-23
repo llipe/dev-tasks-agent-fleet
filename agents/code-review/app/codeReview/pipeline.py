@@ -535,6 +535,7 @@ class _Gathered:
     diff: DiffContext | None = None
     inputs: ContextInputs | None = None
     prompt: Prompt | None = None
+    counts: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -727,6 +728,7 @@ class Pipeline:
             async for chunk in self._phase(self._gather, box):
                 yield chunk
             gathered: _Gathered = box.value
+            self._counts.update(gathered.counts)
             self._log_context(gathered)
 
         if gathered.over is not None or gathered.nothing:
@@ -808,10 +810,12 @@ class Pipeline:
         warn = self._events.warner(gate)
         budget = self.params["max_context_tokens"]
         max_lines = self.params["max_diff_lines"]
+        # Local, returned with the result: an abandoned worker never touches run state.
+        counts: dict[str, Any] = {}
 
         files = client.list_pull_files()
         classification = classify(files.files)
-        self._counts.update(
+        counts.update(
             changed_lines=changed_lines(classification),
             files_changed=len(files.files),
             files_reviewed=len(classification.reviewed),
@@ -820,14 +824,14 @@ class Pipeline:
         )
         over = check_size(classification, max_lines, truncated=files.truncated)
         if over is not None:
-            return _Gathered(over=over, name_only=classification.name_only)
+            return _Gathered(counts=counts, over=over, name_only=classification.name_only)
         if not classification.reviewed:
-            return _Gathered(nothing=True, name_only=classification.name_only)
+            return _Gathered(counts=counts, nothing=True, name_only=classification.name_only)
 
         diff = expanded_diff(client, pull, classification, client_factory=self._github)
-        self._counts.update(files_reviewed=len(diff.files), files_name_only=len(diff.name_only))
+        counts.update(files_reviewed=len(diff.files), files_name_only=len(diff.name_only))
         if not diff.files:
-            return _Gathered(nothing=True, name_only=diff.name_only, diff=diff)
+            return _Gathered(counts=counts, nothing=True, name_only=diff.name_only, diff=diff)
 
         issues = linked_issues(client, pull, warn=warn)
         specs = resolve_specs(
@@ -851,7 +855,7 @@ class Pipeline:
             verifier=verifier,
             conventions=conventions,
         )
-        self._counts.update(
+        counts.update(
             issues_linked=len(issues.issues),
             issues_skipped=len(issues.skipped),
             specs=len(specs.specs),
@@ -865,8 +869,12 @@ class Pipeline:
             sink=self.deps.sink,
         )
         if isinstance(built, OverBudget):
-            return _Gathered(over=built, name_only=diff.name_only, diff=diff, inputs=inputs)
-        return _Gathered(diff=diff, inputs=inputs, prompt=built, name_only=diff.name_only)
+            return _Gathered(
+                counts=counts, over=built, name_only=diff.name_only, diff=diff, inputs=inputs
+            )
+        return _Gathered(
+            counts=counts, diff=diff, inputs=inputs, prompt=built, name_only=diff.name_only
+        )
 
     def _converse(self, gathered: _Gathered, gate: _Gate) -> ReviewResult:
         assert gathered.prompt is not None and gathered.inputs is not None
@@ -1067,8 +1075,8 @@ class Pipeline:
         if self._failure_comment_tried:
             return
         self._failure_comment_tried = True
-        if self._client is None:
-            self._events.error("failure comment not posted: no GitHub client", code=code)
+        if self._token is None:
+            self._events.error("failure comment not posted: no GitHub token", code=code)
             return
         body = self._scrub_body(
             render_failure(
@@ -1076,7 +1084,9 @@ class Pipeline:
             )
         )
         try:
-            self._client.post_pr_comment(body)
+            # A fresh client: a worker abandoned at the deadline may still hold the
+            # run's client, and a requests.Session is not shared across threads.
+            self._github().post_pr_comment(body)
         except Exception as exc:  # noqa: BLE001 - best effort (D-13)
             status = getattr(exc, "status", None)
             self._events.error(

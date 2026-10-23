@@ -286,3 +286,20 @@ def test_heartbeat_chunks_reach_the_entrypoint_stream(h):
     assert result["status"] == "succeeded"
     assert h.heartbeat_chunks, "heartbeats must be yielded through invoke"
     assert not is_heartbeat_chunk(h.chunks[-1]), "the terminal chunk is last"
+
+
+def test_bounded_stops_when_the_clock_passes_the_deadline_between_heartbeats():
+    from tests.helpers.pipeline_run import ManualClock
+
+    clock = ManualClock(0.0)
+    ran = []
+
+    async def hb(fn, *, interval, seq_start=0):
+        clock.advance(10)
+        yield {"heartbeat": {"seq": 1}}
+        ran.append(1)
+        yield HeartbeatResult(value=fn())
+
+    with pytest.raises(RunTimeout):
+        _collect(bounded(lambda: 1, deadline=5.0, clock=clock, interval=1, heartbeat=hb))
+    assert ran == [], "the phase result is not awaited past the deadline"
