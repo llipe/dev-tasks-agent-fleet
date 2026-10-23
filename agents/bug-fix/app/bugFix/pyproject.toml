@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bug-fix"
+version = "0.1.0"
+description = "Bug-fix agent for AgentCore: claims an issue, runs headless Claude Code in a sandbox, opens a Draft PR"
+requires-python = ">=3.13"
+dependencies = [
+    # AgentCore runtime SDK (HTTP entrypoint server). Not a model provider:
+    # the model is served by the Anthropic API (D-50).
+    "bedrock-agentcore==1.22.0",
+    # Secrets Manager reads only (Supabase key, App PEM, Anthropic key,
+    # Projects token). The runtime role has no model-provider grant.
+    "boto3==1.43.81",
+    "requests==2.34.2",
+    "PyJWT==2.15.1",
+    "cryptography==50.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",
+    "pytest-mock==3.14.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.4",
+    "mypy==2.3.1",
+    "pip-audit==2.10.1",
+    # Property-based tests (test plan G-5): RT-* tactics for the scrubber,
+    # params, markers and the neutralizer.
+    "hypothesis==6.140.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: unit tests (no I/O, no network)",
+    "component: component tests (mocked external services)",
+]
+
+# ---------------------------------------------------------------------------
+# Quality toolchain
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "tests/fixtures",
+    "agent_reporter.py",  # vendored SDK, copied from the sibling agent
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort (import ordering)
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["agent_reporter\\.py", "tests/fixtures/", "\\.venv/"]
+
+# The vendored SDK is still discovered by `mypy .`; its `__exit__` methods are
+# declared `-> bool` and trip `exit-return`. Same override as the sibling.
+[[tool.mypy.overrides]]
+module = "agent_reporter"
+disable_error_code = ["exit-return"]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+omit = [
+    "tests/*",
+    "agent_reporter.py",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 90

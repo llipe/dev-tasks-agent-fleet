@@ -11,7 +11,7 @@ See [`docs/product-context.md`](docs/product-context.md) for the full problem st
 
 ## Delivery phases
 
-The project is delivered in three phases:
+The project is delivered in phases:
 
 - **Phase 1 — Backend + Agent (done):** the Supabase schema (applied via Supabase CLI
   migrations), and the `dependency-update` agent that runs on AgentCore, authenticates to
@@ -35,6 +35,14 @@ The project is delivered in three phases:
   real `fix` run that opened a PR, per
   [`docs/requirements/prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md)
   and [`agents/security-analyst/README.md`](agents/security-analyst/README.md).
+- **Phase 5 — Bug Fix Agent (scaffold, S-180):** the fleet's third agent, `agents/bug-fix/`,
+  triggered by a `/bug-fix` comment on a GitHub issue. The agent scaffold includes configuration,
+  entrypoint stub, Docker image with toolchain, and managed Claude Code policy. The agent validates
+  its config at startup and reports success with a "not yet implemented" summary. Pipeline
+  implementation (reproduce, test, fix, validate, Draft PR) is planned for later Wave A–C stories
+  (S-181–S-200). Not yet deployed. See
+  [`docs/requirements/prd-bug-fix-agent.md`](docs/requirements/prd-bug-fix-agent.md) and
+  [`agents/bug-fix/README.md`](agents/bug-fix/README.md).
 
 ## Repository layout
 
@@ -70,10 +78,14 @@ The project is delivered in three phases:
 │   │   ├── agentcore/       # Runtime config + CDK infra
 │   │   ├── app/dependencyUpdate/   # Agent source, tests, Makefile, pyproject.toml
 │   │   └── README.md        # Agent-specific docs (deployment, pipeline, env vars)
-│   └── security-analyst/   # Phase 3 agent (Python, AgentCore Container) — done, verified live
+│   ├── security-analyst/   # Phase 3 agent (Python, AgentCore Container) — done, verified live
+│   │   ├── agentcore/       # Runtime config + CDK infra
+│   │   ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
+│   │   └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
+│   └── bug-fix/            # Phase 5 agent (Python, AgentCore Container) — scaffold (S-180)
 │       ├── agentcore/       # Runtime config + CDK infra
-│       ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
-│       └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
+│       ├── app/bugFix/      # Agent source, tests, Makefile, pyproject.toml, image
+│       └── README.md        # Agent-specific docs (status, layout, configuration, testing)
 └── workstream/              # Task lists, specs, test plans, fidelity reports; archive/ holds completed work
 ```
 

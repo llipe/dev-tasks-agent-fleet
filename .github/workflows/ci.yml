@@ -23,12 +23,16 @@ jobs:
         python-version: ["3.13", "3.14"]
         # One gate per Python agent. security-analyst was added at its PRD
         # close (S-141): its 700+ tests were previously unreachable from CI.
-        agent: [dependency-update, security-analyst]
+        # bug-fix was added with its scaffold (S-180), so its gate runs in CI
+        # from its first story rather than at PRD close.
+        agent: [dependency-update, security-analyst, bug-fix]
         include:
           - agent: dependency-update
             package-dir: agents/dependency-update/app/dependencyUpdate
           - agent: security-analyst
             package-dir: agents/security-analyst/app/securityAnalyst
+          - agent: bug-fix
+            package-dir: agents/bug-fix/app/bugFix
     defaults:
       run:
         working-directory: ${{ matrix.package-dir }}
