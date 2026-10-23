@@ -1120,16 +1120,6 @@ def test_errors_a_real_validation_exception_is_classified_like_the_fixture(http)
     assert http.sends == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (medium): make_client passes Config(retries={'mode': 'standard', "
-        "'max_attempts': 3}); in client config botocore reads max_attempts as RETRIES and "
-        "normalizes it to total_max_attempts=4, so throttling/5xx and read timeouts get 4 "
-        "attempts, not the 3 of spec §9 / TC-210-18. Fix: 'total_max_attempts': MAX_ATTEMPTS."
-    ),
-    raises=AssertionError,
-)
 @pytest.mark.parametrize(
     "answer",
     [

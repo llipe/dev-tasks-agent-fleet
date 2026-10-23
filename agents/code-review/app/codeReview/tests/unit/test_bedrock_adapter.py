@@ -979,18 +979,16 @@ def test_errors_name_the_allowlisted_aws_code_and_status():
 
 
 def test_client_is_built_with_standard_retries_and_the_read_timeout(monkeypatch):
-    seen = {}
-
-    def fake_client(service, **kwargs):
-        seen["service"] = service
-        seen.update(kwargs)
-        return object()
-
-    monkeypatch.setattr(bedrock_adapter.boto3, "client", fake_client)
-    bedrock_adapter.make_client(read_timeout_seconds=123.0)
-    config = seen["config"]
-    assert seen["service"] == "bedrock-runtime"
-    assert config.retries == {"mode": "standard", "max_attempts": 3}
+    """The real client's effective config, not the dict passed in (QA defect 2)."""
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    for var in ("AWS_MAX_ATTEMPTS", "AWS_RETRY_MODE", "AWS_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
+    client = bedrock_adapter.make_client(read_timeout_seconds=123.0)
+    config = client.meta.config
+    assert client.meta.service_model.service_name == "bedrock-runtime"
+    assert client.meta.region_name == "us-east-1"
+    assert config.retries["mode"] == "standard"
+    assert config.retries["total_max_attempts"] == bedrock_adapter.MAX_ATTEMPTS == 3
     assert config.read_timeout == 123.0
 
 

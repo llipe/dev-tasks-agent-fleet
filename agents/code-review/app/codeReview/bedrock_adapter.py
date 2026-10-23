@@ -458,7 +458,9 @@ def make_client(*, read_timeout_seconds: float, region_name: str | None = None) 
     in the siblings; nothing here overrides them.
     """
     config = Config(
-        retries={"mode": "standard", "max_attempts": MAX_ATTEMPTS},
+        # ``total_max_attempts`` counts the first try; ``max_attempts`` in a
+        # client Config counts retries only and would give 4 HTTP attempts.
+        retries={"mode": "standard", "total_max_attempts": MAX_ATTEMPTS},
         read_timeout=read_timeout_seconds,
         connect_timeout=CONNECT_TIMEOUT_SECONDS,
     )
