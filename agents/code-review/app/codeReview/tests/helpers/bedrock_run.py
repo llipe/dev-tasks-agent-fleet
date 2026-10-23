@@ -104,6 +104,7 @@ def run(
     clock: Callable[[], float] | None = None,
     deadline: float | None = None,
     nonce_factory: Callable[[], str] | None = None,
+    client_factory: Any = None,
 ) -> Any:
     import bedrock_adapter
 
@@ -113,7 +114,8 @@ def run(
     return bedrock_adapter.review(
         p,
         ins,
-        client=fake,
+        client=fake if client_factory is None else None,
+        client_factory=client_factory,
         settings=settings(model_id, price_in, price_out),
         reasoning_effort=effort,
         max_diff_lines=2000,

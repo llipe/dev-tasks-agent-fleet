@@ -77,7 +77,6 @@ from bedrock_adapter import (
     ReviewResult,
     classify_validation_message,
     make_client,
-    read_timeout_for,
     request_tokens,
 )
 from budget import BudgetInvariantError
@@ -1047,8 +1046,8 @@ class _Raw:
         yield self.body
 
 
-def make_client_for(read_timeout_seconds: float) -> Any:
-    return make_client(read_timeout_seconds=read_timeout_seconds)
+def make_client_for(read_timeout_seconds: float, **kw: Any) -> Any:
+    return make_client(read_timeout_seconds=read_timeout_seconds, **kw)
 
 
 class _Http:
@@ -1059,7 +1058,8 @@ class _Http:
         self.read_timeout = read_timeout
         self.script: list[Any] = []
         self.sends = 0
-        self.client: Callable[[float], Any] = make_client_for
+        self.client: Callable[..., Any] = make_client_for
+        self.built: list[tuple[float, float | None]] = []
 
     def send(self, _session: Any, request: Any) -> AWSResponse:
         self.sends += 1
@@ -1092,8 +1092,9 @@ def http(monkeypatch, aws_env):
     monkeypatch.setattr(botocore.httpsession.URLLib3Session, "send", send)
     monkeypatch.setattr(botocore.endpoint.time, "sleep", sleep)
 
-    def client(read_timeout_seconds: float) -> Any:
-        holder["client"] = make_client(read_timeout_seconds=read_timeout_seconds)
+    def client(read_timeout_seconds: float, **kw: Any) -> Any:
+        fake.built.append((read_timeout_seconds, kw.get("connect_timeout_seconds")))
+        holder["client"] = make_client(read_timeout_seconds=read_timeout_seconds, **kw)
         return holder["client"]
 
     fake.client = client
@@ -1137,39 +1138,17 @@ def test_defect_botocore_makes_exactly_max_attempts_http_attempts(http, answer):
     assert http.sends == MAX_ATTEMPTS
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (high): one Converse call can outlast the run deadline. read_timeout_for "
-        "gives min(600, remaining) and botocore standard mode retries ReadTimeoutError "
-        "(4 attempts today, 3 after the attempts fix), so a hanging endpoint holds the call "
-        "for attempts x timeout + backoff: about 4x remaining today. Spec §8.9 says the "
-        "deadline bounds each step and reserves 60 s for the failure comment."
-    ),
-    raises=AssertionError,
-)
 @pytest.mark.parametrize("remaining", [30.0, 300.0, 780.0])
 def test_defect_a_hanging_endpoint_cannot_outlast_the_run_deadline(http, remaining):
     http.script = ["timeout"]
     start = http.clock.now
-    client = http.client(read_timeout_for(remaining))
     with pytest.raises(BedrockTimeout):
-        run(client, clock=http.clock, deadline=start + remaining)
+        run(None, client_factory=http.client, clock=http.clock, deadline=start + remaining)
     assert http.clock.now <= start + remaining, (
         f"returned {http.clock.now - start:.0f}s after start, deadline {remaining:.0f}s"
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (high, same root as the deadline defect): the client and its read timeout "
-        "are sized once, at run start, and reused for up to 5 calls. A repair call started "
-        "10 s before the deadline still gets the full min(600, remaining-at-start) x "
-        "attempts. The adapter checks the deadline only before a call."
-    ),
-    raises=AssertionError,
-)
 def test_defect_a_late_call_cannot_outlast_the_run_deadline(http):
     remaining = 600.0
     start = http.clock.now
@@ -1179,9 +1158,8 @@ def test_defect_a_late_call_cannot_outlast_the_run_deadline(http):
         return (200, None, text_response("{oops"))
 
     http.script = [first_answer, "timeout"]  # then the repair call hangs
-    client = http.client(read_timeout_for(remaining))
     with pytest.raises(BedrockTimeout):
-        run(client, clock=http.clock, deadline=start + remaining)
+        run(None, client_factory=http.client, clock=http.clock, deadline=start + remaining)
     assert http.clock.now <= start + remaining, f"{http.clock.now - start:.0f}s"
 
 

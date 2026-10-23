@@ -74,6 +74,12 @@ request and the wrapper text. When nothing is left, no repair call is sent:
 botocore's standard retry mode (``MAX_ATTEMPTS`` = 3) and are
 ``BedrockError``, with no adapter retry. A read timeout is ``BedrockTimeout``:
 ``RUN_TIMEOUT`` when the run deadline has passed, else ``BEDROCK_ERROR``.
+
+**Deadline** (spec §8.9; QA defect 1). With ``client_factory`` the adapter
+builds a client per call whose connect and read timeouts come from
+``call_timeouts(deadline - now)``: ``MAX_ATTEMPTS`` attempts plus botocore's
+largest backoff fit in the time left, and a call with under
+``MIN_ATTEMPT_SECONDS`` per attempt is not started (``RUN_TIMEOUT``).
 ``BudgetInvariantError`` and ``PromptError`` propagate unchanged and are never
 retried. Exception messages and ``warn`` events carry counts, allowlisted AWS
 error names, HTTP status codes, and request IDs only. They never carry the
@@ -118,11 +124,13 @@ from prompt import (
 
 __all__ = [
     "ACCEPTED_STOP_REASONS",
+    "BACKOFF_ALLOWANCE_SECONDS",
     "CONTEXT_LENGTH_PATTERNS",
     "MAX_ATTEMPTS",
     "MAX_CALLS",
     "MAX_READ_TIMEOUT_SECONDS",
     "MAX_TOKENS",
+    "MIN_ATTEMPT_SECONDS",
     "OUTPUT_FORCED_SCHEMA",
     "OUTPUT_PROMPT_JSON",
     "REASONING_FIELD",
@@ -136,10 +144,13 @@ __all__ = [
     "BedrockTimeout",
     "CallBudgetExceeded",
     "CallMetrics",
+    "CallTimeouts",
+    "ClientFactory",
     "ConverseClient",
     "ModelOutputInvalid",
     "ReviewResult",
     "Warn",
+    "call_timeouts",
     "classify_validation_message",
     "is_openai_model",
     "make_client",
@@ -160,6 +171,13 @@ MAX_ATTEMPTS = 3  # botocore standard retry mode (spec §9)
 MAX_READ_TIMEOUT_SECONDS = 600
 MIN_READ_TIMEOUT_SECONDS = 1
 CONNECT_TIMEOUT_SECONDS = 10
+# The longest botocore standard mode can sleep between attempts: before retry
+# n it waits at most min(2 ** (n - 1), 20) seconds (throttling scale 1), plus
+# up to 5 more for an ``x-amz-retry-after`` header. 13 s for 3 attempts;
+# pinned against botocore's constants by a test.
+BACKOFF_ALLOWANCE_SECONDS = sum(min(2 ** (n - 1), 20) + 5 for n in range(1, MAX_ATTEMPTS))
+# A call is not started with less than this per attempt (connect + read).
+MIN_ATTEMPT_SECONDS = 2.0
 
 OUTPUT_FORCED_SCHEMA = "forced_schema"  # runs.metrics.output_mode (spec §5.3)
 OUTPUT_PROMPT_JSON = "prompt_json"
@@ -243,6 +261,14 @@ Warn = Callable[..., Any]
 
 class ConverseClient(Protocol):
     def converse(self, **kwargs: Any) -> Any: ...
+
+
+class ClientFactory(Protocol):
+    """``make_client``'s shape: called once per Converse call with that call's timeouts."""
+
+    def __call__(
+        self, *, read_timeout_seconds: float, connect_timeout_seconds: float
+    ) -> ConverseClient: ...
 
 
 # ---------------------------------------------------------------------------
@@ -444,13 +470,49 @@ def is_openai_model(model_id: str) -> bool:
     return "openai" in name.split(".")[:2]
 
 
+@dataclass(frozen=True)
+class CallTimeouts:
+    """Per-attempt botocore timeouts for one Converse call, in seconds."""
+
+    connect: float
+    read: float
+
+
+def call_timeouts(remaining_seconds: float | None) -> CallTimeouts | None:
+    """Timeouts that keep one call, with every botocore retry, within ``remaining_seconds``.
+
+    One call is at most ``MAX_ATTEMPTS`` attempts of ``connect + read`` plus
+    ``BACKOFF_ALLOWANCE_SECONDS`` of sleeps, so each attempt gets
+    ``(remaining - allowance) / MAX_ATTEMPTS``: a quarter of it (at most
+    ``CONNECT_TIMEOUT_SECONDS``) to connect, the rest (at most 600) to read.
+    ``None`` when that is under ``MIN_ATTEMPT_SECONDS``: the call must not
+    start. No deadline gives the caps (10 s and 600 s).
+    """
+    if remaining_seconds is None:
+        return CallTimeouts(CONNECT_TIMEOUT_SECONDS, MAX_READ_TIMEOUT_SECONDS)
+    per_attempt = (remaining_seconds - BACKOFF_ALLOWANCE_SECONDS) / MAX_ATTEMPTS
+    if per_attempt < MIN_ATTEMPT_SECONDS:
+        return None
+    connect = min(CONNECT_TIMEOUT_SECONDS, per_attempt / 4)
+    return CallTimeouts(connect, min(MAX_READ_TIMEOUT_SECONDS, per_attempt - connect))
+
+
 def read_timeout_for(remaining_seconds: float) -> float:
-    """``min(600, remaining)`` seconds, at least 1 (TC-210-18)."""
-    return max(MIN_READ_TIMEOUT_SECONDS, min(MAX_READ_TIMEOUT_SECONDS, remaining_seconds))
+    """The read part of ``call_timeouts(remaining_seconds)``, at least 1 (TC-210-18)."""
+    timeouts = call_timeouts(remaining_seconds)
+    return timeouts.read if timeouts is not None else MIN_READ_TIMEOUT_SECONDS
 
 
-def make_client(*, read_timeout_seconds: float, region_name: str | None = None) -> ConverseClient:
-    """A ``bedrock-runtime`` client: standard retries, 3 attempts, the given read timeout.
+def make_client(
+    *,
+    read_timeout_seconds: float,
+    connect_timeout_seconds: float = CONNECT_TIMEOUT_SECONDS,
+    region_name: str | None = None,
+) -> ConverseClient:
+    """A ``bedrock-runtime`` client: standard retries, 3 attempts, the given timeouts.
+
+    ``review(client_factory=make_client)`` builds one per call, sized by
+    ``call_timeouts`` from the time left (QA defect 1).
 
     The region is ``region_name``, else ``AWS_REGION`` (spec §9), else
     botocore's own chain (``AWS_DEFAULT_REGION``, config files). Proxies come
@@ -462,7 +524,7 @@ def make_client(*, read_timeout_seconds: float, region_name: str | None = None) 
         # client Config counts retries only and would give 4 HTTP attempts.
         retries={"mode": "standard", "total_max_attempts": MAX_ATTEMPTS},
         read_timeout=read_timeout_seconds,
-        connect_timeout=CONNECT_TIMEOUT_SECONDS,
+        connect_timeout=connect_timeout_seconds,
     )
     region = region_name or os.environ.get("AWS_REGION") or None
     client: ConverseClient = boto3.client("bedrock-runtime", region_name=region, config=config)
@@ -642,7 +704,8 @@ class _Run:
         prompt: Prompt,
         inputs: ContextInputs,
         *,
-        client: ConverseClient,
+        client: ConverseClient | None,
+        client_factory: ClientFactory | None,
         settings: Settings,
         reasoning_effort: str,
         max_diff_lines: int,
@@ -654,6 +717,7 @@ class _Run:
     ) -> None:
         self.inputs = inputs
         self.client = client
+        self.client_factory = client_factory
         self.settings = settings
         self.effort = reasoning_effort
         self.max_diff_lines = max_diff_lines
@@ -716,16 +780,18 @@ class _Run:
                 f"a Converse call beyond the {MAX_CALLS}-call budget", metrics=self.metrics()
             )
         start = self.clock()
-        if self.deadline is not None and start >= self.deadline:
+        remaining = None if self.deadline is None else self.deadline - start
+        if remaining is not None and remaining <= 0:
             raise BedrockTimeout(
                 "run deadline reached before a Converse call",
                 run_timeout=True,
                 metrics=self.metrics(),
             )
+        client = self.client_for(remaining)
         self.calls += 1
         self.repair_calls += int(repair)
         try:
-            response = self.client.converse(**request)
+            response = client.converse(**request)
         except ClientError as exc:
             self.stop(start)
             info = _aws_error(exc)
@@ -754,6 +820,22 @@ class _Run:
         else:
             self.tokens = (self.tokens[0] + usage[0], self.tokens[1] + usage[1])
         return response
+
+    def client_for(self, remaining: float | None) -> ConverseClient:
+        """The injected client, or a fresh one sized to the time left (QA defect 1)."""
+        if self.client_factory is None:
+            assert self.client is not None  # review() requires exactly one
+            return self.client
+        timeouts = call_timeouts(remaining)
+        if timeouts is None:
+            raise BedrockTimeout(
+                "too little time left before the run deadline for a Converse call",
+                run_timeout=True,
+                metrics=self.metrics(),
+            )
+        return self.client_factory(
+            read_timeout_seconds=timeouts.read, connect_timeout_seconds=timeouts.connect
+        )
 
     def stop(self, start: float) -> float:
         end = self.clock()
@@ -878,7 +960,8 @@ def review(
     prompt: Prompt,
     inputs: ContextInputs,
     *,
-    client: ConverseClient,
+    client: ConverseClient | None = None,
+    client_factory: ClientFactory | None = None,
     settings: Settings,
     reasoning_effort: str,
     max_diff_lines: int,
@@ -896,16 +979,26 @@ def review(
     repair), which pass ``sink`` and ``nonce_factory`` on. ``clock`` is
     monotonic seconds; ``deadline`` is on the same clock.
 
+    Pass exactly one of ``client_factory`` (production: ``make_client``; a
+    client per call, sized by ``call_timeouts`` from ``deadline - clock()``,
+    so no call with its botocore retries outlasts the deadline, and a call
+    with too little time left is not started: ``BedrockTimeout``/
+    ``RUN_TIMEOUT``) and ``client`` (one fixed client, e.g. ``FakeConverse``;
+    no sizing, the deadline is checked before each call only).
+
     Raises ``BedrockAccessDenied``, ``BedrockError`` (``BedrockTimeout``),
     ``ModelOutputInvalid``, ``CallBudgetExceeded``, and, unchanged,
     ``BudgetInvariantError`` and ``PromptError``.
     """
     if reasoning_effort not in REASONING_EFFORTS:
         raise ValueError("reasoning_effort must be low, medium, or high")
+    if (client is None) == (client_factory is None):
+        raise ValueError("pass exactly one of client and client_factory")
     return _Run(
         prompt,
         inputs,
         client=client,
+        client_factory=client_factory,
         settings=settings,
         reasoning_effort=reasoning_effort,
         max_diff_lines=max_diff_lines,

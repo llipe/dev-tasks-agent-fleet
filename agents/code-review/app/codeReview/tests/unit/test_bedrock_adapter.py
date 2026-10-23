@@ -993,10 +993,103 @@ def test_client_is_built_with_standard_retries_and_the_read_timeout(monkeypatch)
 
 
 @pytest.mark.parametrize(
-    ("remaining", "expected"), [(10_000, 600), (600, 600), (120.5, 120.5), (0, 1), (-5, 1)]
+    ("remaining", "expected"),
+    [(10_000, 600), (2_000, 600), (313, 90.0), (19, 1.5), (18, 1), (0, 1), (-5, 1)],
 )
-def test_client_read_timeout_is_min_600_and_remaining(remaining, expected):
-    assert read_timeout_for(remaining) == expected
+def test_client_read_timeout_leaves_room_for_every_attempt_and_backoff(remaining, expected):
+    assert read_timeout_for(remaining) == pytest.approx(expected)
+
+
+def test_client_backoff_allowance_matches_botocore_standard_mode():
+    from botocore.retries.standard import ExponentialBackoff as B
+
+    worst = sum(
+        min(B._BASE ** (n - 1), B._MAX_BACKOFF) + B._RETRY_AFTER_MAX_ADDITIONAL
+        for n in range(1, bedrock_adapter.MAX_ATTEMPTS)
+    )
+    assert bedrock_adapter.BACKOFF_ALLOWANCE_SECONDS == worst == 13
+
+
+@pytest.mark.parametrize("remaining", [19.0, 20.0, 45.5, 120.0, 313.0, 780.0, 900.0, 5000.0])
+def test_client_call_timeouts_keep_every_attempt_within_the_time_left(remaining):
+    t = bedrock_adapter.call_timeouts(remaining)
+    assert t is not None
+    worst = bedrock_adapter.MAX_ATTEMPTS * (t.connect + t.read)
+    assert worst + bedrock_adapter.BACKOFF_ALLOWANCE_SECONDS <= remaining + 1e-9
+    assert 0 < t.connect <= 10 and 0 < t.read <= 600
+
+
+def test_client_call_timeouts_without_a_deadline_are_the_caps_and_none_when_too_late():
+    assert bedrock_adapter.call_timeouts(None) == bedrock_adapter.CallTimeouts(10, 600)
+    assert bedrock_adapter.call_timeouts(18.9) is None
+
+
+def test_client_factory_builds_a_client_per_call_sized_to_the_time_left():
+    built = []
+    fake = FakeConverse(
+        [tool_choice_rejected(), text_response("bad"), text_response(_json(valid_review()))]
+    )
+
+    def factory(*, read_timeout_seconds, connect_timeout_seconds):
+        built.append((read_timeout_seconds, connect_timeout_seconds))
+        return fake
+
+    clock = Clock(step=30.0, start=0.0)
+    result = run(None, client_factory=factory, clock=clock, deadline=900.0)
+    assert result.calls == 3 and len(built) == 3
+    reads = [r for r, _c in built]
+    assert reads == sorted(reads, reverse=True)  # less time left, shorter timeouts
+    assert built[0] == pytest.approx((min(600, (900 - 13) / 3 - 10), 10.0))
+
+
+def test_client_factory_refuses_a_call_with_too_little_time_left():
+    built = []
+
+    def factory(**kw):
+        built.append(kw)
+        return FakeConverse([_ok()])
+
+    with pytest.raises(BedrockTimeout) as exc:
+        run(None, client_factory=factory, clock=Clock(step=0.0, start=0.0), deadline=18.0)
+    assert exc.value.code == "RUN_TIMEOUT"
+    assert built == []
+
+
+def test_client_factory_without_a_deadline_uses_the_caps():
+    built = []
+
+    def factory(*, read_timeout_seconds, connect_timeout_seconds):
+        built.append((read_timeout_seconds, connect_timeout_seconds))
+        return FakeConverse([_ok()])
+
+    run(None, client_factory=factory)
+    assert built == [(600, 10)]
+
+
+@pytest.mark.parametrize("both", [True, False])
+def test_client_exactly_one_of_client_and_factory(both):
+    from tests.helpers.bedrock_run import counter_nonces, settings
+
+    ins = review_inputs()
+    kwargs = {"client": FakeConverse([_ok()])} if both else {}
+    if both:
+        kwargs["client_factory"] = lambda **_k: FakeConverse([_ok()])
+    with pytest.raises(ValueError, match="exactly one"):
+        bedrock_adapter.review(
+            first_prompt(ins),
+            ins,
+            settings=settings(),
+            reasoning_effort="high",
+            max_diff_lines=2000,
+            nonce_factory=counter_nonces(),
+            **kwargs,
+        )
+
+
+def test_client_make_client_is_a_client_factory(monkeypatch):
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    c = bedrock_adapter.make_client(read_timeout_seconds=50.0, connect_timeout_seconds=3.0)
+    assert (c.meta.config.read_timeout, c.meta.config.connect_timeout) == (50.0, 3.0)
 
 
 # ---------------------------------------------------------------------------
