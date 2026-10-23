@@ -31,11 +31,15 @@ linear in the input (the review is model output and untrusted).
 1. *Location.* ``file`` is matched to a reviewed path (``match_reviewed``);
    no match → dropped, ``reason: "not_reviewed"`` (DF-07). ``line_end <
    line_start`` is swapped. A ``blocking`` finding is *located in the diff*
-   when its span intersects a changed range widened by ±3 lines **and** spans
-   at most ``MAX_BLOCKING_SPAN`` (200) lines, ``line_end - line_start + 1``
-   (D-50: a span of a whole file around one changed line points at no changed
-   code). Not located → ``suggestion``, ``downgraded: "outside_diff"``; the
-   reason covers both cases, so the artifact enum is unchanged. A reviewed
+   when its span intersects a changed range widened by ±3 lines **and**
+   either spans at most ``MAX_BLOCKING_SPAN`` (200) lines, ``line_end -
+   line_start + 1``, or lies entirely inside one merged changed range widened
+   by ±3 (D-50 and its DR-2 extension: a span of a whole file around one
+   changed line points at no changed code, while a fully changed 250-line
+   function does). Not located → ``suggestion``, ``downgraded:
+   "outside_diff"``; the reason covers every "not located in the diff" case,
+   so the artifact enum is unchanged. ``counts.downgraded_span`` counts the
+   ones that intersect but fail the span rule. A reviewed
    file with no changed range (a pure rename, or a removed file: no head
    lines to anchor it) is outside the diff. A finding on a removed reviewed
    file is kept (planner decision on TC-211-05: "you deleted foo() and bar.py
@@ -79,8 +83,9 @@ neutralizes it).
 They are only compared or subtracted (±3 on the ranges, the span length),
 never converted or clamped, so ``10**300`` costs nothing and is kept exactly.
 A span from 1 to ``10**300`` intersects every range but is longer than
-``MAX_BLOCKING_SPAN``, so it is not a location (D-50). The location check uses a
-bisect over the merged ranges, so it is ``O(log R)`` per finding.
+``MAX_BLOCKING_SPAN`` and covers unchanged lines, so it is not a location
+(D-50). The location checks use a bisect over the merged ranges, so they are
+``O(log R)`` per finding.
 
 **Verdict** (spec §8.7, D-33, D-37; ``candidate_statuses``):
 
@@ -107,7 +112,9 @@ the cap; ``dropped`` counts each drop by its one reason; so
 of suggestions dropped by the cap (0: the cap was not hit).
 ``verifier_confirmed`` counts the candidates that count toward ``blocking``
 (spec §8.7 treats an omitted candidate as confirmed); ``verifier_by_status``
-breaks them down.
+breaks them down. ``downgraded_span`` counts the ``outside_diff`` downgrades
+caused by the span rule alone (a subset of ``downgraded["outside_diff"]``,
+DR-2), so precision measurement can tell "too broad" from "elsewhere".
 """
 
 from __future__ import annotations
@@ -286,6 +293,7 @@ class ValidationCounts:
     verifier_by_status: dict[str, int]  # every ``STATUSES`` key
     verifier_checks_ignored: int  # checks for IDs not shown to the model
     verifier_checks_duplicate: int  # extra checks for a shown ID
+    downgraded_span: int  # outside_diff: intersects, but fails the span rule (DR-2)
 
     def as_metrics(self) -> dict[str, Any]:
         """The spec §5.3 keys this story owns, plus the candidate breakdown."""
@@ -300,6 +308,7 @@ class ValidationCounts:
             "verifier_by_status": dict(self.verifier_by_status),
             "verifier_checks_ignored": self.verifier_checks_ignored,
             "verifier_checks_duplicate": self.verifier_checks_duplicate,
+            "downgraded_span": self.downgraded_span,
         }
 
 
@@ -408,6 +417,14 @@ class _Ranges:
         # The first range whose widened end reaches ``lo``.
         k = bisect.bisect_left(self._ends, lo - LOCATION_WINDOW)
         return k < len(self._ends) and self._starts[k] - LOCATION_WINDOW <= hi
+
+    def covers(self, line_start: int, line_end: int) -> bool:
+        """The whole span lies inside one merged range widened by ±3 (DR-2)."""
+        lo, hi = min(line_start, line_end), max(line_start, line_end)
+        # The last range whose widened start is at or before ``lo``; ends
+        # increase with starts, so it has the largest end among candidates.
+        k = bisect.bisect_right(self._starts, lo + LOCATION_WINDOW) - 1
+        return k >= 0 and hi <= self._ends[k] + LOCATION_WINDOW
 
 
 def in_changed_range(line_start: int, line_end: int, ranges: Iterable[tuple[int, int]]) -> bool:
@@ -567,6 +584,7 @@ def validate(
     prepared: dict[str, _Ranges] = {}
 
     downgraded = dict.fromkeys(DOWNGRADE_REASONS, 0)
+    downgraded_span = 0  # outside_diff by the span rule alone (DR-2)
     dropped: list[DroppedFinding] = []
     kept: list[_Kept] = []
     findings = checked["findings"]
@@ -583,8 +601,11 @@ def validate(
             ranges = prepared.get(name)
             if ranges is None:
                 ranges = prepared[name] = _Ranges(changed_ranges[name])
-            if end - start + 1 > MAX_BLOCKING_SPAN or not ranges.hits(start, end):
+            if not ranges.hits(start, end):
                 reason = DOWNGRADE_OUTSIDE_DIFF
+            elif end - start + 1 > MAX_BLOCKING_SPAN and not ranges.covers(start, end):
+                reason = DOWNGRADE_OUTSIDE_DIFF
+                downgraded_span += 1
             elif is_blank(raw["failure_scenario"]):
                 reason = DOWNGRADE_NO_SCENARIO
             if reason is not None:
@@ -638,6 +659,7 @@ def validate(
         verifier_by_status=by_status,
         verifier_checks_ignored=tally.ignored,
         verifier_checks_duplicate=tally.duplicate,
+        downgraded_span=downgraded_span,
     )
     return Validation(verdict, blocking, suggestions, tuple(dropped), tally.statuses, counts)
 
