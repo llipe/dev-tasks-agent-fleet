@@ -278,12 +278,21 @@ marked `xfail(strict=True)` with the defect in `reason`, so the fix turns it red
 and the marker is removed in the same change.
 Hostile-input suites for repository-controlled text (S-208:
 `tests/unit/test_verifier_hostile.py`, `tests/unit/test_repo_conventions_hostile.py`;
-S-209: `tests/unit/test_prompt.py::test_hostile_content_builds_quickly`)
+S-209: `tests/unit/test_prompt.py::test_hostile_content_builds_quickly` and
+`tests/unit/test_prompt_hostile.py::test_megabyte_hostile_inputs_build_in_linear_time`)
 are the one sanctioned Layer 1 use of `time.perf_counter`: a regex-cost or
 quadratic-scan test may assert an elapsed bound on a 100k+ line input. The bound
 must hold with at least 3x margin under `make test-cov` (coverage tracing), and
 the input must be large enough that a quadratic implementation misses the bound
 by an order of magnitude, so the test cannot flake either way.
+The S-209 completion-gate suites `tests/unit/test_budget_hostile.py` (budget
+invariant at and around `I + D`, the 20,000 minimum at every reader's contract
+maximum, multi-byte/CR/CRLF/empty text, `include_full_files=False`; property
+tactic `tactic_seed(411, 3)`) and `tests/unit/test_prompt_hostile.py` (the real
+nonce forged through every `ContextInputs` field, near-miss markers, hostile
+paths under `str.splitlines`, the retry loop, failure paths and the sink,
+`rubric.md` from a copied package dir run with `python -I`, schema key order;
+property tactic `tactic_seed(411, 4)`) build on the same helpers.
 
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real
