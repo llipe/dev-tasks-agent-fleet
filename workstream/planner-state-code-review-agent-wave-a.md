@@ -25,7 +25,7 @@
 
 ## Current Position
 
-- Next story: S-210 (#412), pending the user's DR-12 decision (repair and output-token bound)
+- Next story: S-210 (#412)
 - Last merged PR: #432 (merge commit 697e4b1)
 - Integration branch HEAD: 697e4b1 + checkpoint commit (package `validate` green post-merge)
 
@@ -57,3 +57,4 @@
 - 2026-10-23: S-209 merge gates. Developer gates PASS. qa-engineer `coverage_gate` PASS (88e648e): the budget invariant and nonce integrity held. Two Low defects were fixed: the name-only cut is now named, and dropped files on the retry path are listed smallest first. Residuals fixed: deduped notes, an empty-spec note, and the NonceError attempt count. Verifier verdict High, highest drift Minor, 12 items (38aac6b). DR-10 was fixed as D-46. Merged #432 at 697e4b1.
 - 2026-10-23: Spec write-back backlog adds S-209 DR-1 to DR-8 (pinned budget and prompt contract; test plan and matrix still number AC1–AC6; TC-209-13 kind list). For the user: DR-9 (FR-9 verdict line), DR-11 (CJK and emoji token under-count versus D-27 and R4), DR-12 (output tokens and the repair payload sit outside `max_context_tokens`; this blocks S-210 AC4–AC6).
 - 2026-10-23: Carry forward. S-210: send `Prompt.system_blocks()` and `fallback_system_blocks()` exactly; the R4 retry is `build_prompt(include_full_files=False)` and passes its ContextData downstream; never retry the INTERNAL_ERROR types; log the second context-length rejection distinctly. S-211: a dropped candidate always blocks; ignore checks for IDs outside `shown_candidates`; normalize `file` with `escape_path`. S-212: token-path OverBudget wording; notes include the `empty` and `name-only` cases; rubric_version in the footer; neutralize paths. S-213: two OverBudget paths; inject the sink; log per-block token counts.
+- 2026-10-23: User decisions: D-47 (DR-12, B caps every call; the repair call is rebuilt without full files and the echoed output is cut to fit; B + 16k must fit the model window, checked in S-215), D-48 (DR-11, accept and record; S-210 logs the second context-length rejection distinctly), D-49 (DR-9, amend PRD FR-9 to drift section only). All three go into the batched spec and PRD write-back.
