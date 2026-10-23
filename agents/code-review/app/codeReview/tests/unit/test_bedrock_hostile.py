@@ -1379,11 +1379,19 @@ def test_fidelity_every_adapter_request_passes_botocore_param_validation(stubbed
     stub.assert_no_pending_responses()
 
 
-def test_fidelity_fixture_errors_are_unrecognized_by_class_but_handled_by_code():
-    """The fixture raises plain ``ClientError``; the real client raises modeled subclasses.
-
-    The adapter keys on ``Error.Code`` only, so both behave the same (S-213 may rely
-    on this); a test that catches ``client.exceptions.X`` would not see the fixture's.
-    """
-    for make in (access_denied, throttled, service_unavailable, tool_choice_rejected):
-        assert type(make()) is ClientError
+def test_fidelity_fixture_errors_are_the_modeled_subclasses(stubbed):
+    """The fixture raises the modeled subclasses the real client raises (residual 6, cheap
+    part); the adapter still keys on ``Error.Code`` only."""
+    client, _stub = stubbed
+    for make, name in (
+        (access_denied, "AccessDeniedException"),
+        (throttled, "ThrottlingException"),
+        (service_unavailable, "ServiceUnavailableException"),
+        (tool_choice_rejected, "ValidationException"),
+    ):
+        err = make()
+        assert type(err).__name__ == name
+        real = getattr(client.exceptions, name)  # per-client classes: compare shape
+        assert isinstance(err, ClientError) and type(err).__module__ == real.__module__
+        assert err.response["ResponseMetadata"]["HTTPHeaders"]["x-amzn-errortype"] == name
+    assert type(client_error("NotAModeledCode")) is ClientError

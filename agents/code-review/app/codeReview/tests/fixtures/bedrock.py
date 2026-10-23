@@ -8,8 +8,9 @@ CT-06) and answers from a script, in order. A script item is one of:
 
 - a response ``dict`` (built with ``tool_use_response`` or ``text_response``,
   CT-07 shapes), returned as a deep copy;
-- an ``Exception`` instance, raised (``client_error`` builds botocore
-  ``ClientError`` shapes: ``{"Error": {"Code", "Message"}, "ResponseMetadata"}``);
+- an ``Exception`` instance, raised (``client_error`` builds the modeled
+  botocore ``ClientError`` subclass the real client raises, with
+  ``{"Error": {"Code", "Message"}, "ResponseMetadata"}``);
 - a callable ``(request) -> dict``, for a response that depends on the request.
 
 A call past the end of the script raises ``AssertionError`` ("unexpected
@@ -19,6 +20,7 @@ Converse call"), so a test also pins the number of calls.
 from __future__ import annotations
 
 import copy
+import functools
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
@@ -122,13 +124,43 @@ def text_response(
 # ---------------------------------------------------------------------------
 
 
+@functools.cache
+def _modeled_exceptions() -> Any:
+    """The real client's exception factory (no network: the client is never called)."""
+    import botocore.session
+
+    return (
+        botocore.session.Session()
+        .create_client(
+            "bedrock-runtime",
+            region_name="us-east-1",
+            aws_access_key_id="fixture",
+            aws_secret_access_key="fixture",
+        )
+        .exceptions
+    )
+
+
 def client_error(
     code: str, message: str = "", *, status: int = 400, request_id: str = "req-0001"
 ) -> ClientError:
-    return ClientError(
+    """A botocore error as the real client raises it: the modeled subclass for a
+    Bedrock Runtime code (``ValidationException``, ``ThrottlingException``, ...),
+    plain ``ClientError`` for any other code, with the full ``ResponseMetadata``."""
+    cls = _modeled_exceptions().from_code(code)
+    return cls(
         {
             "Error": {"Code": code, "Message": message},
-            "ResponseMetadata": {"HTTPStatusCode": status, "RequestId": request_id},
+            "ResponseMetadata": {
+                "RequestId": request_id,
+                "HTTPStatusCode": status,
+                "HTTPHeaders": {
+                    "content-type": "application/json",
+                    "x-amzn-requestid": request_id,
+                    "x-amzn-errortype": code,
+                },
+                "RetryAttempts": 0,
+            },
         },
         "Converse",
     )
