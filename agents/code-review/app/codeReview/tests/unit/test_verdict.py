@@ -294,7 +294,7 @@ def test_candidate_statuses_direct_keeps_shown_then_dropped_order():
 
 
 def test_an_unbounded_check_list_is_linear():
-    checks = [check(f"V{k % 1000}", STATUS_NOT_REPRODUCED) for k in range(200_000)]
+    checks = [check(f"V{k % 1000 + 1}", STATUS_NOT_REPRODUCED) for k in range(200_000)]
     shown = tuple(cand(k) for k in range(1, 1001))
     start = time.perf_counter()
     out = candidate_statuses(checks, shown=shown, dropped=())

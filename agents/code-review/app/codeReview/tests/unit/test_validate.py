@@ -713,3 +713,12 @@ def test_a_full_forty_finding_review_with_verdict_blocking():
     result = run(findings, max_suggestions=0)
     assert len(result.blocking) == 40
     assert result.verdict == VERDICT_BLOCKING
+
+
+def test_in_changed_range_accepts_unsorted_overlapping_ranges():
+    # DiffContext ranges are merged and sorted; a hand-built input may not be.
+    ranges = ((300, 310), (1, 200), (50, 60), (201, 205))
+    assert in_changed_range(208, 208, ranges)  # 205 + 3
+    assert not in_changed_range(209, 296, ranges)
+    assert in_changed_range(297, 297, ranges)
+    assert in_changed_range(150, 150, ranges)
