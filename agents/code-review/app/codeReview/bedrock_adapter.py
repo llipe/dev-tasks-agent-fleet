@@ -656,7 +656,13 @@ def _check(value: Any, previous: str) -> _Output:
         return _invalid(str(exc), exc.rule, previous)
 
 
+# The response botocore could not parse (nesting too deep).
+_UNPARSEABLE = object()
+
+
 def _parse(response: Any, forced: bool) -> _Output:
+    if response is _UNPARSEABLE:
+        return _invalid("$: the response could not be parsed (nesting too deep)", "response", "")
     content = _content(response)
     if content is None:
         return _invalid("$: the response has no message content", "response", "")
@@ -825,6 +831,13 @@ class _Run:
             if info.name == "ValidationException":
                 raise _Rejected(validation_kinds(_aws_message(exc)), info) from None
             raise self.bedrock_error(info) from None
+        except RecursionError:
+            # botocore's json.loads on a reply nested too deep (QA defect 5): the
+            # model's output is unreadable, so it is invalid output and goes to
+            # repair. Its usage is unknown.
+            self.stop(start)
+            self.tokens = None
+            return _UNPARSEABLE
         except ReadTimeoutError:
             end = self.stop(start)
             late = self.deadline is not None and end >= self.deadline

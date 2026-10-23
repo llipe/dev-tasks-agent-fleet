@@ -1182,17 +1182,6 @@ def test_errors_moderately_deep_model_json_parsed_by_botocore_goes_to_repair(htt
     assert result.repair_calls == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (low): botocore parses the Converse body with json.loads, which raises "
-        "RecursionError (not a BotoCoreError) for a toolUse.input nested ~100k deep. The "
-        "adapter does not catch it, so model-shaped output ends as an untyped exception "
-        "(INTERNAL_ERROR in S-213) instead of BedrockError or ModelOutputInvalid. RT-11 "
-        "promises typed errors only."
-    ),
-    raises=RecursionError,
-)
 def test_defect_very_deep_model_json_is_a_typed_error_not_recursion_error(http):
     http.script = [
         (200, None, _deep_tool_use_body(100_000)),

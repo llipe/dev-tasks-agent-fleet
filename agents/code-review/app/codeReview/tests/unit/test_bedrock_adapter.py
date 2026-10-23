@@ -1329,3 +1329,15 @@ def test_usage_counts_are_bounded(tokens, cost_is_none):
     result = run(fake, price_in=1.0, price_out=1.0)
     assert (result.cost_usd is None) is cost_is_none
     assert (result.input_tokens is None) is cost_is_none
+
+
+def test_a_recursion_error_while_botocore_parses_the_reply_goes_to_repair():
+    """QA defect 5 pinned: unreadable model output is invalid output, not INTERNAL_ERROR."""
+    rec = Recorder()
+    fake = FakeConverse([RecursionError("maximum recursion depth exceeded"), _ok()])
+    result = run(fake, recorder=rec, price_in=1.0, price_out=1.0)
+    assert result.repair_calls == 1 and result.calls == 2
+    assert result.input_tokens is None and result.cost_usd is None
+    (rebuilt,) = rec.prompts
+    _, repair = _repair_parts(fake.requests[1], rebuilt.nonce)
+    assert "nesting too deep" in repair
