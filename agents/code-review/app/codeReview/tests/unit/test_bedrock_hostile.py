@@ -78,6 +78,7 @@ from bedrock_adapter import (
     classify_validation_message,
     make_client,
     request_tokens,
+    validation_kinds,
 )
 from budget import BudgetInvariantError
 from context.tokens import estimate, estimate_len
@@ -232,7 +233,8 @@ def _leaf_problem(
     for warn in (WARN_FALLBACK, WARN_REASONING, WARN_CONTEXT_RETRY, WARN_REPAIR):
         if rec.messages.count(warn) > 1:
             return f"{warn!r} more than once"
-    # Each option removal follows a rejection classified as that kind.
+    # Each step drops at most one option, of a kind the rejection matched
+    # (QA defect 3: the first matched kind whose retry still applies).
     for i in range(len(reqs) - 1):
         before, after = reqs[i], reqs[i + 1]
         if len(after["messages"][0]["content"]) == 2:
@@ -240,15 +242,19 @@ def _leaf_problem(
         exc = OUTCOMES[prefix[i]]()
         if not isinstance(exc, ClientError):
             return f"a review retry after a non-rejection ({prefix[i]})"
-        kind = classify_validation_message(exc.response["Error"]["Message"])
+        kinds = validation_kinds(exc.response["Error"]["Message"])
         dropped = {
-            "tool_choice": "toolConfig" in before and "toolConfig" not in after,
-            "reasoning": "additionalModelRequestFields" in before
-            and "additionalModelRequestFields" not in after,
+            k
+            for k, v in {
+                "tool_choice": "toolConfig" in before and "toolConfig" not in after,
+                "reasoning": "additionalModelRequestFields" in before
+                and "additionalModelRequestFields" not in after,
+            }.items()
+            if v
         }
-        if kind in dropped and not dropped[kind]:
-            return f"call {i + 2} does not drop the option rejected as {kind}"
-        if any(v for k, v in dropped.items() if k != kind):
+        if len(dropped) > 1:
+            return f"call {i + 2} dropped two options at once"
+        if not dropped <= set(kinds):
             return f"call {i + 2} dropped an option that was not rejected"
     # Nothing untrusted leaks into errors, warns, or metrics.
     surface = repr(rec.warns) + (str(error) if error is not None else "")
@@ -334,11 +340,16 @@ def _message(name: str) -> str:
 
 
 @pytest.mark.parametrize("name", ["tool", "reason", "ctx", "tool+reason", "reason+ctx", "all"])
-def test_caps_the_same_rejection_twice_is_retried_at_most_once(name):
-    fake = _TreeClient((name, name))
+def test_caps_the_same_rejection_repeated_retries_each_matched_kind_at_most_once(name):
+    """A message matching k kinds can drive up to k different retries, never one twice."""
+    kinds = validation_kinds(_message(name))
+    fake = _TreeClient((name,) * (len(kinds) + 1))
+    rec = Recorder()
     with pytest.raises(BedrockError):
-        run(fake)
-    assert len(fake.requests) == 2
+        run(fake, recorder=rec)
+    assert len(fake.requests) == len(kinds) + 1
+    for warn in (WARN_FALLBACK, WARN_REASONING, WARN_CONTEXT_RETRY):
+        assert rec.messages.count(warn) <= 1
 
 
 def test_caps_the_same_rejection_three_times_never_reaches_a_third_call():
@@ -458,17 +469,6 @@ def test_classification_ignores_patterns_past_the_scan_window():
     assert classify_validation_message(edge[:-1] + "x" + pattern[-1]) is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (low): classification takes the first matching pattern list even when that "
-        "kind's retry is used or inapplicable, so a message that also names an applicable "
-        "kind is not retried. After a reasoning retry, the context-length rejection "
-        "'Input is too long: reasoning tokens exceed the context window' is classified "
-        "'reasoning' and ends BEDROCK_ERROR instead of the spec §16 R4 retry."
-    ),
-    raises=BedrockError,
-)
 @pytest.mark.parametrize(
     ("first", "message", "model_id", "forced_reply"),
     [

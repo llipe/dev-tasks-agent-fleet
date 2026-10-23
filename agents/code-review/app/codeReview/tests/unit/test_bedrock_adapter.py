@@ -1271,14 +1271,6 @@ def test_defensive_repair_calls_count_only_a_sent_repair(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RESIDUAL 5 (planner): a message naming both the reasoning field and tool use is "
-        "classified toolChoice, so the run loses forced mode; prefer the reasoning retry."
-    ),
-    raises=AssertionError,
-)
 def test_residual_reasoning_and_tool_use_in_one_message_prefers_the_reasoning_retry():
     message = "Unknown parameter: reasoning_effort is not supported with tool use."
     fake = FakeConverse([validation_error(message), _ok()])

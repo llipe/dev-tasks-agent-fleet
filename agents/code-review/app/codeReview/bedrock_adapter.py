@@ -28,8 +28,12 @@ parameters, not model input, and are not counted.
 2. Review-call retries, each at most once per run, in whatever order the
    rejections arrive. Each is triggered by a ``ValidationException``
    classified by message (case-insensitive substring match against the
-   ``*_PATTERNS`` constants, checked in the order ``toolChoice``, reasoning,
-   context length; the first match decides):
+   ``*_PATTERNS`` constants). A message can match several kinds; they are
+   tried in the order reasoning, ``toolChoice``, context length, and the
+   first whose retry still applies is taken (QA defect 3). Reasoning goes
+   first because its retry keeps forced mode: "reasoning_effort is not
+   supported with tool use" drops the field, not ``toolConfig`` (planner
+   decision, QA residual 5):
 
    - **toolChoice fallback** (D-34): resend without ``toolConfig``, with
      ``Prompt.fallback_system_blocks()`` (schema plus "one JSON object only").
@@ -152,6 +156,7 @@ __all__ = [
     "Warn",
     "call_timeouts",
     "classify_validation_message",
+    "validation_kinds",
     "is_openai_model",
     "make_client",
     "read_timeout_for",
@@ -215,8 +220,8 @@ CONTEXT_LENGTH_PATTERNS = (
     "maximum number of tokens",
 )
 _CLASSES = (
-    (KIND_TOOL_CHOICE, TOOL_CHOICE_PATTERNS),
     (KIND_REASONING, REASONING_PATTERNS),
+    (KIND_TOOL_CHOICE, TOOL_CHOICE_PATTERNS),
     (KIND_CONTEXT_LENGTH, CONTEXT_LENGTH_PATTERNS),
 )
 MESSAGE_SCAN_CHARS = 4096
@@ -434,21 +439,25 @@ def _aws_message(exc: ClientError) -> str:
     return message if isinstance(message, str) else ""
 
 
-def classify_validation_message(message: str) -> str | None:
-    """``tool_choice``, ``reasoning``, ``context_length``, or ``None`` (linear scan)."""
+def validation_kinds(message: str) -> tuple[str, ...]:
+    """Every kind the message matches, in retry-preference order (linear scan)."""
     text = message[:MESSAGE_SCAN_CHARS].lower()
-    for kind, patterns in _CLASSES:
-        if any(p in text for p in patterns):
-            return kind
-    return None
+    return tuple(kind for kind, patterns in _CLASSES if any(p in text for p in patterns))
+
+
+def classify_validation_message(message: str) -> str | None:
+    """The first of ``validation_kinds(message)``: ``reasoning``, ``tool_choice``,
+    ``context_length``, or ``None``."""
+    kinds = validation_kinds(message)
+    return kinds[0] if kinds else None
 
 
 class _Rejected(Exception):
     """Internal: a ``ValidationException`` on a call, with its classification."""
 
-    def __init__(self, kind: str | None, info: _AwsError) -> None:
-        super().__init__(kind)
-        self.kind = kind
+    def __init__(self, kinds: tuple[str, ...], info: _AwsError) -> None:
+        super().__init__(kinds)
+        self.kinds = kinds
         self.info = info
 
 
@@ -800,7 +809,7 @@ class _Run:
                     f"Bedrock access denied: {info.describe()}", metrics=self.metrics()
                 ) from None
             if info.name == "ValidationException":
-                raise _Rejected(classify_validation_message(_aws_message(exc)), info) from None
+                raise _Rejected(validation_kinds(_aws_message(exc)), info) from None
             raise self.bedrock_error(info) from None
         except ReadTimeoutError:
             end = self.stop(start)
@@ -904,31 +913,37 @@ class _Run:
                 )
             return self.repair(output)
 
+    def applies(self, kind: str) -> bool:
+        if kind in self.retried:
+            return False
+        if kind == KIND_REASONING:
+            return self.reasoning
+        if kind == KIND_TOOL_CHOICE:
+            return self.forced
+        return bool(self.current.context.full_files_included)  # context length
+
     def retry(self, rejected: _Rejected) -> bool:
-        """Apply the retry ``rejected`` calls for, once; ``False`` when none applies."""
-        kind = rejected.kind
-        if kind == KIND_TOOL_CHOICE and self.forced and kind not in self.retried:
+        """Take the first matched retry that still applies, once; ``False`` when none does."""
+        for kind in rejected.kinds:
+            if not self.applies(kind):
+                continue
             self.retried.add(kind)
-            self.forced = False
-            self.warn(WARN_FALLBACK)
+            if kind == KIND_REASONING:
+                self.reasoning = False
+                self.warn(WARN_REASONING)
+            elif kind == KIND_TOOL_CHOICE:
+                self.forced = False
+                self.warn(WARN_FALLBACK)
+            else:
+                files = len(self.current.context.full_files_included)
+                self.current = self.rebuild()
+                self.warn(WARN_CONTEXT_RETRY, files=files)
             return True
-        if kind == KIND_REASONING and self.reasoning and kind not in self.retried:
-            self.retried.add(kind)
-            self.reasoning = False
-            self.warn(WARN_REASONING)
-            return True
-        if kind == KIND_CONTEXT_LENGTH:
-            if kind in self.retried:
-                self.warn(WARN_CONTEXT_AFTER_RETRY)
-                return False
-            files = len(self.current.context.full_files_included)
-            if not files:
+        if KIND_CONTEXT_LENGTH in rejected.kinds:
+            if KIND_CONTEXT_LENGTH in self.retried:
+                self.warn(WARN_CONTEXT_AFTER_RETRY)  # D-48
+            else:
                 self.warn(WARN_CONTEXT_NO_FILES)
-                return False
-            self.retried.add(kind)
-            self.current = self.rebuild()
-            self.warn(WARN_CONTEXT_RETRY, files=files)
-            return True
         return False
 
     def repair(self, output: _Output) -> ReviewResult:
@@ -944,7 +959,7 @@ class _Run:
         try:
             response = self.call(self.request(p, text), repair=True)
         except _Rejected as rejected:
-            if rejected.kind == KIND_CONTEXT_LENGTH:
+            if KIND_CONTEXT_LENGTH in rejected.kinds:
                 self.warn(WARN_CONTEXT_REPAIR)
             raise self.bedrock_error(rejected.info) from None
         second = _parse(response, self.forced)
