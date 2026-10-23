@@ -48,6 +48,7 @@ __all__ = [
     "GitHubApiError",
     "GitHubClient",
     "GitHubError",
+    "GitHubMalformedResponse",
     "GitHubNotFound",
     "GitHubPermissionDenied",
     "Issue",
@@ -101,6 +102,14 @@ class GitHubApiError(GitHubError):
     """5xx, network, rate limit after retries, other 4xx, or a malformed body."""
 
     code = "GITHUB_API_ERROR"
+
+
+class GitHubMalformedResponse(GitHubApiError):
+    """A 2xx response whose body could not be read (not JSON, or a field missing).
+
+    Still a ``GitHubApiError`` for every reader. The comment ``POST`` caller
+    tells it apart: the request succeeded, so a comment exists (S-213, QA-213-05).
+    """
 
 
 class GitHubPermissionDenied(GitHubError):
@@ -537,7 +546,7 @@ class GitHubClient:
             )
             items = self._parse(resp, lambda data: data if isinstance(data, list) else None)
             if items is None:
-                raise GitHubApiError("malformed response: files page is not a list")
+                raise GitHubMalformedResponse("malformed response: files page is not a list")
             files.extend(self._parse_each(items, _parse_file))
             if len(items) < FILES_PER_PAGE:
                 return PullFiles(tuple(files), truncated=False)
@@ -739,7 +748,7 @@ class GitHubClient:
                 return parser(data)
             except _Malformed as exc:
                 problem = f"field {exc.args[0]} missing or mistyped"
-        raise GitHubApiError(f"malformed response: {problem}")
+        raise GitHubMalformedResponse(f"malformed response: {problem}")
 
     @staticmethod
     def _parse_each(items: list[Any], parser: Callable[[Any], Any]) -> list[Any]:
@@ -748,4 +757,4 @@ class GitHubClient:
             return [parser(item) for item in items]
         except _Malformed as exc:
             problem = f"field {exc.args[0]} missing or mistyped"
-        raise GitHubApiError(f"malformed response: {problem}")
+        raise GitHubMalformedResponse(f"malformed response: {problem}")

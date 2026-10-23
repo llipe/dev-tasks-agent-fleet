@@ -104,9 +104,9 @@ from context.verifier import REPORT_NONE, verifier_candidates
 from github_client import (
     GitHubClient,
     GitHubError,
+    GitHubMalformedResponse,
     GitHubNotFound,
     GitHubPermissionDenied,
-    PostedComment,
     PullRequest,
 )
 from heartbeat import HeartbeatResult, run_with_heartbeat
@@ -542,6 +542,14 @@ class _Gathered:
     counts: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _Posted:
+    """A created comment. ``id`` is ``None`` when the 2xx body was unreadable."""
+
+    id: int | None
+    html_url: str
+
+
 @dataclass
 class _Box:
     value: Any = None
@@ -628,6 +636,9 @@ class Pipeline:
     _counts: dict[str, Any] = field(default_factory=dict, init=False)
     _sent_tokens: int = field(default=0, init=False)
     _failure_comment_tried: bool = field(default=False, init=False)
+    # Set once a comment is posted: from then on nothing may post again or fail
+    # the run (QA-213-04).
+    _posted: PipelineResult | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self._events = _Events(self.run_reporter, self.secrets)
@@ -663,10 +674,13 @@ class Pipeline:
             # and no failure comment is attempted for a cancelled stream.
             if not getattr(self.run_reporter, "_terminal", False):
                 with contextlib.suppress(Exception):
-                    self._fail(exc)
+                    if self._posted is not None:
+                        self._finish_posted(exc)
+                    else:
+                        self._fail(exc)
             raise
         except Exception as exc:  # noqa: BLE001 - every failure ends the run (spec §13)
-            result = self._fail(exc)
+            result = self._finish_posted(exc) if self._posted is not None else self._fail(exc)
         assert result is not None
         yield result
 
@@ -979,12 +993,22 @@ class Pipeline:
                 body = body.replace(form, "***")
         return body
 
-    def _post(self, body: str) -> PostedComment:
+    def _post(self, body: str) -> _Posted:
+        """``POST`` one comment. A 2xx with an unreadable body counts as posted."""
         assert self._client is not None
         try:
-            return self._client.post_pr_comment(body)
+            created = self._client.post_pr_comment(body)
+        except GitHubMalformedResponse:
+            # GitHub created the comment; only its response is unreadable (QA-213-05).
+            self._events.warn("comment posted; its response body is unreadable")
+            return _Posted(None, self._pr_url())
         except GitHubError as exc:
             raise CommentPostFailed(exc) from None
+        return _Posted(created.id, created.html_url)
+
+    def _pr_url(self) -> str:
+        org, repo = self.request.repository_org, self.request.repository_name
+        return f"https://github.com/{org}/{repo}/pull/{self.params['pr_number']}"
 
     def _post_note(self, g: _Gathered) -> PipelineResult:
         """The budget comment or the nothing-to-review note, in a ``post`` step."""
@@ -1002,12 +1026,13 @@ class Pipeline:
             body = self._scrub_body(body)
             self._metrics["comment_chars"] = comment_size(body)
             comment = self._post(body)
-            self._events.info(f"{kind} posted", comment_chars=self._metrics["comment_chars"])
+            self._posted = PipelineResult(
+                STATUS_SUCCEEDED, OUTCOME_NOT_APPLICABLE, comment_url=comment.html_url
+            )
+            self._after_post(lambda: self._events.info(f"{kind} posted", **self._post_counts()))
         return self._succeed(OUTCOME_NOT_APPLICABLE, comment_url=comment.html_url)
 
-    def _post_review(
-        self, validation: Validation, result: ReviewResult, g: _Gathered
-    ) -> PostedComment:
+    def _post_review(self, validation: Validation, result: ReviewResult, g: _Gathered) -> _Posted:
         assert g.inputs is not None and g.diff is not None and self._pull is not None
         clean = _scrub_validation(validation, self.secrets)
         rendered = render_review(
@@ -1047,26 +1072,71 @@ class Pipeline:
         number, short = self.params["pr_number"], self._pull.head_sha[:7]
         title = f"Code review #{number} @ {short}: {validation.verdict}"
         comment = self._post(body)
-        self.run_reporter.artifact("audit_report", url=comment.html_url, title=title, **metadata)
-        self._events.info(
-            "review comment posted",
-            comment_chars=rendered.chars,
-            comment_truncated=rendered.truncated,
-            stages=list(rendered.stages),
+        self._posted = PipelineResult(
+            STATUS_SUCCEEDED,
+            outcome_for_verdict(validation.verdict),
+            verdict=validation.verdict,
+            comment_url=comment.html_url,
+        )
+        metadata["comment_id"] = comment.id
+        self._after_post(
+            lambda: self.run_reporter.artifact(
+                "audit_report", url=comment.html_url, title=title, **metadata
+            )
+        )
+        self._after_post(
+            lambda: self._events.info(
+                "review comment posted", stages=list(rendered.stages), **self._post_counts()
+            )
         )
         return comment
+
+    def _post_counts(self) -> dict[str, Any]:
+        return {
+            "comment_chars": self._metrics["comment_chars"],
+            "comment_truncated": self._metrics["comment_truncated"],
+        }
+
+    def _after_post(self, write: Callable[[], Any]) -> None:
+        """A write after the comment is posted: an error is an event, never a failure."""
+        try:
+            write()
+        except Exception as exc:  # noqa: BLE001 - QA-213-04
+            self._events.error(
+                "write after the comment was posted failed", error=type(exc).__name__
+            )
 
     # -- terminal states ---------------------------------------------------------
 
     def _succeed(
         self, outcome: str, *, verdict: str | None = None, comment_url: str | None = None
     ) -> PipelineResult:
-        self.run_reporter.succeed(
-            outcome,
-            result={"verdict": verdict, "comment_url": comment_url},
-            metrics=self._final_metrics(),
-        )
+        """End the run succeeded. Never raises (QA-213-04): if the terminal write
+        fails, it is retried without ``result`` and ``metrics``, then through the
+        vendored reporter's lowest-level terminal write."""
+        try:
+            metrics = self._final_metrics()
+        except Exception:  # noqa: BLE001
+            metrics = _empty_metrics()
+        try:
+            self.run_reporter.succeed(
+                outcome, result={"verdict": verdict, "comment_url": comment_url}, metrics=metrics
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._events.error("terminal write failed; retrying", error=type(exc).__name__)
+            try:
+                self.run_reporter.succeed(outcome)
+            except Exception:  # noqa: BLE001
+                with contextlib.suppress(Exception):
+                    self.run_reporter._terminate(STATUS_SUCCEEDED, outcome=outcome)
         return PipelineResult(STATUS_SUCCEEDED, outcome, verdict=verdict, comment_url=comment_url)
+
+    def _finish_posted(self, exc: BaseException) -> PipelineResult:
+        """An error after the comment was posted: logged, and the run keeps that outcome."""
+        self._events.error("error after the comment was posted", error=type(exc).__name__)
+        posted = self._posted
+        assert posted is not None
+        return self._succeed(posted.outcome, verdict=posted.verdict, comment_url=posted.comment_url)
 
     def _fail(self, exc: BaseException) -> PipelineResult:
         """End the run failed with ``exc``'s §13 code. Each part is guarded (QA-213-01):

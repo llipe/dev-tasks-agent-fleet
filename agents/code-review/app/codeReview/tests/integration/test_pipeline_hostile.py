@@ -523,14 +523,6 @@ class _SuppressBase:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-04: once the review comment is posted, an exception from the artifact "
-        "write, the 'posted' event or RunReporter.succeed sends the run to _fail, which "
-        "posts a second, contradictory 'Code review failed' comment"
-    ),
-)
 @pytest.mark.parametrize("where", ["artifact", "posted-event", "succeed"])
 def test_nothing_after_the_review_post_adds_a_failure_comment(h, monkeypatch, where):
     if where == "artifact":
@@ -552,14 +544,6 @@ def test_nothing_after_the_review_post_adds_a_failure_comment(h, monkeypatch, wh
     assert _failure_posts(h) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-05: a 2xx review POST whose body does not parse raises GitHubApiError, "
-        "so the run fails COMMENT_POST_FAILED and posts a failure comment under a review "
-        "comment that GitHub did create"
-    ),
-)
 def test_a_created_comment_with_an_unreadable_body_is_not_followed_by_a_failure_comment(h):
     h.stub.add(("POST", COMMENTS_PATH), StubResponse(201, b"<html>not json</html>", {}))
     h.fake.push(review([blocking()]))
