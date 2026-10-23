@@ -74,7 +74,7 @@ The project is delivered in three phases:
 │   │   ├── agentcore/       # Runtime config + CDK infra
 │   │   ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
 │   │   └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
-│   └── code-review/   # Code Review agent (Python) — Wave A scaffold, in development, not deployed
+│   └── code-review/   # Code Review agent (Python) — Wave A delivered, not deployed (Wave B pending)
 │       └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml (no agentcore/ config yet)
 └── workstream/              # Task lists, specs, test plans, fidelity reports; archive/ holds completed work
 ```
@@ -84,9 +84,10 @@ The **active codebase** is the `dependency-update` Python agent under
 (Phase 2, deployed), and the `security-analyst` Python agent under
 `agents/security-analyst/app/securityAnalyst/` (Phase 3, done and verified live, see
 Delivery phases above), and the `code-review` Python package under
-`agents/code-review/app/codeReview/` (Wave A scaffold, in development: params validation and
-a skeleton invoke only; it is not deployed, has no runtime ARN yet, and reviews nothing yet —
-see [`docs/requirements/prd-code-review-agent.md`](docs/requirements/prd-code-review-agent.md)).
+`agents/code-review/app/codeReview/` (Wave A delivered: a `/review` PR comment starts one run
+that makes one model call and posts one review comment; it is not deployed, has no runtime ARN
+yet, and reviews no PR until Wave B is done — see
+[`docs/requirements/prd-code-review-agent.md`](docs/requirements/prd-code-review-agent.md)).
 Agent-specific details (pipeline, deployment, environment variables, runtime timeouts) live in
 [`agents/dependency-update/README.md`](agents/dependency-update/README.md) and
 [`agents/security-analyst/README.md`](agents/security-analyst/README.md).
@@ -198,7 +199,7 @@ login boundary and rejects a test signup. See
 | [`docs/product-context.md`](docs/product-context.md) | Problem statement, users, goals, roadmap, constraints |
 | [`docs/technical-guidelines.md`](docs/technical-guidelines.md) | Stack, architecture patterns, data model, security, deployment (canonical current-state doc — see its changelog for the full delivery history) |
 | [`docs/roadmap.md`](docs/roadmap.md) | One-page index of every PRD's phases/waves — status, delivering issues/PRs, and what's missing |
-| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant), ADR-007 (auth release gate replaces the privacy gate — login is now the panel's security boundary), ADR-008 (`middleware.ts` → `proxy.ts` auth chokepoint on the Node.js runtime + 5 s fail-closed `getClaims()` timeout), ADR-009 (allowlisted AWS error logging — `name`/`httpStatusCode`/`requestId` only, never the message/payload/credentials) |
+| [`docs/adr/`](docs/adr/) | Architecture decision records — ADR-001 (LLM fix-agent escape hatch), ADR-002 (`open_pr` step + PR artifact), ADR-003 (run-metric fix), ADR-004 (`pg_cron` reaper schedule), ADR-005 (repeated `prompt`-unwrap + diagnostic), ADR-006 (long-step keep-alive + clock invariant), ADR-007 (auth release gate replaces the privacy gate — login is now the panel's security boundary), ADR-008 (`middleware.ts` → `proxy.ts` auth chokepoint on the Node.js runtime + 5 s fail-closed `getClaims()` timeout), ADR-009 (allowlisted AWS error logging — `name`/`httpStatusCode`/`requestId` only, never the message/payload/credentials), ADR-010 (code-review agent constraints — one model call with no tools, non-Anthropic model, wrapper-enforced verdict, GitHub write allowlist with one write) |
 | [`docs/runbooks/`](docs/runbooks/) | Operator procedures requiring live AWS/Supabase/Fly access — [`panel-deployment.md`](docs/runbooks/panel-deployment.md) (Fly deploy, OIDC probe, auth release gate, go-public, **publishable-key credential cutover**), [`issue-77-deployment-e2e.md`](docs/runbooks/issue-77-deployment-e2e.md) (agent deploy + E2E, historical), [`issue-94-reaper-verification.md`](docs/runbooks/issue-94-reaper-verification.md) (`pg_cron` reaper scheduling + stale-run verification), [`issue-89-live-verification.md`](docs/runbooks/issue-89-live-verification.md) (invocation payload shape), [`issue-115-baseline-adoption.md`](docs/runbooks/issue-115-baseline-adoption.md) (Supabase CLI migration adoption), [`issue-116-english-sql-surface.md`](docs/runbooks/issue-116-english-sql-surface.md), [`issue-121-ac10-reaper-paused.md`](docs/runbooks/issue-121-ac10-reaper-paused.md), [`webhook-deployment.md`](docs/runbooks/webhook-deployment.md) (webhook migrations, bot login, endpoints and secrets, the release-gate probe endpoint), [`webhook-rules.md`](docs/runbooks/webhook-rules.md) (writing webhook rules: events, condition operators and paths, repository source, payload parameters, examples) |
 | [`docs/requirements/`](docs/requirements/) | PRDs — [`prd-dependency-update-agent.md`](docs/requirements/prd-dependency-update-agent.md) (Phase 1), [`prd-agent-fleet-panel-v2.md`](docs/requirements/prd-agent-fleet-panel-v2.md) (Phase 2), [`prd-panel-password-auth.md`](docs/requirements/prd-panel-password-auth.md) (the shipped auth wave), [`prd-panel-auth-and-rls.md`](docs/requirements/prd-panel-auth-and-rls.md) (deferred RLS hardening), [`prd-agent-fleet-panel-v3-ui-depth.md`](docs/requirements/prd-agent-fleet-panel-v3-ui-depth.md), [`prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md) (Phase 3, done), [`prd-webhook-triggers.md`](docs/requirements/prd-webhook-triggers.md) (webhook triggers, Phase 1 live) |
 | [`docs/prototype/`](docs/prototype/) | High-fidelity Nocturne HTML prototype — the source `/DESIGN.md` was extracted from |
