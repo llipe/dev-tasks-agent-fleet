@@ -3,8 +3,11 @@ S-204 AC3/AC4/AC7 — ``main.invoke`` skeleton against a reporter sink.
 
 TC-204-11: invalid params end ``failed``/``INVALID_PARAMS`` with zero GitHub
 calls. TC-204-12 (invoke half): the clock invariant runs before ``started``.
-TC-204-18: valid params start the run, open ``load_pr``, and end
-``failed``/``INTERNAL_ERROR`` "not implemented" (replaced in S-213).
+TC-204-18: valid params start the run and open ``load_pr``. Since S-213 the
+step runs the real pipeline, so here (credential resolution refused by the
+sink) it ends ``failed``/``INTERNAL_ERROR`` with no GitHub call and no failure
+comment (no token, so no client). The full pipeline is covered by
+``test_pipeline_e2e.py``.
 
 The sink replaces only the vendored reporter's HTTP layer
 (``agent_reporter._SupabaseClient``), so the real ``RunReporter`` lifecycle runs.
@@ -240,7 +243,7 @@ def test_clock_invariant_failure_refuses_to_start(sink, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_valid_params_open_load_pr_and_end_not_implemented(sink):
+def test_valid_params_open_load_pr_and_resolve_credentials(sink):
     result = _drive(_payload())
 
     assert result == {
@@ -255,7 +258,7 @@ def test_valid_params_open_load_pr_and_end_not_implemented(sink):
     assert patches[0]["status"] == "running"
     assert patches[-1]["status"] == "failed"
     assert patches[-1]["error_code"] == "INTERNAL_ERROR"
-    assert patches[-1]["error_message"] == "not implemented"
+    assert patches[-1]["error_message"].startswith("INTERNAL_ERROR in step load_pr:")
 
     steps = sink.step_inserts()
     assert [s["key"] for s in steps] == ["load_pr"]
@@ -263,7 +266,27 @@ def test_valid_params_open_load_pr_and_end_not_implemented(sink):
     assert step_patches and step_patches[-1]["status"] == "failed"
 
     assert sink.backstops == 1
-    _assert_no_github(sink)
+    assert sink.credential_calls == ["llipe"]
+    assert sink.github_calls == []
+    assert any("failure comment not posted" in m for m in sink.messages())
+
+
+def test_pipeline_deps_resolve_the_installation_token(monkeypatch):
+    """main.pipeline_deps mints the token through resolve_github_credentials."""
+    from config import Settings
+    from credentials import TokenContext
+
+    seen = []
+
+    def _resolve(org, url, key):
+        seen.append((org, url, key))
+        return TokenContext(token="ghs_x", issued_at=0.0, installation_id=1)
+
+    monkeypatch.setattr(main, "resolve_github_credentials", _resolve)
+    settings = Settings("http://sb.local", "sid", "model", "https://panel.local")
+    deps = main.pipeline_deps(settings, "svc-key")
+    assert deps.resolve_token("acme") == "ghs_x"
+    assert seen == [("acme", "http://sb.local", "svc-key")]
 
 
 def test_valid_wrapped_payload_reaches_load_pr(sink):

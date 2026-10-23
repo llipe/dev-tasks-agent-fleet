@@ -8,21 +8,21 @@ the payload and ``params`` against spec §5.1 (defense in depth: the panel has
 already validated them), apply defaults, and run the pipeline under the
 vendored ``RunReporter``.
 
-S-204 ships a **skeleton** pipeline: a valid invocation starts the run, opens
-the ``load_pr`` step, and ends ``failed``/``INTERNAL_ERROR`` "not implemented".
-S-213 replaces :func:`load_pr` and :func:`run_review` with the real pipeline
-(``load_pr`` -> ``context`` -> ``review`` -> ``validate`` -> ``post``, spec §8.1).
+A valid invocation runs ``pipeline.Pipeline`` (S-213): ``load_pr`` ->
+``context`` -> ``review`` -> ``validate`` -> ``post`` (spec §8.1), with the
+deps :func:`pipeline_deps` builds (the real GitHub App token, GitHub client,
+Bedrock client factory, monotonic clock, and a no-op prompt sink). Heartbeat
+chunks from the pipeline are yielded straight through, then one terminal chunk.
 
-Error codes used here (spec §13): ``INVALID_PARAMS`` for a payload or params
-violation (no GitHub call is ever made), ``INTERNAL_ERROR`` for anything else.
+Error codes decided here (spec §13): ``INVALID_PARAMS`` for a payload or params
+violation (no GitHub call is ever made, no failure comment), ``INTERNAL_ERROR``
+for a startup failure before the pipeline exists. The pipeline maps the rest.
 """
 
 from __future__ import annotations
 
 import json
 import re
-import traceback
-from dataclasses import dataclass
 from typing import Any
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -39,11 +39,33 @@ from config import (
 )
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
 from heartbeat import terminal_chunk
-from scrubber import scrub
+from pipeline import Pipeline, PipelineDeps, PipelineResult, ReviewRequest
 from signal_backstop import install_termination_backstop
 
 app = BedrockAgentCoreApp()
 log = app.logger
+
+
+class _ScrubbedRunReporter(RunReporter):
+    """The vendored reporter, with an exit path that records no exception text.
+
+    ``RunReporter.__exit__`` writes ``str(exc)`` to ``runs.error_message`` and the
+    traceback to run_events. Here, an exception that still reaches the ``with``
+    (a ``GeneratorExit`` or ``CancelledError`` when the client goes away, or a
+    pipeline defect) ends a still-open run ``failed``/``INTERNAL_ERROR`` with the
+    class name only (QA-213-03). A run already ended (by the pipeline or the
+    SIGTERM backstop) is left as it is. The vendored file stays byte-identical.
+    """
+
+    def __exit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        if exc_type is not None and not self._terminal:
+            self.fail(
+                error_code="INTERNAL_ERROR",
+                error_message=f"INTERNAL_ERROR: {exc_type.__name__}",
+                outcome="not_applicable",
+            )
+        return super().__exit__(None, None, None)
+
 
 __all__ = [
     "CredentialError",
@@ -53,6 +75,7 @@ __all__ = [
     "build_return_payload",
     "classify_invalid_payload",
     "invoke",
+    "pipeline_deps",
     "resolve_github_credentials",
     "unwrap_payload",
     "validate_params",
@@ -244,31 +267,18 @@ def _failed(error_code: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline (spec §8.1) — S-204 skeleton, replaced in S-213
+# Pipeline deps (spec §8.1) — the production wiring
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class ReviewRequest:
-    """A validated invocation with defaults applied."""
+def pipeline_deps(settings: Settings, supabase_key: str) -> PipelineDeps:
+    """The production deps: the GitHub App installation token for the org, minted
+    through the ``github_installations`` row; every other dep is the default."""
 
-    run_id: str
-    repository_org: str
-    repository_name: str
-    params: dict[str, Any]
-    settings: Settings
+    def resolve_token(org: str) -> str:
+        return resolve_github_credentials(org, settings.supabase_url, supabase_key).token
 
-
-def load_pr(request: ReviewRequest) -> None:
-    """Step ``load_pr``: mint the token and read the pull request (S-213)."""
-    raise NotImplementedError("not implemented")
-
-
-def run_review(run: RunReporter, request: ReviewRequest) -> dict[str, Any]:
-    """Run the review pipeline under ``run`` and return the terminal payload."""
-    with run.step("load_pr"):
-        load_pr(request)
-    return build_return_payload("succeeded", "not_applicable", None)  # pragma: no cover - S-213
+    return PipelineDeps(resolve_token=resolve_token)
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +336,7 @@ async def invoke(payload: Any, context: Any):
         return
     secrets.append(supabase_key)
 
-    run = RunReporter(
+    run = _ScrubbedRunReporter(
         supabase_url=settings.supabase_url,
         supabase_key=supabase_key,
         run_id=run_id,
@@ -349,14 +359,19 @@ async def invoke(payload: Any, context: Any):
                 params=apply_defaults(payload["params"]),
                 settings=settings,
             )
+            pipeline = Pipeline(run, request, secrets, pipeline_deps(settings, supabase_key))
             try:
-                result = run_review(run, request)
+                async for item in pipeline.run():
+                    if isinstance(item, PipelineResult):
+                        result = item.payload()
+                    else:
+                        yield item  # heartbeat chunk
             except Exception as exc:
-                log.error("Unhandled exception:\n%s", scrub(traceback.format_exc(), secrets))
-                message = scrub(str(exc), secrets) or type(exc).__name__
+                # The class name only: exception text and tracebacks can carry secrets.
+                log.error("Unhandled exception: %s", type(exc).__name__)
                 run.fail(
                     error_code="INTERNAL_ERROR",
-                    error_message=message,
+                    error_message=f"INTERNAL_ERROR: {type(exc).__name__}",
                     outcome="not_applicable",
                 )
                 result = _failed("INTERNAL_ERROR")

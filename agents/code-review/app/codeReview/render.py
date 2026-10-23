@@ -15,6 +15,8 @@ their input:
   cut at GitHub's cap) or the token counts (``"tokens"``, test plan DF-08).
 - ``render_failure`` — the FR-26 one-line failure comment: fixed text per
   spec §13 code, never an exception message.
+- ``render_nothing_to_review`` — the note for a PR whose changed files are all
+  listed by name only (S-213, DF-16): no model call, no silence.
 
 Each ends with the run link ``PANEL_BASE_URL/runs/<run_id>`` (D-29). The link
 is built only from a validated base URL (``http(s)``, host, optional port,
@@ -160,6 +162,7 @@ __all__ = [
     "neutralize",
     "render_budget",
     "render_failure",
+    "render_nothing_to_review",
     "render_review",
     "run_link",
 ]
@@ -1044,6 +1047,26 @@ def render_budget(
         listed = _Names(CONTEXT_MAX_CHARS).join(name_only, _name_only_label)
         body += f"\nNot counted, listed by name only: {listed}.\n"
     return body
+
+
+def render_nothing_to_review(
+    name_only: Sequence[NameOnlyFile], *, run_id: str, panel_base_url: str
+) -> str:
+    """The note for a PR with no reviewed file (S-213, test plan DF-16).
+
+    Every changed file is listed by name only (a lockfile-only PR, say), so
+    nothing is sent to the model; the run posts this note rather than going
+    silent. The names are neutralized and capped like the budget comment's.
+    """
+    link = _link(panel_base_url, run_id)
+    if not name_only:
+        return f"Nothing to review: this PR changes no files. Not reviewed. {link}\n"
+    count = _counted(len(name_only), "file")
+    listed = _Names(CONTEXT_MAX_CHARS).join(name_only, _name_only_label)
+    return (
+        f"Nothing to review: this PR changes only files listed by name ({count})."
+        f" Not reviewed. {link}\n\nListed by name only: {listed}.\n"
+    )
 
 
 def canonical_code(error_code: object) -> str:
