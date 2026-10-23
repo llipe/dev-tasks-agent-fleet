@@ -40,10 +40,13 @@ _PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
     # Anthropic API keys: sk-ant-api03-..., sk-ant-admin01-..., etc.
     re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}"),
-    # GitHub fine-grained PATs.
+    # GitHub fine-grained PATs. No left anchor: a token glued to a preceding
+    # word character (``GH_TOKEN_github_pat_...``) must still be caught.
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     # GitHub classic PATs and App/OAuth tokens: ghp_, gho_, ghu_, ghs_, ghr_.
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}"),
+    # No ``\b`` anchor (S-180 QA): ``xghp_...`` and ``GH_TOKEN_ghp_...`` used to
+    # survive because the preceding word character defeated the boundary.
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}"),
 )
 
 
@@ -142,17 +145,23 @@ def tail(output: str | bytes, secrets: SecretsLike, max_chars: int = 4000) -> st
     return clean[-max_chars:] if max_chars > 0 else ""
 
 
-def scrub_process_error(exc: subprocess.CalledProcessError, secrets: list[str]) -> None:
-    """Scrub cmd, stdout, and stderr of a CalledProcessError in-place."""
+def scrub_process_error(exc: subprocess.CalledProcessError, secrets: SecretsLike) -> None:
+    """Scrub cmd, stdout, and stderr of a CalledProcessError in-place.
+
+    Accepts a :class:`SecretSet` or a plain list of values (the sibling's
+    contract), and applies both layers — known values and known shapes — so an
+    unregistered credential printed by the subprocess is still redacted.
+    """
+    values = _as_list(secrets)
     cmd_str = " ".join(exc.cmd) if isinstance(exc.cmd, list) else str(exc.cmd)
-    exc.cmd = scrub(cmd_str, secrets)
+    exc.cmd = scrub_all(cmd_str, values)
     if exc.stderr:
-        exc.stderr = scrub(
+        exc.stderr = scrub_all(
             exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode("utf-8", "replace"),
-            secrets,
+            values,
         )
     if exc.stdout:
-        exc.stdout = scrub(
+        exc.stdout = scrub_all(
             exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode("utf-8", "replace"),
-            secrets,
+            values,
         )

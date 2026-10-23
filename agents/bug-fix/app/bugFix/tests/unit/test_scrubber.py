@@ -91,6 +91,31 @@ class TestSiblingContract:
         assert INSTALL_TOKEN not in exc.stdout
         assert INSTALL_TOKEN not in exc.stderr
 
+    def test_scrub_process_error_accepts_secret_set(self):
+        # QA/verifier S-180: a SecretSet used to raise TypeError (not iterable).
+        exc = subprocess.CalledProcessError(1, ["gh", "api", f"-H=token {PROJECTS_PAT}"])
+        exc.stdout = f"out {SUPABASE_KEY}".encode()
+        exc.stderr = f"err {APP_PEM}"
+        scrub_process_error(exc, _registered())
+        assert PROJECTS_PAT not in str(exc.cmd)
+        _assert_clean(exc.stdout)
+        _assert_clean(exc.stderr)
+
+    def test_scrub_process_error_redacts_unregistered_shapes(self):
+        # Known values and known shapes: an Anthropic key, a GitHub token or a
+        # PEM block printed by a subprocess is caught even when unregistered.
+        for secrets in (SecretSet(), []):
+            exc = subprocess.CalledProcessError(
+                1, f"curl -H 'x-api-key: {ANTHROPIC_KEY}' -H 'auth: {INSTALL_TOKEN}'"
+            )
+            exc.stdout = f"key={ANTHROPIC_KEY}\n{APP_PEM}".encode()
+            exc.stderr = f"token {PROJECTS_PAT}"
+            scrub_process_error(exc, secrets)
+            _assert_clean(str(exc.cmd))
+            _assert_clean(exc.stdout)
+            _assert_clean(exc.stderr)
+            assert "sk-ant-" not in exc.stdout
+
 
 # ---------------------------------------------------------------------------
 # Bug-fix extensions: the Anthropic key and the Projects PAT (D-50, D-99)
@@ -123,6 +148,22 @@ class TestProjectsToken:
     def test_unregistered_fine_grained_pat_shape_is_redacted(self):
         pat = "github_pat_" + "11ABCDEFG0" * 8
         assert pat not in redact_patterns(f"x {pat} y")
+
+    def test_token_glued_to_a_word_char_is_redacted(self):
+        # QA/verifier S-180: a leading word character used to defeat the
+        # `\b` anchor, so `xghp_...` and `GH_TOKEN_ghp_...` survived.
+        pat = "github_pat_" + "11ABCDEFG0" * 8
+        for text in (
+            f"x{PROJECTS_PAT}",
+            f"GH_TOKEN_{PROJECTS_PAT}",
+            f"9{INSTALL_TOKEN}",
+            f"x{pat}",
+            f"GH_TOKEN_{pat}",
+        ):
+            out = redact_patterns(text)
+            assert PROJECTS_PAT not in out
+            assert INSTALL_TOKEN not in out
+            assert pat not in out
 
 
 class TestOtherSecrets:
@@ -255,6 +296,28 @@ def test_any_anthropic_key_shape_is_redacted(body: str) -> None:
 def test_any_github_token_shape_is_redacted(body: str, prefix: str) -> None:
     token = prefix + body
     assert token not in redact_patterns(f"t {token} t")
+
+
+_WORD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+
+
+@given(
+    lead=st.text(alphabet=_WORD, max_size=20),
+    body=st.text(alphabet=_WORD[:-1], min_size=36, max_size=60),
+    prefix=st.sampled_from(["ghp_", "ghs_", "gho_", "ghu_", "ghr_"]),
+)
+def test_github_token_with_word_char_prefix_is_redacted(lead: str, body: str, prefix: str) -> None:
+    token = prefix + body
+    assert token not in redact_patterns(lead + token)
+
+
+@given(
+    lead=st.text(alphabet=_WORD, max_size=20),
+    body=st.text(alphabet=_WORD, min_size=20, max_size=90),
+)
+def test_fine_grained_pat_with_word_char_prefix_is_redacted(lead: str, body: str) -> None:
+    pat = "github_pat_" + body
+    assert pat not in redact_patterns(lead + pat)
 
 
 @given(text=_TEXT)
