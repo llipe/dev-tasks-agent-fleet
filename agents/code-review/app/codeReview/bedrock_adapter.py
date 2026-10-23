@@ -77,7 +77,9 @@ request and the wrapper text. When nothing is left, no repair call is sent:
 ``BedrockAccessDenied``. Throttling and 5xx reach the adapter only after
 botocore's standard retry mode (``MAX_ATTEMPTS`` = 3) and are
 ``BedrockError``, with no adapter retry. A read timeout is ``BedrockTimeout``:
-``RUN_TIMEOUT`` when the run deadline has passed, else ``BEDROCK_ERROR``.
+``RUN_TIMEOUT`` when the run deadline has passed, else ``BEDROCK_ERROR``; the
+same holds for a connect timeout, ``ModelTimeoutException``, and throttling
+(``TIMEOUT_OR_THROTTLING_CODES``; planner decision, QA residual 4).
 
 **Deadline** (spec §8.9; QA defect 1). With ``client_factory`` the adapter
 builds a client per call whose connect and read timeouts come from
@@ -104,7 +106,7 @@ from typing import Any, Protocol
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError, ReadTimeoutError
+from botocore.exceptions import BotoCoreError, ClientError, ConnectTimeoutError, ReadTimeoutError
 
 from budget import ContextData, ContextInputs, assert_within_budget
 from config import Settings
@@ -143,6 +145,7 @@ __all__ = [
     "REASONING_PATTERNS",
     "REPAIR_ERROR_MAX_CHARS",
     "REPAIR_KIND",
+    "TIMEOUT_OR_THROTTLING_CODES",
     "TOOL_CHOICE_PATTERNS",
     "BedrockAccessDenied",
     "BedrockAdapterError",
@@ -196,6 +199,10 @@ OUTPUT_PROMPT_JSON = "prompt_json"
 # ``content_filtered``, ``guardrail_intervened``, ...) is invalid output.
 # A response with no stop reason is accepted.
 ACCEPTED_STOP_REASONS = frozenset({"tool_use", "end_turn", "stop_sequence"})
+
+# Past the run deadline these are ``RUN_TIMEOUT`` (planner decision, QA
+# residual 4), like a read or connect timeout; before it, ``BEDROCK_ERROR``.
+TIMEOUT_OR_THROTTLING_CODES = frozenset({"ThrottlingException", "ModelTimeoutException"})
 
 # ``ValidationException`` classification: lowercase substrings, matched in
 # this order against the first ``MESSAGE_SCAN_CHARS`` of the lowercased message.
@@ -822,7 +829,7 @@ class _Run:
         try:
             response = client.converse(**request)
         except ClientError as exc:
-            self.stop(start)
+            end = self.stop(start)
             info = _aws_error(exc)
             if info.name == "AccessDeniedException":
                 raise BedrockAccessDenied(
@@ -830,6 +837,12 @@ class _Run:
                 ) from None
             if info.name == "ValidationException":
                 raise _Rejected(validation_kinds(_aws_message(exc)), info) from None
+            if info.name in TIMEOUT_OR_THROTTLING_CODES and self.past_deadline(end):
+                raise BedrockTimeout(
+                    f"Bedrock converse failed past the run deadline: {info.describe()}",
+                    run_timeout=True,
+                    metrics=self.metrics(),
+                ) from None
             raise self.bedrock_error(info) from None
         except RecursionError:
             # botocore's json.loads on a reply nested too deep (QA defect 5): the
@@ -840,12 +853,19 @@ class _Run:
             return _UNPARSEABLE
         except ReadTimeoutError:
             end = self.stop(start)
-            late = self.deadline is not None and end >= self.deadline
             raise BedrockTimeout(
-                "Bedrock converse read timeout", run_timeout=late, metrics=self.metrics()
+                "Bedrock converse read timeout",
+                run_timeout=self.past_deadline(end),
+                metrics=self.metrics(),
             ) from None
         except BotoCoreError as exc:
-            self.stop(start)
+            end = self.stop(start)
+            if isinstance(exc, ConnectTimeoutError) and self.past_deadline(end):
+                raise BedrockTimeout(
+                    "Bedrock converse connect timeout past the run deadline",
+                    run_timeout=True,
+                    metrics=self.metrics(),
+                ) from None
             raise BedrockError(
                 f"Bedrock converse failed: {type(exc).__name__}", metrics=self.metrics()
             ) from None
@@ -872,6 +892,9 @@ class _Run:
         return self.client_factory(
             read_timeout_seconds=timeouts.read, connect_timeout_seconds=timeouts.connect
         )
+
+    def past_deadline(self, now: float) -> bool:
+        return self.deadline is not None and now >= self.deadline
 
     def stop(self, start: float) -> float:
         end = self.clock()

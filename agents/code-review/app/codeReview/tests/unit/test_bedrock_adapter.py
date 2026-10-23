@@ -1281,14 +1281,6 @@ def test_residual_reasoning_and_tool_use_in_one_message_prefers_the_reasoning_re
     assert result.reasoning_effort_applied is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RESIDUAL 4 (planner): past the deadline, a connect timeout, ModelTimeoutException "
-        "or throttling must be RUN_TIMEOUT, as a read timeout is."
-    ),
-    raises=AssertionError,
-)
 @pytest.mark.parametrize(
     "error",
     [
