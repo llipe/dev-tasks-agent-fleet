@@ -120,6 +120,7 @@ from render import (
     render_failure,
     render_nothing_to_review,
     render_review,
+    strip_invisible,
 )
 from scrubber import scrub
 from validate import VERDICT_BLOCKING, VERDICT_CLEAR, Validation, validate_result
@@ -319,10 +320,27 @@ async def bounded(
 # ---------------------------------------------------------------------------
 
 
+def _scrub_text(text: str, secrets: Sequence[str]) -> str:
+    """``scrubber.scrub``, also for a secret split by invisible characters (QA-PRD-02).
+
+    ``scrub`` matches the exact secret only. When removing the characters
+    ``neutralize`` drops (``render.strip_invisible``) reveals a secret, the
+    stripped text is scrubbed instead, so no reporter write or comment holds a
+    secret a viewer would show whole. Text hiding no secret is returned as
+    ``scrub`` leaves it, so a canonical path keeps its characters.
+    """
+    sec = list(secrets)
+    out = scrub(text, sec)
+    visible = strip_invisible(out)
+    if visible != out and any(s and s in visible for s in sec):
+        return scrub(visible, sec)
+    return out
+
+
 def scrub_value(value: Any, secrets: Sequence[str]) -> Any:
-    """``scrubber.scrub`` over every string in nested dicts, lists and tuples."""
+    """``_scrub_text`` over every string in nested dicts, lists and tuples."""
     if isinstance(value, str):
-        return scrub(value, list(secrets))
+        return _scrub_text(value, secrets)
     if isinstance(value, dict):
         return {scrub_value(k, secrets): scrub_value(v, secrets) for k, v in value.items()}
     if isinstance(value, list | tuple):
@@ -334,7 +352,7 @@ def _scrub_validation(v: Validation, secrets: Sequence[str]) -> Validation:
     """The validation with every model and repository text field scrubbed."""
 
     def s(text: str) -> str:
-        return scrub(text, list(secrets))
+        return _scrub_text(text, secrets)
 
     def finding(f: Any) -> Any:
         return dataclasses.replace(
@@ -372,8 +390,8 @@ def _scrub_name_only(
     return tuple(
         dataclasses.replace(
             f,
-            filename=scrub(f.filename, sec),
-            detail=None if f.detail is None else scrub(f.detail, sec),
+            filename=_scrub_text(f.filename, sec),
+            detail=None if f.detail is None else _scrub_text(f.detail, sec),
         )
         for f in files
     )
@@ -394,7 +412,7 @@ def _scrub_render_inputs(
     sec = list(secrets)
 
     def s(text: str) -> str:
-        return scrub(text, sec)
+        return _scrub_text(text, sec)
 
     def cand(c: Candidate) -> Candidate:
         return dataclasses.replace(c, report_path=s(c.report_path), text=s(c.text))
@@ -666,7 +684,9 @@ class _Events:
                 return
             try:
                 self._run.log(
-                    scrub(message, self._secrets), level=level, **scrub_value(data, self._secrets)
+                    _scrub_text(message, self._secrets),
+                    level=level,
+                    **scrub_value(data, self._secrets),
                 )
             except Exception:  # noqa: BLE001 - reporting must never break the run
                 return
@@ -1289,7 +1309,7 @@ class Pipeline:
                 message += f" (HTTP {status})"
             if isinstance(exc, BedrockAdapterError | RunTimeout | CommentPostFailed):
                 message += f": {exc}"
-            return scrub(message, self.secrets)[:MESSAGE_MAX]
+            return _scrub_text(message, self.secrets)[:MESSAGE_MAX]
         except Exception:  # noqa: BLE001
             return f"{code} in step {step}: {type(exc).__name__}"[:MESSAGE_MAX]
 

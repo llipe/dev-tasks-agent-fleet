@@ -165,6 +165,7 @@ __all__ = [
     "render_nothing_to_review",
     "render_review",
     "run_link",
+    "strip_invisible",
 ]
 
 MAX_COMMENT_CHARS = 60_000  # D-28: under GitHub's 65,536 with margin
@@ -322,6 +323,17 @@ def _cut(text: str, limit: int | None) -> str:
     if limit is None or len(text) <= limit:
         return text
     return text[: limit - 1] + _ELLIPSIS
+
+
+def strip_invisible(text: str) -> str:
+    """``text`` without the characters ``neutralize`` removes outright.
+
+    Zero-width characters (U+200B-U+200D, U+2060, U+FEFF), the tag block
+    (U+E0000-U+E007F) and the bidi controls: one shared set, so the
+    pipeline's secret scrub sees what any viewer that drops them shows
+    (QA-PRD-02).
+    """
+    return text.translate(_DROPPED)
 
 
 def neutralize(text: str, limit: int | None = None) -> str:

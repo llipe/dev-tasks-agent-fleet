@@ -348,9 +348,27 @@ def _drive_split_secret_review(h: Harness) -> str:
     return _only_post(h)
 
 
-def test_a_secret_split_by_invisible_characters_never_reaches_the_comment(h):
-    """``neutralize`` removes U+200B, so the post-render scrub must catch the joined form."""
+def _only_the_renderer_reassembles(h: Harness) -> None:
+    """Turn the pre-render strip off, so only ``neutralize`` rejoins the secret.
+
+    Since QA-PRD-02 the pre-render scrub catches a split secret; this keeps
+    the post-render ``_scrub_body`` path (and what it measures) under test,
+    as for any form only the renderer could reassemble.
+    """
+    import pipeline
+
+    h.monkeypatch.setattr(pipeline, "strip_invisible", lambda text: text)
+
+
+@pytest.mark.parametrize("pre_render_strip", [True, False], ids=["pre-render", "post-render"])
+def test_a_secret_split_by_invisible_characters_never_reaches_the_comment(h, pre_render_strip):
+    """``neutralize`` removes U+200B: the pre-render scrub strips it first, and the
+    post-render scrub still catches the joined form on its own."""
+    if not pre_render_strip:
+        _only_the_renderer_reassembles(h)
     body = _drive_split_secret_review(h)
+    # A pre-render ``***`` renders escaped; a literal one is the post-render scrub's.
+    assert ("***" in body) is not pre_render_strip
     flat = _visible(body).replace("\\", "")
     for secret in (TOKEN, SUPABASE_KEY):
         assert secret.replace("\\", "") not in flat
@@ -364,6 +382,7 @@ def test_comment_chars_is_the_size_of_the_posted_body_after_the_scrub(h):
     ``***``, and ``Pipeline._post_review`` still records ``rendered.chars``
     (the pre-scrub size). The note path measures after the scrub.
     """
+    _only_the_renderer_reassembles(h)
     body = _drive_split_secret_review(h)
     assert h.reporter.terminal["metrics"]["comment_chars"] == comment_size(body)
 
@@ -392,6 +411,7 @@ def test_the_post_render_scrub_keeps_a_truncated_comment_within_60k_and_measured
             rank=i + 1,
         )
 
+    _only_the_renderer_reassembles(h)
     findings = [full(blocking, i) for i in range(30)]
     findings += [full(suggestion, i) for i in range(MAX_FINDINGS - 30)]
     h.fake.push(review(findings))
@@ -410,16 +430,16 @@ def test_the_post_render_scrub_keeps_a_truncated_comment_within_60k_and_measured
         assert secret.replace("\\", "") not in flat
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-PRD-02: the audit_report artifact (run_artifacts) keeps a secret split by "
-    "invisible characters; only the comment gets the post-render scrub",
-)
 def test_a_split_secret_never_reaches_any_reporter_write(h):
-    """Reproducer: the same model title. ``scrub_value`` matches the raw secret only,
-    so ``findings[0].title`` in ``audit_report`` holds every character of the
-    token, separated by U+200B, and the panel shows it as the token."""
-    _drive_split_secret_review(h)
+    """Reproducer: the same model title. ``scrub_value`` matched the raw secret only,
+    so ``findings[0].title`` in ``audit_report`` held every character of the
+    token, separated by U+200B, and the panel showed it as the token. The
+    pre-render scrub now strips the invisible set first (QA-PRD-02)."""
+    body = _drive_split_secret_review(h)
+    for secret in (TOKEN, SUPABASE_KEY):
+        assert secret not in _visible(body).replace("\\", "")
+    (artifact,) = h.reporter.artifacts()
+    assert "***" in json.dumps(artifact), "the artifact holds the scrubbed finding"
     # The dump is ASCII JSON (``\\u200b`` escapes); decode it, then drop format characters.
     flat = _visible(h.reporter.dump().encode().decode("unicode_escape"))
     for secret in (TOKEN, SUPABASE_KEY):
