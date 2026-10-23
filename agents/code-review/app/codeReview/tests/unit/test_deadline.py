@@ -190,7 +190,7 @@ def test_deadline_hit_during_converse_ends_run_timeout(h):
 
 def test_converse_returning_after_the_deadline_is_run_timeout(h):
     def late(_request):
-        h.clock.advance(900)
+        h.clock.now = START + 900 - 60 + 5  # past the deadline, inside the reserve
         return review()
 
     h.fake.push(late)

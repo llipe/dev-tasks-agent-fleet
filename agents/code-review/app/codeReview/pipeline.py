@@ -141,6 +141,7 @@ __all__ = [
     "context_tokens",
     "error_code_for",
     "outcome_for_verdict",
+    "post_timeouts",
     "run_deadline",
     "scrub_value",
     "wants_failure_comment",
@@ -153,6 +154,14 @@ STATUS_FAILED = "failed"
 OUTCOME_NO_FINDINGS = "no_findings"
 OUTCOME_NEEDS_REVIEW = "needs_review"
 OUTCOME_NOT_APPLICABLE = "not_applicable"
+
+# The post phase inside the 60 s reserve (QA residual 2). The run ends at
+# ``start + run_timeout_seconds``. The review or note POST gets at most half of
+# what is left (the failure comment keeps the other half); the failure comment
+# gets what is left. Per POST: connect = min(5, budget/4), read = min(30, rest).
+POST_CONNECT_MAX_SECONDS = 5.0
+POST_READ_MAX_SECONDS = 30.0
+MIN_POST_SECONDS = 2.0
 
 ARTIFACT_SCHEMA_VERSION = 1
 MESSAGE_MAX = 300  # run error_message detail
@@ -220,6 +229,14 @@ def outcome_for_verdict(verdict: object) -> str:
     if isinstance(verdict, str) and verdict == VERDICT_BLOCKING:
         return OUTCOME_NEEDS_REVIEW
     raise ValueError("unknown verdict")
+
+
+def post_timeouts(budget_seconds: float) -> tuple[float, float] | None:
+    """``(connect, read)`` for one comment POST in ``budget_seconds``; ``None`` under the floor."""
+    if budget_seconds < MIN_POST_SECONDS:
+        return None
+    connect = min(POST_CONNECT_MAX_SECONDS, budget_seconds / 4)
+    return connect, min(POST_READ_MAX_SECONDS, budget_seconds - connect)
 
 
 def run_deadline(start: float, run_timeout_seconds: int) -> float:
@@ -902,14 +919,20 @@ class Pipeline:
 
     # -- worker phases (run in a thread) ---------------------------------------
 
-    def _github(self) -> GitHubClient:
+    def _github(self, timeout: tuple[float, float] | None = None) -> GitHubClient:
         assert self._token is not None
+        extra = {} if timeout is None else {"timeout": timeout}
         return self.deps.make_github(
             self._token,
             self.request.repository_org,
             self.request.repository_name,
             self.params["pr_number"],
+            **extra,
         )
+
+    def _time_left(self) -> float:
+        """Seconds to the run's end (the deadline plus the reserve)."""
+        return self._deadline + DEADLINE_RESERVE_SECONDS - self.deps.clock()
 
     def _load_pr(self, gate: _Gate) -> PullRequest | None:
         token = self.deps.resolve_token(self.request.repository_org)
@@ -1067,9 +1090,13 @@ class Pipeline:
 
     def _post(self, body: str) -> _Posted:
         """``POST`` one comment. A 2xx with an unreadable body counts as posted."""
-        assert self._client is not None
+        # A fresh client with timeouts that leave the failure comment its share.
+        timeout = post_timeouts(self._time_left() / 2) or (
+            MIN_POST_SECONDS / 4,
+            MIN_POST_SECONDS * 3 / 4,
+        )
         try:
-            created = self._client.post_pr_comment(body)
+            created = self._github(timeout).post_pr_comment(body)
         except GitHubMalformedResponse:
             # GitHub created the comment; only its response is unreadable (QA-213-05).
             self._events.warn("comment posted; its response body is unreadable")
@@ -1284,11 +1311,15 @@ class Pipeline:
         if self._token is None:
             self._events.error("failure comment not posted: no GitHub token", code=code)
             return
+        timeout = post_timeouts(self._time_left())
+        if timeout is None:
+            self._events.error("failure comment not posted: no time left", code=code)
+            return
         body = self._failure_body(code)
         try:
             # A fresh client: a worker abandoned at the deadline may still hold the
             # run's client, and a requests.Session is not shared across threads.
-            self._github().post_pr_comment(body)
+            self._github(timeout).post_pr_comment(body)
         except Exception as exc:  # noqa: BLE001 - best effort (D-13)
             self._events.error(
                 "failure comment not posted",

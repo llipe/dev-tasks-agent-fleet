@@ -19,9 +19,9 @@ harness:
 5. SHA pinning, 6. the artifact and metrics shape, 7. the state mapping, on
    every outcome path (the seeded property, seed 415002).
 
-Real defects are pinned with ``pytest.mark.xfail(strict=True)`` and a
-reproducer: the test asserts the contract, so it turns green (and then fails
-the strict xfail) once the defect is fixed.
+Real defects were pinned with ``pytest.mark.xfail(strict=True)`` and a
+reproducer (QA-213-01 to QA-213-07). Each fix removed its own markers; none
+remain.
 """
 
 from __future__ import annotations
