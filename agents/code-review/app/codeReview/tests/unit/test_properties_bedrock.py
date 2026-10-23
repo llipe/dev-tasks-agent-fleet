@@ -204,7 +204,10 @@ def _check_repair(rng: random.Random) -> str | None:
     previous = _previous_output(rng, f"{start:016x}")  # the rebuild's first nonce
     forced = rng.random() < 0.5
     script: list[Any] = [] if forced else [tool_choice_rejected()]
-    script += [text_response(previous), text_response(json.dumps(valid_review()))]
+    reply = (
+        tool_use_response(valid_review()) if forced else text_response(json.dumps(valid_review()))
+    )
+    script += [text_response(previous), reply]
     fake = FakeConverse(script)
     rec = Recorder()
     try:

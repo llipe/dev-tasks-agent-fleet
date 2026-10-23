@@ -265,6 +265,15 @@ fails on an unclosed block or a stray end marker. Inject `nonce=` (16 lowercase
 hex) and, for forced collisions, `nonce_factory=`; never assert on a random
 nonce. `tests/integration/test_prompt_sample_pr.py::render_sample_prompt()`
 renders the `sample-pr` prompt with a fixed nonce through the real readers.
+Bedrock is never called: `tests/fixtures/bedrock.py::FakeConverse` (S-210,
+reused by S-213) stands in for the `bedrock-runtime` client, records a deep
+copy of every request so tests assert exact Converse shapes, answers from a
+script of responses (`tool_use_response`, `text_response`), botocore
+`ClientError`s (`validation_error`, `tool_choice_rejected`,
+`context_length_rejected`, `access_denied`, `throttled`, ...), or callables, and
+fails on a call past the end of its script. `tests/helpers/bedrock_run.py::run()`
+drives `bedrock_adapter.review` with a counter nonce factory, a stepping
+`Clock`, and a `Recorder` for `warn` events and sink prompts.
 Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`

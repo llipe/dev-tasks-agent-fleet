@@ -1110,3 +1110,66 @@ def test_ct07_text_with_no_tool_use_in_forced_mode_goes_to_repair():
     fake = FakeConverse([text_response(_json(valid_review())), _ok()])
     result = run(fake)
     assert result.repair_calls == 1 and result.output_mode == OUTPUT_FORCED_SCHEMA
+
+
+# ---------------------------------------------------------------------------
+# Defensive paths
+# ---------------------------------------------------------------------------
+
+
+def test_defensive_an_unserializable_tool_input_is_repaired_with_an_empty_block():
+    rec = Recorder()
+    fake = FakeConverse([tool_use_response({1, 2}), _ok()])
+    result = run(fake, recorder=rec)
+    (rebuilt,) = rec.prompts
+    _, repair = _repair_parts(fake.requests[1], rebuilt.nonce)
+    blocks, _ = parse_blocks(repair, rebuilt.nonce)
+    assert blocks == [(REPAIR_KIND, None, "\n")]
+    assert result.repair_calls == 1
+
+
+def test_defensive_a_nonce_factory_that_cannot_avoid_the_output_fails_closed():
+    stuck = "abababababababab"
+    fake = FakeConverse([text_response(f"x {stuck} y"), _ok()])
+    with pytest.raises(PromptError, match="nonce collision"):
+        run(fake, nonce_factory=lambda: stuck)
+    assert fake.calls == 1
+
+
+def test_defensive_a_rebuild_over_budget_is_a_prompt_error(monkeypatch):
+    monkeypatch.setattr(bedrock_adapter, "build_prompt", lambda *_a, **_k: object())
+    fake = FakeConverse([context_length_rejected()])
+    with pytest.raises(PromptError, match="over budget"):
+        run(fake)
+
+
+def test_defensive_an_unknown_effort_is_rejected_before_any_call():
+    fake = FakeConverse([_ok()])
+    with pytest.raises(ValueError):
+        run(fake, effort="max")
+    assert fake.calls == 0
+
+
+def test_defensive_warn_is_optional():
+    from tests.helpers.bedrock_run import counter_nonces, settings
+
+    ins = review_inputs()
+    fake = FakeConverse([tool_choice_rejected(), text_response(_json(valid_review()))])
+    result = bedrock_adapter.review(
+        first_prompt(ins),
+        ins,
+        client=fake,
+        settings=settings(),
+        reasoning_effort="high",
+        max_diff_lines=2000,
+        nonce_factory=counter_nonces(),
+    )
+    assert result.calls == 2 and result.bedrock_ms >= 0
+
+
+def test_defensive_repair_calls_count_only_a_sent_repair(monkeypatch):
+    monkeypatch.setattr(bedrock_adapter, "MAX_CALLS", 1)
+    fake = FakeConverse([text_response("nope")])
+    with pytest.raises(CallBudgetExceeded) as exc:
+        run(fake)
+    assert exc.value.metrics.repair_calls == 0 and exc.value.metrics.calls == 1
