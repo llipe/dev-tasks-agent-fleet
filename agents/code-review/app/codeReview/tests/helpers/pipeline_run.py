@@ -202,6 +202,9 @@ class Harness:
     chunks: list[Any] = field(default_factory=list)
     model_id: str = MODEL_ID
     backstops: int = 0
+    org: str = ORG
+    repo: str = REPO
+    pr: int = PR
 
     def __post_init__(self) -> None:
         self.reporter.install(self.monkeypatch)
@@ -253,9 +256,9 @@ class Harness:
     def payload(self, params: Any = None, run_id: str = RUN_ID) -> dict[str, Any]:
         return {
             "run_id": run_id,
-            "repository_org": ORG,
-            "repository_name": REPO,
-            "params": {"pr_number": PR} if params is None else params,
+            "repository_org": self.org,
+            "repository_name": self.repo,
+            "params": {"pr_number": self.pr} if params is None else params,
         }
 
     def drive(self, params: Any = None, *, run_id: str = RUN_ID) -> dict[str, Any]:
@@ -281,11 +284,17 @@ class Harness:
             if (method is None or c.method == method) and (path is None or c.path == path)
         ]
 
+    @property
+    def prefix(self) -> str:
+        return f"/repos/{self.org}/{self.repo}"
+
     def posts(self) -> list[str]:
-        return [c.json["body"] for c in self.calls("POST", COMMENTS_PATH)]
+        return [
+            c.json["body"] for c in self.calls("POST", f"{self.prefix}/issues/{self.pr}/comments")
+        ]
 
     def content_calls(self) -> list[Any]:
-        return [c for c in self.stub.calls if c.path.startswith(f"{PREFIX}/contents/")]
+        return [c for c in self.stub.calls if c.path.startswith(f"{self.prefix}/contents/")]
 
     # -- fixture edits -------------------------------------------------------------
 
@@ -299,7 +308,9 @@ class Harness:
         from urllib.parse import quote
 
         encoded = "/".join(quote(s, safe="") for s in path.split("/"))
-        self.stub.add(("GET", f"{PREFIX}/contents/{encoded}", (("ref", ref),)), text_response(text))
+        self.stub.add(
+            ("GET", f"{self.prefix}/contents/{encoded}", (("ref", ref),)), text_response(text)
+        )
 
     def set_issue(self, number: int, **overrides: Any) -> None:
         from tests.helpers.github_stub import fixture_json
@@ -307,7 +318,7 @@ class Harness:
         body = fixture_json("sample-pr", "issue_41.json")
         body["number"] = number
         body.update(overrides)
-        self.stub.add(("GET", f"{PREFIX}/issues/{number}"), json_response(body))
+        self.stub.add(("GET", f"{self.prefix}/issues/{number}"), json_response(body))
 
 
 def pull_json(**overrides: Any) -> dict[str, Any]:
