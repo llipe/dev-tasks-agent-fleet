@@ -17,7 +17,7 @@
 - `agents/code-review/app/codeReview/{agent_reporter,credentials,heartbeat,signal_backstop,scrubber}.py` - copies of the sibling modules (S-204)
 - `agents/code-review/app/codeReview/{pyproject.toml,Makefile,Dockerfile,.dockerignore}` - package, gates, image (S-204)
 - `agents/code-review/app/codeReview/github_client.py` - allowlisted GitHub REST client (S-205); `get_content_bytes` for the byte-exact NUL check (S-206)
-- `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206)
+- `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206); `DiffContext.removed_paths` (S-211)
 - `agents/code-review/app/codeReview/context/{issues,spec,conventions}.py` - linked issues, checklist strip, spec resolution and trimming (S-207)
 - `agents/code-review/app/codeReview/context/tokens.py` - `estimate()` (D-27) and line-boundary `truncate()`, the one token estimator; S-209's budget fit reuses it (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
