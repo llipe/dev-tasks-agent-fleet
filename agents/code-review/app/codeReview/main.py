@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import re
-import traceback
 from typing import Any
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -41,11 +40,32 @@ from config import (
 from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
 from heartbeat import terminal_chunk
 from pipeline import Pipeline, PipelineDeps, PipelineResult, ReviewRequest
-from scrubber import scrub
 from signal_backstop import install_termination_backstop
 
 app = BedrockAgentCoreApp()
 log = app.logger
+
+
+class _ScrubbedRunReporter(RunReporter):
+    """The vendored reporter, with an exit path that records no exception text.
+
+    ``RunReporter.__exit__`` writes ``str(exc)`` to ``runs.error_message`` and the
+    traceback to run_events. Here, an exception that still reaches the ``with``
+    (a ``GeneratorExit`` or ``CancelledError`` when the client goes away, or a
+    pipeline defect) ends a still-open run ``failed``/``INTERNAL_ERROR`` with the
+    class name only (QA-213-03). A run already ended (by the pipeline or the
+    SIGTERM backstop) is left as it is. The vendored file stays byte-identical.
+    """
+
+    def __exit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        if exc_type is not None and not self._terminal:
+            self.fail(
+                error_code="INTERNAL_ERROR",
+                error_message=f"INTERNAL_ERROR: {exc_type.__name__}",
+                outcome="not_applicable",
+            )
+        return super().__exit__(None, None, None)
+
 
 __all__ = [
     "CredentialError",
@@ -316,7 +336,7 @@ async def invoke(payload: Any, context: Any):
         return
     secrets.append(supabase_key)
 
-    run = RunReporter(
+    run = _ScrubbedRunReporter(
         supabase_url=settings.supabase_url,
         supabase_key=supabase_key,
         run_id=run_id,
@@ -347,11 +367,11 @@ async def invoke(payload: Any, context: Any):
                     else:
                         yield item  # heartbeat chunk
             except Exception as exc:
-                log.error("Unhandled exception:\n%s", scrub(traceback.format_exc(), secrets))
-                message = scrub(str(exc), secrets) or type(exc).__name__
+                # The class name only: exception text and tracebacks can carry secrets.
+                log.error("Unhandled exception: %s", type(exc).__name__)
                 run.fail(
                     error_code="INTERNAL_ERROR",
-                    error_message=message,
+                    error_message=f"INTERNAL_ERROR: {type(exc).__name__}",
                     outcome="not_applicable",
                 )
                 result = _failed("INTERNAL_ERROR")

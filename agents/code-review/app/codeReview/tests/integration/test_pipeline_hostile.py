@@ -485,14 +485,6 @@ def test_a_failing_terminal_write_still_ends_the_run(h, monkeypatch):
 BASE_POINTS = ["load_pr", "compare", "review", "validate", "render"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-02: Pipeline.run and main.invoke catch Exception only; a KeyboardInterrupt "
-        "or SystemExit ends the run through RunReporter.__exit__ with error_code "
-        "'KeyboardInterrupt'/'SystemExit'/'CancelledError' (not a §13 code) and no failure comment"
-    ),
-)
 @pytest.mark.parametrize("exc_type", [KeyboardInterrupt, SystemExit])
 @pytest.mark.parametrize("point", BASE_POINTS)
 def test_a_base_exception_ends_the_run_with_a_spec_13_code(h, point, exc_type):
@@ -506,13 +498,6 @@ def test_a_base_exception_ends_the_run_with_a_spec_13_code(h, point, exc_type):
     assert _failure_posts(h) == [_failure("INTERNAL_ERROR")]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-03: on a BaseException, RunReporter.__exit__ writes str(exc) to "
-        "runs.error_message and the traceback to run_events without scrubbing"
-    ),
-)
 @pytest.mark.parametrize("point", ["compare", "validate"])
 def test_a_base_exception_carrying_the_token_is_scrubbed(h, point):
     POINTS[point][0](h, h.monkeypatch, SystemExit(f"exit {TOKEN} {SUPABASE_KEY}"))

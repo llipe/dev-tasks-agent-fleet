@@ -654,6 +654,17 @@ class Pipeline:
                     result = item
                 else:
                     yield item
+        except (KeyboardInterrupt, SystemExit) as exc:
+            # QA-213-02: end the run with a §13 code and its failure comment, then let
+            # the process exit. If the SIGTERM backstop already ended the run, the
+            # process is dying: record and post nothing more. GeneratorExit and
+            # asyncio.CancelledError (the client went away) are not caught here:
+            # main.invoke's reporter records them as failed/INTERNAL_ERROR on exit,
+            # and no failure comment is attempted for a cancelled stream.
+            if not getattr(self.run_reporter, "_terminal", False):
+                with contextlib.suppress(Exception):
+                    self._fail(exc)
+            raise
         except Exception as exc:  # noqa: BLE001 - every failure ends the run (spec §13)
             result = self._fail(exc)
         assert result is not None
@@ -688,16 +699,29 @@ class Pipeline:
         review step checks it itself, after recording the calls' metrics.
         """
         gate = _Gate()
+
+        def call() -> tuple[bool, Any]:
+            # Any BaseException is captured in the worker and re-raised here, in the
+            # pipeline's own frame: a KeyboardInterrupt or SystemExit escaping a
+            # thread pool future would otherwise surface inside the event loop.
+            try:
+                return True, fn(gate)
+            except BaseException as exc:  # noqa: BLE001
+                return False, exc
+
         try:
             async for item in bounded(
-                lambda: fn(gate),
+                call,
                 deadline=self._deadline,
                 clock=self.deps.clock,
                 interval=self.deps.heartbeat_interval,
                 heartbeat=self.deps.heartbeat,
             ):
                 if isinstance(item, HeartbeatResult):
-                    box.value = item.value
+                    ok, value = item.value
+                    if not ok:
+                        raise value
+                    box.value = value
                 else:
                     yield item
         except RunTimeout:
