@@ -409,6 +409,53 @@ def test_d50_a_blocking_span_is_at_most_200_lines():
     assert kept.severity == "blocking"
 
 
+@pytest.mark.parametrize(
+    ("start", "end", "blocking"),
+    [
+        (1, 250, True),  # DR-2: a fully changed 250-line function stays blocking
+        (250, 1, True),  # swapped
+        (1, 403, True),  # range (1, 400) widened by 3
+        (1, 404, False),  # one line past the widened range: unchanged line covered
+        (5, 450, False),
+    ],
+)
+def test_dr2_a_long_span_inside_one_widened_changed_range_stays_blocking(start, end, blocking):
+    ranges = {"new.py": ((1, 400),)}
+    kept = only(run([finding(file="new.py", line_start=start, line_end=end)], ranges=ranges))
+    if blocking:
+        assert (kept.severity, kept.downgraded) == ("blocking", None)
+    else:
+        assert (kept.severity, kept.downgraded) == ("suggestion", DOWNGRADE_OUTSIDE_DIFF)
+
+
+def test_dr2_the_exemption_needs_one_range_not_two_with_a_gap():
+    # (1, 200) and (210, 400): widened they leave 204..206 uncovered.
+    ranges = {"new.py": ((1, 200), (210, 400))}
+    kept = only(run([finding(file="new.py", line_start=1, line_end=400)], ranges=ranges))
+    assert kept.downgraded == DOWNGRADE_OUTSIDE_DIFF
+    # Ranges 6 apart: widened they touch, but still two ranges (pinned).
+    ranges = {"new.py": ((1, 200), (207, 400))}
+    kept = only(run([finding(file="new.py", line_start=1, line_end=400)], ranges=ranges))
+    assert kept.downgraded == DOWNGRADE_OUTSIDE_DIFF
+
+
+def test_dr2_downgraded_span_counts_only_span_failures():
+    ranges = {"new.py": ((100, 105),), "src/a.py": ((100, 105),)}
+    findings = [
+        finding(file="new.py", line_start=1, line_end=1000, rank=1),  # intersects, too long
+        finding(file="new.py", line_start=1, line_end=10, rank=2),  # elsewhere
+        finding(file="new.py", line_start=200, line_end=900, rank=3),  # elsewhere and long
+        finding(file="new.py", line_start=101, line_end=101, rank=4),  # blocking
+        finding(file="new.py", line_start=1, line_end=1000, consequence="", rank=5),  # dropped
+    ]
+    result = run(findings, ranges=ranges)
+    c = result.counts
+    assert c.downgraded == {DOWNGRADE_OUTSIDE_DIFF: 4, DOWNGRADE_NO_SCENARIO: 0}
+    assert c.downgraded_span == 2  # the first and the dropped one
+    assert result.metrics()["downgraded_span"] == 2
+    assert [f.downgraded for f in result.suggestions] == [DOWNGRADE_OUTSIDE_DIFF] * 3
+
+
 def test_d50_a_long_span_with_a_blank_scenario_is_outside_diff_first():
     kept = only(run([finding(line_start=1, line_end=500, failure_scenario="")]))
     assert kept.downgraded == DOWNGRADE_OUTSIDE_DIFF
@@ -771,6 +818,7 @@ def test_counts():
         "verifier_by_status",
         "verifier_checks_ignored",
         "verifier_checks_duplicate",
+        "downgraded_span",
     }
     assert metrics["findings_by_category"] == c.findings_by_category
     assert list(metrics["findings_by_category"]) == list(CATEGORIES)
@@ -781,6 +829,7 @@ def test_counts_have_every_key_even_when_zero():
     assert m["downgraded"] == {"outside_diff": 0, "no_scenario": 0}
     assert m["dropped"] == {"not_reviewed": 0, "no_consequence": 0, "cap": 0}
     assert m["suggestions_capped"] == 0
+    assert m["downgraded_span"] == 0
     assert m["findings_by_severity"] == {"blocking": 0, "suggestion": 0}
     assert m["findings_by_category"] == dict.fromkeys(CATEGORIES, 0)
 

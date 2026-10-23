@@ -10,7 +10,8 @@ and consequence, duplicate and huge ranks) and random candidates and checks
 Properties (oracle-free or metamorphic, with an independent location oracle):
 
 - no output blocking finding lies outside the ±3-widened ranges, spans more
-  than 200 lines (D-50), or has a blank scenario; no output finding has a blank consequence;
+  than 200 lines outside one widened range (D-50, DR-2), or has a blank
+  scenario; no output finding has a blank consequence;
 - suggestions ≤ ``max_suggestions``; blocking findings are never capped (the
   output keeps every finding the oracle says must stay blocking);
 - IDs are contiguous ``B1..Bn``, ``S1..Sm``, in (rank, model order);
@@ -152,13 +153,18 @@ def _oracle_in_diff(start: int, end: int, ranges: tuple[tuple[int, int], ...]) -
     return any(a - 3 <= hi and lo <= b + 3 for a, b in ranges)
 
 
+def _oracle_span_ok(start: int, end: int, ranges: tuple[tuple[int, int], ...]) -> bool:
+    lo, hi = min(start, end), max(start, end)
+    return hi - lo + 1 <= 200 or any(a - 3 <= lo and hi <= b + 3 for a, b in ranges)
+
+
 def _oracle_must_block(f: dict, ranges: dict) -> bool:
     name = _oracle_canonical(f["file"], ranges)
     return (
         name is not None
         and f["severity"] == "blocking"
         and _oracle_in_diff(f["line_start"], f["line_end"], ranges[name])
-        and abs(f["line_end"] - f["line_start"]) + 1 <= 200  # D-50
+        and _oracle_span_ok(f["line_start"], f["line_end"], ranges[name])  # D-50, DR-2
         and not _oracle_blank(f["failure_scenario"])
         and not _oracle_blank(f["consequence"])
     )
@@ -171,7 +177,7 @@ def _check(case: dict, result) -> None:
         assert f.file in ranges
         assert _oracle_in_diff(f.line_start, f.line_end, ranges[f.file])
         assert f.line_start <= f.line_end
-        assert f.line_end - f.line_start + 1 <= 200  # D-50
+        assert _oracle_span_ok(f.line_start, f.line_end, ranges[f.file])  # D-50, DR-2
         assert not _oracle_blank(f.failure_scenario)
     for f in result.findings:
         assert not _oracle_blank(f.consequence)
@@ -188,6 +194,7 @@ def _check(case: dict, result) -> None:
         assert keys == sorted(keys)
     assert len(findings) == len(result.findings) + len(result.dropped)
     assert result.counts.findings_in == len(findings)
+    assert result.counts.downgraded_span <= result.counts.downgraded["outside_diff"]
     counted = [c for c in result.candidates if c.counted]
     assert (result.verdict == VERDICT_BLOCKING) == (bool(result.blocking) or bool(counted))
     assert result.verdict in (VERDICT_BLOCKING, VERDICT_CLEAR)
