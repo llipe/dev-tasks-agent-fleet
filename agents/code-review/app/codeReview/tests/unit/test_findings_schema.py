@@ -242,3 +242,30 @@ def test_parse_errors_never_echo_the_text():
 def test_parse_returns_non_objects_for_the_validator_to_reject():
     assert parse_review_json("[1, 2]") == [1, 2]
     assert _violation(parse_review_json("[1, 2]")).rule == "type"
+
+
+# --- the interpreter itself ---------------------------------------------------
+
+
+def test_an_escaped_final_dollar_is_a_literal():
+    from findings_schema import _pattern
+
+    assert _pattern(r"^a\$").search("a$") is not None
+    assert _pattern("^a$").search("a\n") is None
+
+
+@pytest.mark.parametrize("schema", [{"type": "object", "oneOf": []}, {"type": "number"}])
+def test_an_unsupported_schema_keyword_or_type_is_a_defect(schema):
+    from findings_schema import SchemaError, _check
+
+    with pytest.raises(SchemaError) as exc:
+        _check({}, schema, "$")
+    assert exc.value.code == "INTERNAL_ERROR"
+
+
+def test_open_objects_and_untyped_arrays_are_supported():
+    from findings_schema import _check
+
+    _check({"a": 1, "b": 2}, {"type": "object", "properties": {"a": {"type": "integer"}}}, "$")
+    _check([1, "x"], {"type": "array"}, "$")
+    _check({}, {"type": "object", "properties": {"a": {"type": "integer"}}}, "$")
