@@ -20,7 +20,10 @@ import time
 from pathlib import Path
 
 import pytest
+
 import render
+from budget import BlockNote
+from context.diff import NameOnlyFile, OverBudget
 from render import (
     MAX_COMMENT_CHARS,
     TRUNCATION_NOTE,
@@ -29,9 +32,6 @@ from render import (
     render_failure,
     render_review,
 )
-
-from budget import BlockNote
-from context.diff import NameOnlyFile, OverBudget
 from tests.helpers.render_inputs import (
     HEAD,
     MODEL,
@@ -784,6 +784,21 @@ def test_line_numbers_over_4300_digits_never_reach_str():
     assert "999999999+" in body_of(fx)
 
 
+def test_escaped_path_equals_escape_path_then_cut():
+    """The prefix shortcut in ``_escaped_path`` gives exactly ``escape_path`` then the cut."""
+    import random
+
+    from context.diff import escape_path
+
+    rng = random.Random(414002)
+    alphabet = ["a", "\\", "\n", "\x1b", "\u2028", "\x85", "`", "é", "/", "\x7f", "\xa0"]
+    for _ in range(5000):
+        text = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 30)))
+        for limit in (None, 1, 2, 5, 10, 400):
+            expected = render._cut(escape_path(text).replace("`", ""), limit)
+            assert render._escaped_path(text, limit) == expected, (text, limit)
+
+
 def test_line_number_boundaries():
     assert render.format_line(999_999_999) == "999999999"
     assert render.format_line(1_000_000_000) == "999999999+"
@@ -998,6 +1013,36 @@ def test_truncate_exactly_60000_untouched_and_60001_truncated():
     out = review(fx)
     assert out.truncated and out.stages == (1,)
     assert len(out.body) <= MAX_COMMENT_CHARS
+
+
+def _suggestions_size(entries: list[str], k: int) -> int:
+    return 0 if k == 0 else 2 + len(render._suggestions_section(entries, k) or "")
+
+
+def _blocking_size(full: list[str], lines: list[str], j: int) -> int:
+    return 2 + len(render._blocking_section(full, lines, j))
+
+
+def test_truncate_fit_arithmetic_matches_a_brute_force_render():
+    """Stages 1 and 4 keep the longest prefix that fits, computed from lengths only."""
+    import random
+
+    rng = random.Random(414003)
+    for _ in range(60):
+        n = rng.randint(1, 25)
+        entries = ["e" * rng.randint(1, 3000) for _ in range(n)]
+        fixed = rng.randint(0, 40_000)
+        limit = 60_000
+        k = render._fit_suggestions(fixed, entries, limit)
+        assert fixed + _suggestions_size(entries, k) <= limit or k == 0
+        if k + 1 < n:
+            assert fixed + _suggestions_size(entries, k + 1) > limit
+        full = ["f" * rng.randint(1, 3000) for _ in range(n)]
+        lines = ["- " + "l" * rng.randint(1, 900) for _ in range(n)]
+        j = render._fit_blocking(fixed, full, lines, limit)
+        assert fixed + _blocking_size(full, lines, j) <= limit or j == 0
+        if j + 1 < n:
+            assert fixed + _blocking_size(full, lines, j + 1) > limit
 
 
 def test_truncate_measures_after_escaping():
@@ -1247,3 +1292,22 @@ def test_context_variant_helper_is_used():
     """``with_context`` keeps other fixture parts."""
     fx = with_context(blocking_fixture(), issue_numbers=(9,))
     assert context_line(body_of(fx)).startswith("**Context:** issue #9 · ")
+
+
+def test_run_link_non_string_inputs_give_no_link():
+    assert render.run_link(None, RUN_ID) is None  # type: ignore[arg-type]
+    assert render.run_link(PANEL, 7) is None  # type: ignore[arg-type]
+
+
+def test_verifier_parsed_state_without_context_or_rows():
+    fx = clear_fixture()
+    fx["verifier"] = None
+    fx["context"] = context_data(verifier_state=REPORT_PARSED)
+    assert "### Verifier\n\n- No Critical Unintended drift." in body_of(fx)
+
+
+def test_context_line_malformed_issue_note_ref_is_neutralized():
+    line = _ctx_line(notes=(BlockNote("issue", "#1 @x <b>", "omitted", "budget"),))
+    assert f"issue #{ZW}1 @{ZW}x &lt;b&gt; omitted (budget)" in line
+    line = _ctx_line(notes=(BlockNote("issue", None, "omitted", "budget"),))
+    assert "issue (unknown) omitted (budget)" in line

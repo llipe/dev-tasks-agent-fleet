@@ -29,7 +29,6 @@ import random
 import re
 
 from render import MAX_COMMENT_CHARS, TRUNCATION_NOTE, render_review
-
 from tests.helpers.prng import Tactic, tactic_seed
 from tests.helpers.render_inputs import (
     HEAD,
@@ -97,13 +96,10 @@ def _text(rng: random.Random, limit: int) -> str:
     if rng.random() < 0.15:
         return rng.choice(["<", "&", "@", "a"]) * limit  # escape-heavy, at the maximum
     target = rng.choice([0, 1, rng.randint(0, limit), limit])
-    parts: list[str] = []
-    size = 0
-    while size < target:
-        atom = rng.choice(ATOMS)
-        parts.append(atom)
-        size += len(atom)
-    return "".join(parts)[:limit]
+    if target == 0:
+        return ""
+    unit = "".join(rng.choice(ATOMS) for _ in range(rng.randint(1, 12)))
+    return (unit * (target // len(unit) + 1))[:target]
 
 
 def _line(rng: random.Random) -> int:
