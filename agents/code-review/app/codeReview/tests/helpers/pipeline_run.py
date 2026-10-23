@@ -208,6 +208,9 @@ class Harness:
 
     def __post_init__(self) -> None:
         self.reporter.install(self.monkeypatch)
+        # A reporter left with buffered events (the SIGTERM case) must not flush
+        # for real at interpreter exit, after the sink is gone.
+        self.monkeypatch.setattr(agent_reporter.atexit, "register", lambda fn, *a, **k: fn)
         self.monkeypatch.setattr(main, "fetch_supabase_key", lambda *a, **k: SUPABASE_KEY)
         self.monkeypatch.setattr(main, "pipeline_deps", lambda settings, key: self.deps())
         self.monkeypatch.setattr(main, "install_termination_backstop", self._backstop)

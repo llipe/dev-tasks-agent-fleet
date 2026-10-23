@@ -374,7 +374,7 @@ def test_artifact_metrics(h):
     assert meta["dropped"] == []
 
     metrics = h.reporter.terminal["metrics"]
-    assert SPEC_5_3_KEYS <= set(metrics)
+    assert set(metrics) >= SPEC_5_3_KEYS
     assert metrics["input_tokens"] == 1000 and metrics["output_tokens"] == 200
     assert metrics["cost_usd"] is None  # price env vars unset
     assert metrics["output_mode"] == "forced_schema"
