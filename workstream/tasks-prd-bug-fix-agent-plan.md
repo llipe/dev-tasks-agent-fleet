@@ -118,6 +118,7 @@
   - [ ] 2.8 [infra] Verify a token-mint probe shows `permissions.issues == "write"` for each installation. List any installation that hasn't accepted (edge case)
   - [ ] 2.9 [panel] Manual check: invoking the stub from the deployed panel creates a run that ends `succeeded`/`not_applicable`
   - [ ] 2.10 [repo root] Create the runbook stub `docs/runbooks/bug-fix-agent.md` with the deploy and verify sections (FR-49a)
+  - [ ] 2.13 [infra] Remove the copied CDK construct's default Bedrock grant (`bedrock:InvokeModel`, `InvokeModelWithResponseStream`, `CountTokens` on all foundation models; `@aws/agentcore-cdk` `AgentCoreRuntime`) before the first deploy, using an explicit `executionRoleArn` or a construct override. Verify with the 2.7 simulation that `bedrock:InvokeModel` is denied (DF-180-04, D-50). Do this before 2.4.
   - [ ] 2.11 Verify AC: AC1 key and cap recorded; AC2 deployed with the ARN recorded; AC3 role simulation; AC4 panel invoke; AC5 `issues: write`; AC6 backup and revert per item. Map each to the change-record verification table
   - [ ] 2.12 `verifier` audit; draft PR → `integration/bug-fix-agent`
 
