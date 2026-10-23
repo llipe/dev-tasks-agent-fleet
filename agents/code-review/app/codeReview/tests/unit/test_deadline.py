@@ -303,3 +303,74 @@ def test_bounded_stops_when_the_clock_passes_the_deadline_between_heartbeats():
     with pytest.raises(RunTimeout):
         _collect(bounded(lambda: 1, deadline=5.0, clock=clock, interval=1, heartbeat=hb))
     assert ran == [], "the phase result is not awaited past the deadline"
+
+
+# ---------------------------------------------------------------------------
+# Residual 2: the post phase fits the 60 s reserve
+# ---------------------------------------------------------------------------
+#
+# The run ends at ``start + run_timeout_seconds`` (the deadline plus the reserve).
+# The review (or note) POST gets at most half of what is left, so the failure
+# comment keeps the other half; the failure comment gets what is left. Each POST
+# client gets ``connect = min(5, budget / 4)`` and ``read = min(30, budget - connect)``.
+# Under ``MIN_POST_SECONDS`` (2 s) the failure comment is skipped and logged.
+
+END = START + 900
+
+
+def _comment_timeouts(h):
+    from tests.helpers.pipeline_run import COMMENTS_PATH
+
+    return [c.timeout for c in h.calls("POST", COMMENTS_PATH)]
+
+
+def test_review_post_timeout_is_capped_by_half_the_time_left(h):
+    h.fake.push(review())
+    h.drive()
+    assert _comment_timeouts(h) == [(5.0, 30.0)]
+
+
+def test_failure_comment_timeout_fits_what_is_left(h):
+    def late(_request):
+        h.clock.now = END - 10
+        return review()
+
+    h.fake.push(late)
+    result = h.drive()
+    assert result["error_code"] == "RUN_TIMEOUT"
+    assert _comment_timeouts(h) == [(2.5, 7.5)]
+
+
+def test_failure_comment_is_skipped_without_time_left(h):
+    def late(_request):
+        h.clock.now = END - 1
+        return review()
+
+    h.fake.push(late)
+    result = h.drive()
+    assert result["error_code"] == "RUN_TIMEOUT"
+    assert h.posts() == []
+    assert any("no time left" in m for m in h.reporter.messages("error"))
+
+
+def test_review_post_that_eats_the_reserve_leaves_the_failure_comment_its_share(h, monkeypatch):
+    from github_client import GitHubClient
+
+    orig = GitHubClient.post_pr_comment
+    calls = {"n": 0}
+
+    def post(self, body):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            h.clock.now = END - 3  # the review POST hung until 3 s before the end
+            from github_client import GitHubApiError
+
+            raise GitHubApiError("POST failed: ReadTimeout after 1 attempt(s)")
+        return orig(self, body)
+
+    monkeypatch.setattr(GitHubClient, "post_pr_comment", post)
+    h.fake.push(review())
+    result = h.drive()
+    assert result["error_code"] == "COMMENT_POST_FAILED"
+    assert calls["n"] == 2
+    assert _comment_timeouts(h) == [(0.75, 2.25)]
