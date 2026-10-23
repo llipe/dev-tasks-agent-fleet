@@ -356,11 +356,6 @@ def test_a_secret_split_by_invisible_characters_never_reaches_the_comment(h):
         assert secret.replace("\\", "") not in flat
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="QA-PRD-01: comment_chars is measured before the post-render scrub, not on the "
-    "posted body (spec §5.3: comment_size of the posted body)",
-)
 def test_comment_chars_is_the_size_of_the_posted_body_after_the_scrub(h):
     """Reproducer: a model title ``"uses " + "\\u200b".join(TOKEN)``.
 
@@ -371,6 +366,48 @@ def test_comment_chars_is_the_size_of_the_posted_body_after_the_scrub(h):
     """
     body = _drive_split_secret_review(h)
     assert h.reporter.terminal["metrics"]["comment_chars"] == comment_size(body)
+
+
+def test_the_post_render_scrub_keeps_a_truncated_comment_within_60k_and_measured(h):
+    """The largest schema-valid review; every text starts with split secrets.
+
+    The renderer cuts the body to <= 60,000 ``comment_size`` before the
+    post-render scrub; the scrub only replaces forms of 3 or more characters
+    with ``***``, so the posted body stays within the limit, and
+    ``comment_chars`` is that posted body's size (QA-PRD-01).
+    """
+    from findings_schema import MAX_FINDINGS
+
+    astral = "\U0001f600"  # one code point, 2 UTF-16 units: forces the staged cut
+
+    def text(n: int) -> str:
+        unit = f"{_split(TOKEN)} {_split(SUPABASE_KEY)} "  # whole secrets, first
+        return unit + astral * (n - len(unit))
+
+    def full(make: Any, i: int) -> dict[str, Any]:
+        return make(
+            title=text(200),
+            failure_scenario=text(1500),
+            consequence=text(500),
+            rank=i + 1,
+        )
+
+    findings = [full(blocking, i) for i in range(30)]
+    findings += [full(suggestion, i) for i in range(MAX_FINDINGS - 30)]
+    h.fake.push(review(findings))
+    h.drive({"pr_number": 42, "max_suggestions": 20})
+
+    body = _only_post(h)
+    metrics = h.reporter.terminal["metrics"]
+    assert metrics["comment_truncated"] is True
+    assert "***" in body, "the post-render scrub fired (a pre-render *** renders escaped)"
+    assert comment_size(body) <= MAX_COMMENT_CHARS
+    assert metrics["comment_chars"] == comment_size(body)
+    truncated = [e for e in h.reporter.events() if e["message"] == "review comment truncated"]
+    assert [e["data"]["comment_chars"] for e in truncated] == [comment_size(body)]
+    flat = _visible(body).replace("\\", "")
+    for secret in (TOKEN, SUPABASE_KEY):
+        assert secret.replace("\\", "") not in flat
 
 
 @pytest.mark.xfail(

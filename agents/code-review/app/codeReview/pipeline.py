@@ -1150,13 +1150,14 @@ class Pipeline:
             panel_base_url=self.settings.panel_base_url,
         )
         body = self._scrub_body(rendered.body)
-        self._metrics["comment_chars"] = rendered.chars
+        # The posted body, after the scrub, as on the note path (spec §5.3; QA-PRD-01).
+        self._metrics["comment_chars"] = comment_size(body)
         self._metrics["comment_truncated"] = rendered.truncated
         if rendered.truncated:
             self._events.warn(
                 "review comment truncated",
                 stages=list(rendered.stages),
-                comment_chars=rendered.chars,
+                comment_chars=self._metrics["comment_chars"],
             )
         # Built before the POST, so nothing after a posted comment can fail the run.
         metadata = scrub_value(
