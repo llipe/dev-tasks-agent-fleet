@@ -194,3 +194,17 @@ Run by `product-engineer` (`activity-drift-reconciliation`) on 2026-10-23, after
 | Test-plan DFs      | DF-01, DF-05, DF-07, DF-08, DF-09 (seed half), DF-10, DF-12, DF-13 (issue half), DF-14, DF-16, DF-18 to DF-22 marked resolved; DF-06, DF-11, DF-13 (PR half), DF-15, DF-17 stay open | TP §10; TM §A, §D.3                                                   |
 
 Non-blocking confirmation: this pass ran after the Wave A story gates and did not block or reopen any of them. No task or issue was created: every applied item is Intended or already decided, and the two Undetermined items (S-207 DR-9, DR-10) wait for a decision.
+
+- 2026-10-23: Phase 5:
+  - Write-back: PRD v1.2, spec v1.3, test plan v1.2, matrix v1.2, stories v1.4.
+  - technical-writer docs sync and ADR-010 (9e1d73e).
+  - Verifier rollup High / Minor (16 items); RU-01..RU-08 fixed in 6d9d2c2.
+  - PRD-level QA coverage_gate PASS (99.51%), with QA-PRD-01/02 fixed in #439 (99.64%, 3,160 passed).
+  - D-56 and D-57 logged. Roadmap rows updated.
+  - memo_run_outcome: skipped(memo-unavailable).
+- 2026-10-23: Open for the user:
+  - S-207 DR-9/DR-10: accepted as known limits for the base version.
+  - DF-06: PRD AC-9 wording; DF-11: matrix labels.
+  - H-1: CI triggers only on `main`, so the story PRs never ran CI.
+  - Stale docs out of scope: the runbook index, the product-context webhook line, and `dev-tasks migrate docs`.
+  - The milestone "v6.0 — Phase 6 Code Review Agent" has not been created.
