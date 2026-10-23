@@ -268,12 +268,15 @@ renders the `sample-pr` prompt with a fixed nonce through the real readers.
 Bedrock is never called: `tests/fixtures/bedrock.py::FakeConverse` (S-210,
 reused by S-213) stands in for the `bedrock-runtime` client, records a deep
 copy of every request so tests assert exact Converse shapes, answers from a
-script of responses (`tool_use_response`, `text_response`), botocore
-`ClientError`s (`validation_error`, `tool_choice_rejected`,
-`context_length_rejected`, `access_denied`, `throttled`, ...), or callables, and
-fails on a call past the end of its script. `tests/helpers/bedrock_run.py::run()`
-drives `bedrock_adapter.review` with a counter nonce factory, a stepping
-`Clock`, and a `Recorder` for `warn` events and sink prompts. `FakeConverse`
+script of responses (`tool_use_response`, `text_response`), botocore errors
+(`validation_error`, `tool_choice_rejected`, `context_length_rejected`,
+`access_denied`, `throttled`, ...: the modeled `ClientError` subclasses the real
+client raises, with full `ResponseMetadata`), or callables, and fails on a call
+past the end of its script. `tests/helpers/bedrock_run.py::run()` drives
+`bedrock_adapter.review` with a counter nonce factory, a stepping `Clock`, and
+a `Recorder` for `warn` events and sink prompts; it passes the fake as `client=`,
+or, with `client_factory=`, exercises the per-call client sizing that
+production uses (`client_factory=make_client`). `FakeConverse`
 does not run botocore, so `tests/unit/test_bedrock_hostile.py` (S-210 QA) adds
 two wire-level checks: a real `bedrock-runtime` client behind
 `botocore.stub.Stubber` validates the adapter's requests and the fixture's
