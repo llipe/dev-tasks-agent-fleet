@@ -21,8 +21,10 @@
 - `agents/code-review/app/codeReview/context/{issues,spec,conventions}.py` - linked issues, checklist strip, spec resolution and trimming (S-207)
 - `agents/code-review/app/codeReview/context/tokens.py` - `estimate()` (D-27) and line-boundary `truncate()`, the one token estimator; S-209's budget fit reuses it (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
-- `agents/code-review/app/codeReview/{budget,prompt}.py`, `rubric.md` - priority fill, prompt with nonce blocks, rubric v1 (S-209)
-- `agents/code-review/app/codeReview/{bedrock_adapter,findings_schema}.py` - Converse adapter and output schema (S-210)
+- `agents/code-review/app/codeReview/{budget,prompt}.py`, `rubric.md` - priority fill and asserted invariant, prompt with nonce blocks and per-candidate blocks, prompt sink, rubric v1 (S-209)
+- `agents/code-review/app/codeReview/findings_schema.py` - `submit_review` schema as data, spec §6.3 verbatim (S-209); validation (S-210)
+- `agents/code-review/app/codeReview/context/{tokens,diff}.py` - S-209 adds `estimate_len`, the public `escape_path`, and the `OverBudget` token fields (`reason="tokens"`)
+- `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter (S-210)
 - `agents/code-review/app/codeReview/validate.py` - findings validation and verdict (S-211)
 - `agents/code-review/app/codeReview/render.py` - review, budget and failure comments (S-212)
 - `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
@@ -44,6 +46,10 @@
 - `agents/code-review/app/codeReview/context/markdown.py` - shared CommonMark fence tracker used by `context/spec.py` and `context/verifier.py` (S-208, DR-10)
 - `agents/code-review/app/codeReview/tests/fixtures/reports/`, `tests/helpers/reports.py` - fidelity-report fixtures (byte copy of `fidelity-report-S-170.md`, synthetic AC-7, no-heading, numbered, empty, bullet-list) and their loader (S-208)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,adr_002_head.md,README.md}` - ADR-002 route with a `## Status` heading (S-208)
+- `agents/code-review/app/codeReview/tests/unit/{test_estimate,test_budget_fit,test_prompt,test_properties_budget,test_properties_prompt}.py`, `tests/integration/test_prompt_sample_pr.py` - S-209 tests (TC-209-\*, RT-04, RT-07)
+- `agents/code-review/app/codeReview/tests/unit/{test_budget_hostile,test_prompt_hostile}.py` - S-209 QA hostile-input suites (seeds 411003, 411004; both strict-xfail pins fixed)
+- `agents/code-review/app/codeReview/tests/helpers/prompt_inputs.py` - prompt-input factories and the independent `parse_blocks` splitter (S-209)
+- `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,fidelity_report_s001_head.md,README.md}` - Story S-001 fidelity report route with one `Critical`+`Unintended` row (S-209)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
@@ -110,16 +116,16 @@
   - [x] 5.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` — package validate passes; root `make validate` NOT RUN in the S-208 runtime (sibling venvs missing)
 
 - [ ] 6.0 Implement Story S-209 (#411): Budget fit, rubric v1, and prompt builder · branch `story/S-209-budget-prompt`
-  - [ ] 6.1 `[T]` [code-review] L1 `test_estimate.py`
-  - [ ] 6.2 `[T]` [code-review] L1 `test_budget_fit.py`: priority order a–g, `min(cap, remaining)`, truncation and omission named, smallest-first files, diff over budget, invariant at `max_context_tokens` 20,000 (TC-209-08, RT-07), dropped candidates reported (D-37)
-  - [ ] 6.3 `[T]` [code-review] L1 `test_prompt.py`: all blocks, nonce wrapping, forged `<<<END` stays inside, candidate IDs outside and row text inside `verifier-candidate V<k>` blocks (TC-209-16), rubric version; nonce-integrity property tactic (D-38)
-  - [ ] 6.4 `[I]` [code-review] `rubric.md` v1 (categories, consequence rule, out-of-scope list, verifier boundary)
-  - [ ] 6.5 `[I]` [code-review] `budget.py` priority fill and asserted invariant → `INTERNAL_ERROR` on violation (D-27, D-37)
-  - [ ] 6.6 `[I]` [code-review] `prompt.py` system prompt, nonce blocks, per-candidate blocks, prompt sink (D-33, D-38)
-  - [ ] 6.7 Verify Acceptance Criteria: AC1 estimate; AC2 priority fill; AC3 invariant; AC4 rubric; AC5 system prompt; AC6 nonce; AC7 candidate blocks; AC8 sink
-  - [ ] 6.8 Manual: one rendered prompt for a fixture PR pasted in the PR description
-  - [ ] 6.9 Map each AC to test evidence in the PR body
-  - [ ] 6.10 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 6.1 `[T]` [code-review] L1 `test_estimate.py`
+  - [x] 6.2 `[T]` [code-review] L1 `test_budget_fit.py`: priority order a–g, `min(cap, remaining)`, truncation and omission named, smallest-first files, diff over budget, invariant at `max_context_tokens` 20,000 (TC-209-08, RT-07), dropped candidates reported (D-37)
+  - [x] 6.3 `[T]` [code-review] L1 `test_prompt.py`: all blocks, nonce wrapping, forged `<<<END` stays inside, candidate IDs outside and row text inside `verifier-candidate V<k>` blocks (TC-209-16), rubric version; nonce-integrity property tactic (D-38)
+  - [x] 6.4 `[I]` [code-review] `rubric.md` v1 (categories, consequence rule, out-of-scope list, verifier boundary)
+  - [x] 6.5 `[I]` [code-review] `budget.py` priority fill and asserted invariant → `INTERNAL_ERROR` on violation (D-27, D-37)
+  - [x] 6.6 `[I]` [code-review] `prompt.py` system prompt, nonce blocks, per-candidate blocks, prompt sink (D-33, D-38)
+  - [x] 6.7 Verify Acceptance Criteria: AC1 estimate; AC2 priority fill; AC3 invariant; AC4 rubric; AC5 system prompt; AC6 nonce; AC7 candidate blocks; AC8 sink
+  - [x] 6.8 Manual: one rendered prompt for a fixture PR pasted in the PR description
+  - [x] 6.9 Map each AC to test evidence in the PR body
+  - [x] 6.10 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 - [ ] 7.0 Implement Story S-210 (#412): Bedrock adapter, forced schema, fallbacks · branch `story/S-210-bedrock-adapter`
   - [ ] 7.1 `[T]` [code-review] Fake `converse` in `tests/fixtures/bedrock.py`; L1 `test_bedrock_adapter.py`: forced path; `toolChoice` rejected → fallback; repair → valid; repair invalid → `ModelOutputInvalid`; reasoning rejected → retry; context-length → retry without files; call budget ≤ 5 (property tactic); access denied; throttling; cost null without prices
