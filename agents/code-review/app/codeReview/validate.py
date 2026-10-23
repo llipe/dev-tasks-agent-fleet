@@ -113,6 +113,7 @@ breaks them down.
 from __future__ import annotations
 
 import bisect
+import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -183,6 +184,8 @@ VERDICT_BLOCKING = "blocking"
 VERDICT_CLEAR = "clear"
 
 # Hangul fillers: category Lo, but they render as nothing and are no letter.
+# ASCII letters and digits: the only ASCII characters in categories L and N.
+_ASCII_ALNUM = re.compile(r"[A-Za-z0-9]")
 _BLANK_FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
 
 
@@ -332,10 +335,18 @@ class Validation:
 def is_blank(text: str) -> bool:
     """True when ``text`` has no letter or number (D-51, module docstring).
 
-    One pass that returns at the first letter or number.
+    Linear and C-speed: a regex search returns at the first ASCII letter or
+    digit; otherwise only the distinct non-ASCII characters are checked, one
+    category lookup each, returning at the first letter or number.
     """
+    if _ASCII_ALNUM.search(text):
+        return False
+    if text.isascii():
+        return True
     category = unicodedata.category
-    return not any(category(c)[0] in "LN" and c not in _BLANK_FILLERS for c in text)
+    return not any(
+        category(c)[0] in "LN" and c not in _BLANK_FILLERS for c in set(text) if c > "\x7f"
+    )
 
 
 def normalize_file(raw: str) -> str:
