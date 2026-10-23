@@ -66,7 +66,10 @@ when it changed something:
 4. render blocking findings in rank order with full detail while they fit,
    and the rest as one-line entries after "N more blocking findings are
    listed by title only:";
-5. hard cut the middle of the body at the last line boundary that fits.
+5. hard cut the middle of the body at the last line boundary that fits;
+   blocking findings are cut as whole one-line entries, the lead-in states
+   how many are listed and "and N more blocking findings not shown." counts
+   the rest, so every blocking finding is rendered or counted.
 
 Cuts count characters of the raw text, the ellipsis included. Any applied
 stage adds ``TRUNCATION_NOTE`` before the footer. The marker, the verdict
@@ -819,17 +822,67 @@ def render_review(
         if len(body) <= limit:
             return Rendered(body, tuple(stages))
 
-    # Stage 5: hard cut at the last line boundary that fits.
+    # Stage 5: hard cut at the last line boundary that fits. Blocking findings
+    # are cut as whole entries and the rest are counted (QA-212-D2).
     stages.append(5)
     top = head + "\n\n"
     bottom = "\n\n" + TRUNCATION_NOTE + "\n\n" + footer + "\n"
-    middle = body[len(top) : len(body) - len(bottom)]
     room = limit - len(top) - len(bottom)
-    middle = middle[: room + 1]
-    cut = middle.rfind("\n")
-    middle = middle[:cut].rstrip("\n") if cut >= 0 else ""
+    if blocking:  # stage 4 ran and fitted no full entry, so ``j == 0``
+        section = _blocking_section(full, lines, 0)
+        if len(section) <= room:
+            rest = _cut_lines(
+                _join([verifier_text, context_line]).rstrip("\n"), room - len(section) - 2
+            )
+            middle = section + ("\n\n" + rest if rest else "")
+        else:
+            middle = _trim_blocking(lines, room)
+    else:
+        middle = _cut_lines(body[len(top) : len(body) - len(bottom)], room)
     body = top + middle + bottom if middle else head + bottom
     return Rendered(body, tuple(stages))
+
+
+def _cut_lines(text: str, room: int) -> str:
+    """``text`` cut at the last line boundary within ``room`` characters."""
+    if len(text) <= room:
+        return text
+    if room <= 0:
+        return ""
+    piece = text[: room + 1]
+    cut = piece.rfind("\n")
+    return piece[:cut].rstrip("\n") if cut >= 0 else ""
+
+
+def _not_shown(rest: int, listed: int) -> str:
+    noun = "finding" if rest == 1 else "findings"
+    lead = "and " if listed else ""
+    more = "more " if listed else ""
+    return f"{lead}{format_line(rest)} {more}blocking {noun} not shown."
+
+
+def _trim_blocking(lines: Sequence[str], room: int) -> str:
+    """The one-line Blocking list cut to whole entries within ``room``, the rest counted.
+
+    The lead-in states exactly how many entries follow, and the closing line
+    how many are not shown, so every blocking finding is rendered or counted.
+    """
+    n = len(lines)
+    best, total = 0, 0
+    for m in range(1, n + 1):
+        total += len(lines[m - 1]) + (1 if m > 1 else 0)
+        size = len(BLOCKING_HEADING) + 2 + len(_more(m)) + 2 + total
+        if m < n:
+            size += 2 + len(_not_shown(n - m, m))
+        if size > room:
+            break
+        best = m
+    parts = [BLOCKING_HEADING]
+    if best:
+        parts += [_more(best), "\n".join(lines[:best])]
+    if best < n:
+        parts.append(_not_shown(n - best, best))
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------

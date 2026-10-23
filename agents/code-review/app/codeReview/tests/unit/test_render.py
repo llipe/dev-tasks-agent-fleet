@@ -1369,3 +1369,18 @@ def test_marker_run_id_is_lowercased():
     """S-213 carry: the marker's run_id compares exactly against the lowercase run id."""
     body = body_of(clear_fixture(), run_id=RUN_ID.upper())
     assert body.startswith(f"<!-- code-review-agent:v1 run={RUN_ID} sha={HEAD} -->\n")
+
+
+def test_stage5_keeps_every_blocking_one_liner_when_the_list_fits():
+    """QA-212-D2: with a huge Verifier section, blocking entries stay whole and counted."""
+    fx = clear_fixture()
+    cands = [candidate(k, "<" * 1050) for k in range(1, 3000)]
+    blocking = [finding(f"B{k}", title=f"t{k}") for k in range(1, 6)]
+    fx["validation"] = validation(blocking, [], [status(c, STATUS_CONFIRMED, "r") for c in cands])
+    fx["verifier"] = verifier_ctx(report(REPORT, REPORT_PARSED, candidates=cands))
+    out = review(fx)
+    assert 5 in out.stages and len(out.body) <= MAX_COMMENT_CHARS
+    assert "5 more blocking findings are listed by title only:" in out.body
+    assert len(re.findall(r"^- \*\*B\d+ · ", out.body, re.M)) == 5
+    assert "not shown" not in out.body
+    assert "### Verifier" in out.body

@@ -122,6 +122,7 @@ LINE_START = re.compile(
     r"|Truncated; the full review is in the run's audit report\.$"
     r"|<sub>Not reviewed here: "
     r"|\d+\+? more blocking (?:finding is|findings are) listed by title only:$"
+    r"|(?:and \d+\+? more|\d+\+?) blocking findings? not shown\.$"
 )
 # The first text inside each ``**…**`` the wrapper writes.
 STRONG_TEXT = re.compile(r"[BSV]\d+ |Fails when:|Consequence:|Verifier:|Context:|blocking$|clear$")
@@ -680,15 +681,6 @@ def test_budget_comment_long_lists_and_huge_counts_are_bounded():
     assert f"[run]({RUN_URL})" in lines[0]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-212-D2: after the stage-5 hard cut, the stage-4 lead-in still says "
-        "'40 more blocking findings are listed by title only:' while only 19 are listed; "
-        "21 blocking findings vanish with no count. Expected: the text states how many "
-        "findings are not shown (or the claimed count equals the listed count)."
-    ),
-)
 def test_stage5_never_overstates_the_listed_blocking_findings():
     amp = "&"  # schema-valid lengths; 5x expansion makes the one-line list overflow
     blocking = [
