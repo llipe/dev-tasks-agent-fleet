@@ -1415,3 +1415,78 @@ def test_stage5_helpers_cut_lines_and_trim_blocking():
         assert listed + (int(missing.group(1)) if missing else 0) == 3
     none = render._trim_blocking(lines, 20)
     assert none == "### Blocking\n\n3 blocking findings not shown."
+
+
+# ---------------------------------------------------------------------------
+# Verifier follow-ups: DR-4 (count hidden candidates), DR-9 (UTF-16 size)
+# ---------------------------------------------------------------------------
+
+
+def _counted_candidates(body: str) -> int:
+    listed = len(re.findall(r"^- \*\*V\d+ \(", body, re.M))
+    missing = re.search(r"(\d+) (?:more )?verifier candidates? not shown\.$", body, re.M)
+    return listed + (int(missing.group(1)) if missing else 0)
+
+
+def test_dr4_stage5_counts_the_verifier_candidates_it_cuts():
+    """Probe P1: 2,000 unchecked escape-heavy candidates, no findings."""
+    fx = clear_fixture()
+    cands = [candidate(k, "<" * 1050) for k in range(1, 2001)]
+    fx["validation"] = validation([], [], [status(c, STATUS_NOT_CHECKED) for c in cands])
+    fx["verifier"] = verifier_ctx(report(REPORT, REPORT_PARSED, candidates=cands))
+    out = review(fx)
+    assert 5 in out.stages and len(out.body) <= MAX_COMMENT_CHARS
+    assert _counted_candidates(out.body) == 2000
+    assert re.search(r"^and \d+ more verifier candidates not shown\.$", out.body, re.M)
+
+
+def test_dr4_dropped_verifier_section_leaves_one_count_line():
+    """Probe P2: 40 blocking findings at the maxima crowd out every candidate."""
+    fx = clear_fixture()
+    blocking = [
+        finding(
+            f"B{k}",
+            file="&" * 400,
+            title="&" * 200,
+            failure_scenario="&" * 1500,
+            consequence="&" * 500,
+        )
+        for k in range(1, 41)
+    ]
+    cands = [candidate(k, "&" * 1050) for k in range(1, 51)]
+    fx["validation"] = validation(
+        blocking, [], [status(c, STATUS_CONFIRMED, "&" * 300) for c in cands]
+    )
+    fx["verifier"] = verifier_ctx(report(REPORT, REPORT_PARSED, candidates=cands))
+    out = review(fx)
+    assert len(out.body) <= MAX_COMMENT_CHARS
+    assert _counted_candidates(out.body) == 50
+    listed = len(re.findall(r"^- \*\*V\d+ \(", out.body, re.M))
+    if listed == 0:
+        assert re.search(r"^50 verifier candidates not shown\.$", out.body, re.M)
+
+
+def test_dr9_size_is_the_larger_of_code_points_and_utf16_units():
+    assert render.comment_size("ab") == 2
+    assert render.comment_size("\U0001f600") == 2  # one code point, two UTF-16 units
+    assert render.comment_size("é漢") == 2
+
+
+def test_dr9_all_emoji_body_stays_under_the_limit_in_utf16_units():
+    """Probe P4: emoji text doubles in UTF-16; the limit must hold in either unit."""
+    emoji = "\U0001f600"
+    fx = clear_fixture()
+    fx["validation"] = validation(
+        [
+            finding(
+                f"B{k}", title=emoji * 200, failure_scenario=emoji * 1500, consequence=emoji * 500
+            )
+            for k in range(1, 41)
+        ],
+        [finding(f"S{k}", title=emoji * 200, consequence=emoji * 500) for k in range(1, 21)],
+    )
+    out = review(fx)
+    units = len(out.body.encode("utf-16-le")) // 2
+    assert units <= MAX_COMMENT_CHARS
+    assert out.chars == max(len(out.body), units)
+    assert out.truncated

@@ -161,6 +161,17 @@ def _render(fx: dict, **kw):
     )
 
 
+def render_size(body: str) -> int:
+    return len(body.encode("utf-16-le")) // 2
+
+
+def _listed_or_counted(body: str, kind: str, noun: str) -> int:
+    """Entries rendered for ``kind`` (B or V) plus the ones a "not shown" line counts."""
+    listed = len(re.findall(rf"^(?:- )?\*\*{kind}\d+ [·(]", body, re.M))
+    missing = re.search(rf"(\d+) (?:more )?{noun} not shown\.$", body, re.M)
+    return listed + (int(missing.group(1)) if missing else 0)
+
+
 def _content_lt(body: str) -> int:
     rest = body.split("\n", 1)[1]
     for tag in WRAPPER_TAGS:
@@ -188,6 +199,11 @@ def test_rt06_comment_truncation_and_neutralization():
         assert not re.search(r"@(?!​)", body), ctx
         assert _content_lt(body) == 0, ctx
         assert body.endswith("</sub>\n"), ctx
+        assert render_size(body) <= MAX_COMMENT_CHARS, ctx  # UTF-16 units too (DR-9)
+        n_cands = len(fx["validation"].candidates)
+        assert _listed_or_counted(body, "V", "verifier candidates?") == n_cands, ctx  # DR-4
+        n_block = len(fx["validation"].blocking)
+        assert _listed_or_counted(body, "B", "blocking findings?") == n_block, ctx  # D2
         assert list(out.stages) == sorted(set(out.stages)), ctx
         if out.truncated:
             truncated_seen += 1

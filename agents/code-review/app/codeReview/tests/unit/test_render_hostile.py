@@ -123,6 +123,7 @@ LINE_START = re.compile(
     r"|<sub>Not reviewed here: "
     r"|\d+\+? more blocking (?:finding is|findings are) listed by title only:$"
     r"|(?:and \d+\+? more|\d+\+?) blocking findings? not shown\.$"
+    r"|(?:and \d+\+? more|\d+\+?) verifier candidates? not shown\.$"
 )
 # The first text inside each ``**…**`` the wrapper writes.
 STRONG_TEXT = re.compile(r"[BSV]\d+ |Fails when:|Consequence:|Verifier:|Context:|blocking$|clear$")
