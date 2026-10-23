@@ -385,7 +385,9 @@ def _link(panel_base_url: str, run_id: str) -> str:
 
 
 def _marker(run_id: str, head_sha: str) -> str:
-    run = run_id if isinstance(run_id, str) and _UUID_RE.fullmatch(run_id) else "invalid"
+    # Lowercased so S-213 can match the marker against its run id exactly.
+    valid = isinstance(run_id, str) and _UUID_RE.fullmatch(run_id)
+    run = str.__str__(run_id).lower() if valid else "invalid"
     sha = head_sha if isinstance(head_sha, str) and _SHA_RE.fullmatch(head_sha) else "invalid"
     return f"{MARKER_PREFIX}run={run} sha={sha} -->"
 
