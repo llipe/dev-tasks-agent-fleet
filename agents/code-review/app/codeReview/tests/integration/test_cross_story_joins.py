@@ -22,7 +22,7 @@ context readers -> budget -> prompt -> adapter -> validate -> render -> pipeline
 
 Real defects are pinned with ``pytest.mark.xfail(strict=True)`` and a
 reproducer in the docstring: a fix turns the XPASS red, and the marker is
-removed with the fix.
+removed with the fix. QA-PRD-01 and QA-PRD-02 are fixed; no markers remain.
 """
 
 from __future__ import annotations
