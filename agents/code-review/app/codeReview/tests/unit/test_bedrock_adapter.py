@@ -1319,3 +1319,13 @@ def test_residual_timeouts_and_throttling_before_the_deadline_stay_bedrock_error
     with pytest.raises(BedrockError) as exc:
         run(FakeConverse([error]), clock=Clock(step=1.0, start=0.0), deadline=500.0)
     assert exc.value.code == "BEDROCK_ERROR"
+
+
+@pytest.mark.parametrize(
+    ("tokens", "cost_is_none"), [(10**18, False), (10**18 + 1, True), (-1, True)]
+)
+def test_usage_counts_are_bounded(tokens, cost_is_none):
+    fake = FakeConverse([tool_use_response(valid_review(), usage=(tokens, 1))])
+    result = run(fake, price_in=1.0, price_out=1.0)
+    assert (result.cost_usd is None) is cost_is_none
+    assert (result.input_tokens is None) is cost_is_none

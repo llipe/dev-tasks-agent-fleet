@@ -94,6 +94,7 @@ chained.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -134,6 +135,7 @@ __all__ = [
     "MAX_CALLS",
     "MAX_READ_TIMEOUT_SECONDS",
     "MAX_TOKENS",
+    "MAX_USAGE_TOKENS",
     "MIN_ATTEMPT_SECONDS",
     "OUTPUT_FORCED_SCHEMA",
     "OUTPUT_PROMPT_JSON",
@@ -172,6 +174,9 @@ REASONING_EFFORTS = ("low", "medium", "high")
 
 MAX_TOKENS = 16_000  # spec §6.3 ``inferenceConfig.maxTokens``
 MAX_CALLS = 5  # spec §6.3
+# A usage count above this is malformed: both totals become ``None`` and so does
+# the cost, so no int-to-float conversion can overflow (QA defect 4).
+MAX_USAGE_TOKENS = 10**18
 MAX_ATTEMPTS = 3  # botocore standard retry mode (spec §9)
 MAX_READ_TIMEOUT_SECONDS = 600
 MIN_READ_TIMEOUT_SECONDS = 1
@@ -695,9 +700,18 @@ def _usage(response: Any) -> tuple[int, int] | None:
 
 
 def _count(value: Any) -> int | None:
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_USAGE_TOKENS:
         return value
     return None
+
+
+def _cost(tokens: tuple[int, int], price_in: float, price_out: float) -> float | None:
+    """USD for ``tokens`` at per-million prices; ``None`` when not finite (QA defect 4)."""
+    try:
+        value = (tokens[0] * price_in + tokens[1] * price_out) / 1_000_000
+    except OverflowError:  # pragma: no cover - counts are bounded, kept as a guard
+        return None
+    return round(value, 6) if math.isfinite(value) else None
 
 
 # ---------------------------------------------------------------------------
@@ -752,7 +766,7 @@ class _Run:
         prices = (self.settings.price_input_per_mtok, self.settings.price_output_per_mtok)
         cost = None
         if tokens is not None and prices[0] is not None and prices[1] is not None:
-            cost = round((tokens[0] * prices[0] + tokens[1] * prices[1]) / 1_000_000, 6)
+            cost = _cost(tokens, prices[0], prices[1])
         return CallMetrics(
             calls=self.calls,
             repair_calls=self.repair_calls,

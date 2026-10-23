@@ -1252,17 +1252,6 @@ def test_usage_large_but_finite_values_are_summed_exactly():
     assert result.cost_usd is not None and math.isfinite(result.cost_usd)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (low): CallMetrics cost is int * float with no bound. inputTokens=10**400 "
-        "raises an untyped OverflowError from metrics() (also on the error path, masking the "
-        "typed error); 10**308 tokens or PRICE_*=1e308 (accepted by config) give "
-        "cost_usd=inf, which is not valid JSON for runs.metrics. RT-11 promises typed "
-        "errors only."
-    ),
-    raises=(OverflowError, AssertionError),
-)
 @pytest.mark.parametrize(
     ("tokens", "price"),
     [(10**400, 1.0), (10**308, 5.0), (1000, 1e308)],
