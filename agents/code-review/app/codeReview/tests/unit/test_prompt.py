@@ -629,12 +629,96 @@ def test_upstream_trim_and_truncation_are_named():
     conv = conventions_ctx()
     conv = type(conv)(**{**conv.__dict__, "truncated": True})
     p = _build(inputs(specs=spec_ctx(s), verifier=verifier_ctx(rep), conventions=conv))
-    got = {(n.block, n.state, n.reason) for n in p.context.notes}
-    assert got == {
-        ("spec", "trimmed", "cap"),
-        ("spec", "truncated", "cap"),
+    got = [(n.block, n.state, n.reason) for n in p.context.notes]
+    # One note per block and ref, the most severe state (QA residual 3).
+    assert got == [
         ("verifier", "truncated", "cap"),
+        ("spec", "trimmed", "cap"),
         ("conventions", "truncated", "cap"),
-    }
+    ]
     _, outside = parse_blocks(p.user, p.nonce)
-    assert "- Truncated: verifier, spec (2), conventions.\n" in outside
+    assert "- Truncated: verifier, spec, conventions.\n" in outside
+
+
+# ---------------------------------------------------------------------------
+# QA residuals (S-209 QA gate): notes deduped, empty spec, nonce attempts
+# ---------------------------------------------------------------------------
+
+
+def test_notes_name_each_block_once_with_the_most_severe_state():
+    big = issue(41, "line of an issue body\n" * 20_000)
+    big = type(big)(**{**big.__dict__, "truncated": True})  # cut upstream, then by budget
+    ins = inputs(title="t", body="b", issues=issues_ctx(big))
+    m = build_prompt(ins, max_context_tokens=10_000_000, max_diff_lines=2000, nonce=NONCE)
+    assert isinstance(m, Prompt)
+    p = build_prompt(
+        ins, max_context_tokens=m.context.mandatory_tokens + 2_000, max_diff_lines=2000, nonce=NONCE
+    )
+    assert isinstance(p, Prompt)
+    assert [(n.block, n.ref, n.state, n.reason) for n in p.context.notes] == [
+        ("issue", "#41", "truncated", "budget")
+    ]
+
+
+def test_omitted_beats_an_upstream_truncation():
+    i = issue(41, "body\n")
+    i = type(i)(**{**i.__dict__, "truncated": True})
+    ins = inputs(issues=issues_ctx(i))
+    m = build_prompt(ins, max_context_tokens=10_000_000, max_diff_lines=2000, nonce=NONCE)
+    assert isinstance(m, Prompt)
+    p = build_prompt(
+        ins, max_context_tokens=m.context.mandatory_tokens, max_diff_lines=2000, nonce=NONCE
+    )
+    assert isinstance(p, Prompt)
+    issue_notes = [(n.state, n.reason) for n in p.context.notes if n.block == "issue"]
+    assert issue_notes == [("omitted", "budget")]
+    assert not [n for n in p.context.truncated if n.block == "issue"]
+    _, outside = parse_blocks(p.user, p.nonce)
+    assert "issue #41" in outside.split("Omitted for budget:", 1)[1].split("\n", 1)[0]
+    assert (
+        "Truncated:" not in outside
+        or "issue #41" not in outside.split("Truncated:", 1)[1].split("\n", 1)[0]
+    )
+
+
+def test_same_state_twice_keeps_the_budget_reason():
+    s = spec(text="line of the spec\n" * 40_000)
+    s = type(s)(**{**s.__dict__, "truncated": True})
+    ins = inputs(specs=spec_ctx(s))
+    m = build_prompt(ins, max_context_tokens=10_000_000, max_diff_lines=2000, nonce=NONCE)
+    assert isinstance(m, Prompt)
+    p = build_prompt(
+        ins, max_context_tokens=m.context.mandatory_tokens + 3_000, max_diff_lines=2000, nonce=NONCE
+    )
+    assert isinstance(p, Prompt)
+    assert [(n.block, n.state, n.reason) for n in p.context.notes if n.block == "spec"] == [
+        ("spec", "truncated", "budget")
+    ]
+
+
+@pytest.mark.parametrize("text", ["", "\n", "  \n\t\n", "\r\n\r\n"])
+def test_an_empty_spec_is_named_omitted_empty(text):
+    path = "workstream/specification-prd-widgets.md"
+    p = _build(inputs(specs=spec_ctx(spec(path, text))))
+    assert "spec" not in [k for k, _, _ in parse_blocks(p.user, p.nonce)[0]]
+    assert [(n.block, n.ref, n.state, n.reason) for n in p.context.notes] == [
+        ("spec", path, "omitted", "empty")
+    ]
+    assert p.context.spec_paths == () and p.context.no_spec is False
+    _, outside = parse_blocks(p.user, p.nonce)
+    assert "- Empty, not included: spec.\n" in outside
+    assert "Omitted for budget" not in outside
+
+
+def test_nonce_error_reports_the_attempts_made():
+    with pytest.raises(NonceError) as exc:
+        _build(inputs(body=f"{NONCE}\n"), nonce=NONCE, nonce_factory=lambda: NONCE)
+    assert f"in {prompt.MAX_NONCE_ATTEMPTS + 1} attempts" in str(exc.value)
+    with pytest.raises(NonceError) as exc:
+        build_prompt(
+            inputs(body=f"{NONCE}\n"),
+            max_context_tokens=150_000,
+            max_diff_lines=2000,
+            nonce_factory=lambda: NONCE,
+        )
+    assert f"in {prompt.MAX_NONCE_ATTEMPTS} attempts" in str(exc.value)
