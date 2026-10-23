@@ -22,9 +22,9 @@
 - `agents/code-review/app/codeReview/context/tokens.py` - `estimate()` (D-27) and line-boundary `truncate()`, the one token estimator; S-209's budget fit reuses it (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
 - `agents/code-review/app/codeReview/{budget,prompt}.py`, `rubric.md` - priority fill and asserted invariant, prompt with nonce blocks and per-candidate blocks, prompt sink, rubric v1 (S-209)
-- `agents/code-review/app/codeReview/findings_schema.py` - `submit_review` schema as data, spec §6.3 verbatim (S-209); validation (S-210)
+- `agents/code-review/app/codeReview/findings_schema.py` - `submit_review` schema as data, spec §6.3 verbatim (S-209); schema-driven `validate_review` and strict `parse_review_json` (S-210)
 - `agents/code-review/app/codeReview/context/{tokens,diff}.py` - S-209 adds `estimate_len`, the public `escape_path`, and the `OverBudget` token fields (`reason="tokens"`)
-- `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter (S-210)
+- `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter: forced `submit_review`, toolChoice/reasoning/context-length retries, one repair call, per-call budget invariant (D-47), metrics, typed errors, `make_client` and per-call deadline-sized clients via `client_factory` (S-210, QA fixes)
 - `agents/code-review/app/codeReview/validate.py` - findings validation and verdict (S-211)
 - `agents/code-review/app/codeReview/render.py` - review, budget and failure comments (S-212)
 - `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
@@ -50,6 +50,10 @@
 - `agents/code-review/app/codeReview/tests/unit/{test_budget_hostile,test_prompt_hostile}.py` - S-209 QA hostile-input suites (seeds 411003, 411004; both strict-xfail pins fixed)
 - `agents/code-review/app/codeReview/tests/helpers/prompt_inputs.py` - prompt-input factories and the independent `parse_blocks` splitter (S-209)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,fidelity_report_s001_head.md,README.md}` - Story S-001 fidelity report route with one `Critical`+`Unintended` row (S-209)
+- `agents/code-review/app/codeReview/tests/fixtures/bedrock.py` - `FakeConverse`, a scripted, recording fake `bedrock-runtime` client with botocore `ClientError` shapes; reused by S-213 (S-210)
+- `agents/code-review/app/codeReview/tests/helpers/bedrock_run.py` - harness driving `bedrock_adapter.review` with a counter nonce factory, a stepping clock, and a warn/sink recorder (S-210)
+- `agents/code-review/app/codeReview/tests/unit/{test_bedrock_adapter,test_findings_schema,test_properties_bedrock}.py`, `tests/unit/test_contracts.py` (CT-08 section) - S-210 tests (TC-210-\*, CT-06, CT-07, CT-08, RT-11 seed 412001, RT-11b seed 412002)
+- `agents/code-review/app/codeReview/tests/unit/test_bedrock_hostile.py` - S-210 QA adversarial suite (exhaustive outcome walk, seeds 412003/412004, wire-level botocore retry and deadline checks, Stubber fidelity); all six defect pins fixed
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
 - `panel/tests/unit/code-review-params-parity.test.ts` - CT-01 params parity cases on the panel side (S-204)
@@ -128,13 +132,13 @@
   - [x] 6.10 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 - [ ] 7.0 Implement Story S-210 (#412): Bedrock adapter, forced schema, fallbacks · branch `story/S-210-bedrock-adapter`
-  - [ ] 7.1 `[T]` [code-review] Fake `converse` in `tests/fixtures/bedrock.py`; L1 `test_bedrock_adapter.py`: forced path; `toolChoice` rejected → fallback; repair → valid; repair invalid → `ModelOutputInvalid`; reasoning rejected → retry; context-length → retry without files; call budget ≤ 5 (property tactic); access denied; throttling; cost null without prices
-  - [ ] 7.2 `[T]` [code-review] Contracts CT-06/CT-07 (request/response shape) and CT-08 (`submit_review` schema); edge: empty findings, 41 findings, unknown category, text with no toolUse
-  - [ ] 7.3 `[I]` [code-review] `findings_schema.py` (spec §6.3) and a validator, preferring no new dependency
-  - [ ] 7.4 `[I]` [code-review] `bedrock_adapter.py`: forced `submit_review`, fallbacks, reasoning field constant, usage/metrics (D-34, D-35)
-  - [ ] 7.5 Verify Acceptance Criteria: AC1 forced; AC2 fallback; AC3 reasoning; AC4 context-length; AC5 repair; AC6 call budget and usage; AC7 errors
-  - [ ] 7.6 Map each AC to test evidence in the PR body
-  - [ ] 7.7 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+  - [x] 7.1 `[T]` [code-review] Fake `converse` in `tests/fixtures/bedrock.py`; L1 `test_bedrock_adapter.py`: forced path; `toolChoice` rejected → fallback; repair → valid; repair invalid → `ModelOutputInvalid`; reasoning rejected → retry; context-length → retry without files; call budget ≤ 5 (property tactic); access denied; throttling; cost null without prices
+  - [x] 7.2 `[T]` [code-review] Contracts CT-06/CT-07 (request/response shape) and CT-08 (`submit_review` schema); edge: empty findings, 41 findings, unknown category, text with no toolUse
+  - [x] 7.3 `[I]` [code-review] `findings_schema.py` (spec §6.3) and a validator, preferring no new dependency
+  - [x] 7.4 `[I]` [code-review] `bedrock_adapter.py`: forced `submit_review`, fallbacks, reasoning field constant, usage/metrics (D-34, D-35)
+  - [x] 7.5 Verify Acceptance Criteria: AC1 forced; AC2 fallback; AC3 reasoning; AC4 context-length; AC5 repair; AC6 call budget and usage; AC7 errors
+  - [x] 7.6 Map each AC to test evidence in the PR body
+  - [x] 7.7 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 - [ ] 8.0 Implement Story S-211 (#413): Findings validation and verdict · branch `story/S-211-findings-validation`
   - [ ] 8.1 `[T]` [code-review] L1 `test_validate.py`: non-reviewed file dropped; outside-diff and no-scenario downgrades; ±3 boundary; no consequence dropped; suggestion cap; IDs; `line_end < line_start` swap; validation property tactic
