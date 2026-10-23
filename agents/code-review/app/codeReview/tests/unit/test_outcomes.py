@@ -116,6 +116,16 @@ CASES = [
 ]
 
 
+def test_invalid_params_from_a_sub_call_is_internal_error():
+    """QA-213-07: INVALID_PARAMS is invoke's alone; inside the pipeline it is a defect."""
+
+    class E(Exception):
+        code = "INVALID_PARAMS"
+
+    for step in (*STEPS, None):
+        assert error_code_for(E(), step=step) == "INTERNAL_ERROR"
+
+
 @pytest.mark.parametrize(("exc", "step", "code"), CASES, ids=lambda v: type(v).__name__)
 def test_error_code_is_mapped_on_the_code_attribute(exc, step, code):
     assert error_code_for(exc, step=step) == code
@@ -186,6 +196,8 @@ def test_error_code_is_always_a_spec_13_code_property():
         assert got in ERROR_CODES
         if step == "validate":
             assert got == "INTERNAL_ERROR"
+        elif getattr(exc, "code", None) == "INVALID_PARAMS":
+            assert got == "INTERNAL_ERROR"  # QA-213-07: only invoke may say INVALID_PARAMS
         elif getattr(exc, "code", None) in ERROR_CODES:
             assert got == exc.code  # type: ignore[attr-defined]
 

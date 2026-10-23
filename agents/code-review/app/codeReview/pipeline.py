@@ -170,13 +170,17 @@ FAILURE_COMMENT: dict[str, str] = {
     "INTERNAL_ERROR": "yes",
 }
 
-# Codes the readers raise that are not §13 codes. ``GITHUB_NOT_FOUND`` on
+# Codes mapped before ``canonical_code``. ``GITHUB_NOT_FOUND`` on
 # ``load_pr`` is ``not_applicable`` before any mapping; later (compare, files)
 # it is an API failure. ``GITHUB_UNREACHABLE`` is the token exchange's
 # transport failure ("GitHub 5xx or network").
 _CODE_ALIASES = {
     "GITHUB_NOT_FOUND": "GITHUB_API_ERROR",
     "GITHUB_UNREACHABLE": "GITHUB_API_ERROR",
+    # Only main.invoke's params validation may end a run INVALID_PARAMS (§13: no
+    # comment, the PR is unvalidated). Inside the pipeline the params are valid,
+    # so a sub-call raising that code is a defect, and the PR gets a comment.
+    "INVALID_PARAMS": "INTERNAL_ERROR",
 }
 
 

@@ -1028,14 +1028,6 @@ def _scenario(h: Harness, name: str) -> None:
     h.fake.push(review([blocking()] if name in ("blocking", "draft") else []))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-07: error_code_for maps any exception whose .code is 'INVALID_PARAMS' "
-        "to INVALID_PARAMS, whose §13 row posts no failure comment, so a sub-call that "
-        "raises it after validation leaves the PR silent"
-    ),
-)
 @pytest.mark.parametrize("point", ["compare", "review"])
 def test_invalid_params_from_inside_the_pipeline_is_not_silent(h, point):
     POINTS[point][0](h, h.monkeypatch, _Coded("INVALID_PARAMS"))
