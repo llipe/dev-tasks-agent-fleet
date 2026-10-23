@@ -146,7 +146,8 @@ class TestOtherSecrets:
 class TestSecretSet:
     def test_values_are_listed_and_names_are_not_values(self):
         s = _registered()
-        assert set(s.values()) == set(ALL)
+        # Every registered value, plus the JSON-escaped form of the PEM.
+        assert set(s.values()) == set(ALL) | {json.dumps(APP_PEM)[1:-1]}
         assert "ANTHROPIC_API_KEY" in s.names()
 
     def test_empty_value_is_ignored(self):
