@@ -908,14 +908,6 @@ def test_secrets_in_pr_text_model_output_and_paths_never_leave(h):
         assert secret[4:20] not in body.replace("\\", "").replace("​", "")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-213-06: repository paths are rendered (and cut at 200 chars) without being "
-        "scrubbed first, so a secret straddling the cut leaves a fragment the final "
-        "whole-string scrub cannot match"
-    ),
-)
 def test_a_secret_straddling_a_path_cut_leaves_no_fragment(h):
     from render import CONTEXT_PATH_MAX
 

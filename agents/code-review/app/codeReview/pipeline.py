@@ -100,7 +100,7 @@ from context.diff import (
 from context.issues import linked_issues
 from context.repo_conventions import repo_conventions
 from context.spec import resolve_specs
-from context.verifier import REPORT_NONE, verifier_candidates
+from context.verifier import REPORT_NONE, Candidate, VerifierContext, verifier_candidates
 from github_client import (
     GitHubClient,
     GitHubError,
@@ -346,6 +346,78 @@ def _scrub_validation(v: Validation, secrets: Sequence[str]) -> Validation:
             for c in v.candidates
         ),
     )
+
+
+def _scrub_name_only(
+    files: Sequence[NameOnlyFile], secrets: Sequence[str]
+) -> tuple[NameOnlyFile, ...]:
+    sec = list(secrets)
+    return tuple(
+        dataclasses.replace(
+            f,
+            filename=scrub(f.filename, sec),
+            detail=None if f.detail is None else scrub(f.detail, sec),
+        )
+        for f in files
+    )
+
+
+def _scrub_render_inputs(
+    context: ContextData,
+    diff: DiffContext,
+    verifier: VerifierContext | None,
+    secrets: Sequence[str],
+) -> tuple[ContextData, DiffContext, VerifierContext | None]:
+    """Repository text the renderer shows (paths, rows, refs), scrubbed before any cut.
+
+    The renderer cuts paths (200 chars) and rows before escaping them, so a
+    secret straddling a cut leaves a fragment no later scrub can match
+    (QA-213-06). Run after ``validate``, which matches the raw paths.
+    """
+    sec = list(secrets)
+
+    def s(text: str) -> str:
+        return scrub(text, sec)
+
+    def cand(c: Candidate) -> Candidate:
+        return dataclasses.replace(c, report_path=s(c.report_path), text=s(c.text))
+
+    clean_context = dataclasses.replace(
+        context,
+        notes=tuple(
+            dataclasses.replace(n, ref=None if n.ref is None else s(n.ref)) for n in context.notes
+        ),
+        shown_candidates=tuple(cand(c) for c in context.shown_candidates),
+        dropped_candidates=tuple(cand(c) for c in context.dropped_candidates),
+        full_files_included=tuple(s(p) for p in context.full_files_included),
+        full_files_dropped=tuple(s(p) for p in context.full_files_dropped),
+        spec_paths=tuple(s(p) for p in context.spec_paths),
+    )
+    clean_diff = dataclasses.replace(
+        diff,
+        files=tuple(
+            dataclasses.replace(
+                f,
+                filename=s(f.filename),
+                previous_filename=None if f.previous_filename is None else s(f.previous_filename),
+            )
+            for f in diff.files
+        ),
+        name_only=_scrub_name_only(diff.name_only, sec),
+    )
+    clean_verifier = None
+    if verifier is not None:
+        clean_verifier = dataclasses.replace(
+            verifier,
+            reports=tuple(
+                dataclasses.replace(
+                    r, path=s(r.path), candidates=tuple(cand(c) for c in r.candidates)
+                )
+                for r in verifier.reports
+            ),
+            candidates=tuple(cand(c) for c in verifier.candidates),
+        )
+    return clean_context, clean_diff, clean_verifier
 
 
 def _rendered_forms(secrets: Sequence[str]) -> list[str]:
@@ -1013,15 +1085,16 @@ class Pipeline:
     def _post_note(self, g: _Gathered) -> PipelineResult:
         """The budget comment or the nothing-to-review note, in a ``post`` step."""
         run_id, panel = self.request.run_id, self.settings.panel_base_url
+        name_only = _scrub_name_only(g.name_only, self.secrets)  # before any cut (QA-213-06)
         with self._step("post"):
             self._check_deadline()
             if g.over is not None:
                 body = render_budget(
-                    g.over, run_id=run_id, panel_base_url=panel, name_only=g.name_only
+                    g.over, run_id=run_id, panel_base_url=panel, name_only=name_only
                 )
                 kind = "budget comment"
             else:
-                body = render_nothing_to_review(g.name_only, run_id=run_id, panel_base_url=panel)
+                body = render_nothing_to_review(name_only, run_id=run_id, panel_base_url=panel)
                 kind = "nothing-to-review note"
             body = self._scrub_body(body)
             self._metrics["comment_chars"] = comment_size(body)
@@ -1035,11 +1108,14 @@ class Pipeline:
     def _post_review(self, validation: Validation, result: ReviewResult, g: _Gathered) -> _Posted:
         assert g.inputs is not None and g.diff is not None and self._pull is not None
         clean = _scrub_validation(validation, self.secrets)
+        context, diff, verifier = _scrub_render_inputs(
+            result.context, g.diff, g.inputs.verifier, self.secrets
+        )
         rendered = render_review(
             clean,
-            context=result.context,
-            diff=g.diff,
-            verifier=g.inputs.verifier,
+            context=context,
+            diff=diff,
+            verifier=verifier,
             run_id=self.request.run_id,
             head_sha=self._pull.head_sha,
             model_id=self.settings.model_id,
