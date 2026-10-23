@@ -286,7 +286,7 @@ HTTP answers, a virtual clock advanced by read timeouts and by the patched
 `time.sleep` of botocore's backoff) measures botocore's own retry attempts and
 the wall time against the run deadline. Credentials are dummy environment
 values and config files point at an empty `tmp_path`; no socket is opened.
-Retry waits and clocks are injected, so no test sleeps. Property tactics use
+The validation and verdict tests (S-211) need no fake: `validate.validate` is pure, so they pass a `changed_ranges` mapping and `context.verifier.Candidate` tuples directly, and `validate_result` takes any object with `findings` and `context.shown_candidates`/`dropped_candidates` (a `SimpleNamespace` in tests) plus a real `DiffContext`. Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`
 are patched at the module boundary as in the siblings. Because `StubTransport`
