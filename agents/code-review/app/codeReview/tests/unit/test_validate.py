@@ -281,12 +281,16 @@ def test_escaped_control_character_paths_match_the_reviewed_file():
         assert kept.file == name  # the canonical (raw repository) path
 
 
-def test_a_literal_path_wins_over_another_files_escaped_form():
-    # A file literally named `x\nb.py` (backslash, n) and one with a newline:
-    # the escaped form of the second equals the first's literal name.
+def test_the_escaped_form_the_model_sees_wins_over_a_raw_name():
+    # escape_path is injective (gap 3): the diff shows the newline file as
+    # `x\nb.py` and the backslash file as `x\\nb.py`. The model copies those,
+    # so the escaped form decides; the raw names still match their own file.
     literal, control = "x\\nb.py", "x\nb.py"
     ranges = {literal: ((1, 1),), control: ((9, 9),)}
-    assert match_reviewed(literal, ranges) == literal
+    assert escape_path(control) == "x\\nb.py"
+    assert escape_path(literal) == "x\\\\nb.py"
+    assert match_reviewed("x\\nb.py", ranges) == control  # control's header
+    assert match_reviewed("x\\\\nb.py", ranges) == literal  # literal's header
     assert match_reviewed(control, ranges) == control
 
 

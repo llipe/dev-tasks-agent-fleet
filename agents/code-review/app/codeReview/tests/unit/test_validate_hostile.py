@@ -37,9 +37,9 @@ Characterized, not pinned (planner questions, see the report):
 
 - placeholder scenarios: resolved by D-51 (blank means no letter or number),
   so ``"."`` and ``"-"`` are blank and ``"N/A"`` and ``"none"`` are not;
-- ``escape_path`` does not escape ``\\``, so a literal path ``a\\nb.py`` and a
-  path with a real newline ``a<LF>b.py`` render identically in the diff
-  header; the literal path wins (decision 3).
+- ``escape_path`` collisions: fixed (gap 3). ``\\`` is escaped too, so a
+  literal ``a\\nb.py`` and ``a<LF>b.py`` render differently, and the escaped
+  form decides the match.
 """
 
 from __future__ import annotations
@@ -284,18 +284,22 @@ def test_the_escaped_form_attaches_only_to_the_control_character_file():
     assert kept.file == "src/x\x1by.py"
 
 
-def test_escape_collision_the_literal_path_wins_and_its_ranges_decide():
-    """Characterizes pinned decision 3 on a non-injective ``escape_path``.
+def test_escape_collision_is_gone_and_the_escaped_form_decides():
+    """Gap 3 fixed: ``escape_path`` escapes ``\\``, so it is injective.
 
-    ``escape_path`` leaves ``\\`` alone, so ``a<LF>b.py`` and the literal
-    ``a\\nb.py`` share one diff header. The model cannot tell them apart; the
-    literal file wins, and the location check uses its ranges. Residual gap
-    (S-206 ``escape_path``), not an S-211 defect.
+    ``a<LF>b.py`` renders as ``a\\nb.py`` and the literal ``a\\nb.py`` as
+    ``a\\\\nb.py``; the two headers differ. Matching tries the escaped form
+    first (what the diff and the prompt show), so the model's copy of each
+    header attaches to its own file. (A reviewed path never holds ``\\`` in
+    production: the client guard refuses it, so the file is content
+    unavailable.)
     """
     control, literal = "a\nb.py", "a\\nb.py"
-    assert escape_path(control) == literal
+    assert escape_path(control) != escape_path(literal)
     ranges = {control: ((1, 1),), literal: ((900, 900),)}
-    kept = only(run([finding(file=literal, line_start=1, line_end=1)], ranges=ranges))
+    kept = only(run([finding(file=escape_path(control), line_start=1, line_end=1)], ranges=ranges))
+    assert (kept.file, kept.severity) == (control, "blocking")
+    kept = only(run([finding(file=escape_path(literal), line_start=1, line_end=1)], ranges=ranges))
     assert (kept.file, kept.downgraded) == (literal, DOWNGRADE_OUTSIDE_DIFF)
     kept = only(run([finding(file=control, line_start=1, line_end=1)], ranges=ranges))
     assert (kept.file, kept.severity) == (control, "blocking")
@@ -315,11 +319,11 @@ def _oracle_match(raw: str, reviewed: list[str]) -> str | None:
                 return s
 
     for form in (raw, norm(raw)):
-        if form in reviewed:
-            return form
-        for p in reviewed:  # diff order: the first escaped form wins
+        for p in reviewed:  # the escaped form (what the model sees) first
             if escape_path(p) == form:
                 return p
+        if form in reviewed:
+            return form
     return None
 
 
