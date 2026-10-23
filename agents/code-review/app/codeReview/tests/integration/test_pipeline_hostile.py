@@ -544,6 +544,103 @@ def test_nothing_after_the_review_post_adds_a_failure_comment(h, monkeypatch, wh
     assert _failure_posts(h) == []
 
 
+# ---------------------------------------------------------------------------
+# Residual gap 2 (PRD-level QA): an error that reaches the run after the POST
+# ---------------------------------------------------------------------------
+#
+# ``_after_post`` swallows an ``Exception`` from a post-POST write. What it
+# cannot swallow reaches ``Pipeline.run``: an error closing the ``post`` step
+# (the step's own write), or a ``KeyboardInterrupt``/``SystemExit``. With a
+# comment already posted, ``_finish_posted`` must end the run with the posted
+# outcome: no failure comment, no ``failed`` run, one terminal write.
+
+
+def _post_step_close_raises(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
+    """The ``post`` step records ``succeeded``, then its close raises ``exc``."""
+    orig = agent_reporter._Step.__exit__
+
+    def exit_(self: Any, exc_type: Any, exc_value: Any, tb: Any) -> bool:
+        result: bool = orig(self, exc_type, exc_value, tb)
+        if self.key == "post" and exc_type is None:
+            raise exc
+        return result
+
+    monkeypatch.setattr(agent_reporter._Step, "__exit__", exit_)
+
+
+def _assert_kept_the_posted_outcome(
+    h: Harness, result: dict[str, Any] | None, outcome: str, verdict: str | None, error: str
+) -> None:
+    terminals = _terminals(h)
+    assert len(terminals) == 1
+    t = terminals[0]
+    assert t["status"] == "succeeded"
+    assert t["outcome"] == outcome
+    assert "error_code" not in t
+    assert t["result"]["verdict"] == verdict
+    assert t["result"]["comment_url"]
+    assert _failure_posts(h) == []
+    errors = [
+        e for e in h.reporter.events() if e["message"] == "error after the comment was posted"
+    ]
+    assert [e["data"]["error"] for e in errors] == [error]
+    if result is not None:
+        assert result["status"] == "succeeded"
+        assert result["outcome"] == outcome
+        assert result.get("error_code") is None
+
+
+def test_an_error_closing_the_post_step_keeps_the_posted_review(h, monkeypatch):
+    _post_step_close_raises(monkeypatch, RuntimeError(f"step write {TOKEN}"))
+    h.fake.push(review([blocking()]))
+    result = h.drive()
+    assert len(_review_posts(h)) == 1
+    _assert_kept_the_posted_outcome(h, result, "needs_review", "blocking", "RuntimeError")
+    assert len(h.reporter.artifacts()) == 1, "the audit_report was written before the error"
+    _assert_no_secret(h)
+
+
+def test_an_error_closing_the_post_step_keeps_the_posted_note(h, monkeypatch):
+    _post_step_close_raises(monkeypatch, RuntimeError("step write"))
+    h.set_files([file_entry("uv.lock", 1, 1)])  # nothing to review: the note path
+    result = h.drive()
+    assert len(h.posts()) == 1 and h.fake.calls == 0
+    assert not h.posts()[0].startswith("Code review failed (")
+    _assert_kept_the_posted_outcome(h, result, "not_applicable", None, "RuntimeError")
+
+
+@pytest.mark.parametrize("exc_type", [KeyboardInterrupt, SystemExit])
+def test_a_base_exception_after_the_review_post_keeps_the_outcome_and_propagates(h, exc_type):
+    """A BaseException passes ``_after_post``: the run still ends with the posted
+    outcome (``_finish_posted``), then the exception reaches the process."""
+    h.monkeypatch.setattr(agent_reporter.RunReporter, "artifact", _raiser(exc_type()))
+    h.fake.push(review([blocking()]))
+    with pytest.raises(exc_type):
+        h.drive()
+    assert len(_review_posts(h)) == 1
+    _assert_kept_the_posted_outcome(h, None, "needs_review", "blocking", exc_type.__name__)
+
+
+def test_a_base_exception_after_the_post_records_nothing_when_the_run_already_ended(h):
+    """The SIGTERM backstop already ended the run: record and post nothing more."""
+
+    def artifact(self: Any, *_a: Any, **_k: Any) -> None:
+        signal_backstop.report_abrupt_termination(self, signal_name="SIGTERM", secrets=[])
+        raise KeyboardInterrupt
+
+    h.monkeypatch.setattr(agent_reporter.RunReporter, "artifact", artifact)
+    h.fake.push(review([blocking()]))
+    with pytest.raises(KeyboardInterrupt):
+        h.drive()
+    terminals = _terminals(h)
+    assert len(terminals) == 1
+    assert terminals[0]["status"] == "failed"
+    assert terminals[0]["error_code"] == "SIGNAL_TERMINATION"
+    assert len(_review_posts(h)) == 1 and _failure_posts(h) == []
+    messages = [e["message"] for e in h.reporter.events()]
+    assert "error after the comment was posted" not in messages
+
+
 def test_a_created_comment_with_an_unreadable_body_is_not_followed_by_a_failure_comment(h):
     h.stub.add(("POST", COMMENTS_PATH), StubResponse(201, b"<html>not json</html>", {}))
     h.fake.push(review([blocking()]))
