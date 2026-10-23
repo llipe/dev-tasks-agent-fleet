@@ -158,7 +158,7 @@
   - [x] 9.3 `[T]` [code-review] L1 budget and failure messages with the run link (D-29)
   - [x] 9.4 `[I]` [code-review] `render.py` (D-28, D-36)
   - [x] 9.5 Verify Acceptance Criteria: AC1 layout; AC2 verifier; AC3 context line; AC4 neutralization; AC5 size; AC6 messages
-  - [ ] 9.6 Manual: paste a rendered snapshot into a GitHub comment preview and check the layout (the blocking snapshot is handed to the planner, who posts it on the PR for the preview)
+  - [x] 9.6 Manual: paste a rendered snapshot into a GitHub comment preview and check the layout (passed: the blocking snapshot posted on PR #437, comment 6369319634)
   - [x] 9.7 Map each AC to test evidence in the PR body
   - [x] 9.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
