@@ -1393,3 +1393,25 @@ def test_stage5_keeps_every_blocking_one_liner_when_the_list_fits():
     assert len(re.findall(r"^- \*\*B\d+ · ", out.body, re.M)) == 5
     assert "not shown" not in out.body
     assert "### Verifier" in out.body
+
+
+def test_stage5_helpers_cut_lines_and_trim_blocking():
+    """QA-212-D2 helpers: line cuts, and every blocking entry listed or counted."""
+    assert render._cut_lines("ab\ncd", 10) == "ab\ncd"
+    assert render._cut_lines("ab\ncd", 0) == ""
+    assert render._cut_lines("ab\ncd", 3) == "ab"
+    assert render._cut_lines("abcdef", 3) == ""
+    lines = [f"- **B{k} · c · `p:1`** — t" for k in range(1, 4)]
+    whole = render._trim_blocking(lines, 10_000)
+    assert "3 more blocking findings are listed by title only:" in whole
+    assert "not shown" not in whole
+    for room in range(20, len(whole)):
+        out = render._trim_blocking(lines, room)
+        assert len(out) <= room or out == "### Blocking\n\n3 blocking findings not shown."
+        listed = len(re.findall(r"^- \*\*B", out, re.M))
+        lead = re.search(r"^(\d+) more blocking", out, re.M)
+        assert (int(lead.group(1)) if lead else 0) == listed
+        missing = re.search(r"(\d+) (?:more )?blocking findings? not shown", out)
+        assert listed + (int(missing.group(1)) if missing else 0) == 3
+    none = render._trim_blocking(lines, 20)
+    assert none == "### Blocking\n\n3 blocking findings not shown."
