@@ -25,6 +25,7 @@ from context.diff import (
     check_size,
     classify,
     diff_context,
+    escape_path,
     expanded_diff,
     unified_diff,
 )
@@ -312,6 +313,23 @@ def test_diff_text_concatenates_file_diffs_in_files_list_order():
     assert ctx.changed_ranges == {"b.py": ((1, 1),), "a.py": ((1, 1),)}
 
 
+def test_removed_paths_lists_reviewed_removed_files_only():
+    # S-211 (TC-211-05): a removed reviewed file is part of the reviewed diff.
+    # A removed file moved to name-only after the fetch (binary) is not.
+    repo = Repo(
+        {
+            ("a.py", MB): "x\n",
+            ("a.py", HEAD): "y\n",
+            ("gone.py", MB): "g\n",
+            ("old.bin", MB): b"\x00",
+        }
+    )
+    files = [_f("a.py"), _f("gone.py", "removed"), _f("old.bin", "removed"), _f("yarn.lock")]
+    ctx = _expand(repo, files)
+    assert ctx.removed_paths == ("gone.py",)
+    assert "gone.py" not in ctx.changed_ranges
+
+
 # -- TC-206-03 binary by NUL in the first 8 KB -----------------------------------
 
 
@@ -357,6 +375,31 @@ def test_backslash_filename_is_content_unavailable_not_a_run_failure():
     assert (na.filename, na.reason) == ("dir/a\\b.py", "content_unavailable")
     assert na.detail == "path cannot be fetched safely"
     assert not any("%5C" in c.path or "\\" in c.path for c in repo.stub.calls)
+
+
+def test_escape_path_escapes_a_backslash_so_it_is_injective():
+    # S-211 gap 3: without escaping "\\", a name with a real newline and the
+    # literal name "a\\nb.py" rendered as the same header.
+    assert escape_path("a\\b.py") == "a\\\\b.py"
+    assert escape_path("a\nb.py") == "a\\nb.py"
+    assert escape_path("a\\nb.py") == "a\\\\nb.py"
+    assert escape_path("a\nb.py") != escape_path("a\\nb.py")
+    assert escape_path("plain/path.py") == "plain/path.py"
+
+
+def test_escape_path_is_injective_over_a_hostile_pool():
+    alphabet = ["a", "\\", "n", "x", "1", "b", "\n", "\x1b", "\u2028", "\x85", "u"]
+    names = {""}
+    for _ in range(4):
+        names |= {n + c for n in names for c in alphabet}
+    escaped = {}
+    for name in names:
+        assert escaped.setdefault(escape_path(name), name) == name
+
+
+def test_header_paths_escape_a_backslash():
+    out = unified_diff("a\\nb.py", "a\\nb.py", "x\n", "y\n", "modified")
+    assert out.splitlines()[:2] == ["--- a/a\\\\nb.py", "+++ b/a\\\\nb.py"]
 
 
 def test_backslash_previous_filename_is_content_unavailable():

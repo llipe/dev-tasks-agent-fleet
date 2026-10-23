@@ -202,6 +202,17 @@ def test_rubric_system_prompt_rules(phrase):
     assert phrase in system_prompt()
 
 
+def test_system_prompt_states_the_blocking_span_bound():
+    # S-211 DR-2 (D-50 extension): the model is told the span rule.
+    from validate import MAX_BLOCKING_SPAN
+
+    sentence = (
+        "Keep `line_start`–`line_end` tight: a span longer than "
+        f"{MAX_BLOCKING_SPAN} lines counts as located only if every line in it is changed."
+    )
+    assert sentence in system_prompt().replace("\n", " ")
+
+
 def test_system_prompt_names_the_output_tool():
     assert f"`{findings_schema.SUBMIT_REVIEW_TOOL}`" in system_prompt()
 

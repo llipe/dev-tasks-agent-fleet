@@ -17,7 +17,7 @@
 - `agents/code-review/app/codeReview/{agent_reporter,credentials,heartbeat,signal_backstop,scrubber}.py` - copies of the sibling modules (S-204)
 - `agents/code-review/app/codeReview/{pyproject.toml,Makefile,Dockerfile,.dockerignore}` - package, gates, image (S-204)
 - `agents/code-review/app/codeReview/github_client.py` - allowlisted GitHub REST client (S-205); `get_content_bytes` for the byte-exact NUL check (S-206)
-- `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206)
+- `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206); `DiffContext.removed_paths` and an injective `escape_path` (S-211)
 - `agents/code-review/app/codeReview/context/{issues,spec,conventions}.py` - linked issues, checklist strip, spec resolution and trimming (S-207)
 - `agents/code-review/app/codeReview/context/tokens.py` - `estimate()` (D-27) and line-boundary `truncate()`, the one token estimator; S-209's budget fit reuses it (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
@@ -25,7 +25,7 @@
 - `agents/code-review/app/codeReview/findings_schema.py` - `submit_review` schema as data, spec §6.3 verbatim (S-209); schema-driven `validate_review` and strict `parse_review_json` (S-210)
 - `agents/code-review/app/codeReview/context/{tokens,diff}.py` - S-209 adds `estimate_len`, the public `escape_path`, and the `OverBudget` token fields (`reason="tokens"`)
 - `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter: forced `submit_review`, toolChoice/reasoning/context-length retries, one repair call, per-call budget invariant (D-47), metrics, typed errors, `make_client` and per-call deadline-sized clients via `client_factory` (S-210, QA fixes)
-- `agents/code-review/app/codeReview/validate.py` - findings validation and verdict (S-211)
+- `agents/code-review/app/codeReview/validate.py` - findings validation and verdict: `validate`, `validate_result`, `Validation`, per-candidate `CandidateStatus`, metrics counts (S-211)
 - `agents/code-review/app/codeReview/render.py` - review, budget and failure comments (S-212)
 - `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
 - `agents/code-review/app/codeReview/tests/{unit,integration,fixtures,helpers}/**` - tests, recorded GitHub fixtures, fake Bedrock, seeded PRNG helper
@@ -53,6 +53,8 @@
 - `agents/code-review/app/codeReview/tests/fixtures/bedrock.py` - `FakeConverse`, a scripted, recording fake `bedrock-runtime` client with botocore `ClientError` shapes; reused by S-213 (S-210)
 - `agents/code-review/app/codeReview/tests/helpers/bedrock_run.py` - harness driving `bedrock_adapter.review` with a counter nonce factory, a stepping clock, and a warn/sink recorder (S-210)
 - `agents/code-review/app/codeReview/tests/unit/{test_bedrock_adapter,test_findings_schema,test_properties_bedrock}.py`, `tests/unit/test_contracts.py` (CT-08 section) - S-210 tests (TC-210-\*, CT-06, CT-07, CT-08, RT-11 seed 412001, RT-11b seed 412002)
+- `agents/code-review/app/codeReview/tests/unit/{test_validate,test_verdict,test_properties_validate}.py` - S-211 tests (TC-211-\*, RT-08 seed 413001)
+- `agents/code-review/app/codeReview/tests/unit/test_validate_hostile.py` - S-211 QA hostile suite (seeds 413002-413005); D-50, D-51 and the escape gap fixed, 0 xfails
 - `agents/code-review/app/codeReview/tests/unit/test_bedrock_hostile.py` - S-210 QA adversarial suite (exhaustive outcome walk, seeds 412003/412004, wire-level botocore retry and deadline checks, Stubber fidelity); all six defect pins fixed
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
@@ -140,13 +142,13 @@
   - [x] 7.6 Map each AC to test evidence in the PR body
   - [x] 7.7 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
-- [ ] 8.0 Implement Story S-211 (#413): Findings validation and verdict · branch `story/S-211-findings-validation`
-  - [ ] 8.1 `[T]` [code-review] L1 `test_validate.py`: non-reviewed file dropped; outside-diff and no-scenario downgrades; ±3 boundary; no consequence dropped; suggestion cap; IDs; `line_end < line_start` swap; validation property tactic
-  - [ ] 8.2 `[T]` [code-review] L1 `test_verdict.py`: confirmed, not_reproduced, omitted, budget-dropped (counts), mixed, none, unknown candidate ID ignored (D-15, D-33, D-37)
-  - [ ] 8.3 `[I]` [code-review] `validate.py` (D-08)
-  - [ ] 8.4 Verify Acceptance Criteria: AC1–AC5 validation; AC6 verdict; AC7 counts
-  - [ ] 8.5 Map each AC to test evidence in the PR body
-  - [ ] 8.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+- [ ] 8.0 Implement Story S-211 (#413): Findings validation and verdict · branch `story/S-211-validate-verdict`
+  - [x] 8.1 `[T]` [code-review] L1 `test_validate.py`: non-reviewed file dropped; outside-diff and no-scenario downgrades; ±3 boundary; no consequence dropped; suggestion cap; IDs; `line_end < line_start` swap; validation property tactic (RT-08 in `test_properties_validate.py`, seed 413001)
+  - [x] 8.2 `[T]` [code-review] L1 `test_verdict.py`: confirmed, not_reproduced, omitted, budget-dropped (counts), mixed, none, unknown candidate ID ignored (D-15, D-33, D-37)
+  - [x] 8.3 `[I]` [code-review] `validate.py` (D-08)
+  - [x] 8.4 Verify Acceptance Criteria: AC1–AC5 validation; AC6 verdict; AC7 counts
+  - [x] 8.5 Map each AC to test evidence in the PR body
+  - [x] 8.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 - [ ] 9.0 Implement Story S-212 (#414): Review, budget, and failure comments · branch `story/S-212-comment-render`
   - [ ] 9.1 `[T]` [code-review] L1 `test_render.py` snapshots: clear and blocking layouts; empty sections omitted; verifier states with rows from wrapper data (D-38); context line; mention, HTML, backtick neutralization

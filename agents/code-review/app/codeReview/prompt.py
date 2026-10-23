@@ -91,6 +91,7 @@ from context.diff import OVER_TOKENS, DiffContext, OverBudget, escape_path
 from context.tokens import estimate, estimate_len, truncate
 from context.verifier import REPORT_NONE, REPORT_NOT_PARSEABLE, REPORT_PARSED, Candidate
 from findings_schema import CATEGORIES, MAX_FINDINGS, SUBMIT_REVIEW_SCHEMA, SUBMIT_REVIEW_TOOL
+from validate import MAX_BLOCKING_SPAN
 
 __all__ = [
     "KINDS",
@@ -234,7 +235,9 @@ verdict, and posts the comment.
 A finding is `blocking` only when all three hold:
 
 1. Location: `file`, `line_start` and `line_end` point at lines the diff adds \
-or changes in the head version of a reviewed file.
+or changes in the head version of a reviewed file. Keep `line_start`–`line_end` \
+tight: a span longer than {max_span} lines counts as located only if every line \
+in it is changed.
 2. Failure scenario: `failure_scenario` describes concrete inputs or a \
 sequence of events, and what the code then does wrong.
 3. Consequence: `consequence` says what breaks, for whom.
@@ -317,6 +320,7 @@ def system_prompt() -> str:
         version=RUBRIC_VERSION,
         rubric=rubric_text(),
         max_findings=MAX_FINDINGS,
+        max_span=MAX_BLOCKING_SPAN,
     )
 
 

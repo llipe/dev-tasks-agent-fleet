@@ -210,6 +210,16 @@ class DiffContext:
         """Changed head line ranges per reviewed, non-removed file (S-211)."""
         return {f.filename: f.changed_ranges for f in self.files if f.head_content is not None}
 
+    @property
+    def removed_paths(self) -> tuple[str, ...]:
+        """Reviewed files the PR removes, in files-list order (S-211).
+
+        Part of the reviewed diff, with no head lines: a finding on one is
+        kept, and a blocking one is ``outside_diff``. A removed file moved to
+        name-only after the fetch (binary, content unavailable) is not here.
+        """
+        return tuple(f.filename for f in self.files if f.head_content is None)
+
 
 # ---------------------------------------------------------------------------
 # Classification and size check (spec §8.2)
@@ -313,15 +323,20 @@ def _unsafe_in_header(c: str) -> bool:
 
 
 def escape_path(path: str) -> str:
-    """``path`` with control characters and line separators escaped.
+    """``path`` with backslashes, control characters and line separators escaped.
 
     Each unsafe character (``_unsafe_in_header``) becomes its
     ``unicode_escape`` form (``\\n``, ``\\x1b``, ``\\u2028``), so the result
     is one line for every consumer, including one that splits with
-    ``str.splitlines``. The diff headers and the prompt (S-209) both use it.
+    ``str.splitlines``. A backslash becomes ``\\\\`` (also its
+    ``unicode_escape`` form), which makes the mapping injective: a name with a
+    real newline (``a\\nb.py``) and the literal name ``a\\\\nb.py`` no longer
+    render alike (S-211 gap 3). The diff headers, the prompt (S-209) and
+    ``validate``'s path matching (S-211) all use it.
     """
     return "".join(
-        c.encode("unicode_escape").decode("ascii") if _unsafe_in_header(c) else c for c in path
+        c.encode("unicode_escape").decode("ascii") if c == "\\" or _unsafe_in_header(c) else c
+        for c in path
     )
 
 
