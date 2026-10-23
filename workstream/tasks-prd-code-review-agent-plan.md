@@ -63,6 +63,8 @@
 - `agents/code-review/app/codeReview/tests/unit/test_validate_hostile.py` - S-211 QA hostile suite (seeds 413002-413005); D-50, D-51 and the escape gap fixed, 0 xfails
 - `agents/code-review/app/codeReview/tests/unit/{test_render,test_properties_render}.py`, `tests/unit/__snapshots__/{review_blocking,review_clear,budget_lines,budget_tokens,failure}.md` - S-212 tests (TC-212-\*, RT-06 seed 414001) and byte-compared snapshots
 - `agents/code-review/app/codeReview/tests/helpers/render_inputs.py` - renderer-input factories (`Validation`, `ContextData`, `DiffContext`, `VerifierContext`) and the snapshot fixtures (S-212)
+- `agents/code-review/app/codeReview/tests/unit/test_render_hostile.py` - S-212 QA hostile suite (seeds 414002-414004); QA-212-D1–D3 fixed, 0 xfails
+- `agents/code-review/app/codeReview/tests/integration/test_pipeline_hostile.py` - S-213 QA hostile suite (seed 415002); QA-213-01–07 fixed, 0 xfails
 - `agents/code-review/app/codeReview/tests/unit/test_bedrock_hostile.py` - S-210 QA adversarial suite (exhaustive outcome walk, seeds 412003/412004, wire-level botocore retry and deadline checks, Stubber fidelity); all six defect pins fixed
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
@@ -72,7 +74,7 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-204 (#406): Agent scaffold, params, and agents seed · branch `story/S-204-agent-scaffold`
+- [x] 1.0 Implement Story S-204 (#406): Agent scaffold, params, and agents seed · branch `story/S-204-agent-scaffold`
   - [x] 1.1 `[T]` [code-review] L1 `test_payload.py`: unwrap single and double `prompt` wrapper; every invalid param (`pr_number` 0/negative/string, limits out of range, unknown `reasoning_effort`, extra key, `params` absent); defaults (TC-204-\*)
   - [x] 1.2 `[T]` [code-review] L1 `test_config.py`: clock invariant pass and fail (`run_timeout_seconds` ≤ 900 ≤ 1800) (D-32)
   - [x] 1.3 `[T]` [code-review] `tests/integration/test_invoke_skeleton.py` with a reporter sink: invalid params → `INVALID_PARAMS`, no GitHub call
@@ -89,7 +91,7 @@
   - [x] 1.14 Map each AC to test evidence in the PR body
   - [x] 1.15 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
-- [ ] 2.0 Implement Story S-205 (#407): GitHub client with a write allowlist · branch `story/S-205-github-client`
+- [x] 2.0 Implement Story S-205 (#407): GitHub client with a write allowlist · branch `story/S-205-github-client`
   - [x] 2.1 `[T]` [code-review] L1 `test_github_client.py`: each allowed call; every disallowed verb/path (`PUT`, `PATCH`, `DELETE`, `POST` to reviews, merge, labels, another issue's comments) raises `ForbiddenCall` before transport; CT-04 allowlist snapshot
   - [x] 2.2 `[T]` [code-review] L1 retries (2 on 5xx/connection/secondary rate limit, `retry-after` honored, max 30 s), POST never retried; 404 contents → `None`; error mapping; token absent from exception text
   - [x] 2.3 `[T]` [code-review] Edge: paging stops at 30 pages; paths with spaces, `#`, `..` URL-encoded; secondary-rate-limit 403 vs. permission 403
@@ -100,7 +102,7 @@
   - [x] 2.8 Map each AC to test evidence in the PR body
   - [x] 2.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
-- [ ] 3.0 Implement Story S-206 (#408): Expanded diff and size check · branch `story/S-206-expanded-diff`
+- [x] 3.0 Implement Story S-206 (#408): Expanded diff and size check · branch `story/S-206-expanded-diff`
   - [x] 3.1 `[T]` [code-review] L1 `test_classify.py`: lockfiles, generated paths, binaries, excluded workstream paths; near-misses (e.g. `lockfile.md`); property tactic over random paths (fixed seed)
   - [x] 3.2 `[T]` [code-review] L1 `test_diff.py`: added, removed, renamed, modified; ±50 context; empty file; no trailing newline; CRLF; invalid UTF-8; diff round-trip property
   - [x] 3.3 `[T]` [code-review] L1 budget: exactly `max_diff_lines` vs +1; lockfile-only PR; 300+ files; `test_changed_ranges.py`
@@ -110,7 +112,7 @@
   - [x] 3.7 Map each AC to test evidence in the PR body
   - [x] 3.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` — package `validate` green; root `make validate` stops in `dependency-update` (`/usr/bin/python: No module named pytest`, no sibling venv in this runtime) before reaching `code-review`; the known `security-analyst` audit CVE is not tracked here
 
-- [ ] 4.0 Implement Story S-207 (#409): Linked issues and spec resolution · branch `story/S-207-issues-spec`
+- [x] 4.0 Implement Story S-207 (#409): Linked issues and spec resolution · branch `story/S-207-issues-spec`
   - [x] 4.1 `[T]` [code-review] L1 `test_issue_links.py`: `closes #1`, `Fixes: #2`, `resolved #3`, `owner/repo#4` ignored, branch `issue/5-x`, dedupe, cap 5, linked PR skipped; regex property tactic
   - [x] 4.2 `[T]` [code-review] L1 `test_checklist_strip.py` (heading levels 1–6, case-sensitive) and 8,000-token cap
   - [x] 4.3 `[T]` [code-review] L1 `test_spec_resolve.py` (path → title → label, 404 fall-through, none) and `test_spec_trim.py` (outline, `Spec §8` vs `§8.1`, story IDs, reviewed paths)
@@ -121,7 +123,7 @@
   - [x] 4.8 Map each AC to test evidence in the PR body
   - [ ] 4.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
 
-- [ ] 5.0 Implement Story S-208 (#410): Verifier drift candidates and conventions · branch `story/S-208-verifier-candidates`
+- [x] 5.0 Implement Story S-208 (#410): Verifier drift candidates and conventions · branch `story/S-208-verifier-candidates`
   - [x] 5.1 `[T]` [code-review] L1 `test_verifier_candidates.py`: real `fidelity-report-S-170.md` (no candidates), synthetic Critical+Unintended and Major+Unintended rows, no drift heading, split cells, `Non-critical`, multiple reports, global numbering; candidate shape (path, row index, text ≤ 300 tokens); drift-row parsing property tactic
   - [x] 5.2 `[T]` [code-review] L1 report lookup (`S-<id>`, `issue-<N>`, rollup ignored) and `test_conventions.py` (`AGENTS.md` / `CLAUDE.md`, ADR titles ≤ 50, 10% cap)
   - [x] 5.3 `[I]` [code-review] `context/verifier.py`, `context/repo_conventions.py` (D-25, D-33, D-38)
@@ -129,7 +131,7 @@
   - [x] 5.5 Map each AC to test evidence in the PR body
   - [x] 5.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` — package validate passes; root `make validate` NOT RUN in the S-208 runtime (sibling venvs missing)
 
-- [ ] 6.0 Implement Story S-209 (#411): Budget fit, rubric v1, and prompt builder · branch `story/S-209-budget-prompt`
+- [x] 6.0 Implement Story S-209 (#411): Budget fit, rubric v1, and prompt builder · branch `story/S-209-budget-prompt`
   - [x] 6.1 `[T]` [code-review] L1 `test_estimate.py`
   - [x] 6.2 `[T]` [code-review] L1 `test_budget_fit.py`: priority order a–g, `min(cap, remaining)`, truncation and omission named, smallest-first files, diff over budget, invariant at `max_context_tokens` 20,000 (TC-209-08, RT-07), dropped candidates reported (D-37)
   - [x] 6.3 `[T]` [code-review] L1 `test_prompt.py`: all blocks, nonce wrapping, forged `<<<END` stays inside, candidate IDs outside and row text inside `verifier-candidate V<k>` blocks (TC-209-16), rubric version; nonce-integrity property tactic (D-38)
@@ -141,7 +143,7 @@
   - [x] 6.9 Map each AC to test evidence in the PR body
   - [x] 6.10 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
-- [ ] 7.0 Implement Story S-210 (#412): Bedrock adapter, forced schema, fallbacks · branch `story/S-210-bedrock-adapter`
+- [x] 7.0 Implement Story S-210 (#412): Bedrock adapter, forced schema, fallbacks · branch `story/S-210-bedrock-adapter`
   - [x] 7.1 `[T]` [code-review] Fake `converse` in `tests/fixtures/bedrock.py`; L1 `test_bedrock_adapter.py`: forced path; `toolChoice` rejected → fallback; repair → valid; repair invalid → `ModelOutputInvalid`; reasoning rejected → retry; context-length → retry without files; call budget ≤ 5 (property tactic); access denied; throttling; cost null without prices
   - [x] 7.2 `[T]` [code-review] Contracts CT-06/CT-07 (request/response shape) and CT-08 (`submit_review` schema); edge: empty findings, 41 findings, unknown category, text with no toolUse
   - [x] 7.3 `[I]` [code-review] `findings_schema.py` (spec §6.3) and a validator, preferring no new dependency
@@ -150,7 +152,7 @@
   - [x] 7.6 Map each AC to test evidence in the PR body
   - [x] 7.7 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
-- [ ] 8.0 Implement Story S-211 (#413): Findings validation and verdict · branch `story/S-211-validate-verdict`
+- [x] 8.0 Implement Story S-211 (#413): Findings validation and verdict · branch `story/S-211-validate-verdict`
   - [x] 8.1 `[T]` [code-review] L1 `test_validate.py`: non-reviewed file dropped; outside-diff and no-scenario downgrades; ±3 boundary; no consequence dropped; suggestion cap; IDs; `line_end < line_start` swap; validation property tactic (RT-08 in `test_properties_validate.py`, seed 413001)
   - [x] 8.2 `[T]` [code-review] L1 `test_verdict.py`: confirmed, not_reproduced, omitted, budget-dropped (counts), mixed, none, unknown candidate ID ignored (D-15, D-33, D-37)
   - [x] 8.3 `[I]` [code-review] `validate.py` (D-08)
@@ -158,7 +160,7 @@
   - [x] 8.5 Map each AC to test evidence in the PR body
   - [x] 8.6 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
-- [ ] 9.0 Implement Story S-212 (#414): Review, budget, and failure comments · branch `story/S-212-comment-render`
+- [x] 9.0 Implement Story S-212 (#414): Review, budget, and failure comments · branch `story/S-212-comment-render`
   - [x] 9.1 `[T]` [code-review] L1 `test_render.py` snapshots: clear and blocking layouts; empty sections omitted; verifier states with rows from wrapper data (D-38); context line; mention, HTML, backtick neutralization (snapshots hand-written in `tests/unit/__snapshots__/`, compared byte for byte)
   - [x] 9.2 `[T]` [code-review] L1 size guarantee: each of the five stages; worst case at schema maxima with escape-heavy text stays ≤ 60,000 (TC-212-14); truncation property tactic (RT-06 in `test_properties_render.py`, seed 414001) (D-36)
   - [x] 9.3 `[T]` [code-review] L1 budget and failure messages with the run link (D-29)
@@ -168,7 +170,7 @@
   - [x] 9.7 Map each AC to test evidence in the PR body
   - [x] 9.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
-- [ ] 10.0 Implement Story S-213 (#415): Pipeline wiring, outcomes, and failure path · branch `story/S-213-run-pipeline`
+- [x] 10.0 Implement Story S-213 (#415): Pipeline wiring, outcomes, and failure path · branch `story/S-213-run-pipeline`
   - [x] 10.1 `[T]` [code-review] L1 `test_outcomes.py` (verdict → outcome; error → code → comment-or-not table incl. `COMMENT_POST_FAILED` → one short failure comment unless 401/403) and `test_deadline.py` (D-36, D-32)
   - [x] 10.2 `[T]` [code-review] `tests/integration/test_pipeline_e2e.py` on fixtures + fake Bedrock: clear; blocking; AC-7 verifier; AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; no CI read; SHA pinned; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` paths; artifact and metrics shape; new comment each run
   - [x] 10.3 `[T]` [code-review] Prompt capture: ±50 context and full files (AC-4); #315 issue without checklist and its spec (AC-6); no excluded-file content (AC-8); injection text inside nonce markers (AC-13 static) (`tests/integration/test_pipeline_prompt_capture.py`)

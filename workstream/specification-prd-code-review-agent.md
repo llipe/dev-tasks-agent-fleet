@@ -262,7 +262,7 @@ The full metadata is scrubbed (`scrubber.py`) before insert. The delivered value
 
 `input_tokens`, `output_tokens`, `estimated_input_tokens` (D-27), `cost_usd` (null when price env vars are unset), `bedrock_ms`, `wall_clock_ms`, `output_mode` (`forced_schema` | `prompt_json`), `repair_calls`, `reasoning_effort_applied`, `context_tokens` (per block: `instructions`, `diff`, `full_files`, `issues`, `spec`, `verifier`, `conventions`), `findings_by_severity`, `findings_by_category`, `downgraded`, `dropped`, `suggestions_capped`, `verifier_candidates`, `verifier_confirmed`, `comment_chars`, `comment_truncated`.
 
-Every key is always present; when nothing happened the value is `None`, `0`, `{}`, or `False`. Delivered shapes and additive keys (S-210 DR-9, S-211 DR-8, S-213 DR-7):
+Every base key listed above is always present; when nothing happened the value is `None`, `0`, `{}`, or `False`. Additive keys appear only once the step that produces them has run. Delivered shapes and additive keys (S-210 DR-9, S-211 DR-8, S-213 DR-7):
 
 - **Tokens.** `input_tokens` and `output_tokens` sum Converse `usage` over every call that returned; any response with missing or malformed usage (non-int, bool, negative, or above 10^18) makes both and `cost_usd` `None`. `estimated_input_tokens` is the sum of `request_tokens` over every request sent, the same scope, so D-27's ratio compares like with like (resolves S-210 DR-11). Added: `estimated_first_call_tokens` (the first prompt's budget estimate) and `bedrock_calls`. `cost_usd` is rounded to 6 decimals; a non-finite cost is `None`.
 - **Mode.** `output_mode` is the last call's mode. `reasoning_effort_applied` is `false` whenever the field was not sent.
@@ -498,7 +498,7 @@ Changed lines = Σ (additions + deletions) over reviewed files, at GitHub's repo
 
 1. **Expanded diff (D-26).** The merge base is `compare(base_sha, head_sha).merge_base_commit.sha`, which must be a 40- or 64-hex SHA (else `GitHubApiError`). For each reviewed file: fetch the merge-base version (skip for `added` and for a withheld base, D-42; use `previous_filename` for `renamed` and copied files) and the head version (skip for `removed`) through `GitHubClient.get_content_bytes`, the same allowlisted call as `get_content_raw`. Workers run in a pool of at most 8 threads with one GitHub client per worker thread (`client_factory`), because `requests.Session` is not documented as thread-safe; the caller's client reads only the merge base (S-206 D5). `difflib.unified_diff(base, head, n=50)` with `/dev/null` sides, git's `\ No newline at end of file` marker, and escaped headers (§8.2). Decode as UTF-8 with `errors="replace"` after the NUL check on raw bytes. Output follows the files-list order. Keep the head content for step 6.
    - **Changed ranges.** From the 0-context opcodes: 1-based inclusive `replace`/`insert` head ranges, merged and sorted. A pure deletion anchors to the next head line, or to the last line at EOF; an empty head has no range (EC-07, S-206 D3). `DiffContext.removed_paths` lists reviewed removed files (D-52).
-2. **Linked issues (D-22, D-23, D-43).** The PR-body regex is §8.3's, rewritten in the equivalent linear form `(?:\s*:\s+|\s+)` for `\s*:?\s+`, case-insensitive and ASCII; `#` must follow whitespace, so `owner/repo#N` and URLs never match. Plus `^issue/(\d+)-` on the head ref (case-sensitive). Body order, then branch; deduped; numbers 0 or over 10 digits dropped; the first 5 kept. The cap of 5 applies **before** the PR skip: a linked number that is a PR uses a slot and is then skipped (DF-18, S-207 DR-1). Per issue, `GET issue`:
+2. **Linked issues (D-22, D-23, D-43).** The PR-body regex is `\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b`, implemented in the equivalent linear form `(?:\s*:\s+|\s+)` for `\s*:?\s+` (`conventions.ISSUE_LINK_RE`), case-insensitive and ASCII; `#` must follow whitespace, so `owner/repo#N` and URLs never match. Plus `^issue/(\d+)-` on the head ref (case-sensitive). Body order, then branch; deduped; numbers 0 or over 10 digits dropped; the first 5 kept. The cap of 5 applies **before** the PR skip: a linked number that is a PR uses a slot and is then skipped (DF-18, S-207 DR-1). Per issue, `GET issue`:
    - 404, 410, 301 → skipped as `not_found`, `warn`, no `issues_unavailable`;
    - 403 → skipped as `permission`, `issues_unavailable=True`, `warn` with the issue number and a fixed reason;
    - 401, 5xx, and a rate limit after retries propagate (§13) (S-207 DR-4).
@@ -789,44 +789,44 @@ Resolved by Wave B live verification, not by design:
 
 ## 18. Decisions (HOW phase)
 
-| ID   | Decision (short form)                                                                                                                                |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D-20 | Layout mirrors `security-analyst`; sibling modules copied; new `github_client.py`; no Strands.                                                       |
-| D-21 | Sibling invocation payload (`run_id`, `repository_org`, `repository_name`, `params`) via `unwrap_payload`.                                           |
-| D-22 | Linked issues from PR-body closing keywords and `issue/<N>-` branch; not GraphQL closing references.                                                 |
-| D-23 | Strip `## Task Checklist` and below from issue bodies.                                                                                               |
-| D-24 | Spec: explicit path → `[PRD-<name>]` → `prd:<name>` label, mapped to `specification-prd-<name>.md`; trim by cited sections.                          |
-| D-25 | Fidelity reports `fidelity-report-S-<id>.md` and `fidelity-report-issue-<N>.md` at head; rollups ignored.                                            |
-| D-26 | ±50-line diff built locally with `difflib` from merge-base and head blobs.                                                                           |
-| D-27 | Token estimate `ceil(chars / 3.5)`, recalibrated after 20 runs.                                                                                      |
-| D-28 | Comment kept under 60,000 chars; suggestions dropped first.                                                                                          |
-| D-29 | Run link from `PANEL_BASE_URL` + `/runs/<run_id>`.                                                                                                   |
-| D-30 | G1 applies; open-PR guard does not; `author_association in` works.                                                                                   |
-| D-31 | pytest L1–L2 with fakes, prompt capture, security-negative category.                                                                                 |
-| D-32 | 900 s run, clock invariant, heartbeat around long steps.                                                                                             |
-| D-33 | Wrapper selects `Critical`+`Unintended` rows; the model confirms each against spec, issues, diff; only confirmed block.                              |
-| D-34 | Forced `submit_review` output schema; fallback to prompt-only JSON + one repair.                                                                     |
-| D-35 | `reasoning_effort` param, default `high`; retry without it if rejected.                                                                              |
-| D-36 | Comment ≤ 60,000 chars guaranteed by staged compaction and a hard cut; `COMMENT_POST_FAILED` posts one short failure comment unless 401/403 (DF-02). |
-| D-37 | Priority fill keeps the prompt ≤ `max_context_tokens`; truncated or omitted blocks are named; dropped candidates still count (DF-03).                |
-| D-38 | Candidate row text only inside per-candidate nonce blocks; IDs and locations outside; comment renders rows from wrapper data (DF-04).                |
-| D-39 | Seed the `agents` row disabled; S-214 sets `runtime_arn` and enables it in one update.                                                               |
-| D-40 | The runtime rejects integral floats such as `pr_number: 7.0`; documented difference from draft-07.                                                   |
-| D-41 | The code-review `credentials.py` classifies token-exchange 401/403/non-2xx as `CredentialError`; diverges from the sibling copy.                     |
-| D-42 | A rename away from an excluded, lockfile, or generated name withholds the base and diffs as added; size keeps GitHub's counts.                       |
-| D-43 | The `Task Checklist` cut matches every rendered heading form (ATX, setext, NBSP, zero-width removed); case-sensitive.                                |
-| D-44 | Drift headings may carry a numeric prefix (`## 3. Drift catalog`).                                                                                   |
-| D-45 | Pinned drift-section, table, lookup, state, and conventions rules (§8.3 steps 4–5).                                                                  |
-| D-46 | Rubric `intent` means "done wrongly or differently"; a missing requirement is verifier scope.                                                        |
-| D-47 | `B` caps every Converse call, the repair included; `B` + 16,000 must fit the model window (S-215).                                                   |
-| D-48 | The 3.5 estimate is conservative only for mostly Latin text; accepted; the second context-length rejection is logged distinctly.                     |
-| D-49 | Only the verifier report's drift section is passed (PRD FR-9 amended).                                                                               |
-| D-50 | A blocking span is located only if it intersects a widened changed range and spans ≤ 200 lines or lies wholly inside one widened range.              |
-| D-51 | Blank means no Unicode letter or number; no word deny-list.                                                                                          |
-| D-52 | Findings on reviewed removed files are kept (blocking → `outside_diff`); `escape_path` escapes `\` and is injective.                                 |
-| D-53 | The rubric version is printed on every review comment only (PRD FR-20 amended).                                                                      |
-| D-54 | Comment order: Blocking, Verifier, collapsed Suggestions (PRD FR-24 amended).                                                                        |
-| D-55 | A lost review-POST response may leave a review plus a failure note; accepted known limit (§13).                                                      |
+| ID   | Decision (short form)                                                                                                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-20 | Layout mirrors `security-analyst`; sibling modules copied; new `github_client.py`; no Strands.                                                                                                                               |
+| D-21 | Sibling invocation payload (`run_id`, `repository_org`, `repository_name`, `params`) via `unwrap_payload`.                                                                                                                   |
+| D-22 | Linked issues from PR-body closing keywords and `issue/<N>-` branch; not GraphQL closing references.                                                                                                                         |
+| D-23 | Strip `## Task Checklist` and below from issue bodies.                                                                                                                                                                       |
+| D-24 | Spec: explicit path → `[PRD-<name>]` → `prd:<name>` label, mapped to `specification-prd-<name>.md`; trim by cited sections.                                                                                                  |
+| D-25 | Fidelity reports `fidelity-report-S-<id>.md` and `fidelity-report-issue-<N>.md` at head; rollups ignored.                                                                                                                    |
+| D-26 | ±50-line diff built locally with `difflib` from merge-base and head blobs (file list from `pulls/{n}/files`, §8.2).                                                                                                          |
+| D-27 | Token estimate `ceil(chars / 3.5)`, recalibrated after 20 runs.                                                                                                                                                              |
+| D-28 | Comment kept under 60,000 chars; suggestions dropped first.                                                                                                                                                                  |
+| D-29 | Run link from `PANEL_BASE_URL` + `/runs/<run_id>`.                                                                                                                                                                           |
+| D-30 | G1 applies; open-PR guard does not; `author_association in` works.                                                                                                                                                           |
+| D-31 | pytest L1–L2 with fakes, prompt capture, security-negative category.                                                                                                                                                         |
+| D-32 | 900 s run, clock invariant, heartbeat around long steps.                                                                                                                                                                     |
+| D-33 | Wrapper selects `Critical`+`Unintended` rows; the model confirms each against spec, issues, diff; only confirmed block.                                                                                                      |
+| D-34 | Forced `submit_review` output schema; fallback to prompt-only JSON + one repair.                                                                                                                                             |
+| D-35 | `reasoning_effort` param, default `high`; retry without it if rejected.                                                                                                                                                      |
+| D-36 | Comment ≤ 60,000 chars guaranteed by staged compaction (stage 5 cuts whole entries and counts the rest); `COMMENT_POST_FAILED` posts one short failure comment unless the POST raised `GitHubPermissionDenied` (DF-02, §13). |
+| D-37 | Priority fill keeps the prompt ≤ `max_context_tokens`; truncated or omitted blocks are named; dropped candidates still count (DF-03).                                                                                        |
+| D-38 | Candidate row text only inside per-candidate nonce blocks; IDs and locations outside; comment renders rows from wrapper data (DF-04).                                                                                        |
+| D-39 | Seed the `agents` row disabled; S-214 sets `runtime_arn` and enables it in one update.                                                                                                                                       |
+| D-40 | The runtime rejects integral floats such as `pr_number: 7.0`; documented difference from draft-07.                                                                                                                           |
+| D-41 | The code-review `credentials.py` classifies token-exchange 401/403/non-2xx as `CredentialError`; diverges from the sibling copy.                                                                                             |
+| D-42 | A rename away from an excluded, lockfile, or generated name withholds the base and diffs as added; size keeps GitHub's counts.                                                                                               |
+| D-43 | The `Task Checklist` cut matches every rendered heading form (ATX, setext, NBSP, zero-width removed); case-sensitive.                                                                                                        |
+| D-44 | Drift headings may carry a numeric prefix (`## 3. Drift catalog`).                                                                                                                                                           |
+| D-45 | Pinned drift-section, table, lookup, state, and conventions rules (§8.3 steps 4–5).                                                                                                                                          |
+| D-46 | Rubric `intent` means "done wrongly or differently"; a missing requirement is verifier scope.                                                                                                                                |
+| D-47 | `B` caps every Converse call, the repair included; `B` + 16,000 must fit the model window (S-215).                                                                                                                           |
+| D-48 | The 3.5 estimate is conservative only for mostly Latin text; accepted; the second context-length rejection is logged distinctly.                                                                                             |
+| D-49 | Only the verifier report's drift section is passed (PRD FR-9 amended).                                                                                                                                                       |
+| D-50 | A blocking span is located only if it intersects a widened changed range and spans ≤ 200 lines or lies wholly inside one widened range.                                                                                      |
+| D-51 | Blank means no Unicode letter or number; no word deny-list.                                                                                                                                                                  |
+| D-52 | Findings on reviewed removed files are kept (blocking → `outside_diff`); `escape_path` escapes `\` and is injective.                                                                                                         |
+| D-53 | The rubric version is printed on every review comment only (PRD FR-20 amended).                                                                                                                                              |
+| D-54 | Comment order: Blocking, Verifier, collapsed Suggestions (PRD FR-24 amended).                                                                                                                                                |
+| D-55 | A lost review-POST response may leave a review plus a failure note; accepted known limit (§13).                                                                                                                              |
 
 WHAT-phase decisions D-01–D-19 are in the PRD.
 

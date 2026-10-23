@@ -11,7 +11,7 @@
 > A test-first compliance plan written before implementation. It derives from
 > [`prd-code-review-agent`](../docs/requirements/prd-code-review-agent.md) v1.1,
 > [`specification-prd-code-review-agent`](specification-prd-code-review-agent.md) v1.0, the decision log
-> [`decisions-code-review-agent`](decisions-code-review-agent.md) (D-01…D-35), and the stories in
+> [`decisions-code-review-agent`](decisions-code-review-agent.md) (D-01…D-35 at v1.0; D-36…D-56 applied in v1.1–v1.2), and the stories in
 > [`user-stories-prd-code-review-agent`](user-stories-prd-code-review-agent.md) v1.1 (S-204…S-215, GitHub #406–#417).
 > Companion file: [`traceability-matrix-prd-code-review-agent`](traceability-matrix-prd-code-review-agent.md).
 >
@@ -772,7 +772,7 @@ CT-03 (S-204, S-213), CT-05 (S-205, S-206), and CT-08 (S-210, S-211) are shared.
 
 ## 13. Output contract
 
-- **Mode:** Design. **Phase:** 4 (reporting). **Source:** PRD v1.1, spec v1.0, decisions D-01…D-35, stories v1.1 (S-204…S-215, #406–#417).
+- **Mode:** Design. **Phase:** 4 (reporting). **Source:** PRD v1.1, spec v1.0, decisions D-01…D-35, stories v1.1 (S-204…S-215, #406–#417) at v1.0; v1.2 is aligned to PRD v1.2, spec v1.3, decisions D-01…D-56 and stories v1.4.
 - **Artifacts:** this file; [`traceability-matrix-prd-code-review-agent.md`](traceability-matrix-prd-code-review-agent.md).
 - **AC coverage:** every PRD AC (13 of 13) has at least one positive and one negative or edge test. Every story AC maps to at least one test.
 - **Highest open design-finding impact:** Minor. DF-02, DF-03, DF-04 (Major) are resolved in spec v1.1 (D-36–D-38); the v1.2 write-back resolves the findings listed in §10 against spec v1.3. All findings are advisory and non-blocking.

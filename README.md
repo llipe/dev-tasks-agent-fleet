@@ -85,7 +85,7 @@ The **active codebase** is the `dependency-update` Python agent under
 `agents/security-analyst/app/securityAnalyst/` (Phase 3, done and verified live, see
 Delivery phases above), and the `code-review` Python package under
 `agents/code-review/app/codeReview/` (Wave A delivered: a `/review` PR comment starts one run
-that makes one model call and posts one review comment; it is not deployed, has no runtime ARN
+that makes one model review (at most 5 Converse calls, no tools) and posts one review comment; it is not deployed, has no runtime ARN
 yet, and reviews no PR until Wave B is done — see
 [`docs/requirements/prd-code-review-agent.md`](docs/requirements/prd-code-review-agent.md)).
 Agent-specific details (pipeline, deployment, environment variables, runtime timeouts) live in
