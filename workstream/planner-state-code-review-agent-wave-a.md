@@ -6,7 +6,7 @@
 - Integration branch: `integration/code-review-agent` (from `main` @ dc89014)
 - Repository: llipe/dev-tasks-agent-fleet
 - Started: 2026-10-22
-- Last updated: 2026-10-23 (S-211 merged)
+- Last updated: 2026-10-23 (S-212 merged)
 
 ## Story Status
 
@@ -20,14 +20,14 @@
 | 6        | S-209    | #411    | ✅ Merged  | #432 | `story/S-209-budget-prompt`       |
 | 7        | S-210    | #412    | ✅ Merged  | #435 | `story/S-210-bedrock-adapter`     |
 | 8        | S-211    | #413    | ✅ Merged  | #436 | `story/S-211-findings-validation` |
-| 9        | S-212    | #414    | ⏳ Pending | —    | `story/S-212-comment-render`      |
+| 9        | S-212    | #414    | ✅ Merged  | #437 | `story/S-212-comment-render`      |
 | 10       | S-213    | #415    | ⏳ Pending | —    | `story/S-213-pipeline-wiring`     |
 
 ## Current Position
 
-- Next story: S-212 (#414)
-- Last merged PR: #436 (merge commit 089ca51)
-- Integration branch HEAD: 089ca51 + checkpoint commit (package `validate` green post-merge)
+- Next story: S-213 (#415)
+- Last merged PR: #437 (merge commit f1c2990)
+- Integration branch HEAD: f1c2990 + checkpoint commit (package `validate` green post-merge)
 
 ## Decisions Log
 
@@ -64,3 +64,12 @@
 - 2026-10-23: S-211 merge gates: developer PASS; planner overrode the removed-file rule (D-52, TC-211-05); qa-engineer coverage_gate PASS (38616dc) found QA-211-D1, a location bypass through a huge span, fixed as D-50; QA-211-Q1 blank placeholders became D-51; `escape_path` made injective; verifier High / Minor with 9 items (63a8818), and DR-2, a false downgrade of a fully changed long span, closed by an exemption, a prompt sentence and the `downgraded_span` counter. Merged #436 at 089ca51. D-50..D-52 logged.
 - 2026-10-23: Spec write-back backlog adds S-211 DR-1 and DR-3 to DR-9: D-50, D-51, removed files, path matching, rule details, the four candidate statuses, the metrics shape, and the test-plan/matrix lag.
 - 2026-10-23: Carry forward to S-212: neutralize raw model text and paths; render huge line numbers compactly; show the model reason only when `reason_from_model`; word `outside_diff` as not located in the diff; render a `dropped_for_budget` or `not_checked` candidate as not checked by the model. Carry forward to S-213: call `validate_result` with the same DiffContext; map SchemaViolation and ValueError to INTERNAL_ERROR; build `verifier[]` from `v.candidates`; merge `v.metrics()`.
+- 2026-10-23: S-212 merge gates: developer PASS; manual 9.6 GitHub preview PASS (comment 6369319634); qa-engineer coverage_gate PASS (250fa53): D1 GH-<n> references, D2 stage-5 count, D3 canonical code, plus field caps, invisible-character strip and lowercase marker run_id; verifier High / Minor, 10 items (ba3ff5d); DR-4 (verifier candidates rendered or counted) and DR-9 (size measured as max of code points and UTF-16 units) fixed in fc12bb7. Merged #437 at f1c2990.
+- 2026-10-23: Spec write-back backlog adds S-212 DR-1..3, DR-5..7 and DR-10. For the user: DR-8 (amend FR-20 to "every review comment") and DF-01 (amend FR-24 so Verifier comes before Suggestions).
+- 2026-10-23: Carry forward to S-213:
+  - Pass the accepted call's ReviewResult.context to render_review.
+  - Find the marker anchored at the start of the body, filter by the bot author, and compare the run_id lowercased.
+  - Map GITHUB_NOT_FOUND on load_pr to not_applicable.
+  - Record canonical_code(code).
+  - Set comment_chars and comment_truncated from Rendered, and warn on truncation.
+  - Scrub before posting.
