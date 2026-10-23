@@ -167,6 +167,15 @@ class TestModelId:
             "eu.anthropic.claude-sonnet-4-6",
             "apac.anthropic.claude-sonnet-4-6",
             "anthropic.claude-3-5-sonnet-20240620-v1:0",
+            "global.anthropic.claude-sonnet-4-6",
+            "US.anthropic.claude-sonnet-4-6",
+            "Eu.Anthropic.claude-sonnet-4-6",
+            "ANTHROPIC.claude-sonnet-4-6",
+            "us-gov.anthropic.claude-sonnet-4-6",
+            "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-4-6",
+            "ARN:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6",
+            "anthropic/claude-sonnet-4-6",
+            "Anthropic/claude-sonnet-4-6",
         ],
     )
     def test_provider_profile_ids_are_rejected(self, model_id):
@@ -179,6 +188,13 @@ class TestModelId:
 
     def test_plain_sonnet_id_is_accepted(self):
         assert load_config(_env(MODEL_ID="claude-sonnet-4-6")).model_id == "claude-sonnet-4-6"
+
+    @pytest.mark.parametrize(
+        "model_id",
+        ["claude-sonnet-5-5", "claude-opus-4-1-20250805", "claude-3-5-haiku-latest"],
+    )
+    def test_plain_anthropic_api_ids_are_accepted(self, model_id):
+        assert load_config(_env(MODEL_ID=model_id)).model_id == model_id
 
 
 class TestClocks:

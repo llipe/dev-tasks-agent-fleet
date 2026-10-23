@@ -54,8 +54,11 @@ REQUIRED_VARS: tuple[str, ...] = (
     "MODEL_ID",
 )
 
-# Cloud inference-profile ids (regional prefix, or a provider-namespaced id).
-_PROVIDER_MODEL_ID = re.compile(r"^((us|eu|apac|global)\.)?anthropic\.")
+# Cloud/provider model ids, matched case-insensitively (D-50): an ARN, a
+# provider-slash id (``anthropic/claude-...``), or a provider-namespaced id with
+# or without a region prefix (``anthropic.claude-...``, ``US.anthropic....``,
+# ``global.anthropic....``). A plain Anthropic API id (``claude-...``) has none.
+_PROVIDER_MODEL_ID = re.compile(r"^arn:|/|(?:^|\.)anthropic\.", re.IGNORECASE)
 
 
 class ConfigError(ValueError):
@@ -106,7 +109,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
 
     values = {name: _require(source, name) for name in REQUIRED_VARS}
 
-    if _PROVIDER_MODEL_ID.match(values["MODEL_ID"]):
+    if _PROVIDER_MODEL_ID.search(values["MODEL_ID"]):
         raise ConfigError(
             "MODEL_ID",
             "is a cloud inference-profile id; use an Anthropic API model id (D-50)",
