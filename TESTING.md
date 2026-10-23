@@ -273,7 +273,16 @@ script of responses (`tool_use_response`, `text_response`), botocore
 `context_length_rejected`, `access_denied`, `throttled`, ...), or callables, and
 fails on a call past the end of its script. `tests/helpers/bedrock_run.py::run()`
 drives `bedrock_adapter.review` with a counter nonce factory, a stepping
-`Clock`, and a `Recorder` for `warn` events and sink prompts.
+`Clock`, and a `Recorder` for `warn` events and sink prompts. `FakeConverse`
+does not run botocore, so `tests/unit/test_bedrock_hostile.py` (S-210 QA) adds
+two wire-level checks: a real `bedrock-runtime` client behind
+`botocore.stub.Stubber` validates the adapter's requests and the fixture's
+responses against the Converse service model, and a real client made by
+`make_client` with `botocore.httpsession.URLLib3Session.send` patched (scripted
+HTTP answers, a virtual clock advanced by read timeouts and by the patched
+`time.sleep` of botocore's backoff) measures botocore's own retry attempts and
+the wall time against the run deadline. Credentials are dummy environment
+values and config files point at an empty `tmp_path`; no socket is opened.
 Retry waits and clocks are injected, so no test sleeps. Property tactics use
 the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
 replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`
