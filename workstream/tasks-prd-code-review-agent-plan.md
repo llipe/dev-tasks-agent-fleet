@@ -27,7 +27,13 @@
 - `agents/code-review/app/codeReview/bedrock_adapter.py` - Converse adapter: forced `submit_review`, toolChoice/reasoning/context-length retries, one repair call, per-call budget invariant (D-47), metrics, typed errors, `make_client` and per-call deadline-sized clients via `client_factory` (S-210, QA fixes)
 - `agents/code-review/app/codeReview/validate.py` - findings validation and verdict: `validate`, `validate_result`, `Validation`, per-candidate `CandidateStatus`, metrics counts (S-211)
 - `agents/code-review/app/codeReview/render.py` - review, budget and failure comments: `render_review` (→ `Rendered`), `render_budget`, `render_failure`, `neutralize`, `code_span`, `run_link` (S-212)
-- `agents/code-review/app/codeReview/pipeline.py` - pipeline wiring, outcomes, artifact, failure path (S-213)
+- `agents/code-review/app/codeReview/pipeline.py` - the spec §8.1 pipeline: `Pipeline` with injected `PipelineDeps` (token, GitHub client, Bedrock client factory, clock, prompt sink, heartbeat), steps and scrubbed run_events, outcomes, the `audit_report` artifact and `runs.metrics`, `bounded` (heartbeat + deadline), error mapping and the failure comment (S-213)
+- `agents/code-review/app/codeReview/main.py` - S-213 replaces the skeleton: `pipeline_deps()` and `invoke` driving `Pipeline.run`, heartbeat chunks yielded through
+- `agents/code-review/app/codeReview/render.py` - S-213 adds `render_nothing_to_review` (DF-16: a PR with no reviewed file)
+- `agents/code-review/app/codeReview/tests/unit/{test_outcomes,test_deadline,test_render_nothing_to_review}.py`, `tests/integration/{test_pipeline_e2e,test_pipeline_prompt_capture,test_pipeline_edges}.py` - S-213 tests (TC-213-01..31, error-code property seed 415001)
+- `agents/code-review/app/codeReview/tests/helpers/pipeline_run.py` - L2 harness driving `main.invoke` with a reporter sink, `StubTransport`, `FakeConverse` behind a recording client factory, a manual clock, a prompt sink and a heartbeat spy (S-213)
+- `agents/code-review/app/codeReview/tests/integration/test_invoke_skeleton.py` - S-213 updates TC-204-18 to the real `load_pr` step
+- `TESTING.md` - S-213 pipeline test harness and its two exceptions (short real sleeps for the deadline bound; a real SIGTERM)
 - `agents/code-review/app/codeReview/tests/{unit,integration,fixtures,helpers}/**` - tests, recorded GitHub fixtures, fake Bedrock, seeded PRNG helper
 - `agents/code-review/app/codeReview/tests/unit/{test_payload,test_config,test_layout,test_seed_contract,test_properties_params}.py` - S-204 tests (TC-204-*, CT-01 Python side, CT-02, RT-01)
 - `agents/code-review/app/codeReview/tests/unit/{test_credentials,test_credentials_real_jwt,test_heartbeat,test_scrubber,test_signal_backstop}.py` - sibling tests for the copied modules (S-204)
@@ -162,16 +168,16 @@
   - [x] 9.7 Map each AC to test evidence in the PR body
   - [x] 9.8 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
-- [ ] 10.0 Implement Story S-213 (#415): Pipeline wiring, outcomes, and failure path · branch `story/S-213-pipeline-wiring`
-  - [ ] 10.1 `[T]` [code-review] L1 `test_outcomes.py` (verdict → outcome; error → code → comment-or-not table incl. `COMMENT_POST_FAILED` → one short failure comment unless 401/403) and `test_deadline.py` (D-36, D-32)
-  - [ ] 10.2 `[T]` [code-review] `tests/integration/test_pipeline_e2e.py` on fixtures + fake Bedrock: clear; blocking; AC-7 verifier; AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; no CI read; SHA pinned; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` paths; artifact and metrics shape; new comment each run
-  - [ ] 10.3 `[T]` [code-review] Prompt capture: ±50 context and full files (AC-4); #315 issue without checklist and its spec (AC-6); no excluded-file content (AC-8); injection text inside nonce markers (AC-13 static)
-  - [ ] 10.4 `[I]` [code-review] `pipeline.py` with injected GitHub client, Bedrock client, clock, prompt sink; steps and run_events; outcomes; scrubbed `audit_report` artifact; metrics; deadline and heartbeat; `finally` failure comment (D-13, D-32, D-36)
-  - [ ] 10.5 `[I]` [code-review] Replace the skeleton in `main.invoke`
-  - [ ] 10.6 Verify Acceptance Criteria: AC1 steps; AC2 states and drafts; AC3 SHA; AC4 budget; AC5 outcomes; AC6 artifact and metrics; AC7 errors and failure comment; AC8 deadline; AC9 new comment; AC10 prompt capture
-  - [ ] 10.7 Manual: local run against a scratch PR in a test repository (requires a personal token; record as not run if unavailable)
-  - [ ] 10.8 Map each AC to test evidence in the PR body
-  - [ ] 10.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate`
+- [ ] 10.0 Implement Story S-213 (#415): Pipeline wiring, outcomes, and failure path · branch `story/S-213-run-pipeline`
+  - [x] 10.1 `[T]` [code-review] L1 `test_outcomes.py` (verdict → outcome; error → code → comment-or-not table incl. `COMMENT_POST_FAILED` → one short failure comment unless 401/403) and `test_deadline.py` (D-36, D-32)
+  - [x] 10.2 `[T]` [code-review] `tests/integration/test_pipeline_e2e.py` on fixtures + fake Bedrock: clear; blocking; AC-7 verifier; AC-9 downgrade/drop; budget; closed PR; draft PR reviewed; no CI read; SHA pinned; issue 403 note; Bedrock error → failure comment; `COMMENT_POST_FAILED` paths; artifact and metrics shape; new comment each run
+  - [x] 10.3 `[T]` [code-review] Prompt capture: ±50 context and full files (AC-4); #315 issue without checklist and its spec (AC-6); no excluded-file content (AC-8); injection text inside nonce markers (AC-13 static) (`tests/integration/test_pipeline_prompt_capture.py`)
+  - [x] 10.4 `[I]` [code-review] `pipeline.py` with injected GitHub client, Bedrock client, clock, prompt sink; steps and run_events; outcomes; scrubbed `audit_report` artifact; metrics; deadline and heartbeat; `finally` failure comment (D-13, D-32, D-36)
+  - [x] 10.5 `[I]` [code-review] Replace the skeleton in `main.invoke`
+  - [x] 10.6 Verify Acceptance Criteria: AC1 steps; AC2 states and drafts; AC3 SHA; AC4 budget; AC5 outcomes; AC6 artifact and metrics; AC7 errors and failure comment; AC8 deadline; AC9 new comment; AC10 prompt capture
+  - [ ] 10.7 Manual: local run against a scratch PR in a test repository (requires a personal token; record as not run if unavailable) (NOT RUN: this container has no personal token and no scratch repository; carried to Wave B, before S-215)
+  - [x] 10.8 Map each AC to test evidence in the PR body
+  - [x] 10.9 Run Tests: `make -C agents/code-review/app/codeReview validate`; `make validate` (package gate green; root `make validate` not runnable in this container: sibling venvs missing)
 
 ## Decisions Consumed
 
