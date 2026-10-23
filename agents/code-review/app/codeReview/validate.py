@@ -64,14 +64,16 @@ letters and are not blank. The empty string is blank.
 **Paths** (``normalize_file``, ``match_reviewed``): the raw ``file`` is tried
 first, then its normalized form: every leading and trailing backtick is
 stripped, then leading ``./`` and ``/`` repeatedly. Each form is matched
-exactly against the reviewed paths and against their ``escape_path`` forms
-(control characters appear escaped in the diff headers). Nothing else
-changes: no whitespace strip, no case folding, no ``\\`` to ``/``, and ``..``
-or ``.`` segments are never resolved, so ``a/../b.py`` matches only a
-reviewed path literally named ``a/../b.py``. A literal path match wins over
-another file's escaped form; on a collision between two escaped forms the
-first file in diff order wins. A kept finding's ``file`` is the canonical
-reviewed path (raw repository text: S-212 neutralizes it).
+exactly, first against the reviewed paths' ``escape_path`` forms (what the
+diff headers and the prompt show the model), then against the raw paths.
+``escape_path`` escapes ``\\`` too, so it is injective: escaped forms never
+collide, and a raw path wins only when no file's escaped form matches (in
+production a reviewed path never holds ``\\``: the client guard refuses it).
+Nothing else changes: no whitespace strip, no case folding, no ``\\`` to
+``/``, and ``..`` or ``.`` segments are never resolved, so ``a/../b.py``
+matches only a reviewed path literally named ``a/../b.py``. A kept finding's
+``file`` is the canonical reviewed path (raw repository text: S-212
+neutralizes it).
 
 **Lines and ranks** are Python ints of any size (the schema has no maximum).
 They are only compared or subtracted (±3 on the ranges, the span length),
@@ -354,11 +356,14 @@ def normalize_file(raw: str) -> str:
 
 
 def _lookup(paths: Iterable[str]) -> dict[str, str]:
-    """Literal reviewed paths first, then their ``escape_path`` forms."""
+    """``escape_path`` forms first (what the model sees), then raw paths.
+
+    ``escape_path`` is injective, so escaped forms never collide.
+    """
     ordered = list(paths)
-    table = {p: p for p in ordered}
+    table = {escape_path(p): p for p in ordered}
     for p in ordered:
-        table.setdefault(escape_path(p), p)
+        table.setdefault(p, p)
     return table
 
 
