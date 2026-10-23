@@ -17,7 +17,7 @@
 - `agents/code-review/app/codeReview/{agent_reporter,credentials,heartbeat,signal_backstop,scrubber}.py` - copies of the sibling modules (S-204)
 - `agents/code-review/app/codeReview/{pyproject.toml,Makefile,Dockerfile,.dockerignore}` - package, gates, image (S-204)
 - `agents/code-review/app/codeReview/github_client.py` - allowlisted GitHub REST client (S-205); `get_content_bytes` for the byte-exact NUL check (S-206)
-- `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206); `DiffContext.removed_paths` (S-211)
+- `agents/code-review/app/codeReview/context/diff.py` - classification, size check, expanded diff, changed ranges (S-206); `DiffContext.removed_paths` and an injective `escape_path` (S-211)
 - `agents/code-review/app/codeReview/context/{issues,spec,conventions}.py` - linked issues, checklist strip, spec resolution and trimming (S-207)
 - `agents/code-review/app/codeReview/context/tokens.py` - `estimate()` (D-27) and line-boundary `truncate()`, the one token estimator; S-209's budget fit reuses it (S-207)
 - `agents/code-review/app/codeReview/context/{verifier,repo_conventions}.py` - drift candidates, repo conventions (S-208)
@@ -54,6 +54,7 @@
 - `agents/code-review/app/codeReview/tests/helpers/bedrock_run.py` - harness driving `bedrock_adapter.review` with a counter nonce factory, a stepping clock, and a warn/sink recorder (S-210)
 - `agents/code-review/app/codeReview/tests/unit/{test_bedrock_adapter,test_findings_schema,test_properties_bedrock}.py`, `tests/unit/test_contracts.py` (CT-08 section) - S-210 tests (TC-210-\*, CT-06, CT-07, CT-08, RT-11 seed 412001, RT-11b seed 412002)
 - `agents/code-review/app/codeReview/tests/unit/{test_validate,test_verdict,test_properties_validate}.py` - S-211 tests (TC-211-\*, RT-08 seed 413001)
+- `agents/code-review/app/codeReview/tests/unit/test_validate_hostile.py` - S-211 QA hostile suite (seeds 413002-413005); D-50, D-51 and the escape gap fixed, 0 xfails
 - `agents/code-review/app/codeReview/tests/unit/test_bedrock_hostile.py` - S-210 QA adversarial suite (exhaustive outcome walk, seeds 412003/412004, wire-level botocore retry and deadline checks, Stubber fidelity); all six defect pins fixed
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)
 - `.github/workflows/ci.yml`, `Makefile`, `TESTING.md` - CI matrix, root aggregate, testing contract (S-204)
