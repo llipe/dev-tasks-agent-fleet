@@ -120,7 +120,9 @@ class TestBoardFlag:
 
 
 class TestMissingRequired:
-    @pytest.mark.parametrize("name", ["MODEL_ID", "SUPABASE_URL", "SUPABASE_KEY_SECRET_ID", "ANTHROPIC_KEY_SECRET_ID"])
+    @pytest.mark.parametrize(
+        "name", ["MODEL_ID", "SUPABASE_URL", "SUPABASE_KEY_SECRET_ID", "ANTHROPIC_KEY_SECRET_ID"]
+    )
     def test_missing_var_raises_typed_error_naming_it(self, name):
         env = _env(**{name: None})
         with pytest.raises(ConfigError) as info:
@@ -133,7 +135,9 @@ class TestMissingRequired:
         tb = "".join(traceback.format_exception(err))
         _no_values_in(tb, env)
 
-    @pytest.mark.parametrize("name", ["MODEL_ID", "SUPABASE_URL", "SUPABASE_KEY_SECRET_ID", "ANTHROPIC_KEY_SECRET_ID"])
+    @pytest.mark.parametrize(
+        "name", ["MODEL_ID", "SUPABASE_URL", "SUPABASE_KEY_SECRET_ID", "ANTHROPIC_KEY_SECRET_ID"]
+    )
     def test_blank_var_counts_as_missing(self, name):
         with pytest.raises(ConfigError) as info:
             load_config(_env(**{name: "   "}))

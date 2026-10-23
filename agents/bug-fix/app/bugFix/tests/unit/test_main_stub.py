@@ -174,6 +174,38 @@ class TestFailurePaths:
         assert FakeSupabase.instances == []  # no reporter without a key
 
     @pytest.mark.parametrize(
+        "missing", ["SUPABASE_URL", "SUPABASE_KEY_SECRET_ID", "ANTHROPIC_KEY_SECRET_ID", "MODEL_ID"]
+    )
+    def test_missing_env_var_end_to_end_leaks_no_values(self, monkeypatch, caplog, missing):
+        # S-180 edge case (task 1.10): the real load_config against the real
+        # env; neither the terminal payload nor the logs carry any env value.
+        import config as config_module
+
+        sentinels = {
+            "SUPABASE_URL": "https://sentinel-url-7f3a.example",
+            "SUPABASE_KEY_SECRET_ID": "sentinel/supabase-7f3a",
+            "ANTHROPIC_KEY_SECRET_ID": "sentinel/anthropic-7f3a",
+            "PROJECTS_TOKEN_SECRET_ID": "sentinel/projects-7f3a",
+            "MODEL_ID": "claude-sonnet-sentinel-7f3a",
+            "BOARD_UPDATES_ENABLED": "1",
+        }
+        for k, v in sentinels.items():
+            monkeypatch.setenv(k, v)
+        monkeypatch.delenv(missing)
+        monkeypatch.setattr(main, "load_config", config_module.load_config)
+
+        with caplog.at_level("DEBUG"):
+            result = _result(_drain(main.invoke(dict(PAYLOAD), None)))
+
+        assert result["error_code"] == "CONFIG_INVALID"
+        assert missing in result["summary"]
+        emitted = json.dumps(result) + caplog.text
+        for name, value in sentinels.items():
+            if name != "BOARD_UPDATES_ENABLED":
+                assert value not in emitted, f"{name} value leaked"
+        assert "Traceback" not in caplog.text
+
+    @pytest.mark.parametrize(
         "payload",
         [
             {},

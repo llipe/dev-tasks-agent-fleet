@@ -15,7 +15,13 @@ import pytest
 PKG = Path(__file__).resolve().parents[2]  # agents/bug-fix/app/bugFix
 AGENT = PKG.parents[1]  # agents/bug-fix
 
-COPIED = ["agent_reporter.py", "heartbeat.py", "signal_backstop.py", "scrubber.py", "credentials.py"]
+COPIED = [
+    "agent_reporter.py",
+    "heartbeat.py",
+    "signal_backstop.py",
+    "scrubber.py",
+    "credentials.py",
+]
 SOURCE_DIR = "agents/security-analyst/app/securityAnalyst"
 
 
@@ -40,11 +46,24 @@ def test_layout_file_exists(rel: str) -> None:
 
 @pytest.mark.parametrize(
     "target",
-    ["test", "test-unit", "test-component", "lint", "format-check", "typecheck", "audit", "validate", "image", "image-smoke"],
+    [
+        "test",
+        "test-unit",
+        "test-component",
+        "lint",
+        "format-check",
+        "typecheck",
+        "audit",
+        "validate",
+        "image",
+        "image-smoke",
+    ],
 )
 def test_makefile_exposes_target(target: str) -> None:
     makefile = (PKG / "Makefile").read_text()
-    assert re.search(rf"^{re.escape(target)}:", makefile, re.MULTILINE), f"Makefile has no `{target}` target"
+    assert re.search(rf"^{re.escape(target)}:", makefile, re.MULTILINE), (
+        f"Makefile has no `{target}` target"
+    )
 
 
 def test_image_smoke_is_executable() -> None:
@@ -57,7 +76,9 @@ def test_image_smoke_is_executable() -> None:
 def test_copied_module_has_source_header(name: str) -> None:
     head = "\n".join((PKG / name).read_text().splitlines()[:15])
     assert f"{SOURCE_DIR}/{name}" in head, f"{name}: header must name its source path"
-    assert re.search(r"\b[0-9a-f]{7,40}\b", head), f"{name}: header must name a 7-40 hex source commit"
+    assert re.search(r"\b[0-9a-f]{7,40}\b", head), (
+        f"{name}: header must name a 7-40 hex source commit"
+    )
 
 
 def test_repo_makefile_includes_this_agent() -> None:

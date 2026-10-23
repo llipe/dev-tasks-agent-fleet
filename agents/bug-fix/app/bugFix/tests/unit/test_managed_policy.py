@@ -21,7 +21,14 @@ POLICY = Path(__file__).resolve().parents[2] / "managed-settings.json"
 
 REGISTRIES = {"registry.npmjs.org", "registry.yarnpkg.com", "pypi.org", "files.pythonhosted.org"}
 
-DENY_TOOLS = ["Bash(git push:*)", "Bash(gh:*)", "Bash(curl:*)", "Bash(wget:*)", "WebFetch", "WebSearch"]
+DENY_TOOLS = [
+    "Bash(git push:*)",
+    "Bash(gh:*)",
+    "Bash(curl:*)",
+    "Bash(wget:*)",
+    "WebFetch",
+    "WebSearch",
+]
 DENY_PATHS = ["/proc/**", "/etc/claude-code/**", "/work/secrets/**"]
 
 
@@ -82,7 +89,16 @@ class TestDenyRules:
 
 
 class TestNegative:
-    @pytest.mark.parametrize("domain", ["github.com", "api.github.com", "objects.githubusercontent.com", "anthropic.com", "localhost"])
+    @pytest.mark.parametrize(
+        "domain",
+        [
+            "github.com",
+            "api.github.com",
+            "objects.githubusercontent.com",
+            "anthropic.com",
+            "localhost",
+        ],
+    )
     def test_forbidden_hosts_absent(self, domain):
         assert domain not in _domains()
 

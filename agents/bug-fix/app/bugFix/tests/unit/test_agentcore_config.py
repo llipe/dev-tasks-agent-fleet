@@ -91,7 +91,13 @@ SECRET_SHAPES = [
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
 ]
 
-SECRET_FREE = [AGENTCORE, PKG / "Dockerfile", PKG / "managed-settings.json", PKG / "config.py", AGENT / "README.md"]
+SECRET_FREE = [
+    AGENTCORE,
+    PKG / "Dockerfile",
+    PKG / "managed-settings.json",
+    PKG / "config.py",
+    AGENT / "README.md",
+]
 
 
 @pytest.mark.parametrize("path", SECRET_FREE, ids=lambda p: p.name)

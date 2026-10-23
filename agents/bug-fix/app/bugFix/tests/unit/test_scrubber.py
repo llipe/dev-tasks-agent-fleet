@@ -81,7 +81,9 @@ class TestSiblingContract:
         assert "abc" not in out
 
     def test_scrub_process_error_scrubs_cmd_stdout_stderr(self):
-        exc = subprocess.CalledProcessError(1, ["git", "clone", f"https://x:{INSTALL_TOKEN}@github.com/o/r"])
+        exc = subprocess.CalledProcessError(
+            1, ["git", "clone", f"https://x:{INSTALL_TOKEN}@github.com/o/r"]
+        )
         exc.stdout = f"out {INSTALL_TOKEN}".encode()
         exc.stderr = f"err {INSTALL_TOKEN}"
         scrub_process_error(exc, [INSTALL_TOKEN])
@@ -220,7 +222,7 @@ class TestSurfaces:
 # Property tests (RT tactics; hypothesis per test plan G-5)
 # ---------------------------------------------------------------------------
 
-_TEXT = st.text(alphabet=st.characters(blacklist_categories=("Cs",)), max_size=200)
+_TEXT = st.text(alphabet=st.characters(codec="utf-8"), max_size=200)
 
 
 @given(prefix=_TEXT, suffix=_TEXT)
@@ -230,13 +232,26 @@ def test_registered_secrets_never_survive(prefix: str, suffix: str) -> None:
         assert secret not in scrub_all(prefix + secret + suffix, secrets)
 
 
-@given(body=st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-", min_size=20, max_size=120))
+@given(
+    body=st.text(
+        alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-",
+        min_size=20,
+        max_size=120,
+    )
+)
 def test_any_anthropic_key_shape_is_redacted(body: str) -> None:
     key = "sk-ant-" + body
     assert key not in redact_patterns(f"k={key};")
 
 
-@given(body=st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", min_size=36, max_size=36), prefix=st.sampled_from(["ghp_", "ghs_", "gho_", "ghu_", "ghr_"]))
+@given(
+    body=st.text(
+        alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        min_size=36,
+        max_size=36,
+    ),
+    prefix=st.sampled_from(["ghp_", "ghs_", "gho_", "ghu_", "ghr_"]),
+)
 def test_any_github_token_shape_is_redacted(body: str, prefix: str) -> None:
     token = prefix + body
     assert token not in redact_patterns(f"t {token} t")

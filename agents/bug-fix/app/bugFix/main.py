@@ -80,14 +80,18 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
     except ConfigError as exc:
         # The message names the variable, never its value.
         log.error("Configuration error: %s", exc)
-        yield terminal_chunk(json.dumps(_result("failed", "not_applicable", str(exc), "CONFIG_INVALID")))
+        yield terminal_chunk(
+            json.dumps(_result("failed", "not_applicable", str(exc), "CONFIG_INVALID"))
+        )
         return
 
     try:
         request = unwrap_payload(payload)
     except InvalidPayloadError as exc:
         log.error("Invalid payload: %s", exc)
-        yield terminal_chunk(json.dumps(_result("failed", "not_applicable", str(exc), "INVALID_PAYLOAD")))
+        yield terminal_chunk(
+            json.dumps(_result("failed", "not_applicable", str(exc), "INVALID_PAYLOAD"))
+        )
         return
 
     try:
