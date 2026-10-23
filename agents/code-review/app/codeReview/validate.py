@@ -52,12 +52,14 @@ linear in the input (the review is model output and untrusted).
    capped.
 5. *IDs.* ``B1…Bn`` and ``S1…Sm``, each group in ``(rank, model order)``.
 
-**Blank** (one definition, ``is_blank``): every character is whitespace
-(``str.isspace``), a control character (category ``Cc``), a format
-character (category ``Cf``: the zero-width space, joiners, word joiner, BOM,
-soft hyphen, bidi controls, U+180E), or one of the blank-rendering fillers
-U+115F, U+1160, U+3164, U+FFA0, U+2800. The empty string is blank. Combining
-marks alone (for example U+034F) are not blank.
+**Blank** (one definition, ``is_blank``; D-51): the text contains no Unicode
+letter or number, that is no character whose ``unicodedata.category``
+starts with ``L`` or ``N``, other than the Hangul fillers U+115F, U+1160,
+U+3164 and U+FFA0 (category ``Lo``, rendered as nothing). Whitespace, controls, format characters
+(zero-width ones, bidi controls), fillers, punctuation, symbols and
+combining marks alone are all blank, so ``"."``, ``"-"`` and ``"…"`` carry no
+scenario. There is no word deny-list: ``"N/A"`` and ``"none"`` contain
+letters and are not blank. The empty string is blank.
 
 **Paths** (``normalize_file``, ``match_reviewed``): the raw ``file`` is tried
 first, then its normalized form: every leading and trailing backtick is
@@ -178,8 +180,8 @@ REASON_MAX_CHARS = 300  # the schema's ``reason`` maxLength
 VERDICT_BLOCKING = "blocking"
 VERDICT_CLEAR = "clear"
 
-# Characters outside Cc/Cf/whitespace that render as nothing.
-_BLANK_FILLERS = frozenset("ᅟᅠㅤﾠ⠀")
+# Hangul fillers: category Lo, but they render as nothing and are no letter.
+_BLANK_FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
 
 
 # ---------------------------------------------------------------------------
@@ -325,16 +327,13 @@ class Validation:
 # ---------------------------------------------------------------------------
 
 
-def _invisible(c: str) -> bool:
-    return c.isspace() or c in _BLANK_FILLERS or unicodedata.category(c) in ("Cc", "Cf")
-
-
 def is_blank(text: str) -> bool:
-    """True when ``text`` has no visible character (see the module docstring).
+    """True when ``text`` has no letter or number (D-51, module docstring).
 
-    Linear: the distinct characters are collected once, then each is checked.
+    One pass that returns at the first letter or number.
     """
-    return all(_invisible(c) for c in set(text))
+    category = unicodedata.category
+    return not any(category(c)[0] in "LN" and c not in _BLANK_FILLERS for c in text)
 
 
 def normalize_file(raw: str) -> str:
