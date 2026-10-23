@@ -460,11 +460,44 @@ BLANKS = [
     " ​ ﻿ \n",
 ]
 
-NON_BLANKS = ["x", " a ", "​z", "͏", "-", "0", "é", "\U0001f600"]
+NON_BLANKS = [
+    "x",
+    " a ",
+    "\u200bz",
+    "0",
+    "\u00e9",
+    "N/A",  # D-51: no word deny-list; letters make it non-blank
+    "n/a",
+    "none",
+    "TBD",
+    "null",
+    "\u4e2d",  # CJK letter (Lo)
+    "\u0661",  # Arabic-Indic digit one (Nd)
+    "\u2163",  # Roman numeral four (Nl)
+    "\u00bd",  # vulgar fraction one half (No)
+    "- 1",
+]
+
+# D-51: no letter or number means blank, whatever else is there.
+BLANKS += [
+    ".",
+    "-",
+    "\u2014",  # em dash
+    "\u2026",  # ellipsis
+    "?",
+    "!!!",
+    "\u2192",  # arrow (Sm)
+    "\U0001f600",  # emoji (So)
+    "\u0301",  # combining acute alone (Mn)
+    "\u034f",  # combining grapheme joiner (Mn)
+    "\u20dd",  # combining enclosing circle (Me)
+    " -- \u200b ... ",
+]
 
 
 @pytest.mark.parametrize("text", BLANKS)
 def test_is_blank_pins_the_blank_definition(text):
+    # D-51: blank means no character whose category starts with L or N.
     assert is_blank(text)
 
 
@@ -493,6 +526,22 @@ def test_tc211_06_a_finding_failing_both_checks_is_outside_diff_the_first_rule()
 def test_a_suggestion_with_a_blank_scenario_is_kept_as_is():
     kept = only(run([finding(severity="suggestion", failure_scenario="")]))
     assert (kept.severity, kept.downgraded) == ("suggestion", None)
+
+
+def test_d51_placeholders_downgrade_and_letters_keep_a_finding_blocking():
+    for text in (".", "-", "\u2014", "\u2026", "?"):
+        assert only(run([finding(failure_scenario=text)])).downgraded == DOWNGRADE_NO_SCENARIO
+    for text in ("N/A", "none"):
+        assert only(run([finding(failure_scenario=text)])).severity == "blocking"
+    # The same definition drops a punctuation-only consequence.
+    assert run([finding(consequence="-")]).dropped[0].reason == DROP_NO_CONSEQUENCE
+
+
+def test_is_blank_returns_at_the_first_letter_or_number():
+    text = "a" + "\u200b" * 5_000_000
+    start = time.perf_counter()
+    assert not is_blank(text)
+    assert time.perf_counter() - start < 0.05
 
 
 def test_is_blank_is_linear():

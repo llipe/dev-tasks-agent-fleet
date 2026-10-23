@@ -42,7 +42,7 @@ from validate import (
 SEED = tactic_seed(413, 1)
 ITERATIONS = 3_000
 
-BLANK_POOL = ["", " ", "\n\t", "​", "　﻿", "  ⁠"]
+BLANK_POOL = ["", " ", "\n\t", "​", "　﻿", "  ⁠", "-", "...", "\u2014?"]
 TEXT_POOL = ["x", " fails when n = 0 ", "​z", "raises KeyError", "@user <b>hi</b>"]
 FILES = ["src/a.py", "src/b.py", "lib/c.ts", "docs/r.md"]
 OUTSIDE = ["nope.py", "src/A.py", "src\\a.py", "src/../src/a.py", " src/a.py"]

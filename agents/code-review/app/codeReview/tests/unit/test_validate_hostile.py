@@ -35,9 +35,8 @@ span is at most ``MAX_BLOCKING_SPAN`` = 200 lines), so its marker is gone.
 
 Characterized, not pinned (planner questions, see the report):
 
-- placeholder scenarios (``"."``, ``"-"``, ``"N/A"``, ``"none"``) are not
-  blank under the pinned definition (decision 4), so they keep a finding
-  blocking;
+- placeholder scenarios: resolved by D-51 (blank means no letter or number),
+  so ``"."`` and ``"-"`` are blank and ``"N/A"`` and ``"none"`` are not;
 - ``escape_path`` does not escape ``\\``, so a literal path ``a\\nb.py`` and a
   path with a real newline ``a<LF>b.py`` render identically in the diff
   header; the literal path wins (decision 3).
@@ -573,23 +572,31 @@ def test_counts_conserve_and_never_carry_finding_text():
 
 
 # ---------------------------------------------------------------------------
-# 5. Blank definition: placeholders (planner question, characterized)
+# 5. Blank definition: placeholders (D-51)
 # ---------------------------------------------------------------------------
 
-PLACEHOLDERS = [".", "-", "—", "…", "?", "N/A", "n/a", "none", "None", "TBD", "null"]
 MARK_ONLY = ["́", "͏", "️", "\U000e0100", "឴", "́́​"]
 
 
-@pytest.mark.parametrize("text", PLACEHOLDERS + MARK_ONLY, ids=ascii)
-def test_placeholder_and_mark_only_scenarios_are_not_blank_under_decision_4(text):
-    """Current, pinned behavior (decision 4): only invisible characters are blank.
+PUNCTUATION_ONLY = [".", "-", "—", "…", "?"]
+WORD_PLACEHOLDERS = ["N/A", "n/a", "none", "None", "TBD", "null"]
 
-    Open planner question (QA-211-Q1): under "no scenario, no block", should a
-    scenario with no letter or digit (``"."``, ``"-"``, combining marks only)
-    or a placeholder word (``"N/A"``, ``"none"``) count as blank? The spec
-    says "blank" and the PRD says "empty", so this is not a defect today. If
-    the rule changes, update this test with it.
+
+@pytest.mark.parametrize("text", PUNCTUATION_ONLY + MARK_ONLY, ids=ascii)
+def test_placeholder_and_mark_only_scenarios_are_blank_under_d51(text):
+    """D-51 (QA-211-Q1): blank means no Unicode letter or number.
+
+    Punctuation, symbols and combining marks alone carry no scenario, so a
+    blocking finding with one is downgraded with ``no_scenario``.
     """
+    assert is_blank(text)
+    kept = only(run([finding(failure_scenario=text)]))
+    assert (kept.severity, kept.downgraded) == ("suggestion", "no_scenario")
+
+
+@pytest.mark.parametrize("text", WORD_PLACEHOLDERS, ids=ascii)
+def test_placeholder_words_are_not_blank_under_d51(text):
+    """D-51 has no word deny-list: ``"N/A"`` and ``"none"`` contain letters."""
     assert not is_blank(text)
     kept = only(run([finding(failure_scenario=text)]))
     assert (kept.severity, kept.downgraded) == ("blocking", None)
