@@ -2,14 +2,15 @@
 
 ## Changelog
 
-| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                         | Author           |
-| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-10-22 | Initial stories from spec v1.0 / PRD v1.1. S-204–S-215 across Wave A (base agent) and Wave B (live).                                                                                                                                                                                                                            | product-engineer |
-| 1.1     | 2026-10-22 | Published as GitHub issues #406–#417; see `github-publication-prd-code-review-agent.md`.                                                                                                                                                                                                                                        | product-engineer |
-| 1.2     | 2026-10-22 | Spec v1.1 write-back (D-36–D-38, verifier DF-02–DF-04): S-208 candidate shape; S-209 priority fill, budget invariant, per-candidate nonce blocks; S-212 verifier rows from wrapper data and five-stage size guarantee; S-213 failure comment after `COMMENT_POST_FAILED`. Story titles aligned with the shortened issue titles. | product-engineer |
-| 1.3     | 2026-10-22 | D-39 write-back (verifier F1 on #428): S-214 sets `runtime_arn` and enables the row in one update.                                                                                                                                                                                                                              | product-engineer |
+| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                                                                                               | Author           |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1.0     | 2026-10-22 | Initial stories from spec v1.0 / PRD v1.1. S-204–S-215 across Wave A (base agent) and Wave B (live).                                                                                                                                                                                                                                                                                                                  | product-engineer |
+| 1.1     | 2026-10-22 | Published as GitHub issues #406–#417; see `github-publication-prd-code-review-agent.md`.                                                                                                                                                                                                                                                                                                                              | product-engineer |
+| 1.2     | 2026-10-22 | Spec v1.1 write-back (D-36–D-38, verifier DF-02–DF-04): S-208 candidate shape; S-209 priority fill, budget invariant, per-candidate nonce blocks; S-212 verifier rows from wrapper data and five-stage size guarantee; S-213 failure comment after `COMMENT_POST_FAILED`. Story titles aligned with the shortened issue titles.                                                                                       | product-engineer |
+| 1.3     | 2026-10-22 | D-39 write-back (verifier F1 on #428): S-214 sets `runtime_arn` and enables the row in one update.                                                                                                                                                                                                                                                                                                                    | product-engineer |
+| 1.4     | 2026-10-23 | Wave A drift write-back (human-confirmed batch, Llipe, 2026-10-23): story text that contradicted the delivered decisions is corrected. S-206 binary rule (S-206 D1) and the lockfile-only edge case (DF-16); S-207 AC2 checklist forms (D-43); S-208 AC2 drift heading (D-44); S-211 AC2 span bound (D-50); S-213 user story names the nothing-to-review note and the spec §13 silent paths. Source versions updated. | product-engineer |
 
-Source: `docs/requirements/prd-code-review-agent.md` (v1.1), `workstream/specification-prd-code-review-agent.md` (v1.0), `workstream/decisions-code-review-agent.md` (D-01–D-35).
+Source: `docs/requirements/prd-code-review-agent.md` (v1.1; v1.2 amends FR-9, FR-20, FR-24), `workstream/specification-prd-code-review-agent.md` (v1.0; delivered contract in v1.3), `workstream/decisions-code-review-agent.md` (D-01–D-35; D-36–D-55 added during delivery).
 
 ---
 
@@ -205,14 +206,14 @@ GitHub patches carry 3 lines of context, so the diff is built locally from the m
 #### Technical Notes
 
 - Contents fetched with a thread pool of 8 (spec §11).
-- Binary: no `patch` in the files response or a NUL byte in the first 8 KB.
+- Binary: no `patch` with 0/0 line counts on a non-renamed file, or a NUL byte in the first 8 KB of either blob (S-206 D1, spec v1.3 §8.2). A blob 404 or a refused path is `content_unavailable`.
 
 #### Testing Requirements
 
 - **Unit Tests:** `test_classify.py` (each pattern, near-misses like `lockfile.md`), `test_diff.py` (each status, ±50 context, rename, empty file, no trailing newline, CRLF), `test_changed_ranges.py`.
 - **Integration Tests:** `test_context_diff.py` against recorded fixtures for a 3-file PR.
 - **Manual/UI Testing:** none.
-- **Edge-Case Matrix:** exactly `max_diff_lines` (reviewed) vs. +1 (budget); a PR touching only lockfiles (0 reviewed lines → still reviewed, empty diff); invalid UTF-8; 300+ files.
+- **Edge-Case Matrix:** exactly `max_diff_lines` (reviewed) vs. +1 (budget); a PR touching only lockfiles (0 reviewed lines, not over budget, empty diff; S-213 posts the nothing-to-review note, DF-16); invalid UTF-8; 300+ files.
 - **Acceptance-Criteria Mapping:** AC-1 → `test_classify.py`; AC-2 → `test_budget_*`; AC-3 → `test_diff.py`; AC-5 → `test_changed_ranges.py`.
 - **Execution Commands:** `make -C agents/code-review/app/codeReview test`.
 
@@ -259,7 +260,7 @@ Intent comes from issues and the spec (D-04); the developer's plan is excluded (
 #### Acceptance Criteria
 
 - [ ] Issues are found by the spec §8.3 step 2 regex in the PR body (same repo only) and `^issue/(\d+)-` on the head ref; deduped; first 5 kept; PRs among them skipped (D-22).
-- [ ] Each issue body is cut at the first `## Task Checklist` heading (any level 1–6), inclusive to the end (D-23).
+- [ ] Each issue body is cut at the first `Task Checklist` heading in any form GitHub renders as a heading (ATX levels 1–6, setext; D-43), inclusive to the end (D-23).
 - [ ] Each issue is capped at 8,000 estimated tokens with a truncation marker.
 - [ ] Spec resolution per issue: explicit `workstream/specification-*.md` path → `[PRD-<name>]` title → `prd:<name>` label, mapped to `workstream/specification-prd-<name>.md` at `head_sha`; 404 falls through; none → `spec = None` (D-24, AC-6).
 - [ ] Over 30% of `max_context_tokens`, the spec is trimmed to the heading outline + sections cited as `Spec §<n>` + sections naming a linked story ID or reviewed path, then truncated (D-24).
@@ -325,7 +326,7 @@ D-25 names the report files; D-33 has the wrapper select candidates deterministi
 #### Acceptance Criteria
 
 - [ ] For each linked issue, `fidelity-report-S-<id>.md` (story ID from `Story (S-\d+)` in the title) and `fidelity-report-issue-<N>.md` are read at `head_sha`; `*-rollup.md` is ignored (D-25).
-- [ ] The drift section is the first heading matching `^#{2,3}\s+(Drift|Drift catalog)\b`; absent → report state `not_parseable` (D-33).
+- [ ] The drift section is the first `##` or `###` heading `Drift` or `Drift catalog`, with an optional numeric prefix such as `3.` (D-44, spec v1.3 §8.3 step 4); absent → report state `not_parseable` (D-33).
 - [ ] Each table row in that section containing both `Critical` and `Unintended` as whole words becomes a candidate `V<k>` holding the report path, the row index, and the row text verbatim (≤ 300 estimated tokens); numbering is global across reports (D-33, D-38).
 - [ ] The whole drift section (≤ 4,000 tokens per report) is returned as context alongside the candidate list.
 - [ ] Conventions: head `AGENTS.md`, else `CLAUDE.md`, plus title and `Status` line of each `docs/adr/*.md` (≤ 50), capped at 10% of `max_context_tokens` (PRD FR-11).
@@ -527,7 +528,7 @@ The wrapper enforces the contract instead of trusting the model (D-08, PRD FR-23
 #### Acceptance Criteria
 
 - [ ] A finding on a non-reviewed file is dropped.
-- [ ] A `blocking` finding not intersecting a changed head range ±3 lines → `suggestion`, `downgraded: "outside_diff"`.
+- [ ] A `blocking` finding not intersecting a changed head range ±3 lines, or spanning more than 200 lines unless wholly inside one widened changed range (D-50), → `suggestion`, `downgraded: "outside_diff"`.
 - [ ] A `blocking` finding with blank `failure_scenario` → `suggestion`, `downgraded: "no_scenario"`.
 - [ ] Blank `consequence` → dropped, `reason: "no_consequence"`.
 - [ ] Suggestions sorted by `rank`, capped at `max_suggestions`; blocking never capped; IDs `B1…`, `S1…` (PRD FR-23).
@@ -650,7 +651,7 @@ Implements the layout in PRD FR-24 and spec §8.8, the size limit (D-28), the ru
 #### User Story
 
 As the operator,
-I want `/review` to run the whole pipeline and always leave either a review, a budget note, or a failure note on the PR,
+I want `/review` to run the whole pipeline and leave a review, a budget note, a nothing-to-review note, or a failure note on the PR, except in the cases spec §13 lists (for example no GitHub token),
 So that a review request never goes silent and every run is recorded in the panel.
 
 #### Context
