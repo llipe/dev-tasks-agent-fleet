@@ -67,6 +67,11 @@
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
 - `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos
 - `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs
+- `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
+- `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
+- `Makefile` - Repo-root `AGENT_DIRS` includes `agents/bug-fix/app/bugFix` (S-180)
+- `.github/workflows/ci.yml` - `python-quality` matrix entry for `bug-fix` (S-180)
+- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180)
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema and webhook-resolve check
 - `supabase/migrations/<ts>_seed_bug_fix_agent.sql`, `supabase/seed.sql` - `agents` row
 - `infra/changes/<date>-bug-fix-runtime/` - Infra change record
@@ -80,22 +85,22 @@
 
   > Note: skeleton only. `main.py` ends `succeeded`/`not_applicable` "not yet implemented", so a deploy is harmless.
 
-  - [ ] 1.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_scrubber.py` (the Anthropic key is redacted) and `tests/unit/test_config.py` (reads `MODEL_ID`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID`; a missing var raises a typed error with no values in the message) (D-50)
-  - [ ] 1.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_main_stub.py`: the entrypoint reports `started`, then `succeeded`/`not_applicable` "not yet implemented"
-  - [ ] 1.3 `[I]` [agents/bug-fix] Create the layout: `agentcore/agentcore.json`, `app/bugFix/{main.py, config.py, Dockerfile, Makefile, pyproject.toml}`, `README.md`, `AGENTS.md` (D-03)
-  - [ ] 1.4 `[I]` [agents/bug-fix] Copy `agent_reporter.py`, `heartbeat.py`, `signal_backstop.py`, `scrubber.py`, `credentials.py` from `security-analyst`, each with a source and commit header. Add the Anthropic key and the Projects PAT to the scrubber's secrets (D-03, D-50, D-99)
-  - [ ] 1.5 `[I]` [agents/bug-fix] `config.py` and the minimal `main.py`
-  - [ ] 1.6 `[I]` [agents/bug-fix] `agentcore.json`: runtime `bug_fix`, `Container`, `PUBLIC`, `maxLifetime: 3600`, envs `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID=agent-fleet/prod/ANTHROPIC_API_KEY`, `PROJECTS_TOKEN_SECRET_ID=agent-fleet/prod/GITHUB_PROJECTS_TOKEN`, `BOARD_UPDATES_ENABLED=1`, `MODEL_ID` (a Sonnet id on the Anthropic API). No Bedrock reference (D-50)
-  - [ ] 1.7 `[I]` [agents/bug-fix] Dockerfile (ARM64): Python 3.13, Node 26 + pnpm, git, `bubblewrap`, `socat`, pinned `@anthropic-ai/claude-code`; users `wrapper` and `fixer` with different uids; `/work/repo` and `/work/out` owned by `fixer`; `/home/fixer` (D-05, D-18, D-51)
-  - [ ] 1.8 `[I]` [agents/bug-fix] `managed-settings.json`, root-owned with mode 0644, at `/etc/claude-code/`:
+  - [x] 1.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_scrubber.py` (the Anthropic key is redacted) and `tests/unit/test_config.py` (reads `MODEL_ID`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID`; a missing var raises a typed error with no values in the message) (D-50)
+  - [x] 1.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_main_stub.py`: the entrypoint reports `started`, then `succeeded`/`not_applicable` "not yet implemented"
+  - [x] 1.3 `[I]` [agents/bug-fix] Create the layout: `agentcore/agentcore.json`, `app/bugFix/{main.py, config.py, Dockerfile, Makefile, pyproject.toml}`, `README.md`, `AGENTS.md` (D-03)
+  - [x] 1.4 `[I]` [agents/bug-fix] Copy `agent_reporter.py`, `heartbeat.py`, `signal_backstop.py`, `scrubber.py`, `credentials.py` from `security-analyst`, each with a source and commit header. Add the Anthropic key and the Projects PAT to the scrubber's secrets (D-03, D-50, D-99)
+  - [x] 1.5 `[I]` [agents/bug-fix] `config.py` and the minimal `main.py`
+  - [x] 1.6 `[I]` [agents/bug-fix] `agentcore.json`: runtime `bug_fix`, `Container`, `PUBLIC`, `maxLifetime: 3600`, envs `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID=agent-fleet/prod/ANTHROPIC_API_KEY`, `PROJECTS_TOKEN_SECRET_ID=agent-fleet/prod/GITHUB_PROJECTS_TOKEN`, `BOARD_UPDATES_ENABLED=1`, `MODEL_ID` (a Sonnet id on the Anthropic API). No Bedrock reference (D-50)
+  - [x] 1.7 `[I]` [agents/bug-fix] Dockerfile (ARM64): Python 3.13, Node 26 + pnpm, git, `bubblewrap`, `socat`, pinned `@anthropic-ai/claude-code`; users `wrapper` and `fixer` with different uids; `/work/repo` and `/work/out` owned by `fixer`; `/home/fixer` (D-05, D-18, D-51)
+  - [x] 1.8 `[I]` [agents/bug-fix] `managed-settings.json`, root-owned with mode 0644, at `/etc/claude-code/`:
     - sandbox enabled;
     - registry-only network: `registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`;
     - denies `Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, and Read/Edit of `/proc/**`, `/etc/claude-code/**`, `/work/secrets/**`;
     - key names are provisional until 3.0 (D-51).
-  - [ ] 1.9 `[I]` [agents/bug-fix] `scripts/image-smoke.sh` and `make image`. The smoke script asserts that `id fixer` ≠ `id wrapper`, that `claude --version` and `bwrap --version` work, and that the policy file is owned by root with mode 0644
-  - [ ] 1.10 Edge cases: each missing env var gives a typed error, never a traceback that contains values
-  - [ ] 1.11 Verify AC: layout and copied modules (AC1–AC2); `agentcore.json` envs with no Bedrock (AC3); ARM64 build with the toolchain (AC4); users and dirs (AC5); policy ownership and content (AC6); stub entrypoint (AC7). Map each to 1.1, 1.2 or 1.9
-  - [ ] 1.12 Run tests: `make test`, `make image`, `scripts/image-smoke.sh`; agent gate; `make validate`; record `coverage_gate`
+  - [x] 1.9 `[I]` [agents/bug-fix] `scripts/image-smoke.sh` and `make image`. The smoke script asserts that `id fixer` ≠ `id wrapper`, that `claude --version` and `bwrap --version` work, and that the policy file is owned by root with mode 0644
+  - [x] 1.10 Edge cases: each missing env var gives a typed error, never a traceback that contains values
+  - [x] 1.11 Verify AC: layout and copied modules (AC1–AC2); `agentcore.json` envs with no Bedrock (AC3); ARM64 build with the toolchain (AC4); users and dirs (AC5); policy ownership and content (AC6); stub entrypoint (AC7). Map each to 1.1, 1.2 or 1.9
+  - [x] 1.12 Run tests: `make test`, `make image`, `scripts/image-smoke.sh`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 1.13 `verifier` audit; open PR → `integration/bug-fix-agent`
 
 - [ ] 2.0 Implement Story S-181 (#363 - https://github.com/llipe/dev-tasks-agent-fleet/issues/363): Infra change — Anthropic key, runtime and role, panel invoke policy, App Issues write
