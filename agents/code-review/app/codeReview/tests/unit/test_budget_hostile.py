@@ -369,14 +369,6 @@ def test_the_context_length_retry_prompt_has_no_file_and_fits():
         assert retry.tokens <= full.tokens or not full.context.full_files_included
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Defect (Low): with include_full_files=False, ContextData.full_files_dropped is in "
-        "files-list order (prompt._context_data uses pieces.all_files), but ContextData's "
-        "docstring and PR #432 pinned decision 5 say included/dropped are smallest-first."
-    ),
-)
 def test_the_context_length_retry_reports_dropped_files_smallest_first():
     files = [file_diff("big.py", head="x\n" * 5_000), file_diff("small.py", head="x\n")]
     p = _prompt(inputs(diff=diff_ctx(files)), include_full_files=False)

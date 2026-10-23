@@ -92,6 +92,7 @@ __all__ = [
     "estimate_len",
     "fill",
     "prompt_tokens",
+    "smallest_first",
 ]
 
 # Block kinds, as they appear in the nonce markers (spec §8.5).
@@ -286,6 +287,11 @@ class _Filler:
         self.placed.append(Placed(piece, content, cut, reason, tokens))
 
 
+def smallest_first(pieces: Sequence[Piece]) -> tuple[Piece, ...]:
+    """Pieces by rendered cost, ties in source order: the full-file order (g)."""
+    return tuple(sorted(pieces, key=lambda p: (_cost(p.overhead, len(p.content)), p.index)))
+
+
 def fill(groups: FillGroups, *, max_context_tokens: int, mandatory_tokens: int) -> Fill:
     """Fill ``R = max_context_tokens - mandatory_tokens`` in spec §8.4 order a–g."""
     remaining = max_context_tokens - mandatory_tokens
@@ -311,10 +317,7 @@ def fill(groups: FillGroups, *, max_context_tokens: int, mandatory_tokens: int) 
     f.shared(groups.specs, spec_cap(max_context_tokens))  # e
     if groups.conventions is not None:
         f.capped(groups.conventions, conventions_cap(max_context_tokens))  # f
-    files = sorted(
-        groups.files, key=lambda p: (_cost(p.overhead, len(p.content)), p.index)
-    )  # g: smallest first
-    dropped_files = f.whole_prefix(files)
+    dropped_files = f.whole_prefix(smallest_first(groups.files))  # g
     return Fill(
         remaining=remaining,
         unallocated=f.left,

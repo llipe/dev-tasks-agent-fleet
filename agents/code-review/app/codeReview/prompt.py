@@ -83,6 +83,7 @@ from budget import (
     assert_within_budget,
     fill,
     prompt_tokens,
+    smallest_first,
 )
 from context.diff import OVER_TOKENS, DiffContext, OverBudget, escape_path
 from context.tokens import estimate, estimate_len, truncate
@@ -427,7 +428,7 @@ class _Pieces:
     groups: FillGroups
     specs: dict[tuple[str, str | None, int], _Render]
     candidates: dict[str, Candidate]
-    all_files: tuple[str, ...]
+    left_out: tuple[Piece, ...]  # file pieces the caller left out (context-length retry)
 
 
 def _key(piece: Piece) -> tuple[str, str | None, int]:
@@ -531,21 +532,19 @@ def _pieces(inputs: ContextInputs, include_full_files: bool) -> _Pieces:
         for k, f in enumerate(inputs.diff.files)
         if f.head_content is not None
     ]
-    files: list[Piece] = []
-    if include_full_files:
-        for k, filename, head in heads:
-            files.append(
-                add(
-                    _piece(
-                        BLOCK_FILE,
-                        filename,
-                        LABEL_FILE,
-                        _file_content(filename, head),
-                        truncatable=False,
-                        index=k,
-                    )
-                )
+    files = tuple(
+        add(
+            _piece(
+                BLOCK_FILE,
+                filename,
+                LABEL_FILE,
+                _file_content(filename, head),
+                truncatable=False,
+                index=k,
             )
+        )
+        for k, filename, head in heads
+    )
 
     groups = FillGroups(
         pr=pr,
@@ -554,9 +553,9 @@ def _pieces(inputs: ContextInputs, include_full_files: bool) -> _Pieces:
         reports=tuple(reports),
         specs=tuple(spec_pieces),
         conventions=conventions,
-        files=tuple(files),
+        files=files if include_full_files else (),
     )
-    return _Pieces(groups, specs, candidates, tuple(name for _, name, _ in heads))
+    return _Pieces(groups, specs, candidates, () if include_full_files else files)
 
 
 # ---------------------------------------------------------------------------
@@ -824,9 +823,11 @@ def _context_data(
         for p in result.placed
         if p.piece.block == BLOCK_FILE and p.piece.ref is not None
     )
-    dropped_files = tuple(p.ref for p in result.dropped_files if p.ref is not None)
-    if not pieces.groups.files:  # full files left out by the caller
-        dropped_files = pieces.all_files
+    # Smallest first either way: the fill's own drops, or every file the caller
+    # left out, in the order the fill would have tried them.
+    dropped_files = tuple(
+        p.ref for p in result.dropped_files + smallest_first(pieces.left_out) if p.ref is not None
+    )
     issues = inputs.issues
     verifier = inputs.verifier
     return ContextData(
