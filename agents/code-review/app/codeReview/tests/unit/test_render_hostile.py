@@ -754,7 +754,7 @@ def test_marker_cannot_be_forged_or_closed_by_any_slot():
     "run_id, head_sha, run_out, sha_out",
     [
         (RUN_ID, HEAD, RUN_ID, HEAD),
-        (RUN_ID.upper(), HEAD, RUN_ID.upper(), HEAD),  # accepted: S-213 compares case-folded
+        (RUN_ID.upper(), HEAD, RUN_ID, HEAD),  # the marker lowercases the run_id
         (RUN_ID + " -->", HEAD, "invalid", HEAD),
         (RUN_ID + "\n", HEAD, "invalid", HEAD),
         ("x --><b>", HEAD, "invalid", HEAD),

@@ -1311,3 +1311,61 @@ def test_context_line_malformed_issue_note_ref_is_neutralized():
     assert f"issue #{ZW}1 @{ZW}x &lt;b&gt; omitted (budget)" in line
     line = _ctx_line(notes=(BlockNote("issue", None, "omitted", "budget"),))
     assert "issue (unknown) omitted (budget)" in line
+
+
+# ---------------------------------------------------------------------------
+# QA follow-ups (planner extras on QA residuals 4 and 5, S-213 carry)
+# ---------------------------------------------------------------------------
+
+HUGE = "x" * 20_000
+
+
+def test_every_rendered_field_is_length_bounded():
+    """QA residual 4: no single field can grow a line past its fixed cap."""
+    from dataclasses import replace
+
+    from validate import CandidateStatus
+
+    c = replace(candidate(1, HUGE), id=HUGE)
+    fx = clear_fixture()
+    fx["validation"] = validation(
+        [
+            replace(
+                finding("B1", title=HUGE, failure_scenario=HUGE, consequence=HUGE),
+                id=HUGE,
+                category=HUGE,
+            )
+        ],
+        [replace(finding("S1", title=HUGE, consequence=HUGE, downgraded=HUGE), category=HUGE)],
+        [CandidateStatus(c, HUGE, HUGE, True)],
+    )
+    fx["verifier"] = verifier_ctx(report(REPORT, REPORT_PARSED, candidates=[c]))
+    fx["context"] = context_data(
+        verifier_state=REPORT_PARSED,
+        notes=(BlockNote("issue", "#" + "9" * 20_000, "omitted", "budget"),),
+    )
+    fx["diff"] = diff_ctx(
+        files=(file_diff("w.py", base_withheld=HUGE),),
+        name_only=(NameOnlyFile("n.py", "added", HUGE, HUGE),),
+    )
+    body = body_of(fx, limit=10**9)
+    longest = max(len(line) for line in body.split("\n"))
+    assert longest <= 3_000, longest  # the longest slot: a 1,500-char scenario
+    assert len(context_line(body)) < 1_500
+
+
+def test_invisible_characters_are_removed_before_the_wrapper_inserts_its_own():
+    """QA residual 5: content zero-width and tag characters are dropped."""
+    invisible = "​‌‍⁠﻿\U000e0001\U000e0041\U000e007f"
+    assert neutralize(f"a{invisible}b") == "ab"
+    assert neutralize(f"@{invisible}everyone") == f"@{ZW}everyone"
+    assert neutralize(f"www{invisible}.e.x") == f"www{ZW}.e.x"
+    assert neutralize("a️b") == "a️b"  # variation selectors are kept
+    assert render.code_span(f"p{invisible}@x.py") == f"`p@{ZW}x.py`"
+    assert render.code_span(invisible) == "(unknown)"
+
+
+def test_marker_run_id_is_lowercased():
+    """S-213 carry: the marker's run_id compares exactly against the lowercase run id."""
+    body = body_of(clear_fixture(), run_id=RUN_ID.upper())
+    assert body.startswith(f"<!-- code-review-agent:v1 run={RUN_ID} sha={HEAD} -->\n")
