@@ -88,3 +88,4 @@
   - FR-24: section order (DF-01);
   - FR-9: amendment (D-49).
     Spec write-back adds S-213 DR-1..4, DR-6..8 and DR-10; docs: DR-11; roadmap: DR-12.
+- 2026-10-23: User decisions D-53 (amend FR-20), D-54 (amend FR-24), D-55 (accept DR-5 for base) and approval to apply the batched spec/PRD/test-plan write-back in the consolidated PR. Phase 5 started.
