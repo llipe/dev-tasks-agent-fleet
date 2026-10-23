@@ -92,6 +92,7 @@ from findings_schema import CATEGORIES, MAX_FINDINGS, SUBMIT_REVIEW_SCHEMA, SUBM
 __all__ = [
     "KINDS",
     "MAX_NONCE_ATTEMPTS",
+    "NAME_ONLY_REF",
     "RENDER_ORDER",
     "RUBRIC_PATH",
     "RUBRIC_VERSION",
@@ -150,6 +151,8 @@ LABEL_PR = "Pull request title and body (the author's claim):"
 LABEL_CONVENTIONS = "Repository conventions at head (conventions file, ADR titles and status):"
 LABEL_FILE = "Full file at head:"
 NO_DIFF = "(no reviewed file has a text diff)\n"
+# ``BlockNote.ref`` of the name-only listing's cut (block ``diff``).
+NAME_ONLY_REF = "name-only"
 NAME_ONLY_HEADER = "\nChanged files listed by name only (content not included):\n"
 
 
@@ -403,8 +406,10 @@ def _upstream(*flags: tuple[bool, str]) -> tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
-def _diff_content(diff: DiffContext) -> str:
+def _diff_content(diff: DiffContext) -> tuple[str, bool]:
+    """The diff block's content and whether the name-only listing was cut."""
     text = diff.diff_text or NO_DIFF
+    cut = False
     if diff.name_only:
         lines = [NAME_ONLY_HEADER]
         for f in diff.name_only:
@@ -412,9 +417,9 @@ def _diff_content(diff: DiffContext) -> str:
             if f.detail:
                 reason += f": {f.detail}"
             lines.append(f"- {escape_path(f.filename)} ({reason})\n")
-        listing, _ = truncate("".join(lines), NAME_ONLY_TOKEN_CAP)
+        listing, cut = truncate("".join(lines), NAME_ONLY_TOKEN_CAP)
         text = _nl(text) + listing
-    return _nl(text)
+    return _nl(text), cut
 
 
 @dataclass(frozen=True)
@@ -579,6 +584,8 @@ def _names(notes: Sequence[BlockNote]) -> str:
     for n in notes:
         if n.block == BLOCK_ISSUE:
             issues.append(f"issue {n.ref}")
+        elif n.block == BLOCK_DIFF:
+            issues.append("name-only file list")
         else:
             counts[n.block] = counts.get(n.block, 0) + 1
     parts = issues + [k if c == 1 else f"{k} ({c})" for k, c in counts.items()]
@@ -620,8 +627,8 @@ def _notes_text(data: ContextData) -> str:
     return text
 
 
-def _notes(fill_result: Fill) -> tuple[BlockNote, ...]:
-    """Upstream cuts and fill results, per piece, in fill order."""
+def _notes(fill_result: Fill, name_only_cut: bool = False) -> tuple[BlockNote, ...]:
+    """The name-only cut, then upstream cuts and fill results, per piece, in fill order."""
     placed = {_key(p.piece): p for p in fill_result.placed}
     omitted = {_key(p) for p in fill_result.omitted}
     pieces = [p.piece for p in fill_result.placed] + list(fill_result.omitted)
@@ -629,6 +636,8 @@ def _notes(fill_result: Fill) -> tuple[BlockNote, ...]:
     pieces = [p for p in pieces if p.block in order]
     pieces.sort(key=lambda p: (order[p.block], p.index))
     notes: list[BlockNote] = []
+    if name_only_cut:  # the listing inside the mandatory diff block (spec §8.4 step 4)
+        notes.append(BlockNote(BLOCK_DIFF, NAME_ONLY_REF, STATE_TRUNCATED, REASON_CAP))
     for p in pieces:
         for state in p.upstream:
             notes.append(BlockNote(p.block, p.ref, state, REASON_CAP))
@@ -750,7 +759,7 @@ def build_prompt(
         + estimate_len(len(_preamble(inputs, _PLACEHOLDER)))
         + NOTES_RESERVE_TOKENS
     )
-    diff_content = _diff_content(inputs.diff)
+    diff_content, name_only_cut = _diff_content(inputs.diff)
     diff_tokens = estimate_len(_overhead(LABEL_DIFF, BLOCK_DIFF) + len(diff_content))
     mandatory = instruction_tokens + diff_tokens
     if mandatory > budget_tokens:
@@ -766,7 +775,9 @@ def build_prompt(
 
     pieces = _pieces(inputs, include_full_files)
     result = fill(pieces.groups, max_context_tokens=budget_tokens, mandatory_tokens=mandatory)
-    data = _context_data(inputs, pieces, result, budget_tokens, instruction_tokens, diff_tokens)
+    data = _context_data(
+        inputs, pieces, result, budget_tokens, instruction_tokens, diff_tokens, name_only_cut
+    )
     notes = _notes_text(data)
 
     for candidate_nonce in _nonces(nonce, nonce_factory):
@@ -798,6 +809,7 @@ def _context_data(
     max_context_tokens: int,
     instruction_tokens: int,
     diff_tokens: int,
+    name_only_cut: bool = False,
 ) -> ContextData:
     shown = tuple(
         pieces.candidates[p.piece.ref]
@@ -828,7 +840,7 @@ def _context_data(
             PieceUse(p.piece.block, p.piece.ref, p.tokens, estimate(p.content), p.truncated)
             for p in result.placed
         ),
-        notes=_notes(result),
+        notes=_notes(result, name_only_cut),
         shown_candidates=shown,
         dropped_candidates=dropped,
         full_files_included=included,

@@ -26,7 +26,7 @@ import random
 import pytest
 
 import budget
-from budget import BLOCK_DIFF, NAME_ONLY_TOKEN_CAP, BudgetInvariantError, prompt_tokens
+from budget import BLOCK_DIFF, NAME_ONLY_TOKEN_CAP, BlockNote, BudgetInvariantError, prompt_tokens
 from context.diff import OVER_TOKENS, NameOnlyFile, OverBudget
 from context.repo_conventions import ConventionsContext
 from context.spec import ResolvedSpec
@@ -239,21 +239,14 @@ def test_huge_name_only_paths_with_control_characters_are_capped():
     assert p.context.diff_tokens <= NAME_ONLY_TOKEN_CAP + 200
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Defect (Low): the name-only listing inside the mandatory diff block is cut to "
-        "NAME_ONLY_TOKEN_CAP (prompt._diff_content) but ContextData.notes carries no note "
-        "for the diff block, so spec §8.4 step 4 ('every truncated or omitted block is "
-        "named') does not hold for it and S-212 cannot report that names were cut."
-    ),
-)
 def test_a_cut_name_only_listing_is_named_in_the_context_data():
     name_only = [NameOnlyFile(f"dist/{k:05d}.js", "added", "generated") for k in range(20_000)]
     p = _prompt(inputs(diff=diff_ctx(name_only=name_only)))
     (diff_block,) = [c for k, _, c in parse_blocks(p.user, p.nonce)[0] if k == "diff"]
     assert TRUNCATION_MARKER in diff_block  # the cut happened
-    assert any(n.block == BLOCK_DIFF for n in p.context.notes)
+    assert [n for n in p.context.notes if n.block == BLOCK_DIFF] == [
+        BlockNote(BLOCK_DIFF, "name-only", "truncated", "cap")
+    ]
 
 
 # ---------------------------------------------------------------------------
