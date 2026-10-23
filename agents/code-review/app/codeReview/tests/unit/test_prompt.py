@@ -523,3 +523,118 @@ def test_hostile_content_builds_quickly():
     assert isinstance(p, Prompt)
     assert time.perf_counter() - start < 5
     parse_blocks(p.user, p.nonce)
+
+
+# ---------------------------------------------------------------------------
+# Contracts and remaining branches
+# ---------------------------------------------------------------------------
+
+SPEC = PKG.parents[3] / "workstream" / "specification-prd-code-review-agent.md"
+
+
+def test_schema_is_spec_6_3_verbatim():
+    text = SPEC.read_text(encoding="utf-8")
+    block = text.split("Output schema (`submit_review.inputSchema`):", 1)[1]
+    block = block.split("```json\n", 1)[1].split("\n```", 1)[0]
+    assert json.loads(block) == findings_schema.SUBMIT_REVIEW_SCHEMA
+    assert findings_schema.SUBMIT_REVIEW_TOOL == "submit_review"
+
+
+def _with_rubric(monkeypatch, reader):
+    monkeypatch.setattr(prompt, "_read_rubric", reader)
+    for f in (prompt.rubric_text, prompt.system_prompt, prompt.fallback_system_prompt):
+        f.cache_clear()
+
+
+def _restore_rubric():
+    for f in (prompt.rubric_text, prompt.system_prompt, prompt.fallback_system_prompt):
+        f.cache_clear()
+
+
+def test_an_unreadable_rubric_is_an_internal_error(monkeypatch):
+    def boom():
+        raise FileNotFoundError("rubric.md")
+
+    _with_rubric(monkeypatch, boom)
+    try:
+        with pytest.raises(RubricError, match="cannot be read") as exc:
+            build_prompt(inputs(), max_context_tokens=150_000, max_diff_lines=2000)
+        assert exc.value.code == "INTERNAL_ERROR"
+    finally:
+        _restore_rubric()
+
+
+def test_a_rubric_whose_categories_drift_is_an_internal_error(monkeypatch):
+    real = (PKG / "rubric.md").read_text(encoding="utf-8")
+    _with_rubric(monkeypatch, lambda: real.replace("- `intent` — ", "- `fidelity` — "))
+    try:
+        with pytest.raises(RubricError, match="categories"):
+            rubric_text()
+    finally:
+        _restore_rubric()
+
+
+def test_nonce_factory_output_is_validated():
+    with pytest.raises(NonceError):
+        _build(inputs(body=f"{NONCE}\n"), nonce_factory=lambda: "not-a-nonce")
+
+
+def test_name_only_detail_is_rendered():
+    name_only = [NameOnlyFile("src/x.py", "modified", "content_unavailable", "not found")]
+    p = _build(inputs(diff=diff_ctx(name_only=name_only)))
+    (d,) = [c for k, _, c in parse_blocks(p.user, p.nonce)[0] if k == "diff"]
+    assert "- src/x.py (content unavailable: not found)\n" in d
+
+
+def test_an_empty_diff_says_so():
+    from context.diff import DiffContext
+
+    p = _build(inputs(diff=DiffContext("0" * 40, None, 0, (), ())))
+    (d,) = [c for k, _, c in parse_blocks(p.user, p.nonce)[0] if k == "diff"]
+    assert d == prompt.NO_DIFF
+
+
+def test_notes_for_unparseable_and_unavailable_reports():
+    from context.verifier import REPORT_NOT_PARSEABLE, VerifierContext, VerifierReport
+
+    rep = VerifierReport(
+        "workstream/fidelity-report-S-001.md", 41, REPORT_NOT_PARSEABLE, "", False, 0, (), 0
+    )
+    p = _build(inputs(verifier=VerifierContext((rep,), (), unavailable=True)))
+    _, outside = parse_blocks(p.user, p.nonce)
+    assert "Verifier report not parseable." in outside
+    assert "A verifier report was unavailable (permission)." in outside
+    assert p.context.verifier_state == "not_parseable" and p.context.verifier_unavailable
+    assert "verifier" not in [k for k, _, _ in parse_blocks(p.user, p.nonce)[0]]
+
+
+def test_an_issue_without_labels():
+    i = issue(41)
+    i = type(i)(**{**i.__dict__, "labels": ()})
+    p = _build(inputs(issues=issues_ctx(i)))
+    (c,) = [c for k, _, c in parse_blocks(p.user, p.nonce)[0] if k == "issue"]
+    assert "\nLabels: (none)\n" in c
+
+
+def test_an_empty_spec_text_is_no_block():
+    p = _build(inputs(specs=spec_ctx(spec(text=""))))
+    assert "spec" not in [k for k, _, _ in parse_blocks(p.user, p.nonce)[0]]
+
+
+def test_upstream_trim_and_truncation_are_named():
+    s = spec()
+    s = type(s)(**{**s.__dict__, "trimmed": True, "truncated": True})
+    rep = report()
+    rep = type(rep)(**{**rep.__dict__, "section_truncated": True})
+    conv = conventions_ctx()
+    conv = type(conv)(**{**conv.__dict__, "truncated": True})
+    p = _build(inputs(specs=spec_ctx(s), verifier=verifier_ctx(rep), conventions=conv))
+    got = {(n.block, n.state, n.reason) for n in p.context.notes}
+    assert got == {
+        ("spec", "trimmed", "cap"),
+        ("spec", "truncated", "cap"),
+        ("verifier", "truncated", "cap"),
+        ("conventions", "truncated", "cap"),
+    }
+    _, outside = parse_blocks(p.user, p.nonce)
+    assert "- Truncated: verifier, spec (2), conventions.\n" in outside

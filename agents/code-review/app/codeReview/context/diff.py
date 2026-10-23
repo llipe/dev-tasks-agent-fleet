@@ -66,6 +66,8 @@ __all__ = [
     "LOCKFILE_NAMES",
     "MAX_WORKERS",
     "NUL_SCAN_BYTES",
+    "OVER_LINES",
+    "OVER_TOKENS",
     "Classification",
     "DiffContext",
     "FileDiff",
@@ -77,6 +79,7 @@ __all__ = [
     "check_size",
     "classify",
     "diff_context",
+    "escape_path",
     "expanded_diff",
     "path_reason",
     "split_lines",
@@ -106,6 +109,11 @@ GENERATED_SUFFIXES = (".min.js", ".min.css", ".map", ".snap")
 EXCLUDED_WORKSTREAM = re.compile(r"workstream/(?:tasks|planner-state|decisions|research)-[^/]*\.md")
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+
+# ``OverBudget.reason``: over ``max_diff_lines`` here (S-206), or the
+# instructions plus the expanded diff over ``max_context_tokens`` (S-209).
+OVER_LINES = "lines"
+OVER_TOKENS = "tokens"
 
 UNAVAILABLE_UNSAFE_PATH = "path cannot be fetched safely"
 UNAVAILABLE_NOT_FOUND = "not found at the reviewed commit"
@@ -138,16 +146,27 @@ class Classification:
 
 @dataclass(frozen=True)
 class OverBudget:
-    """The PR exceeds ``max_diff_lines`` (PRD FR-6): budget comment, no review.
+    """The PR exceeds the review budget (PRD FR-6): budget comment, no review.
 
-    ``lines`` and ``files`` count reviewed files. With ``truncated`` the file
-    listing hit the 3,000-file cap, so both are lower bounds.
+    ``reason`` is ``OVER_LINES`` (this module: over ``max_diff_lines``) or
+    ``OVER_TOKENS`` (``prompt.build_prompt``: the instructions plus the
+    expanded diff alone are over ``max_context_tokens``, spec §8.4 step 1).
+    ``lines`` and ``files`` count reviewed files either way. With
+    ``truncated`` the file listing hit the 3,000-file cap, so both are lower
+    bounds. The token fields are set only for ``OVER_TOKENS``: ``tokens`` is
+    the estimate of the mandatory part (instructions + diff), ``diff_tokens``
+    the diff block's share of it, so the budget comment can state token
+    counts rather than a false line count (test plan DF-08).
     """
 
     lines: int
     files: int
     max_diff_lines: int
     truncated: bool = False
+    reason: str = OVER_LINES
+    tokens: int | None = None
+    diff_tokens: int | None = None
+    max_context_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -293,16 +312,22 @@ def _unsafe_in_header(c: str) -> bool:
     return c < " " or "\x7f" <= c <= "\x9f" or c in "\u2028\u2029"
 
 
-def _header_path(prefix: str, path: str) -> str:
-    """``a/<path>``, with control characters and line separators escaped.
+def escape_path(path: str) -> str:
+    """``path`` with control characters and line separators escaped.
 
-    A name cannot add lines to the diff for any consumer, including one that
-    splits with ``str.splitlines``.
+    Each unsafe character (``_unsafe_in_header``) becomes its
+    ``unicode_escape`` form (``\\n``, ``\\x1b``, ``\\u2028``), so the result
+    is one line for every consumer, including one that splits with
+    ``str.splitlines``. The diff headers and the prompt (S-209) both use it.
     """
-    escaped = "".join(
+    return "".join(
         c.encode("unicode_escape").decode("ascii") if _unsafe_in_header(c) else c for c in path
     )
-    return prefix + escaped
+
+
+def _header_path(prefix: str, path: str) -> str:
+    """``a/<path>``, escaped by ``escape_path``: a name cannot add diff lines."""
+    return prefix + escape_path(path)
 
 
 def unified_diff(base_path: str, head_path: str, base: str, head: str, status: str) -> str:

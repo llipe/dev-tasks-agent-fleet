@@ -266,7 +266,7 @@ def test_pr_before_files_even_when_a_file_is_smaller():
 
 def _candidates(n: int, tokens: int = 250):
     return [
-        candidate(k, "| D | Critical | Unintended | " + "y" * (tokens * 7 // 2 - 40) + " |")
+        candidate(k, f"| D{k:02d} | Critical | Unintended | " + "y" * (tokens * 7 // 2 - 40) + " |")
         for k in range(1, n + 1)
     ]
 
@@ -295,13 +295,18 @@ def test_candidates_before_issues():
     ins = inputs(
         title="t",
         body="b",
-        issues=issues_ctx(issue(41, "short\n")),
+        issues=issues_ctx(issue(41, _text(8_000))),
         verifier=verifier_ctx(report(section="", candidates=cands)),
     )
     m = _mandatory(ins)
-    p = _build(ins, m + 1_200)
-    assert p.context.dropped_candidates
-    assert _note(p.context, "issue", "#41")[0].state == "omitted"
+    ctx = _ctx(ins, m + 1_200)
+    assert ctx.dropped_candidates
+    # Candidates had the first claim: the issue gets at most the leftover,
+    # which is smaller than the next candidate that did not fit.
+    next_cost = [u.tokens for u in ctx.placed if u.block == "verifier-candidate"][0]
+    used = sum(u.tokens for u in ctx.placed if u.block == "issue")
+    assert used < next_cost
+    assert _note(ctx, "issue", "#41")[-1].reason == "budget"
 
 
 def test_dropped_candidates_are_named_in_the_notes_by_id_only():
@@ -400,7 +405,7 @@ def test_spec_takes_the_rest_and_starves_conventions_and_files():
         diff=diff_ctx([file_diff("a.py", head="x\n")]),
     )
     m = _mandatory(ins)
-    b = max(m + 5_000, 20_000)
+    b = m + m // 4
     ctx = _ctx(ins, b)
     assert b * 3 // 10 > b - m  # the spec cap exceeds what is left
     assert _note(ctx, "spec")[-1].reason == "budget"
@@ -578,3 +583,26 @@ def test_the_invariant_survives_python_dash_o():
 
     src = inspect.getsource(budget.assert_within_budget)
     assert "raise BudgetInvariantError" in src
+
+
+# ---------------------------------------------------------------------------
+# fill() directly
+# ---------------------------------------------------------------------------
+
+
+def test_fill_refuses_a_negative_remainder():
+    with pytest.raises(ValueError):
+        budget.fill(budget.FillGroups(), max_context_tokens=100, mandatory_tokens=101)
+
+
+def test_fill_with_nothing_optional():
+    result = budget.fill(budget.FillGroups(), max_context_tokens=100, mandatory_tokens=40)
+    assert (result.remaining, result.unallocated, result.placed) == (60, 60, ())
+
+
+def test_fill_omits_a_cut_that_keeps_only_the_marker():
+    # One long blank line and an allowance just above the marker: the hard cut
+    # keeps a blank line plus "[truncated]", which is no block at all.
+    piece = budget.Piece("pr", None, " " * 1_000 + "\n", overhead=0)
+    result = budget.fill(budget.FillGroups(pr=piece), max_context_tokens=4, mandatory_tokens=0)
+    assert result.placed == () and result.omitted == (piece,)

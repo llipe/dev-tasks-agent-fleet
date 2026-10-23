@@ -62,13 +62,13 @@ def _size(rng: random.Random, scale: int) -> int:
 def _case(rng: random.Random):
     b = rng.randint(20_000, 400_000)
     n_files = rng.randint(0, 60)
-    diff_share = rng.choice([0.01, 0.1, 0.4, 0.9, 1.1])
-    per_file_diff = int(b * diff_share / max(1, n_files) / 1)
+    diff_share = rng.choice([0.01, 0.1, 0.4, 0.9, 1.3, 2.0])
+    per_file_diff = int(b * diff_share / max(1, n_files))
     files = [
         file_diff(
             f"src/m{i:02d}.py",
             head=None if rng.random() < 0.05 else _blob(rng, _size(rng, b // 4), "h"),
-            diff=_blob(rng, rng.randint(0, max(1, per_file_diff)), "d") or "@@\n",
+            diff=_blob(rng, per_file_diff, "d") or "@@\n",
             status="modified",
         )
         for i in range(n_files)
@@ -109,7 +109,7 @@ def _case(rng: random.Random):
 def test_budget_fit_properties():
     tactic = Tactic.from_env(SEED, ITERATIONS)
     rng = tactic.rng()
-    over = fitted = 0
+    over = fitted = split_files = dropped_candidates = 0
     for i in range(tactic.iterations):
         b, ins = _case(rng)
         if not tactic.selected(i):
@@ -135,6 +135,7 @@ def test_budget_fit_properties():
         assert sorted(included + dropped) == sorted(heads), ctx
         cost = {p: estimate(render_file_block(p, heads[p], result.nonce)) for p in heads}
         if included and dropped:
+            split_files += 1
             assert max(cost[p] for p in included) <= min(cost[p] for p in dropped), ctx
         if dropped:
             assert min(cost[p] for p in dropped) > data.unallocated_tokens, ctx
@@ -142,5 +143,9 @@ def test_budget_fit_properties():
         # Candidates: shown + dropped = all, dropped a suffix.
         all_c = ins.verifier.candidates if ins.verifier else ()
         assert data.shown_candidates + data.dropped_candidates == all_c, ctx
+        dropped_candidates += bool(data.dropped_candidates)
     if not tactic.replaying:
-        assert over > 100 and fitted > 1000
+        # The generator really reaches each branch (counts at seed 411002:
+        # 966 over budget, 2,034 fitted, 1,441 split file sets, 29 drops).
+        assert over > 500 and fitted > 1500
+        assert split_files > 1000 and dropped_candidates > 10

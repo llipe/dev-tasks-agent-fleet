@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from budget import ContextInputs
-from context.diff import DiffContext, FileDiff, NameOnlyFile
+from context.diff import DiffContext, FileDiff, NameOnlyFile, escape_path
 from context.issues import IssuesContext, LinkedIssue
 from context.repo_conventions import ConventionsContext
 from context.spec import ResolvedSpec, SpecContext
@@ -31,7 +31,9 @@ def file_diff(
     status: str = "modified",
 ) -> FileDiff:
     if diff is None:
-        diff = f"--- a/{filename}\n+++ b/{filename}\n@@ -1 +1 @@\n-old\n+new\n"
+        # Escaped as ``context.diff.unified_diff`` escapes its headers.
+        name = escape_path(filename)
+        diff = f"--- a/{name}\n+++ b/{name}\n@@ -1 +1 @@\n-old\n+new\n"
     return FileDiff(
         filename=filename,
         status=status,
