@@ -70,7 +70,9 @@ from budget import (
     NOTES_RESERVE_TOKENS,
     REASON_BUDGET,
     REASON_CAP,
+    REASON_EMPTY,
     STATE_OMITTED,
+    STATE_SEVERITY,
     STATE_TRUNCATED,
     BlockNote,
     ContextData,
@@ -499,21 +501,19 @@ def _pieces(inputs: ContextInputs, include_full_files: bool) -> _Pieces:
     spec_pieces: list[Piece] = []
     if inputs.spec is not None:
         for k, s in enumerate(inputs.spec.specs):
-            if s.text:
-                spec_pieces.append(
-                    add(
-                        _piece(
-                            BLOCK_SPEC,
-                            s.path,
-                            f"Spec `{escape_path(s.path)}`:",
-                            s.text,
-                            upstream=_upstream(
-                                (s.trimmed, "trimmed"), (s.truncated, STATE_TRUNCATED)
-                            ),
-                            index=k,
-                        )
+            # An empty spec is a piece too, so the fill names it (omitted, empty).
+            spec_pieces.append(
+                add(
+                    _piece(
+                        BLOCK_SPEC,
+                        s.path,
+                        f"Spec `{escape_path(s.path)}`:",
+                        s.text,
+                        upstream=_upstream((s.trimmed, "trimmed"), (s.truncated, STATE_TRUNCATED)),
+                        index=k,
                     )
                 )
+            )
 
     conventions: Piece | None = None
     if inputs.conventions is not None and inputs.conventions.text:
@@ -609,9 +609,12 @@ def _notes_text(data: ContextData) -> str:
     truncated = list(data.truncated)
     if truncated:
         lines.append(f"- Truncated: {_names(truncated)}.\n")
-    omitted = list(data.omitted)
+    omitted = [n for n in data.omitted if n.reason != REASON_EMPTY]
     if omitted:
         lines.append(f"- Omitted for budget: {_names(omitted)}.\n")
+    empty = [n for n in data.omitted if n.reason == REASON_EMPTY]
+    if empty:
+        lines.append(f"- Empty, not included: {_names(empty)}.\n")
     if data.dropped_candidates:
         lines.append(
             f"- Drift candidates {_id_range(data.dropped_candidates)} were not included"
@@ -627,10 +630,17 @@ def _notes_text(data: ContextData) -> str:
 
 
 def _notes(fill_result: Fill, name_only_cut: bool = False) -> tuple[BlockNote, ...]:
-    """The name-only cut, then upstream cuts and fill results, per piece, in fill order."""
+    """The name-only cut, then one note per cut or left-out piece, in fill order.
+
+    A piece cut upstream and again here (or left out) gets one note: the most
+    severe state, and on equal state the ``budget`` reason (QA residual 3).
+    """
     placed = {_key(p.piece): p for p in fill_result.placed}
     omitted = {_key(p) for p in fill_result.omitted}
-    pieces = [p.piece for p in fill_result.placed] + list(fill_result.omitted)
+    empty = {_key(p) for p in fill_result.empty}
+    pieces = (
+        [p.piece for p in fill_result.placed] + list(fill_result.omitted) + list(fill_result.empty)
+    )
     order = {BLOCK_PR: 0, BLOCK_ISSUE: 1, BLOCK_VERIFIER: 2, BLOCK_SPEC: 3, BLOCK_CONVENTIONS: 4}
     pieces = [p for p in pieces if p.block in order]
     pieces.sort(key=lambda p: (order[p.block], p.index))
@@ -638,14 +648,19 @@ def _notes(fill_result: Fill, name_only_cut: bool = False) -> tuple[BlockNote, .
     if name_only_cut:  # the listing inside the mandatory diff block (spec §8.4 step 4)
         notes.append(BlockNote(BLOCK_DIFF, NAME_ONLY_REF, STATE_TRUNCATED, REASON_CAP))
     for p in pieces:
-        for state in p.upstream:
-            notes.append(BlockNote(p.block, p.ref, state, REASON_CAP))
-        if _key(p) in omitted:
-            notes.append(BlockNote(p.block, p.ref, STATE_OMITTED, REASON_BUDGET))
+        found = [BlockNote(p.block, p.ref, state, REASON_CAP) for state in p.upstream]
+        if _key(p) in empty:
+            found.append(BlockNote(p.block, p.ref, STATE_OMITTED, REASON_EMPTY))
+        elif _key(p) in omitted:
+            found.append(BlockNote(p.block, p.ref, STATE_OMITTED, REASON_BUDGET))
         else:
             use = placed[_key(p)]
             if use.truncated:
-                notes.append(BlockNote(p.block, p.ref, STATE_TRUNCATED, use.reason or REASON_CAP))
+                found.append(BlockNote(p.block, p.ref, STATE_TRUNCATED, use.reason or REASON_CAP))
+        if found:
+            notes.append(
+                max(found, key=lambda n: (STATE_SEVERITY[n.state], n.reason == REASON_BUDGET))
+            )
     return tuple(notes)
 
 
@@ -779,7 +794,9 @@ def build_prompt(
     )
     notes = _notes_text(data)
 
+    tried: list[str] = []
     for candidate_nonce in _nonces(nonce, nonce_factory):
+        tried.append(candidate_nonce)
         user, blocks = _render_user(
             _preamble(inputs, candidate_nonce),
             diff_content,
@@ -791,7 +808,7 @@ def build_prompt(
         if user.count(candidate_nonce) == 2 * blocks + 1 and candidate_nonce not in fallback:
             break
     else:
-        raise NonceError(f"no collision-free nonce in {MAX_NONCE_ATTEMPTS} attempts")
+        raise NonceError(f"no collision-free nonce in {len(tried)} attempts")
 
     draft = Prompt(system, fallback, user, candidate_nonce, data)
     total = prompt_tokens(draft)

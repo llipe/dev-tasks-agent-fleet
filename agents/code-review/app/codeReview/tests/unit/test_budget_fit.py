@@ -601,8 +601,9 @@ def test_fill_with_nothing_optional():
 
 
 def test_fill_omits_a_cut_that_keeps_only_the_marker():
-    # One long blank line and an allowance just above the marker: the hard cut
-    # keeps a blank line plus "[truncated]", which is no block at all.
-    piece = budget.Piece("pr", None, " " * 1_000 + "\n", overhead=0)
+    # A long line that starts blank, and an allowance just above the marker: the
+    # hard cut keeps only blanks plus "[truncated]", which is no block at all.
+    # (A wholly blank piece is "empty" instead; see test_prompt.py.)
+    piece = budget.Piece("pr", None, " " * 1_000 + "y\n", overhead=0)
     result = budget.fill(budget.FillGroups(pr=piece), max_context_tokens=4, mandatory_tokens=0)
     assert result.placed == () and result.omitted == (piece,)

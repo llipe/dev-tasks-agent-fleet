@@ -15,7 +15,9 @@ the ``include_full_files=False`` path; and a seeded property tactic
 (``tactic_seed(411, 3)``) that mixes all of them.
 
 Real defects are pinned with ``xfail(strict=True)``: the fix turns them red
-and the marker is removed in the same change.
+and the marker is removed in the same change. Both S-209 pins are fixed: the
+name-only cut is named (``bceeafa``) and retry-dropped files are smallest first
+(``e3eb3e6``); 0 xfailed remain.
 """
 
 from __future__ import annotations
@@ -134,7 +136,8 @@ def _check_prompt(p: Prompt, ins, max_context_tokens: int) -> None:
     named = {(n.block, n.ref, n.state) for n in ctx.notes}
     for use in ctx.placed:
         if use.block in NOTED_KINDS and use.truncated:
-            assert (use.block, use.ref, "truncated") in named, use
+            # Deduped: a budget cut folds into an upstream "trimmed" (QA residual 3).
+            assert {(use.block, use.ref, "truncated"), (use.block, use.ref, "trimmed")} & named, use
     # The closing notes are never cut by their own reserve.
     notes = p.user[p.user.rindex("Context notes:") :]
     assert TRUNCATION_MARKER not in notes, notes
@@ -297,7 +300,7 @@ def test_whitespace_only_cuts_are_omitted_and_named(filler):
     _check_prompt(p, ins, 20_000)
     assert "spec" not in [k for k, _, _ in parse_blocks(p.user, p.nonce)[0]]
     assert [(n.block, n.ref, n.state, n.reason) for n in p.context.notes] == [
-        ("spec", path, "omitted", "budget")
+        ("spec", path, "omitted", "empty")  # QA residual 4: blank is empty, not budget
     ]
     assert p.context.spec_paths == ()
 

@@ -75,6 +75,8 @@ __all__ = [
     "PR_TOKEN_CAP",
     "REASON_BUDGET",
     "REASON_CAP",
+    "REASON_EMPTY",
+    "STATE_SEVERITY",
     "STATE_OMITTED",
     "STATE_TRIMMED",
     "STATE_TRUNCATED",
@@ -130,6 +132,9 @@ STATE_TRIMMED = "trimmed"  # the spec, cut to its sections upstream (S-207)
 STATE_OMITTED = "omitted"
 REASON_CAP = "cap"  # cut to a cap (here or by the S-207/S-208 reader)
 REASON_BUDGET = "budget"  # cut or omitted because ``R_left`` ran out
+REASON_EMPTY = "empty"  # omitted because the text is empty or whitespace only
+# Dedupe order for notes on one block and ref: the most severe state wins.
+STATE_SEVERITY = {STATE_TRUNCATED: 1, STATE_TRIMMED: 2, STATE_OMITTED: 3}
 
 _MARKER_LINE = TRUNCATION_MARKER + "\n"
 
@@ -222,6 +227,7 @@ class Fill:
     unallocated: int  # R_left after the fill
     placed: tuple[Placed, ...]  # in fill order
     omitted: tuple[Piece, ...]  # truncatable pieces with no room
+    empty: tuple[Piece, ...]  # truncatable pieces with only whitespace (REASON_EMPTY)
     dropped_candidates: tuple[Piece, ...]
     dropped_files: tuple[Piece, ...]
 
@@ -250,9 +256,17 @@ class _Filler:
     left: int
     placed: list[Placed] = field(default_factory=list)
     omitted: list[Piece] = field(default_factory=list)
+    empty: list[Piece] = field(default_factory=list)
 
     def capped(self, piece: Piece, cap: int) -> None:
-        """Place ``piece`` with a content allowance of ``min(cap, R_left - overhead)``."""
+        """Place ``piece`` with a content allowance of ``min(cap, R_left - overhead)``.
+
+        A piece with only whitespace is no block at all, whatever the budget:
+        it is set aside as empty (QA residual 4), not charged.
+        """
+        if not piece.content.strip():
+            self.empty.append(piece)
+            return
         room = self.left - _cost(piece.overhead, 0)
         allowance = min(cap, room)
         if allowance <= 0:
@@ -323,6 +337,7 @@ def fill(groups: FillGroups, *, max_context_tokens: int, mandatory_tokens: int) 
         unallocated=f.left,
         placed=tuple(f.placed),
         omitted=tuple(f.omitted),
+        empty=tuple(f.empty),
         dropped_candidates=dropped_candidates,
         dropped_files=dropped_files,
     )
@@ -340,7 +355,10 @@ class BlockNote:
     ``block`` is a kind (``pr``, ``issue``, ``spec``, ``verifier``,
     ``conventions``); ``ref`` is ``#<n>`` for an issue, the path for a spec or
     report, ``None`` otherwise. ``state`` is ``truncated``, ``trimmed`` or
-    ``omitted``; ``reason`` is ``cap`` or ``budget``.
+    ``omitted``; ``reason`` is ``cap``, ``budget``, or ``empty`` (omitted because
+    the text is empty or whitespace only). ``ContextData.notes`` holds at most
+    one note per block and ref: the most severe state (omitted > trimmed >
+    truncated), and on equal state ``budget`` over ``cap``.
     """
 
     block: str

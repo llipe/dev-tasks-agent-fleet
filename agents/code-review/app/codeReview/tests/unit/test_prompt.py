@@ -648,15 +648,17 @@ def test_upstream_trim_and_truncation_are_named():
 def test_notes_name_each_block_once_with_the_most_severe_state():
     big = issue(41, "line of an issue body\n" * 20_000)
     big = type(big)(**{**big.__dict__, "truncated": True})  # cut upstream, then by budget
-    ins = inputs(title="t", body="b", issues=issues_ctx(big))
+    # The PR takes its 4,000 cap out of R = 4,500, so R_left binds the issue.
+    ins = inputs(title="t", body="pr body line\n" * 5_000, issues=issues_ctx(big))
     m = build_prompt(ins, max_context_tokens=10_000_000, max_diff_lines=2000, nonce=NONCE)
     assert isinstance(m, Prompt)
     p = build_prompt(
-        ins, max_context_tokens=m.context.mandatory_tokens + 2_000, max_diff_lines=2000, nonce=NONCE
+        ins, max_context_tokens=m.context.mandatory_tokens + 4_500, max_diff_lines=2000, nonce=NONCE
     )
     assert isinstance(p, Prompt)
     assert [(n.block, n.ref, n.state, n.reason) for n in p.context.notes] == [
-        ("issue", "#41", "truncated", "budget")
+        ("pr", None, "truncated", "cap"),
+        ("issue", "#41", "truncated", "budget"),
     ]
 
 
@@ -684,11 +686,11 @@ def test_omitted_beats_an_upstream_truncation():
 def test_same_state_twice_keeps_the_budget_reason():
     s = spec(text="line of the spec\n" * 40_000)
     s = type(s)(**{**s.__dict__, "truncated": True})
-    ins = inputs(specs=spec_ctx(s))
+    ins = inputs(body="pr body line\n" * 5_000, specs=spec_ctx(s))
     m = build_prompt(ins, max_context_tokens=10_000_000, max_diff_lines=2000, nonce=NONCE)
     assert isinstance(m, Prompt)
     p = build_prompt(
-        ins, max_context_tokens=m.context.mandatory_tokens + 3_000, max_diff_lines=2000, nonce=NONCE
+        ins, max_context_tokens=m.context.mandatory_tokens + 4_500, max_diff_lines=2000, nonce=NONCE
     )
     assert isinstance(p, Prompt)
     assert [(n.block, n.state, n.reason) for n in p.context.notes if n.block == "spec"] == [
