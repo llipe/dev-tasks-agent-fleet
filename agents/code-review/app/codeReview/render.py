@@ -146,6 +146,7 @@ __all__ = [
     "TRUNCATION_NOTE",
     "VERIFIER_CUT",
     "Rendered",
+    "canonical_code",
     "code_span",
     "format_line",
     "neutralize",
@@ -194,6 +195,7 @@ ERROR_CODES = (
     "INTERNAL_ERROR",
 )
 FALLBACK_CODE = "INTERNAL_ERROR"
+_CANONICAL_CODES = {code: code for code in ERROR_CODES}
 
 _UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -940,9 +942,20 @@ def render_budget(
     return body
 
 
+def canonical_code(error_code: object) -> str:
+    """The ``ERROR_CODES`` constant ``error_code`` names, else ``INTERNAL_ERROR`` (QA-212-D3).
+
+    The caller's object is never rendered: a ``(str, Enum)`` member or a ``str``
+    subclass with its own ``__format__`` or ``__eq__`` is reduced to its plain
+    string value with ``str.__str__`` and looked up, and the matched constant
+    is what the comment prints.
+    """
+    if not isinstance(error_code, str):
+        return FALLBACK_CODE
+    return _CANONICAL_CODES.get(str.__str__(error_code), FALLBACK_CODE)
+
+
 def render_failure(error_code: str, *, run_id: str, panel_base_url: str) -> str:
     """The one-line failure comment: fixed text for a spec §13 code, never a message."""
-    code = (
-        error_code if isinstance(error_code, str) and error_code in ERROR_CODES else FALLBACK_CODE
-    )
+    code = canonical_code(error_code)
     return f"Code review failed (`{code}`). {_link(panel_base_url, run_id)}\n"

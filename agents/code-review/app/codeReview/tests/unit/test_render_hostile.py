@@ -877,15 +877,6 @@ class _FormattingCode(str):
         return "@everyone <img src=x onerror=1>"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-212-D3: render_failure checks 'error_code in ERROR_CODES' but interpolates the "
-        "caller's object, not the matched constant. A (str, Enum) member renders "
-        "'_EnumCode.RUN_TIMEOUT'; a str subclass's __format__ can inject any text. "
-        "Expected: the canonical §13 string is always what is rendered."
-    ),
-)
 @pytest.mark.parametrize("code", [_EnumCode.RUN_TIMEOUT, _FormattingCode("RUN_TIMEOUT")])
 def test_failure_renders_the_canonical_code_for_str_subclasses(code):
     body = render_failure(code, run_id=RUN_ID, panel_base_url=PANEL)
