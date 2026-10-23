@@ -47,6 +47,7 @@
 - `agents/code-review/app/codeReview/tests/fixtures/reports/`, `tests/helpers/reports.py` - fidelity-report fixtures (byte copy of `fidelity-report-S-170.md`, synthetic AC-7, no-heading, numbered, empty, bullet-list) and their loader (S-208)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,adr_002_head.md,README.md}` - ADR-002 route with a `## Status` heading (S-208)
 - `agents/code-review/app/codeReview/tests/unit/{test_estimate,test_budget_fit,test_prompt,test_properties_budget,test_properties_prompt}.py`, `tests/integration/test_prompt_sample_pr.py` - S-209 tests (TC-209-\*, RT-04, RT-07)
+- `agents/code-review/app/codeReview/tests/unit/{test_budget_hostile,test_prompt_hostile}.py` - S-209 QA hostile-input suites (seeds 411003, 411004; both strict-xfail pins fixed)
 - `agents/code-review/app/codeReview/tests/helpers/prompt_inputs.py` - prompt-input factories and the independent `parse_blocks` splitter (S-209)
 - `agents/code-review/app/codeReview/tests/fixtures/github/sample-pr/{routes.json,fidelity_report_s001_head.md,README.md}` - Story S-001 fidelity report route with one `Critical`+`Unintended` row (S-209)
 - `supabase/seed.sql`, `supabase/migrations/20261022120000_seed_code_review_agent.sql` - `agents` row (S-204)

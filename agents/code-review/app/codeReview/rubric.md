@@ -11,7 +11,7 @@ its consequence.
 - `correctness` — logic errors and wrong results; error handling; null, empty and missing values; concurrency; idempotency.
 - `edge_case` — boundary inputs; state transitions; failure paths; permissions.
 - `maintainability` — fit with the repository's conventions; duplication; premature abstraction; the cost of the next change.
-- `intent` — the code does not do what the pull request description, the linked issues or the spec say it is meant to do, or the description contradicts the diff.
+- `intent` — the code does what the pull request description, the linked issues or the spec say it is meant to do, but in a way that is wrong or different; or the description contradicts the diff. A requirement that is not implemented at all is verifier scope, not a finding.
 
 ## Consequence rule
 
