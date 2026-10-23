@@ -11,7 +11,7 @@ See [`docs/product-context.md`](docs/product-context.md) for the full problem st
 
 ## Delivery phases
 
-The project is delivered in three phases:
+The project is delivered in phases:
 
 - **Phase 1 — Backend + Agent (done):** the Supabase schema (applied via Supabase CLI
   migrations), and the `dependency-update` agent that runs on AgentCore, authenticates to
@@ -40,7 +40,7 @@ The project is delivered in three phases:
   entrypoint stub, Docker image with toolchain, and managed Claude Code policy. The agent validates
   its config at startup and reports success with a "not yet implemented" summary. Pipeline
   implementation (reproduce, test, fix, validate, Draft PR) is planned for later Wave A–C stories
-  (S-181–S-195). Not yet deployed. See
+  (S-181–S-200). Not yet deployed. See
   [`docs/requirements/prd-bug-fix-agent.md`](docs/requirements/prd-bug-fix-agent.md) and
   [`agents/bug-fix/README.md`](agents/bug-fix/README.md).
 
