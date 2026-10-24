@@ -65,6 +65,17 @@ The fixes go into #443 through `developer`: the in-sandbox proxy resolution for 
 
 Each step still needs its own approval.
 
+## Plan change 3 (approved by @llipe on 2026-10-24, after re-probe 2c: 18 PASS / 19 FAIL)
+
+AgentCore's `/etc/hosts` is empty and read-only, so fix round 2's run-time hosts write can't apply. Fix round 3 (`c71d98a`, D-111) resolves `localhost` through the image's NSS (`libnss-myhostname`, `/etc/gai.conf`), and `sandbox.py` only checks this before each run. Then:
+
+- **Step 1d:** redeploy (v4 → v5, `ALLOW_PROBE=1` kept).
+- **Step 2d:** re-probe (target 37/37; `net.localhost` should show `via=nss`).
+- **Step 3:** remove `ALLOW_PROBE`.
+- **Step 4:** records and verdict.
+
+If AgentCore also overrides `/etc/nsswitch.conf`, the fallback recorded in D-111 is a private mount namespace for srt. That would be fix round 4, with its own approval.
+
 ## Exit rule (spec §12, D-105)
 
 - **Any sandbox or isolation check fails:** the verdict is FAIL. Wave B (#373–#377) stays blocked, and the finding goes to `product-engineer` drift reconciliation.
