@@ -1,6 +1,6 @@
 ---
 name: runbook-code-review-deployment
-trigger: Deploying or redeploying the code-review agent, changing its model, setting up the `/code-review` PR-comment trigger, rotating its secrets, or a code-review run that fails or does nothing
+trigger: Deploying or redeploying the code-review agent, changing its model, setting up the `/review` PR-comment trigger, rotating its secrets, or a code-review run that fails or does nothing
 owner: operator (repository owner)
 last_verified: 2026-10-24 — first live deploy (ChangeId 20261024-code-review-runtime). Panel run db46270a reviewed a scratch PR on DeepSeek V3.2; webhook run c36deb30 fired from a `/code-review` comment with `pr_number` taken from the payload
 related: ["infra/changes/20261024-code-review-runtime/", "agents/code-review/agentcore/agentcore.json", "agents/code-review/agentcore/cdk/test/code-review-runtime.test.ts", "infra/agentcore-invoke-policy.json", "supabase/migrations/20261022120000_seed_code_review_agent.sql", "docs/runbooks/webhook-rules.md", "docs/runbooks/webhook-deployment.md"]
@@ -9,7 +9,7 @@ related: ["infra/changes/20261024-code-review-runtime/", "agents/code-review/age
 # Code review agent: deployment and PR-comment trigger
 
 How the `code-review` agent is deployed, how to give it a model, and how to make a
-`/code-review` comment on a pull request start a review. The agent reads one PR and posts one
+`/review` comment on a pull request start a review. The agent reads one PR and posts one
 comment on it. It never approves, merges, pushes or labels.
 
 Blast radius: one AgentCore runtime, one IAM role, one `agents` row and one webhook rule. Every
@@ -130,9 +130,9 @@ The agent has no model-specific code beyond the reasoning field, which it sends 
   `…/runtime-endpoint/DEFAULT` (issue #280). Always edit the live document, not an older copy:
   `aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime`.
 
-## 4. Set up the `/code-review` PR-comment trigger
+## 4. Set up the `/review` PR-comment trigger
 
-A comment `/code-review` on an open PR starts a review of **that** PR. One webhook rule does this.
+A comment `/review` on an open PR starts a review of **that** PR. One webhook rule does this.
 It needs no code, but four settings are easy to get wrong. The PR number in particular has to come
 from the event, not be typed in.
 
@@ -149,7 +149,7 @@ from the event, not be typed in.
 
 Open the endpoint (`/webhooks/<endpoint id>`), choose **Add rule**, and fill it in **in this order**:
 
-1. **Name:** `/code-review`.
+1. **Name:** `/review`.
 2. **Events:** tick **`issue_comment`** only.
    - A comment in the PR's *Conversation* tab is an `issue_comment`, because GitHub treats every PR
      as an issue.
@@ -161,7 +161,7 @@ Open the endpoint (`/webhooks/<endpoint id>`), choose **Add rule**, and fill it 
    | --- | --- | --- | --- |
    | `action` | `equals` | `created` | otherwise editing or deleting the comment fires again |
    | `issue.pull_request` | `exists` | — | `issue_comment` also fires on plain issues; this keeps it to PRs |
-   | `comment.body` | `prefix` | `/code-review` | only a comment that **starts** with the command; `contains` also fires on a reply that quotes it |
+   | `comment.body` | `prefix` | `/review` | only a comment that **starts** with the command; `contains` also fires on a reply that quotes it. Note: `prefix /review` also matches `/reviewer …` (accepted, spec §7.1) |
    | `comment.author_association` | `in` | `OWNER, MEMBER, COLLABORATOR` | **cost and abuse guard**: without it anyone who can comment, including strangers on a public repo, can trigger a paid review |
 
 4. **Agent:** `code-review`. **Repository:** *From the payload*, path `repository.full_name` (the
@@ -178,7 +178,7 @@ Open the endpoint (`/webhooks/<endpoint id>`), choose **Add rule**, and fill it 
 
 **The ordering trap (steps 5 and 6).** `pr_number` is required. If you clear it *before* adding the
 payload row, saving fails with `params must have required property 'pr_number'`. The obvious way out
-is to type a number, but then **every** `/code-review` reviews that fixed PR, whatever PR the
+is to type a number, but then **every** `/review` reviews that fixed PR, whatever PR the
 comment is on. Always add the payload row first, then clear the field. With the field empty, a
 delivery that lacks `issue.number` is **rejected** instead of reviewing the wrong PR.
 
@@ -187,14 +187,14 @@ delivery that lacks `issue.number` is **rejected** instead of reviewing the wron
 A rule maps each parameter from **one** path, so inline comments need a **second rule**:
 
 - event `pull_request_review_comment`;
-- conditions `action equals created`, `comment.body prefix /code-review`, and the same
+- conditions `action equals created`, `comment.body prefix /review`, and the same
   `author_association` guard (no `issue.pull_request` condition: this event is always on a PR);
 - payload value `pr_number` ← **`pull_request.number`**;
 - the endpoint's allowlist must include `pull_request_review_comment`.
 
 ### Check the saved rule
 
-What the database should hold (`select event_types, conditions, params from webhook_rules where name = '/code-review'`):
+What the database should hold (`select event_types, conditions, params from webhook_rules where name = '/review'`):
 
 ```json
 {
@@ -212,7 +212,7 @@ called on.
 
 ### Test it
 
-1. On an **open** PR in the repository, comment `/code-review`.
+1. On an **open** PR in the repository, comment `/review`.
 2. The endpoint's delivery log shows `fired`, with a run link.
 3. On the run page, check **Parameters**: `pr_number` must equal the PR you commented on.
 4. Within about a minute (p95 to be measured in S-215), the PR gets a comment headed
@@ -223,10 +223,10 @@ called on.
 | You see | Meaning | What to do |
 | --- | --- | --- |
 | Delivery `ignored`: event not in endpoint's events | the endpoint does not accept `issue_comment` | add it to the endpoint's allowlist, and to the GitHub webhook's events |
-| Delivery `no_match` | a condition failed | check the casing of `/code-review`; the comment must **start** with it; the author must be owner, member or collaborator |
+| Delivery `no_match` | a condition failed | check the casing of `/review`; the comment must **start** with it; the author must be owner, member or collaborator |
 | Delivery `rejected`: parameters failed the agent's schema | `pr_number` could not be filled | the payload row is missing or names the wrong path; the event has no `issue.number` |
 | Delivery `rejected`: repository not registered/enabled | the repository is not on `/repositories`, or is disabled | register or enable it |
-| Delivery `skipped` | a code-review run is already active for this repository (G1), or the fleet cap is reached | wait for it to finish and comment again; a second `/code-review` during a run is dropped, not queued |
+| Delivery `skipped` | a code-review run is already active for this repository (G1), or the fleet cap is reached | wait for it to finish and comment again; a second `/review` during a run is dropped, not queued |
 | Run `succeeded` / `not_applicable`, **no comment** | the PR is closed or merged, or GitHub returned 404 | expected: the agent does not review landed code. Comment on an open PR |
 | Run reviews the wrong PR | `pr_number` is fixed under `static` | the ordering trap: add the payload row, clear the field, save |
 | Run `failed` / `BEDROCK_ACCESS_DENIED`, failure comment on the PR | the model is unusable for the account (section 2) | probe the model as an admin; fix IAM, the agreement, or switch models |
@@ -265,13 +265,13 @@ changes the suffix and breaks the grant. Use `put-secret-value`, never delete an
 | 2026-10-24 | `bf95f3c6-3ba4-495e-b0c7-a8ff46b7929b` | panel, fixture PR #5 | `us.openai.gpt-6.1-sol` | `failed` / `BEDROCK_ACCESS_DENIED` with a failure comment (edge case reproduced) |
 | 2026-10-24 | `40e7d207-d5a2-4311-ad18-e319ef3d892e` | panel, fixture PR #5 | `us.openai.gpt-6.1-sol` | `failed` / `BEDROCK_ACCESS_DENIED`: account not entitled to the model (agreement accepted) |
 | 2026-10-24 | `db46270a-d954-4071-b0e2-a9810ef3d0f4` | panel, fixture PR #5 | `deepseek.v3.2` | `succeeded` / `needs_review`, 17.5 s, 1 call, 0 repairs, 2,643 in / 711 out tokens; both seeded bugs flagged as blocking |
-| 2026-10-24 | `c36deb30-9173-41c1-891a-852954b009d2` | webhook `/code-review`, `llipe/riel#630` | `deepseek.v3.2` | `succeeded` / `not_applicable`: PR already merged. `pr_number` 630 taken from `issue.number` |
+| 2026-10-24 | `c36deb30-9173-41c1-891a-852954b009d2` | webhook `/code-review` (rule since renamed `/review`), `llipe/riel#630` | `deepseek.v3.2` | `succeeded` / `not_applicable`: PR already merged. `pr_number` 630 taken from `issue.number` |
 
 ## Rollback
 
 In order of reach. Each step is reversible.
 
-1. **Stop new runs from comments.** `/webhooks/<endpoint>` → the `/code-review` rule → **Enabled**
+1. **Stop new runs from comments.** `/webhooks/<endpoint>` → the `/review` rule → **Enabled**
    off. This takes effect immediately.
 2. **Stop all runs.** Disable the agent (panel, or
    `update agents set is_enabled = false where slug = 'code-review'`).

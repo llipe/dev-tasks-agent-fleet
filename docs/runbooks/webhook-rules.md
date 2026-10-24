@@ -165,7 +165,7 @@ parameters to a payload path. For example `pr_number` ← `issue.number`.
   a value in the grid is sent with **every** run, so a rule meant to review "the PR that was
   commented on" reviews that one fixed PR instead. Order: **+ Add payload value** → choose the
   parameter → path → then clear the parameter in the grid → save. A worked example is the
-  `/code-review` rule in [`code-review-deployment.md`](code-review-deployment.md#4-set-up-the-code-review-pr-comment-trigger).
+  `/review` rule in [`code-review-deployment.md`](code-review-deployment.md#4-set-up-the-code-review-pr-comment-trigger).
 - One path per parameter. To fill the same parameter from two events with different payloads
   (for example `issue.number` on `issue_comment` and `pull_request.number` on
   `pull_request_review_comment`), use two rules.
