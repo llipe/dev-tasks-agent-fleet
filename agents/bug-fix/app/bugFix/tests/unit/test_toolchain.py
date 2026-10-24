@@ -113,7 +113,9 @@ class TestDetection:
         assert detect_package_manager(reader) == "npm"
 
     def test_pnpm_lockfile_beats_npm_lockfile(self):
-        reader = MapReader({"package.json": pkg(), "pnpm-lock.yaml": "x", "package-lock.json": "{}"})
+        reader = MapReader(
+            {"package.json": pkg(), "pnpm-lock.yaml": "x", "package-lock.json": "{}"}
+        )
         assert detect_package_manager(reader) == "pnpm"
 
     @pytest.mark.parametrize("field", ["yarn@4.1.0", "bun@1", "", 7, None])
@@ -387,7 +389,15 @@ class TestMakeTargets:
 
     @pytest.mark.parametrize(
         "line",
-        ["test := x", "test ::= x", "test :::= x", "test ?= x", "test = x", "test += x", "test != x"],
+        [
+            "test := x",
+            "test ::= x",
+            "test :::= x",
+            "test ?= x",
+            "test = x",
+            "test += x",
+            "test != x",
+        ],
     )
     def test_variable_assignments_are_not_targets(self, line):
         assert "test" not in parse_make_targets(line + "\n")

@@ -32,8 +32,8 @@ definition of an open claim (DF-33) that the post-claim race check in
 ``claim.py`` shares; the status half is :func:`active_claim_runs`, which the
 race check calls too.
 
-``repo_gate`` is decided after the clone (S-189), which calls
-:func:`build_reply` and :meth:`IssuesClient.post_comment` the same way. A
+``repo_gate`` is decided after the clone (S-189): ``checkout.py`` posts it
+through :func:`post_refusal`, the same reply path the checks here use. A
 ``GET /issues/{n}`` 404 (no such number, or a transferred issue) is refusal
 ``invalid_params`` with no write, as DF-34 recommends.
 
@@ -105,6 +105,9 @@ REPLY_TEXT: Mapping[str, str] = {
 }
 # The closed sets a reply's variable parts come from (RT-15 oracle (2)).
 INVALID_PARAMS_KEYS: tuple[str, ...] = (*SCHEMA_KEYS, "params")
+# S-189 adds the items ``toolchain.MISS_ITEMS`` can name: no manifest at all,
+# no lockfile for a frozen install (D-63), and Python's ``install`` target
+# (D-112). A unit test pins MISS_ITEMS ⊆ REPO_GATE_ITEMS.
 REPO_GATE_ITEMS: tuple[str, ...] = (
     ".claude/agents/developer.md",
     "package.json",
@@ -114,6 +117,9 @@ REPO_GATE_ITEMS: tuple[str, ...] = (
     "format:check",
     "format-check",
     "typecheck",
+    "package.json or Makefile",
+    "lockfile",
+    "install",
 )
 _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {
     "repo_gate": REPO_GATE_ITEMS,
@@ -467,6 +473,52 @@ def _usable_issue(raw: object) -> int | None:
         return None
 
 
+def post_refusal(
+    client: IssuesClient,
+    run_id: str,
+    refusal: Refusal,
+    issue: int | None,
+    *,
+    reply: bool = True,
+    run: Any = None,
+    run_link: str | None = None,
+    secrets: SecretsLike | None = None,
+    token: TokenContext | None = None,
+    summary: str | None = None,
+) -> CheckOutcome:
+    """End the run with ``refusal``: post the marked reply, report, return.
+
+    The reply is the one GitHub write (D-104) and is best effort: a failure is
+    a ``run_event`` and the outcome stays ``not_applicable``. ``summary``
+    overrides ``result.summary`` (``checkout.py`` names every missing
+    ``repo_gate`` item there); the reply itself always uses the fixed sentence.
+    """
+    secrets = [] if secrets is None else secrets
+    line = reply_line(refusal, issue)
+    state = "none"
+    if reply and issue is not None:
+        try:
+            client.post_comment(issue, build_reply(run_id, refusal, issue, run_link))
+            state = "posted"
+        except Exception as exc:  # noqa: BLE001 — the reply is best effort (spec §8.2)
+            state = "failed"
+            _event(
+                run,
+                "warn",
+                f"refusal reply for {refusal.reason} failed: {scrub_exception(exc, secrets)}",
+                secrets,
+            )
+    _event(run, "info", f"refused: {refusal.reason} (reply {state})", secrets)
+    return CheckOutcome(
+        status="succeeded",
+        summary=scrub_all(summary, secrets) if summary is not None else line,
+        outcome="not_applicable",
+        reason=refusal.reason,
+        reply=state,
+        token=token,
+    )
+
+
 def run_refusal_checks(
     *,
     run_id: str,
@@ -514,27 +566,15 @@ def run_refusal_checks(
     client = IssuesClient(owner, repo, token.token, session=session, sleep=sleep)
 
     def refuse(refusal: Refusal, issue: int | None, *, reply: bool) -> CheckOutcome:
-        summary = reply_line(refusal, issue)
-        state = "none"
-        if reply and issue is not None:
-            try:
-                client.post_comment(issue, build_reply(rid, refusal, issue, run_link))
-                state = "posted"
-            except Exception as exc:  # noqa: BLE001 — the reply is best effort (spec §8.2)
-                state = "failed"
-                _event(
-                    run,
-                    "warn",
-                    f"refusal reply for {refusal.reason} failed: {scrub_exception(exc, secrets)}",
-                    secrets,
-                )
-        _event(run, "info", f"refused: {refusal.reason} (reply {state})", secrets)
-        return CheckOutcome(
-            status="succeeded",
-            summary=summary,
-            outcome="not_applicable",
-            reason=refusal.reason,
-            reply=state,
+        return post_refusal(
+            client,
+            rid,
+            refusal,
+            issue,
+            reply=reply,
+            run=run,
+            run_link=run_link,
+            secrets=secrets,
             token=token,
         )
 
