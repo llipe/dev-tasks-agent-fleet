@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.8 | 2026-10-24 | S-188 (developer): 9.1 worded to the single DF-33 open-claim rule confirmed by @llipe 2026-10-24 (no `pr`, `disposition` or `refusal` marker); 9.8 base corrected to `integration/bug-fix-agent-wave-a`. | developer |
 | 2.0.7 | 2026-10-24 | S-185 fix round (developer), from the QA gate and the S-185 fidelity report: page caps with pages left raise `GITHUB_UNAVAILABLE` (QA 1); an unknown `v_runs.effective_status` is `SUPABASE_UNAVAILABLE` with a `run_event` warning, and the missing-row warning is a `run_event` too (QA 2, DF-185-03); no request follows a redirect, a 3xx is `GITHUB_REQUEST_REJECTED` (QA 3); the `Link` parser matches `rel` as a whole parameter (QA 4); one 120 s wait budget per logical operation, `Retry-After` honoured up to 60 s (QA 5, DF-185-06); a failed mint is a `CredentialError`, and a refresh re-checks `issues: write` on the new token (QA 6); GraphQL `errors[]` split into transient (retry, then `GITHUB_UNAVAILABLE`) and permanent (`GITHUB_REQUEST_REJECTED`) (DF-185-05); a cross-repo linked PR is named `owner/repo#M` (DF-185-07, CT-33); agent-side CT-34 table (DF-185-08 partial; the L2.5 real-database read remains). No new public error code. DF-185-01/02/04 unchanged. | developer |
 | 2.0.6 | 2026-10-24 | S-185 (developer): 6.1–6.9 checked (test-first; agent gate green, 1858 passed, coverage 97.76%). 6.10 base corrected to `integration/bug-fix-agent-wave-a`; Draft PR #453 open, `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.5 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. 7.2 notes the D-65 amendment (references kept as written). 6.2 and 9.2 name the in-repo GitHub double (`fake_github.py`) instead of `responses`; 6.3 adds a parser-level `Link`-header unit test. S-199 is outside this Wave A list; its stories and test plan carry the same harness. | product-engineer |
@@ -258,7 +259,7 @@
 
   > Note: the claim is 👀 plus a marker comment, with no labels and no assignee (D-93). The race check stays (D-54).
 
-  - [ ] 9.1 `[T]` [agents/bug-fix] L1 race verdicts: an earlier terminal claim is ignored; an earlier active claim with no `pr` or `disposition` marker means this run lost (D-54)
+  - [ ] 9.1 `[T]` [agents/bug-fix] L1 race verdicts: an earlier terminal claim is ignored; an earlier active claim with no `pr`, `disposition` or `refusal` marker means this run lost (D-54; DF-33)
   - [ ] 9.2 `[T]` [agents/bug-fix] L2 `tests/component/test_claim.py`, with the in-repo GitHub double (DF-186-02):
     - a happy claim: the marker comment first, then 👀;
     - a lost race: only this run's comment is deleted → `not_applicable`/`active_run`, with no board call;
@@ -269,7 +270,7 @@
   - [ ] 9.5 Edge cases: two comments in the same second; the other run already terminal; a reaction 422 (logged)
   - [ ] 9.6 Verify AC (v2.0): AC1–AC5 by 9.1–9.2
   - [ ] 9.7 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 9.8 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [ ] 9.8 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] 10.0 Implement Story S-189 (#371 - https://github.com/llipe/dev-tasks-agent-fleet/issues/371): Checkout, repository gate, toolchain, and the gate runner
 
