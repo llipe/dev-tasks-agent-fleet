@@ -278,7 +278,8 @@
 
   > Note: needs `sandbox.py` from 3.0. Resolves spec OQ-1 (Python install contract). No issue is changed before the repo gate passes (FR-5).
 
-  - [ ] 10.1 **Decide OQ-1 before 10.5:** for Python, require a `make install` target, or end `not_applicable` "missing install target" (the proposal). Append the result to `workstream/decisions-bug-fix-agent.md` as a new `D-NN`, with user confirmation
+  - [x] 10.1 **Decide OQ-1 before 10.5:** for Python, require a `make install` target, or end `not_applicable` "missing install target" (the proposal). Append the result to `workstream/decisions-bug-fix-agent.md` as a new `D-NN`, with user confirmation (D-112, recorded via the docs write-back PR)
+    > Confirmed by @llipe on 2026-10-24: Python repos need a `make install` target, which the wrapper runs in the sandbox; without it the run ends with refusal `repo_gate`, "missing install target", before any issue change (FR-5). JS stays `pnpm install --frozen-lockfile` or `npm ci`.
   - [ ] 10.2 [agents/bug-fix] Fixture repos `tests/fixtures/repos/{js-pnpm-ok, js-missing-typecheck, py-make-ok, py-no-developer-md}`
   - [ ] 10.3 `[T]` [agents/bug-fix] L1 `tests/unit/test_toolchain.py`: stack detection (pnpm, npm, Makefile, none), gate-name resolution, `Makefile` target parsing (`format_check` ≠ `format-check`) (D-17, D-19)
   - [ ] 10.4 `[T]` [agents/bug-fix] L2 `tests/component/test_checkout.py` and `test_gates.py` with real `git`:
@@ -292,19 +293,19 @@
   - [ ] 10.8 Edge cases: a `package.json` with no `scripts`; a monorepo root `package.json`; a clone failure; an install failure
   - [ ] 10.9 Verify AC (v1.4): AC1–AC3 by 10.12–10.16; AC4, AC5, AC7 and AC8 by 10.3 and 10.4; AC6 by the decision-log row from 10.1; AC9 by 10.17 (DF-24)
   - [ ] 10.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 10.11 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [ ] 10.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
   - [ ] 10.12 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_git_confinement.py`:
-    - a `.git/hooks/{post-checkout,pre-commit}`, `core.fsmonitor`, `diff.external` and a filter driver planted in `/work/repo` never run as uid `wrapper` during checkout or capture;
+    - a `.git/hooks/{post-checkout,pre-commit}`, `core.fsmonitor`, `diff.external` and a filter driver planted in `/work/repo` never run in the root wrapper's git calls during checkout or capture (uid model per D-110);
     - every wrapper git call carries `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `core.hooksPath=/dev/null` and `core.fsmonitor=false`;
     - `safe.directory=*` is never set;
     - `capture()` includes untracked files and stores symlinks without following them (DF-02, DF-01, D-62).
   - [ ] 10.13 `[I]` [agents/bug-fix] Do this before 10.9. `safe_git.py`:
     - a hardened git runner;
-    - the wrapper clone at `/work/wrapper/repo`, mode 0700, with `info/exclude` listing only `node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/` (D-83);
+    - the wrapper clone at `/work/wrapper/repo`, mode 0700 (root-owned, uid model per D-110), with `info/exclude` listing only `node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/` (D-83);
     - `materialize(tree, dest)`: `git archive` piped to `tar -x` running as `fixer`;
     - `capture(work_tree)`: `git --git-dir=<wrapper clone> --work-tree=<dir> add -A` (DF-02, D-62).
   - [ ] 10.14 `[I]` [agents/bug-fix] Do this before 10.9. `checkout.py` clones into the wrapper clone and materializes the base tree into a fresh `/work/repo` as `fixer`. No wrapper git call targets a `fixer`-writable `.git` (DF-02, D-62)
-  - [ ] 10.15 `[I]` [agents/bug-fix] Dockerfile: `/work/wrapper` owned by `wrapper` with mode 0700, unreadable by `fixer`. Extend `scripts/image-smoke.sh` to assert this (DF-02, D-62)
+  - [ ] 10.15 `[I]` [agents/bug-fix] Dockerfile: `/work/wrapper` owned by root with mode 0700, unreadable by `fixer` (uid model per D-110; the `wrapper` user no longer exists). Extend `scripts/image-smoke.sh` to assert this (DF-02, D-62)
   - [ ] 10.16 Verify AC: the S-189 v1.1 wrapper-clone and `safe_git.py` ACs by 10.12 and the 10.15 smoke check (DF-02, D-62)
   - [ ] 10.17 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_checkout.py`:
     - an npm fixture installs with `npm ci` and a pnpm fixture with `pnpm install --frozen-lockfile`;
