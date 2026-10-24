@@ -320,6 +320,22 @@ paths under `str.splitlines`, the retry loop, failure paths and the sink,
 `rubric.md` from a copied package dir run with `python -I`, schema key order;
 property tactic `tactic_seed(411, 4)`) build on the same helpers.
 
+**`bug-fix`.** GitHub REST is faked at the `requests.Session` boundary by
+`tests/component/fake_github.py` (see the Packages row). Property tactics run
+at the test plan's budgets in the default profile, with no Hypothesis profile
+switch: RT-02 (`tests/unit/test_markers_property.py`) at 1000 examples per
+property, RT-12 (`tests/unit/test_neutralize_property.py`) at 2000 examples
+with inputs of 0–20,000 characters (long inputs repeat drawn pieces and are
+cut at 20,000, which avoids Hypothesis' buffer limit), and RT-15 at 1000.
+Raising them added about 13 s to `make test` (S-186 fix round, DF-186-03);
+a profile is only worth adding if that grows past about 60 s.
+`test_neutralize.py::test_a_long_glued_chain_is_linear_not_quadratic` is a
+sanctioned `time.perf_counter` bound (2 s on a 65,536-character chain that
+took 14 s when quadratic). The SIGTERM-backstop tests in
+`tests/component/test_s186_security_negative.py` send a real SIGTERM to the
+pytest process with `signal.raise_signal` patched and the previous handler
+restored, so the handler runs on the suspended main thread as in production.
+
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real
 local Postgres with no mocked data layer. `tests/stubs/server-only.ts`

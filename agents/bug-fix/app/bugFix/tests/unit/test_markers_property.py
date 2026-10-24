@@ -42,7 +42,7 @@ _PERTURB = [
 ]
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(st.lists(markers_st, min_size=1, max_size=5), st.text(max_size=80), st.booleans())
 def test_block_round_trips_and_stops_at_the_first_other_line(block, tail, crlf):
     nl = "\r\n" if crlf else "\n"
@@ -51,7 +51,7 @@ def test_block_round_trips_and_stops_at_the_first_other_line(block, tail, crlf):
     assert parse_block(body) == tuple(block)
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(markers_st, st.sampled_from(range(len(_PERTURB))))
 def test_perturbed_marker_never_parses(marker, idx):
     line = _PERTURB[idx](build(marker.kind, marker.run_id, marker.reason))
@@ -60,7 +60,7 @@ def test_perturbed_marker_never_parses(marker, idx):
     assert bool(parsed) == bool(_CANON.fullmatch(line))
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(st.text(max_size=300))
 def test_arbitrary_text_parses_only_canonical_lines(text):
     for marker in parse_block(text):
@@ -89,7 +89,7 @@ comment_lists = st.lists(
 )
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(comment_lists, st.lists(run_ids, min_size=5, max_size=5, unique=True), st.randoms())
 def test_open_claim_invariants(spec, pool, rnd):
     comments = []

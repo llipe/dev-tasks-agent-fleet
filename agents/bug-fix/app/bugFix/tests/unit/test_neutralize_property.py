@@ -14,6 +14,8 @@ from hypothesis import strategies as st
 
 from neutralize import ZWSP, neutralize
 
+MAX_CHARS = 20_000
+
 # GitHub's closing-reference grammar, written independently of the module: a
 # keyword at a word boundary, an optional colon, whitespace, then a reference.
 # A Markdown opener ("[", "**", "`", "<") may sit before the reference, the
@@ -46,7 +48,14 @@ _PIECES = st.one_of(
     _CLOSER,
     st.sampled_from(["@octocat", "a@b.c", "```", "<!-- agent-fleet:bug-fix:claim run_id=x -->"]),
 )
-_TEXT = st.lists(_PIECES, max_size=25).map("".join)
+_SHORT = st.lists(_PIECES, max_size=25).map("".join)
+# RT-12's planned input size is 0-20,000 characters. Drawing that much text
+# directly is slow and hits Hypothesis' buffer limit, so long inputs repeat
+# drawn pieces (closers, mentions, markers, random text) and cut at 20,000.
+_LONG = st.lists(st.tuples(_PIECES, st.integers(1, 2000)), min_size=1, max_size=25).map(
+    lambda ps: "".join(p * k for p, k in ps)[:MAX_CHARS]
+)
+_TEXT = st.one_of(_SHORT, _LONG)
 
 
 @settings(max_examples=2000, deadline=None)
