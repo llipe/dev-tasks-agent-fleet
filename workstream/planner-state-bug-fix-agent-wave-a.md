@@ -9,7 +9,7 @@
 - Test plan: `workstream/test-plan-prd-bug-fix-agent.md` (v2.0)
 - Decision log: `workstream/decisions-bug-fix-agent.md`
 - Started: 2026-10-23
-- Last updated: 2026-10-24 (after S-185)
+- Last updated: 2026-10-24 (after S-188)
 
 ## Story Status
 
@@ -21,15 +21,15 @@
 | 4 | S-184 | #366 | ✅ Merged | #449 | story/S-184-agents-seed |
 | 5 | S-186 | #368 | ✅ Merged | #451 | story/S-186-markers-disposition |
 | 6 | S-185 | #367 | ✅ Merged | #453 | story/S-185-refusal-checks |
-| 7 | S-188 | #370 | 🔄 Next (DF-33 decision first) | — | — |
-| 8 | S-189 | #371 | ⏳ Pending (OQ-1 decision) | — | — |
+| 7 | S-188 | #370 | ✅ Merged | #454 | story/S-188-claim-race |
+| 8 | S-189 | #371 | 🔄 Next (OQ-1 decision) | — | — |
 | 9 | S-190 | #372 | ⏳ Pending | — | — |
 
 ## Current Position
 
-- Next story: S-188 (#370), after @llipe decides DF-33 (one open-claim definition)
-- Last merged PR: #453 (`3bcc61b`)
-- Integration branch HEAD: `3bcc61b`
+- Next story: S-189 (#371), after the OQ-1 decision
+- Last merged PR: #454 (`62544bc`)
+- Integration branch HEAD: `62544bc`
 
 ## Decisions Log
 
@@ -44,3 +44,5 @@
 - 2026-10-24: `main` merged into the integration branch through PR #450 (`c7a5f89`); CI green on all 9 jobs. Both lines kept in the 8 conflicting files plus `supabase/seed.sql` (bug-fix block relabelled 4a2). The code-review test `test_migration_file_name_sorts_after_existing_migrations` was relaxed so that only other agents' data-only seeds may sort after its seed; planner-reviewed and kept. The doc rename is NOT on main yet, so the old names stay. Panel `pnpm audit` locally still reports 24 dev-tooling advisories (vitest, vite, …), the same as on `main`; that's a separate change on main, not this run.
 - 2026-10-24: S-186 (#451) merged (`af15c63`). Gates: quality PASS (1502 passed; the macOS-only `test_sandbox_proc` timing failure is S-182 code, moved to #447); CI green on all 9 jobs; `qa-engineer` coverage_gate PASS (97.73%; 292 security-negative tests found a real defect, a SIGTERM during an in-flight disposition losing it, fixed in `d0be5eb`); verifier High/Minor. Fix round also covered the neutralizer forms, a quadratic neutralizer (14 s at 64 KiB, now linear), the `app_id` type, pagination path pinning, lone surrogates, and property budgets at plan. DF-186-01/02 (Intended) were written back via #452 (`fed17d2`, spec v2.3, stories v2.2, test plan v2.1, D-65 amendment), confirmed by @llipe. The in-memory `fake_github.py` double is now the L2 standard for S-185/S-188/S-199, with a `Link`-header parser unit test due in S-185. Memo: intent and outcome written (2bd9f698, 71d6ef6c; fix-round outcome 352d7508).
 - 2026-10-24: S-185 (#453) merged (`3bcc61b`). Gates: quality PASS (2137 passed; CI green on 9 jobs); `qa-engineer` coverage_gate PASS (98.03%; found fail-open paths: page caps, unknown status, redirects, an unbounded wait, `Link` rel matching; all fixed in the fix round); verifier High/Minor (DF-185-01..09). DF-185-01/02/03 (Intended) and the GraphQL error classification still need a spec §8.9/§9 and CT-13/CT-33/CT-34 wording write-back. DF-185-04 is tied to the open DF-33 (the open-claim definition), to be decided before S-188. Residuals: CT-34 real-database L2.5; S-190 maps `refresh_if_stale` `PermissionMissing` via `exc.error_code`; S-188's post-check passes `warn=` to `has_active_run`. A developer subagent popped the user's `stash@{0}` by mistake during the fix round; the files were restored to HEAD, and the stash is verified intact and unchanged. Memo: intent and outcome written (bf3322fd, aaf024de; fix-round outcome 292847d8).
+- 2026-10-24: DF-33 decided by @llipe: an open claim has no trusted `pr`, `disposition` or `refusal` marker and its run is not terminal. The S-185 write-back (spec v2.4, stories v2.3, test plan v2.2, matrix v2.1) was merged via #455 (`6e0fa0a`).
+- 2026-10-24: S-188 (#454) merged (`62544bc`). Gates: quality PASS (2308 passed; CI green); `qa-engineer` coverage_gate PASS (98.16%; 37 L2 tests, no defects); verifier High/Minor (DF-188-01..07). Carried to S-190: an end-to-end L2 test (refusal → claim → disposer) and one shared strict run-link validator (QA gaps 1–2), plus mapping `refresh_if_stale` errors via `exc.error_code`. DF-38 (a race-loss DELETE fault ends `failed`) and DF-188-01/02/05 still need a decision and a write-back. Memo: intent and outcome written (7c564b09, fdb855ab).
