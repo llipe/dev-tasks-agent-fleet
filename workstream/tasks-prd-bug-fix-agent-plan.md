@@ -94,7 +94,7 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-180 (#362 - https://github.com/llipe/dev-tasks-agent-fleet/issues/362): Agent scaffold, image, and managed Claude Code policy
+- [x] 1.0 Implement Story S-180 (#362 - https://github.com/llipe/dev-tasks-agent-fleet/issues/362): Agent scaffold, image, and managed Claude Code policy
 
   > Note: skeleton only. `main.py` ends `succeeded`/`not_applicable` "not yet implemented", so a deploy is harmless.
 
@@ -116,7 +116,7 @@
   - [x] 1.12 Run tests: `make test`, `make image`, `scripts/image-smoke.sh`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 1.13 `verifier` audit; open PR → `integration/bug-fix-agent`
 
-- [ ] 2.0 Implement Story S-181 (#363 - https://github.com/llipe/dev-tasks-agent-fleet/issues/363): Infra change — Anthropic key, runtime and role, panel invoke policy, App Issues write
+- [x] 2.0 Implement Story S-181 (#363 - https://github.com/llipe/dev-tasks-agent-fleet/issues/363): Infra change — Anthropic key, runtime and role, panel invoke policy, App Issues write
 
   > Note: run with `/infra-engineer`. One approval per step; each step reversible and recorded. No secret value is ever logged or committed (D-58).
 
@@ -135,7 +135,7 @@
   - [ ] 2.11 Verify AC: AC1 key and cap recorded; AC2 deployed with the ARN recorded; AC3 role simulation; AC4 panel invoke; AC5 `issues: write`; AC6 backup and revert per item. Map each to the change-record verification table
   - [ ] 2.12 `verifier` audit; draft PR → `integration/bug-fix-agent`
 
-- [ ] 3.0 Implement Story S-182 (#364 - https://github.com/llipe/dev-tasks-agent-fleet/issues/364): Sandbox spike on the deployed runtime
+- [x] 3.0 Implement Story S-182 (#364 - https://github.com/llipe/dev-tasks-agent-fleet/issues/364): Sandbox spike on the deployed runtime
 
   > Note: **gates all of Wave B.** If any check fails, record FAIL, keep #373–#377 blocked, and hand off to `product-engineer` drift reconciliation (D-51, spec §12). Resolves spec OQ-2.
 
@@ -182,7 +182,7 @@
 
 - [ ] ~~4.0 Implement Story S-183 (#365)~~ — **removed in v2.0** (D-95); #365 closed as not planned.
 
-- [ ] 5.0 Implement Story S-184 (#366 - https://github.com/llipe/dev-tasks-agent-fleet/issues/366): `agents` seed row, params schema, and typed params
+- [x] 5.0 Implement Story S-184 (#366 - https://github.com/llipe/dev-tasks-agent-fleet/issues/366): `agents` seed row, params schema, and typed params
 
   > Note: issue-mode params (D-93, D-102). `issue_number` is the only required key. Needs the runtime ARN from 2.4.
 
@@ -226,7 +226,7 @@
   - [ ] 6.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 6.10 `verifier` audit; open PR → `integration/bug-fix-agent`
 
-- [ ] 7.0 Implement Story S-186 (#368 - https://github.com/llipe/dev-tasks-agent-fleet/issues/368): Markers, reactions and the idempotent disposition
+- [x] 7.0 Implement Story S-186 (#368 - https://github.com/llipe/dev-tasks-agent-fleet/issues/368): Markers, reactions and the idempotent disposition
 
   - [x] 7.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_markers.py`:
     - a round-trip for `claim`, `disposition`, `refusal` (`reason=`) and `pr`;
@@ -247,7 +247,7 @@
   - [x] 7.9 Verify AC (v2.0): AC1, AC2 and AC4 by 7.1–7.2; AC3, AC5 and AC6 by 7.3
   - [x] 7.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
     > Local run done (2026-10-24, developer): agent `make validate` green (1136 passed, 3 xfailed, coverage 97.89%, `pip-audit` clean). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
-  - [ ] 7.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
+  - [x] 7.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] ~~8.0 Implement Story S-187 (#369)~~ — **removed in v2.0** (D-90); linked-PR detection moved to 6.0; #369 closed as not planned.
 
