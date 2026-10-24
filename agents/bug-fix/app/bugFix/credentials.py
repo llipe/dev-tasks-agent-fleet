@@ -3,6 +3,9 @@
 # Extended (S-182): `fetch_secret_string`, a generic Secrets Manager read used for
 # the Anthropic key and the Projects token (D-50, D-99). Spec §8.1 extends it
 # further in later stories: token permissions (D-58).
+# Extended (S-186): `TokenContext.app_id`, the fleet App id from the
+# `github_installations` row, which marker trust checks against (D-53). A non-int
+# or bool `app_id` is a typed `INVALID_APP_ID` error.
 """
 Credential resolution — Supabase service role key from Secrets Manager
 and GitHub App installation token minting.
@@ -31,6 +34,22 @@ class CredentialError(Exception):
         super().__init__(f"{code}: {message}")
 
 
+def _check_app_id(app_id: object) -> int:
+    """The App id as a positive ``int``, or ``CredentialError('INVALID_APP_ID')``.
+
+    Marker trust compares it with ``performed_via_github_app.id`` (D-53), so a
+    string, float or bool here must fail now, typed, rather than as a
+    ``TypeError`` (or a silent mismatch) in ``is_trusted`` later. The message
+    names the type only, never the value.
+    """
+    if isinstance(app_id, bool) or not isinstance(app_id, int) or app_id < 1:
+        raise CredentialError(
+            "INVALID_APP_ID",
+            f"github_installations.app_id must be a positive integer, got {type(app_id).__name__}",
+        )
+    return app_id
+
+
 @dataclass
 class TokenContext:
     """Holds a minted GitHub installation token with staleness tracking."""
@@ -38,6 +57,12 @@ class TokenContext:
     token: str
     issued_at: float  # time.monotonic()
     installation_id: int
+    # The fleet App id (D-53). ``None`` only for a context built by hand.
+    app_id: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.app_id is not None:
+            _check_app_id(self.app_id)
 
     def is_stale(self, threshold_minutes: float = TOKEN_STALE_THRESHOLD_MINUTES) -> bool:
         """Return True if the token has been alive longer than threshold."""
@@ -226,12 +251,14 @@ def resolve_github_credentials(
     key = supabase_key or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
     row = _get_installation(org, url, key)
+    app_id = _check_app_id(row.get("app_id"))
     pem = _fetch_pem(row["private_key_secret_arn"])
-    token = mint_installation_token(row["app_id"], row["installation_id"], pem)
+    token = mint_installation_token(app_id, row["installation_id"], pem)
     return TokenContext(
         token=token,
         issued_at=time.monotonic(),
         installation_id=row["installation_id"],
+        app_id=app_id,
     )
 
 
@@ -243,5 +270,6 @@ def refresh_if_stale(token_ctx: TokenContext, pem: str, app_id: int) -> TokenCon
             token=new_token,
             issued_at=time.monotonic(),
             installation_id=token_ctx.installation_id,
+            app_id=token_ctx.app_id,
         )
     return token_ctx
