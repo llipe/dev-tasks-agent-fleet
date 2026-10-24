@@ -4,6 +4,7 @@
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 2.6 | 2026-10-24 | Drift reconciliation of S-189 audit findings DF-189-01/04/05/07/08 and the S-189 fix-round hardening ([`fidelity-report-S-189.md`](fidelity-report-S-189.md), PR #458), confirmed by @llipe 2026-10-24. DF-189-01: materialize, the base restore and red-to-green steps 2 and 5 use a tar the wrapper builds from the base commit's raw blobs, not `git archive` (which applies `export-ignore`/`export-subst`), extracted as `fixer` into `/work/repo` with no `.git`, capped at 100,000 entries and 2 GiB (D-62 amendment). Fix-round hardening: a link-free walk refuses hardlinked regular files, FIFOs, sockets and device nodes before any root git read of `/work/repo`, skipping the four dependency folders; `.git` path components (any case, NTFS/HFS lookalikes) are rejected; the clone runs with `fsckObjects` (`zeroPaddedFilemode` ignored); the link-protection sysctls are logged and asserted by image smoke (#446 for AgentCore); all of these end `failed`/`CLONE_FAILED` (residual noted for S-193). DF-189-04/05/08: the repo-gate item set and fixed reply phrases (`lockfile`, `supported package manager (pnpm or npm)`, `package.json or Makefile`, `install` as "missing install target (the Makefile target `install`)"), GNU make's makefile order, `include` not followed (D-112 amendment). DF-189-07: D-62 reads as amended by D-110 (no `wrapper` user). Sections §8.7, §8.9, §12, §16 and §18 changed. | product-engineer |
 | 2.5 | 2026-10-24 | D-112 / OQ-1 and drift reconciliation of DF-38 (race-loss part) and S-188 audit findings DF-188-01/02/05 ([`fidelity-report-S-188.md`](fidelity-report-S-188.md)), confirmed by @llipe 2026-10-24. D-112 / OQ-1: a Python repo must provide a `make install` target, which the wrapper runs in the sandbox; without it, the run ends `not_applicable` through the `repo_gate` refusal "missing install target", before any issue change (FR-5); JS is unchanged. DF-38 (race-loss part): a non-404 `DELETE` fault on the loser's withdrawal ends `failed` with its D-67 code, with no disposition and no board call; a 404 is "already gone" and the run ends `not_applicable`/`active_run`; the stranded comment stops counting once the loser is terminal and can never outrank the winner. DF-188-01: the open-claim rule has two shared halves, `markers.open_claims()` (markers) and `refusal.active_claim_runs()` (`v_runs` status). DF-188-02: the single-id race-loss `DELETE` is retried on a 5xx or a transport error; every other write still isn't. DF-188-05 is a test-plan change only. Sections §8.1, §8.2, §8.3, §8.6, §8.7, §8.9, §9, §16, §17 and §18 changed; D-112 is new, and D-54 and D-67 carry dated amendments. | product-engineer |
 | 2.4 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07 ([`fidelity-report-S-185.md`](fidelity-report-S-185.md)), confirmed by @llipe 2026-10-24. DF-33: one definition of an open claim (a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`; no row counts as finished with a warning; an unknown status fails closed as `SUPABASE_UNAVAILABLE`), implemented once in `markers.open_claims()` and used by refusal (d) and the race post-check. DF-185-01/02/03/05/06/07: the GitHub client's error semantics: reads retry 5xx and transport errors, writes retry only rate limits; 3 attempts in total; a 120 s monotonic budget per logical operation, `Retry-After` honoured up to 60 s, 60 s for a secondary limit with no header; redirects never followed; a page cap with pages left is `GITHUB_UNAVAILABLE`; GraphQL `errors[]` split into transient and permanent; mint and refresh failures typed; a cross-repo linked PR is named `owner/repo#M`. Sections §8.1, §8.2, §8.3, §8.6, §8.9, §9 and §18 changed; D-55, D-67 and D-81 carry dated amendments in the decision log. | product-engineer |
 | 2.3 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. DF-186-01: §8.7's neutralizer keeps the reference as written, `(ref <reference as written>)`, with `#N` → `(ref #N)` unchanged; it also recognizes `GH-N`, colon-without-space and markdown-wrapped references (D-65 amendment). DF-186-02: §14's L2 GitHub harness is the in-repo `requests.Session` double (`fake_github.py`), not `responses`, for S-185, S-188 and S-199 too; real `Link`-header parsing gets a parser-level unit test with S-185. Sections §8.7 and §14 changed. | product-engineer |
@@ -309,20 +310,47 @@ stateDiagram-v2
 
 ### 8.7 Checkout, fix, validate, red-to-green
 
-*Unchanged from v1.5 except the repo-gate outcome, which is now a refusal reply, and the Python install contract (D-112, v2.5).*
+*Unchanged from v1.5 except the repo-gate outcome, which is now a refusal reply, the Python install contract (D-112, v2.5), and the S-189 delivery write-back (v2.6): the raw-blob tar, the hardened checkout and capture rules, and the full repo-gate item set.*
 
 **`checkout`** (D-62).
 - Shallow-clone `base_branch` into the wrapper clone `/work/wrapper/repo` (under root-owned `/work/wrapper`, mode 0700; D-110) with `safe_git.py`, and record the base SHA. The clone's `info/exclude` lists only dependency directories (`node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/`); build outputs are governed by the repo's own `.gitignore` (D-83).
-- Materialize the base tree into `/work/repo` as plain files: `git archive <base>` from the wrapper clone, piped into `tar -x` **running as `fixer`** into a fresh directory. `fixer` may `git init` its own repository there for the model's use. The wrapper never reads it.
-- Run the repo gate (FR-6) through `toolchain.py`:
-  - **JS/TS:** `.claude/agents/developer.md`, plus `package.json` scripts `test`, `lint`, `format:check`, `typecheck`.
-  - **Python:** the same file, plus `Makefile` targets `test`, `lint`, `format-check`, `typecheck`, and `install` (D-112).
-  - If anything is missing, end with refusal `repo_gate` (§8.2): a reply naming the item, `not_applicable`, before the claim (D-92). A Python repo with no `install` target is named "missing install target", and the run ends before any issue change other than that reply (FR-5).
+- The clone runs with `transfer.fsckObjects=true`, `fetch.fsckObjects=true` and `receive.fsckObjects=true`, so git itself rejects `.git`, `..` and duplicate tree entries. The `zeroPaddedFilemode` check is ignored, so older repositories still clone (DF-189 fix round, QA-189-03).
+- Materialize the base tree into `/work/repo` as plain files (`safe_git.materialize()`, D-62 amended 2026-10-24, DF-189-01). The wrapper builds the tar itself from the base commit's **raw blobs** (`ls-tree` + `cat-file --batch`) and streams it into `tar -x` **running as `fixer`** into a fresh directory, with no `.git`. It is not `git archive`: `git archive` applies the repo's own `export-ignore` and `export-subst` attributes, so `/work/repo` would not equal the base commit and the base restore (D-63) could not converge. Symlinks are tar symlink entries, modes are `0644`/`0755`, and root never writes to `/work/repo`. Before streaming, any path component equal to `.git` (any case, plus the NTFS and HFS+ lookalikes git rejects) is refused, and the tar is capped at **100,000 entries** and **2 GiB**; a tree over either cap fails closed before `tar` runs. `fixer` may `git init` its own repository there for the model's use. The wrapper never reads it.
+- Run the repo gate (FR-6) through `toolchain.py`. It reads the **base commit** through `safe_git.TreeReader` (regular blobs only), never the `fixer`-writable work tree:
+  - **Stack:** a root `package.json` means JS/TS, even when a Makefile exists too. Otherwise a root Makefile means Python. Otherwise the item is `package.json or Makefile`.
+  - **JS/TS:** `.claude/agents/developer.md`, a supported package manager with its lockfile, and the `package.json` scripts `test`, `lint`, `format:check`, `typecheck`. The manager is the `packageManager` field (pnpm or npm), which needs that manager's own lockfile (`pnpm-lock.yaml` or `package-lock.json`); without the field it is `pnpm-lock.yaml`, then `package-lock.json`. yarn and bun (a `packageManager: yarn@…`/`bun@…` field, or only a `yarn.lock`, `bun.lockb` or `bun.lock`) are refused by name.
+  - **Python:** the same file, plus the Makefile targets `test`, `lint`, `format-check`, `typecheck`, and `install` (D-112). The Makefile is the first of `GNUmakefile`, `makefile`, `Makefile` that exists, GNU make's own order, so the gate judges the file `make` will run (DF-189-08). It is parsed statically: `include` is not followed, because evaluating it would run repo code as root, so a Makefile whose targets need an `include` is refused (DF-189-03).
+  - If anything is missing, end with refusal `repo_gate` (§8.2): a reply naming the first missing item, `not_applicable`, before the claim (D-92), and before any issue change other than that reply (FR-5).
+  - **Items and reply phrases** (`refusal.REPO_GATE_ITEMS`, `REPO_GATE_PHRASES`; D-112 amended 2026-10-24, DF-189-04, DF-189-05). The reply is "Bug-fix didn't start: this repository is *phrase*, which bug-fix needs before it can work here." Each item has one fixed phrase, and no phrase holds user text:
+
+    | Item | Fixed reply phrase |
+    | ---- | ------------------ |
+    | `.claude/agents/developer.md` | missing `.claude/agents/developer.md` |
+    | `package.json` | missing `package.json` |
+    | `Makefile` | missing `Makefile` |
+    | `package.json or Makefile` | missing a root `package.json` or Makefile |
+    | `lockfile` | missing the lockfile its package manager needs (`pnpm-lock.yaml` for pnpm, `package-lock.json` for npm) |
+    | `supported package manager (pnpm or npm)` | missing a supported package manager (pnpm or npm; yarn and bun are not supported) |
+    | `test` | missing the `test` gate (a `package.json` script or a Makefile target) |
+    | `lint` | missing the `lint` gate (a `package.json` script or a Makefile target) |
+    | `format:check` | missing the `package.json` script `format:check` |
+    | `format-check` | missing the Makefile target `format-check` |
+    | `typecheck` | missing the `typecheck` gate (a `package.json` script or a Makefile target) |
+    | `install` | missing install target (the Makefile target `install`) |
+
+    `lockfile` covers both a `packageManager` field without that manager's lockfile and a JS repo with no lockfile at all, so a lockfile-less repo is always refused, never `INSTALL_FAILED`.
 - Install dependencies in the sandbox:
   - **JS/TS** (D-63): `pnpm install --frozen-lockfile` or `npm ci`, chosen by the detected manager. A lockfile mismatch gives `failed`/`INSTALL_FAILED`, and the lockfile is never rewritten.
   - **Python** (D-112, resolves OQ-1, confirmed by @llipe 2026-10-24): the wrapper runs the repo's own `make install` target in the sandbox. The wrapper never guesses among pip, uv and poetry; the repo owner decides how dependencies are pinned, and one `make` contract covers both install and the gates (D-19).
 - Run the four gates and `audit` on the **base** tree, and record the results (D-14). Base results are only evidence; they gate nothing.
-- **Restore the base** (D-63). The wrapper captures `/work/repo`, and any tracked path that install or the base runs changed is restored as `fixer` (`git archive` piped to `tar -x`, plus `rm` for files they added), with a `run_event`. The CLI therefore always starts from an exact base tree, and the captured change contains only the CLI's edits.
+- **Restore the base** (D-63). The wrapper captures `/work/repo`, and any tracked path that install or the base runs changed is restored as `fixer` (the same raw-blob tar, `materialize(paths=…)`, piped to `tar -x`, plus `rm` for files they added), with a `run_event`, for up to 3 rounds. The CLI therefore always starts from an exact base tree, and the captured change contains only the CLI's edits.
+- **Plain files only before root git reads `/work/repo`** (DF-189 fix round, QA-189-01, QA-189-02). Before every capture, and so before every base restore, `safe_git.check_work_tree()` walks `/work/repo` with `lstat`, never following a link, and refuses:
+  - any regular file with `st_nlink > 1` (a hardlink `fixer` made to a file it can't read would put that file's bytes into the captured change);
+  - any FIFO, socket or device node (a FIFO named `.gitignore` would block root `git add`).
+
+  The walk skips the `node_modules/`, `.venv/`, `.pnpm-store/` and `__pycache__/` folders: git never descends into them, and pnpm and uv hardlink into them by design.
+- **Link-protection preflight.** At the start of `checkout` the runtime reads `fs.protected_hardlinks` and `fs.protected_symlinks` and logs both as a `run_event` (`info` when both are 1, else `warn`). It is evidence only and never fails the run; the walk refuses hardlinks whatever the sysctls say. Image smoke asserts both are 1 in the image. The value on the deployed AgentCore runtime is verified by #446.
+- **Faults.** A clone, materialize, capture, restore or repo-gate read fault, a refused work-tree entry, a `.git` path component and a tree over the tar cap all end `failed`/`CLONE_FAILED`, which counts toward the breaker (§8.9). **Residual for S-193:** an unsafe work tree, or a restore that doesn't converge in 3 rounds, can be caused by repo scripts, yet counts as infra.
 
 **`fix`** (FR-9–FR-12, D-04, D-05, D-11, D-50, D-51).
 - The wrapper spawns, as `fixer` (`setpriv` drop, D-110) under the CLI's own Bash sandbox (`Mode.CLI`, §12):
@@ -362,10 +390,10 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 
 **`red_to_green`** (FR-19, D-15, D-56).
 1. Collect the test-class files from the captured change, and commit it in the wrapper clone as the final tree (D-62).
-2. **Parent-chain check (D-83).** Before any tree is applied, the wrapper `lstat`s every changed path's parent directories in `/work/repo`; a symlink component leads to disposition. Then build the red tree in the wrapper index: base, plus the final versions of the test-class files. Apply it to `/work/repo` as `fixer`: a `git archive` of the base versions of the changed non-test paths, piped to `tar -x` as `fixer`, then `rm` as `fixer` of the non-test paths the fix **added**. No `git checkout <base> -- <added path>` is used (resolves DF-03).
+2. **Parent-chain check (D-83).** Before any tree is applied, the wrapper `lstat`s every changed path's parent directories in `/work/repo`; a symlink component leads to disposition. Then build the red tree in the wrapper index: base, plus the final versions of the test-class files. Apply it to `/work/repo` as `fixer`: the raw-blob tar of the base versions of the changed non-test paths (`SafeGit.materialize(paths=…)`, not `git archive`, DF-189-01), piped to `tar -x` as `fixer`, then `rm` as `fixer` of the non-test paths the fix **added**. No `git checkout <base> -- <added path>` is used (resolves DF-03).
 3. Run the tests: JS `<pm> test -- <paths>`; Python `python -m pytest <paths>`. A missing pytest leads to disposition "red-to-green needs pytest".
 4. Red requires a non-zero exit **and** either at least one collected test, or a collection or module-load error on base (pytest `errors during collection`; a JS runner "failed to load" suite) that the final tree clears by collecting at least one test (D-64). Zero tests run with no such error leads to disposition "tests did not run on base".
-5. Restore the final tree the same way (a `git archive` of the final versions, piped to `tar -x` as `fixer`), then re-run. All must pass.
+5. Restore the final tree the same way (the raw-blob tar of the final versions, `SafeGit.materialize(paths=…)`, piped to `tar -x` as `fixer`), then re-run. All must pass.
 6. Both outputs (scrubbed tail) go into the PR body.
 
 **Model-text neutralizer** (D-65). Before any model-written text (rationale, summary, commit message) enters the PR body or a commit, it is filtered. A closing keyword with an issue reference (`close[sd]?`, `fix(e[sd])?`, `resolve[sd]?` + `#N`, `owner/repo#N`, an issue or pull URL, or `GH-N`; case-insensitive, including colon-without-space and markdown-wrapped references) becomes `(ref <reference as written>)`: `fixes o/r#1` → `(ref o/r#1)`, a URL stays as written, and a plain `#N` → `(ref #N)`. The reference is never rewritten to a local `#N`, which would point a cross-repository reference at the wrong issue; neither form can close anything (D-65 amendment, DF-186-01). Every `@` becomes `@` + U+200B. Only the wrapper writes the single `Fixes #<N>` line.
@@ -389,7 +417,7 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 | Board look-up or update failure (any) | *(no effect; `run_event` + `metrics.board`)* | — | no |
 | Missing `issues: write` (at preflight, or on a refreshed token) | `failed` | `GITHUB_PERMISSION_MISSING` | yes |
 | Secrets / token mint | `failed` | `CREDENTIALS_UNAVAILABLE` | yes |
-| Clone / install infra failure | `failed` | `CLONE_FAILED` / `INSTALL_FAILED` | yes |
+| Clone / install infra failure. `CLONE_FAILED` also covers materialize, capture, restore and repo-gate read faults, a refused work-tree entry (hardlink, FIFO, socket, device node), a `.git` path component and a tree over the tar cap (§8.7) | `failed` | `CLONE_FAILED` / `INSTALL_FAILED` | yes |
 | CLI crash or unparseable output | `failed` | `CLI_CRASHED` | yes |
 | GitHub unavailable: read retries exhausted (5xx, transport error, rate limit); a write that got a 5xx or a transport error (never retried, except the race-loss `DELETE`, whose retries are exhausted; §9); a rate-limit wait over its cap or past the operation budget; transient GraphQL `errors[]` exhausted; a page cap reached with pages left | `failed` | `GITHUB_UNAVAILABLE` | yes |
 | GitHub refused the request: an unexpected 4xx on a read or a write; any 3xx (never followed); a non-transient GraphQL `errors[]`; a malformed response body; a URL or `next` link off the expected resource | `failed` | `GITHUB_REQUEST_REJECTED` | yes |
@@ -486,8 +514,9 @@ The **threat** is prompt injection through issue text or repo files, plus repo-c
 6. **Logs.** `scrubber.py` adds the Anthropic key, the App PEM and the Projects token to its secret list. The tails of CLI and gate output are scrubbed before they go into `run_events`, the PR body, or a comment.
 
 7. **The wrapper's own git is confined (D-62).**
-   - It uses only its own clone, with a hardened config.
-   - It touches `fixer` trees only through file operations that run as `fixer`.
+   - It uses only its own clone, with a hardened config. The clone runs with `transfer`/`fetch`/`receive.fsckObjects=true` (`zeroPaddedFilemode` ignored).
+   - It touches `fixer` trees only through file operations that run as `fixer`: a tar it builds from raw blobs (never `git archive`), with `.git` path components (any case, NTFS and HFS+ lookalikes) refused and caps of 100,000 entries and 2 GiB.
+   - Before any root git call reads `/work/repo`, a walk that never follows links refuses hardlinked regular files (`st_nlink > 1`), FIFOs, sockets and device nodes, skipping only the four `info/exclude` dependency folders. `fs.protected_hardlinks` and `fs.protected_symlinks` are logged as a `run_event`; image smoke asserts both are 1, and #446 verifies the AgentCore value (§8.7).
    - It pushes to an explicit GitHub URL with a credential helper scoped to `https://github.com`, so a redirect can't send the token elsewhere. This replaces the sibling `pull_request.py:189` helper, which answers for any host.
 
 **Worst case**, if every layer but the last fails, is a bad Draft PR that a human reviews (PRD Goal 3).
@@ -584,7 +613,8 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | The repo's `test` script doesn't pass paths through | Red-to-green "zero collected" leads to disposition; the runbook names the requirement |
 | A Python repo has no install contract the wrapper can rely on (OQ-1) | Resolved by D-112: the repo must provide `make install`; without it, the `repo_gate` refusal "missing install target" ends the run `not_applicable` before any issue change. The runbook names the target as a prerequisite (S-197). Implemented in S-189 (#371) |
 | The Anthropic key's spend | Dedicated key with a cap; per-run limits; cost recorded in `runs.metrics` |
-| Wrapper git reading `fixer`-controlled state | D-62 |
+| Wrapper git reading `fixer`-controlled state | D-62; the S-189 work-tree walk, `.git` component check and `fsckObjects` (§8.7, §12 item 7) |
+| `fs.protected_hardlinks=0` on the deployed runtime | The walk refuses hardlinks before every capture, but a link `fixer` creates between the walk and root `git add` then relies on the sysctl. Image smoke asserts both sysctls are 1; the runtime logs both values as a `run_event`; #446 verifies the AgentCore value (residual) |
 | The wrapper runs as root (D-110) | Only wrapper code runs as root; `setpriv` drop with `no_new_privs` for every `fixer` process; allow-list env; no `sudo` in the image; one microVM per session (§7) |
 | The CLI's and `srt`'s registry lists diverge | Both files are root-owned and baked into the image; an equality check is not yet in place (residual, §12) |
 | The panel holding the App private key (D-108) | Role scoped to the one secret; a single reaction call; best effort; token cached briefly in memory only |
@@ -611,7 +641,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-58 | One infra change in Wave A; run-start Issues-write check. |
 | D-60 | `repo` is the run's repository. |
 | D-61 | Budget ceilings → `needs_review`. |
-| D-62 | Wrapper git only on its own clone. |
+| D-62 | Wrapper git only on its own clone. Amended 2026-10-24 (DF-189-01, DF-189-07): materialize is a raw-blob tar, not `git archive`; the clone is root-owned per D-110 (§8.7). |
 | D-63 | Frozen install per manager; base restore. |
 | D-64 | A collection error on base counts as red when the final run passes. |
 | D-65 | Model-text neutralizer. |
@@ -634,7 +664,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-109 | *(Superseded by D-110.)* Non-root `wrapper` user switching to `fixer` through a narrow sudo rule. |
 | D-110 | Root wrapper; `setpriv` drop to `fixer` for every process that runs model output or repo code (AgentCore sets `no_new_privs`); no sudo in the image. |
 | D-111 | `localhost` resolves through the image's NSS (`libnss-myhostname`, IPv4 first via `/etc/gai.conf`); `sandbox.py` only checks it. |
-| D-112 | Python repos must provide `make install`, run in the sandbox; without it, refusal `repo_gate` "missing install target" (resolves OQ-1, §8.7). |
+| D-112 | Python repos must provide `make install`, run in the sandbox; without it, refusal `repo_gate` "missing install target" (resolves OQ-1, §8.7). Amended 2026-10-24 (DF-189-04/05/08): fixed reply phrase per item; new items `lockfile`, `supported package manager (pnpm or npm)`, `package.json or Makefile`; GNU make's makefile order; `include` not followed. |
 
 WHAT-phase decisions (D-01–D-46, D-88–D-102) are consumed through the PRD. D-47, D-48, D-57, D-59, D-68, D-69, D-71, D-75 and D-79 are superseded by v2.0. D-109 is superseded by D-110 (v2.2).
 
