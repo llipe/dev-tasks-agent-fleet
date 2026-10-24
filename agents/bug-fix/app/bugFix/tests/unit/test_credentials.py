@@ -14,6 +14,7 @@ from botocore.exceptions import ClientError
 
 from credentials import (
     CredentialError,
+    MintedToken,
     TokenContext,
     _fetch_pem,
     _get_installation,
@@ -372,7 +373,9 @@ class TestRefreshIfStale:
 
 
 class TestResolveGithubCredentials:
-    @patch("credentials.mint_installation_token")
+    # S-185: resolution mints through ``mint_installation``, which also returns
+    # the token's ``permissions`` (D-58).
+    @patch("credentials.mint_installation")
     @patch("credentials._fetch_pem")
     @patch("credentials._get_installation")
     def test_happy_path(self, mock_get_inst, mock_fetch_pem, mock_mint):
@@ -382,7 +385,7 @@ class TestResolveGithubCredentials:
             "private_key_secret_arn": "arn:aws:sm:us-east-1:123:secret/key",
         }
         mock_fetch_pem.return_value = "-----BEGIN RSA PRIVATE KEY-----\n..."
-        mock_mint.return_value = "ghs_resolved"
+        mock_mint.return_value = MintedToken("ghs_resolved", {"issues": "write"})
 
         ctx = resolve_github_credentials("myorg", "https://sb.co", "key123")
 
@@ -393,9 +396,11 @@ class TestResolveGithubCredentials:
         assert ctx.installation_id == 20
         # S-186: the fleet App id that marker trust checks against (D-53).
         assert ctx.app_id == 10
+        # S-185: the minted token's permissions (D-58).
+        assert ctx.permissions == {"issues": "write"}
 
     @pytest.mark.parametrize("app_id", ["10", True, False, 10.0, None, 0, -3, [10], {"id": 10}])
-    @patch("credentials.mint_installation_token")
+    @patch("credentials.mint_installation")
     @patch("credentials._fetch_pem")
     @patch("credentials._get_installation")
     def test_a_non_int_app_id_is_a_typed_error(
@@ -431,6 +436,20 @@ class TestResolveGithubCredentials:
             new = refresh_if_stale(old, "pem", 10)
         assert new.token == "ghs_new"
         assert new.app_id == 10
+
+    @patch("credentials.mint_installation_token")
+    def test_refresh_keeps_the_permissions(self, mock_mint):
+        mock_mint.return_value = "ghs_new"
+        old = TokenContext(
+            token="ghs_old",
+            issued_at=0.0,
+            installation_id=20,
+            app_id=10,
+            permissions={"issues": "write"},
+        )
+        with patch("credentials.time.monotonic", return_value=10_000.0):
+            new = refresh_if_stale(old, "pem", 10)
+        assert new.permissions == {"issues": "write"}
 
 
 # ---------------------------------------------------------------------------
