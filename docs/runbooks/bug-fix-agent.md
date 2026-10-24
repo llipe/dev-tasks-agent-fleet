@@ -1,14 +1,14 @@
 ---
 name: runbook-bug-fix-agent
-trigger: Deploying or redeploying the bug-fix AgentCore runtime, rotating its Anthropic key or Projects token, or checking its permissions
+trigger: Deploying or redeploying the bug-fix AgentCore runtime, running its sandbox probe, rotating its Anthropic key or Projects token, or checking its permissions
 owner: operator
 last_verified: 2026-10-24
-related: ["agents/bug-fix/agentcore/agentcore.json", "infra/changes/20261023-bug-fix-runtime/", "infra/agentcore-invoke-policy.json", "infra/environments.yaml"]
+related: ["agents/bug-fix/agentcore/agentcore.json", "infra/changes/20261023-bug-fix-runtime/", "infra/changes/20261024-bug-fix-spike-probe/", "infra/agentcore-invoke-policy.json", "infra/environments.yaml", "agents/bug-fix/app/bugFix/probe.py"]
 ---
 
-# Bug-fix agent: deploy, secrets, verification
+# Bug-fix agent: deploy, probe, secrets, verification
 
-How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsdGSPK`, stack `AgentCore-bugfix-default`, account `755641879575`, `us-east-1`), and how to set or rotate its two dedicated secrets.
+How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsdGSPK`, stack `AgentCore-bugfix-default`, account `755641879575`, `us-east-1`), how to run its sandbox probe, and how to set or rotate its two dedicated secrets.
 
 **Blast radius:**
 - A deploy replaces the runtime's image and version.
@@ -38,6 +38,7 @@ How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsd
 
   It grants **no `bedrock:*`**.
 - **Model:** the Anthropic API, through `ANTHROPIC_API_KEY` (D-50), not Bedrock.
+- **The wrapper runs as root and drops to `fixer` with `setpriv` (D-110).** AgentCore runs the container with `no_new_privs` set, so setuid `sudo` can't run. Probe run 1 failed 22 checks on exactly this ("The 'no new privileges' flag is set, which prevents sudo from running as root"). The image has no `sudo`. `main.py` runs as root and starts every process that runs model output or repo code through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, which works under `no_new_privs`. Only wrapper code runs as root. If the runtime ever stops running the image as root, or drops `CAP_SETUID`/`CAP_SETGID`, every sandboxed step fails with a `setpriv` error. The probe's `setpriv.wrapper.root` check shows it.
 
 ## Steps
 
@@ -47,6 +48,36 @@ How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsd
 2. Deploy: `agentcore deploy -y`. This builds the image in CodeBuild and updates the runtime.
 3. If a deploy recreates the ECR repository with a **new KMS key**, update `EcrImageDecrypt` in `role-policy.json` to the new key ARN, then `aws iam put-role-policy --role-name agent-fleet-bug-fix-runtime --policy-name bug-fix-runtime --policy-document file://infra/changes/20261023-bug-fix-runtime/role-policy.json`. Otherwise the runtime can't pull its image.
 4. Commit the CLI's `agents/bug-fix/agentcore/.cli/deployed-state.json`.
+
+### Run the sandbox probe (S-182, D-70)
+
+Probe mode runs the spike checks in `agents/bug-fix/app/bugFix/probe.py` on the deployed runtime. Use it only for the S-182 spike, through `/infra-engineer` with a change record (currently `infra/changes/20261024-bug-fix-spike-probe/`).
+
+- It runs only when **both** are true:
+  - the runtime has `ALLOW_PROBE=1`;
+  - the payload carries a **top-level** `"__probe": true` (a JSON boolean, outside `params`).
+- Without the flag the run fails `PROBE_REFUSED`. `params.__probe` is ignored.
+- **Never from the panel.** The panel can't send the key (`params` is validated with `additionalProperties: false`), and it must not try. Invoke the runtime directly.
+
+1. Set the flag: add `{"name": "ALLOW_PROBE", "value": "1"}` to `envVars` in `agents/bug-fix/agentcore/agentcore.json`, then preview and deploy as in "Deploy or redeploy". While the flag is in the file, `test_agentcore_config.py`'s never-committed test is a strict xfail.
+2. Invoke directly, with a fresh run id and a session id of at least 33 characters:
+
+   ```bash
+   aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --cli-read-timeout 900 \
+     --agent-runtime-arn arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/bugfix_bug_fix-BiuPsdGSPK \
+     --runtime-session-id "s182-probe-$(date -u +%Y%m%dT%H%M%S)-$(openssl rand -hex 8)" \
+     --payload "$(printf '{"run_id":"%s","repository_org":"llipe","repository_name":"bug-fix-smoke","base_branch":"main","params":{},"__probe":true}' "$(uuidgen | tr A-Z a-z)" | base64)" \
+     out.json
+   ```
+
+3. Read `out.json`. It holds the terminal JSON with `probe.checks` (one `{check, verdict, detail}` per check), `probe.passed` and `probe.failed`. Before you keep it as evidence, scan it for secret-shaped strings (`sk-ant-`, `ghp_`, `ghs_`, `github_pat_`). Details are scrubbed, but check anyway.
+4. Record each check in `workstream/spike-bug-fix-sandbox.md` §5.
+5. Unset the flag and redeploy (task 3.10). The strict xfail turns back into a normal test.
+
+Reading the result:
+- `setpriv.*` failing means the drop itself is broken.
+- `userns.available` failing means AgentCore blocks the namespaces `bwrap`/`srt` need. D-110 then reopens the fallback (a separate CLI runtime).
+- Each check carries its own reason in `detail`.
 
 ### Set or rotate the Anthropic key (`agent-fleet/prod/ANTHROPIC_API_KEY`)
 

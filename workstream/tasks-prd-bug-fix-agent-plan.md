@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, stories v2.0; D-88–D-106). 4.0 and 8.0 removed. 5.0, 6.0 (refusal checks and reply), 7.0, 9.0 and 11.0 rewritten. 1.0, 2.0 (Projects PAT), 3.0 (board probe 3.15) and 10.0 (`repo_gate` refusal) updated. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
 | 1.4     | 2026-10-20 | Drift reconciliation of verifier DF-20 to DF-28 (D-79–D-86). New sub-tasks: 5.16, 6.12, 7.11 and 11.12. 9.9 and 10.13 reworded. The Verify-AC steps 5.11, 6.7, 8.7 and 10.9 are renumbered to the v1.4 story ACs, and the header versions are updated (DF-24). | product-engineer |
@@ -44,18 +45,17 @@
 ## Relevant Files
 
 - `agents/bug-fix/agentcore/agentcore.json` - Runtime config: env, `maxLifetime` 3600, `FIX_LOOP_ENABLED`, `PANEL_BASE_URL`
-- `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, sudo, pinned Claude Code and sandbox runtime
+- `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, util-linux (`setpriv`), pinned Claude Code and sandbox runtime; the wrapper runs as root, no `sudo` (D-110)
 - `agents/bug-fix/app/bugFix/managed-settings.json` - Managed Claude Code policy, installed at `/etc/claude-code/`
 - `agents/bug-fix/app/bugFix/{Makefile,pyproject.toml}` - Agent quality gates
 - `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended)
 - `agents/bug-fix/app/bugFix/config.py` - Typed env config
 - `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration
 - `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9)
-- `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner: `sudo -u fixer`, allow-list env, `srt`/CLI sandbox, timeout, post-run sweep (S-182)
-- `agents/bug-fix/app/bugFix/fixer_exec.py` - Runs as `fixer` after `sudo`; rebuilds the env from the allow-list (S-182, D-109)
-- `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105)
+- `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner: `setpriv` drop from the root wrapper, allow-list env, `srt`/CLI sandbox, timeout, two-pass post-run sweep (S-182, D-110)
+- `agents/bug-fix/app/bugFix/fixer_exec.py` - Runs as `fixer` after `setpriv`; rebuilds the env from the allow-list and refuses to run as root (S-182, D-110)
+- `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105, D-110: `setpriv.*`, `noescalate.*`, `userns.available`)
 - `agents/bug-fix/app/bugFix/probe_inner.py` - The probe's `fixer`-side helper, stdlib only (S-182)
-- `agents/bug-fix/app/bugFix/sudoers-bug-fix` - `/etc/sudoers.d/bug-fix`: the one `wrapper` -> `fixer` rule (S-182, D-109)
 - `agents/bug-fix/app/bugFix/srt-settings.json` - `/etc/bug-fix/srt-settings.json`: sandbox-runtime policy for `fixer` scripts (S-182)
 - `agents/bug-fix/app/bugFix/params.py` - Typed params and cross-field label rules
 - `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL)
@@ -69,7 +69,7 @@
 - `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_sudoers}.py`, `component/test_sandbox_proc.py`)
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17)
 - `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
@@ -79,7 +79,8 @@
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema and webhook-resolve check
 - `supabase/migrations/<ts>_seed_bug_fix_agent.sql`, `supabase/seed.sql` - `agents` row
 - `infra/changes/<date>-bug-fix-runtime/` - Infra change record
-- `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C)
+- `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C); root wrapper + `setpriv` fact and the probe-invocation procedure (3.17)
+- `docs/runbooks/README.md` - Runbook index row (3.17: probe in the trigger)
 - `workstream/spike-bug-fix-sandbox.md` - Spike report
 - `workstream/decisions-bug-fix-agent.md` - Append for OQ-1
 
@@ -160,11 +161,12 @@
     - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
     - IC (3.7): as `fixer`, `/proc/<wrapper pid>/environ` is unreadable.
   - [ ] 3.17 `[T]`/`[I]` [agents/bug-fix] (D-110, replaces D-109 after probe run 1 found `no_new_privs` on AgentCore)
-    - Dockerfile: the wrapper runs as root; remove `sudo` and `/etc/sudoers.d/bug-fix`.
-    - `sandbox.py`/`fixer_exec.py`: launch through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, with the allow-listed env passed explicitly.
-    - `image-smoke.sh`: `setpriv` drop gives uid 10002 with no capabilities; `fixer` can't regain root; `fixer` can't read the root wrapper's `/proc/<pid>/environ` or `mem`; no `sudo` binary.
-    - Probe: the uid and `sudo` checks change to `setpriv` and no-escalation checks; add a user-namespace check for `bwrap`/`srt` under `no_new_privs`.
-    - Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b and 2b).
+    - [x] 3.17.1 Dockerfile: the wrapper runs as root; remove `sudo` and `/etc/sudoers.d/bug-fix`.
+    - [x] 3.17.2 `sandbox.py`/`fixer_exec.py`: launch through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, with the allow-listed env passed explicitly.
+    - [x] 3.17.3 `image-smoke.sh`: `setpriv` drop gives uid 10002 with no capabilities; `fixer` can't regain root; `fixer` can't read the root wrapper's `/proc/<pid>/environ` or `mem`; no `sudo` binary.
+    - [x] 3.17.4 Probe: the uid and `sudo` checks change to `setpriv` and no-escalation checks; add a user-namespace check for `bwrap`/`srt` under `no_new_privs`.
+    - [x] 3.17.5 Local evidence with `--security-opt no-new-privileges` (default and permissive profiles) in the spike report; README and runbook (root wrapper, probe procedure) updated.
+    - [ ] 3.17.6 [infra] Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b and 2b).
   - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
   - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`
