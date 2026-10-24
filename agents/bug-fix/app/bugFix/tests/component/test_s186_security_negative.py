@@ -261,6 +261,17 @@ class TestTruncation:
         out.encode("utf-8")  # raises on a lone surrogate
         assert parse_block(out) == (Marker("disposition", RUN),)
 
+    def test_lone_surrogates_in_model_text_do_not_abort_the_disposition(self):
+        # QA gap 6: the body is valid UTF-8, so GitHub can't 422 it.
+        gh = FakeGitHub()
+        diag = Diagnosis(why="bad \ud800 text", tried="tried \udfff\ud83d", diffstat="\ud83d x")
+        result = _disposer(gh).dispose(diag)
+        assert result.status == "applied"
+        body = gh.writes()[0].json["body"]
+        body.encode("utf-8")
+        assert "bad � text" in body
+        assert parse_block(body) == (Marker("disposition", RUN),)
+
     @pytest.mark.parametrize("pad", range(0, 4))
     def test_disposition_body_keeps_marker_and_pairs(self, pad):
         tried = "x" * pad + "\U0001f41b" * MAX_COMMENT_CHARS

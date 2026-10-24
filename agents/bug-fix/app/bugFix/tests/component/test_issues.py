@@ -39,6 +39,33 @@ class TestComments:
         assert call.timeout is not None
         assert created["id"] > 2**31
 
+    @pytest.mark.parametrize(
+        ("body", "sent"),
+        [
+            ("a\ud800b", "a�b"),  # lone high surrogate
+            ("a\udc00b", "a�b"),  # lone low surrogate
+            ("x\udc00\ud800y", "x��y"),  # reversed: not a pair
+            ("😀", "\U0001f600"),  # a split pair is joined, not dropped
+            ("end\ud83d", "end�"),
+            ("plain \U0001f600 text", "plain \U0001f600 text"),
+        ],
+    )
+    def test_lone_surrogates_are_replaced_before_posting(self, body, sent):
+        # QA gap 6: a lone surrogate in model text made GitHub answer 422,
+        # which aborted the disposition. The posted body is valid UTF-8.
+        gh = FakeGitHub()
+        _client(gh).post_comment(7, body)
+        posted = gh.calls[-1].json["body"]
+        assert posted == sent
+        posted.encode("utf-8")
+
+    def test_an_oversized_body_with_lone_surrogates_is_valid_after_truncation(self):
+        gh = FakeGitHub()
+        _client(gh).post_comment(7, "\ud800" * (MAX_COMMENT_CHARS + 10))
+        posted = gh.calls[-1].json["body"]
+        assert utf16_len(posted) <= MAX_COMMENT_CHARS
+        posted.encode("utf-8")
+
     def test_token_may_be_a_callable(self):
         gh = FakeGitHub()
         _client(gh, token=lambda: "ghs_fresh").post_comment(7, "x")

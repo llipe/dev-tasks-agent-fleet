@@ -19,7 +19,9 @@ token, a request body or a response body, and transport exceptions are raised
 ``from None`` so their text (which may echo headers) is dropped.
 
 Comment bodies are capped at GitHub's 65,536 characters, counted in UTF-16 code
-units so astral characters (emoji) can't push a body over the limit.
+units so astral characters (emoji) can't push a body over the limit. A lone
+surrogate is replaced with U+FFFD first, so a model string can't make GitHub
+reject the body.
 """
 
 from __future__ import annotations
@@ -97,6 +99,14 @@ def cut_utf16(text: str, units: int) -> str:
         if used > units:
             return text[:i]
     return text
+
+
+def well_formed(text: str) -> str:
+    """``text`` as valid Unicode: a split surrogate pair is joined, and a lone
+    surrogate becomes U+FFFD. GitHub answers 422 to a body that carries one
+    (QA gap 6), which would abort the post.
+    """
+    return text.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
 
 
 def truncate_comment(body: str, limit: int = MAX_COMMENT_CHARS) -> str:
@@ -249,13 +259,14 @@ class IssuesClient:
     def post_comment(
         self, issue_number: int, body: str, *, timeout: float | None = None
     ) -> dict[str, Any]:
-        """Post a comment (truncated to the size limit) and return GitHub's object."""
+        """Post a comment (made well-formed, then truncated to the size limit) and
+        return GitHub's object."""
         label = self._path(f"/issues/{issue_number}/comments")
         resp = self._request(
             "POST",
             self.api_url + label,
             label=label,
-            json={"body": truncate_comment(body)},
+            json={"body": truncate_comment(well_formed(body))},
             timeout=timeout,
         )
         try:
