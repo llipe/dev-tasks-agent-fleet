@@ -20,12 +20,14 @@
 #     scripts. No sudo and no sudo rule.
 #   - /etc/claude-code/managed-settings.json, root-owned 0644: the managed
 #     policy, which takes precedence over a target repo's own .claude/ (D-51).
-#   - /etc/hosts is NOT set here: BuildKit bind-mounts it during the build, so
-#     a COPY or RUN can't fill it and the image ships it empty. srt and the
-#     CLI's Bash sandbox point their proxy at `localhost`, which must resolve
-#     from /etc/hosts inside the sandbox's network namespace; sandbox.py adds
-#     `127.0.0.1 localhost` at run time when the runtime (AgentCore) didn't
-#     (S-182 re-probe 2b).
+#   - `localhost` resolves through NSS, not /etc/hosts. srt and the CLI's
+#     Bash sandbox point their proxy at `localhost` (hard-coded), and the
+#     sandbox's network namespace has no DNS (S-182 re-probe 2b). On AgentCore
+#     /etc/hosts is empty and read-only (re-probe 2c), and BuildKit
+#     bind-mounts it during the build, so neither the image nor the wrapper
+#     can fill it. libnss-myhostname answers `localhost` without DNS, and
+#     /etc/gai.conf puts 127.0.0.1 before ::1. sandbox.py only checks this
+#     before each run; it never writes /etc/hosts.
 #
 # No secret is baked in. The runtime env carries secret IDs only.
 #
@@ -49,12 +51,27 @@ RUN if [ -s /usr/local/share/ca-certificates/extra-ca.crt ]; then \
 # and by repo scripts; make runs Python repos' gate targets (D-19); util-linux
 # provides setpriv, the root -> fixer drop (D-110); procps provides
 # /usr/bin/kill and /usr/bin/pkill for the post-run sweep of every fixer
-# process (D-62). The build fails if setpriv is missing or sudo is present.
+# process (D-62); libnss-myhostname resolves `localhost` (see below). The
+# build fails if setpriv is missing or sudo is present.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bubblewrap ca-certificates curl git gnupg make procps ripgrep socat util-linux && \
+      bubblewrap ca-certificates curl git gnupg libnss-myhostname make procps ripgrep \
+      socat util-linux && \
     rm -rf /var/lib/apt/lists/* && \
     command -v setpriv && \
     ! command -v sudo
+
+# `localhost` for the sandbox proxy (S-182 fix round 3). AgentCore's /etc/hosts
+# is empty and read-only (re-probe 2c), and the sandbox's network namespace has
+# no DNS, so srt's and the CLI's `http://…@localhost:<port>` proxy can only
+# resolve through nss-myhostname, which must come before `dns`. The hosts line
+# is written explicitly, and the grep fails the build if it didn't take.
+# getaddrinfo would return ::1 before 127.0.0.1, and srt's in-namespace bridge
+# may listen on IPv4 only, so gai.conf prefers IPv4-mapped addresses.
+RUN sed -i -E 's/^hosts:.*/hosts:          files myhostname dns/' /etc/nsswitch.conf && \
+    grep -qxE 'hosts:[[:space:]]+files myhostname dns' /etc/nsswitch.conf && \
+    printf '%s\n' \
+      '# bug-fix image (S-182 fix round 3): prefer 127.0.0.1 over ::1 for localhost.' \
+      'precedence ::ffff:0:0/96 100' > /etc/gai.conf
 
 # Node.js 26 (NodeSource, same mechanism as the sibling image).
 ARG NODE_MAJOR=26

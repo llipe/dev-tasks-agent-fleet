@@ -25,9 +25,12 @@
 #     them, /root or /home of anyone else;
 #   - policy: /etc/claude-code/managed-settings.json is root:root 0644, and as
 #     fixer it can't be appended to and the directory isn't writable;
-#   - localhost (S-182 re-probe 2b): the image's /etc/hosts is empty, and
-#     sandbox.py adds `127.0.0.1 localhost` to an empty one (once) so fixer
-#     resolves srt's proxy host; the pinned CLI accepts the
+#   - localhost (S-182 re-probes 2b, 2c; fix round 3): the image's /etc/hosts
+#     is empty; nsswitch has `hosts: files myhostname dns`; /etc/gai.conf
+#     prefers IPv4; with an empty, read-only /etc/hosts bind-mounted (as on
+#     AgentCore), `getent ahostsv4 localhost` gives 127.0.0.1, sandbox.py's
+#     preflight reports `nss` without writing, and fixer's getaddrinfo returns
+#     127.0.0.1 first; the pinned CLI accepts the
 #     `--disallowedTools=WebFetch,WebSearch` flag sandbox.py adds.
 #
 # Exits non-zero on the first failed assertion. Needs Docker and a locally
@@ -218,26 +221,43 @@ echo "$sweep_out" | grep -qx 'fixer=0' || fail "fixer process(es) survived Sandb
 echo "$sweep_out" | grep -qx 'root=alive' || fail "Sandbox().sweep() killed a root process: $sweep_out"
 ok "Sandbox().sweep() leaves no fixer process (setsid daemon included) and spares root's"
 
-# localhost for the sandbox proxy (S-182 re-probe 2b). The image's own
-# /etc/hosts is empty (BuildKit can't fill it) and AgentCore doesn't write
-# one; srt and the CLI point their proxy at `localhost`, so sandbox.py adds
-# `127.0.0.1 localhost` before a run. Emulated with an empty, writable hosts
-# file mounted over Docker's own.
+# localhost for the sandbox proxy (S-182 re-probes 2b, 2c; fix round 3). srt
+# and the CLI point their proxy at `localhost`, the sandbox's net namespace has
+# no DNS, and AgentCore's /etc/hosts is empty and read-only. The image resolves
+# `localhost` with nss-myhostname and prefers IPv4 through gai.conf. AgentCore
+# is emulated by bind-mounting an empty, read-only file over /etc/hosts.
 cid="$(docker create --platform "$PLATFORM" "$IMAGE")"
 img_hosts="$(docker export "$cid" | tar -xOf - etc/hosts | wc -c | tr -d ' ')"
 docker rm "$cid" >/dev/null
 [ "$img_hosts" = "0" ] || fail "image /etc/hosts is ${img_hosts} bytes; expected empty (update sandbox.py's note if this changed)"
-ok "image /etc/hosts is empty (the runtime fix is needed)"
+ok "image /etc/hosts is empty (localhost must come from NSS)"
+
+nss_line="$(as_root "grep -E '^hosts:' /etc/nsswitch.conf")"
+echo "$nss_line" | grep -qxE 'hosts:[[:space:]]+files myhostname dns' \
+  || fail "nsswitch hosts line is '$nss_line', expected 'files myhostname dns'"
+ok "nsswitch: $nss_line (myhostname before dns)"
+
+as_root "grep -qxF 'precedence ::ffff:0:0/96 100' /etc/gai.conf" \
+  || fail "/etc/gai.conf missing or without 'precedence ::ffff:0:0/96 100'"
+ok "/etc/gai.conf prefers IPv4 (precedence ::ffff:0:0/96 100)"
+
 hosts_tmp="$(mktemp)"
 : > "$hosts_tmp"
+# `getent hosts` asks for AF_INET6 first and always prints ::1, so the IPv4
+# answer is checked with ahostsv4 and the order with getaddrinfo (as Python,
+# Node and pip use it).
 hosts_out="$(docker run --rm --platform "$PLATFORM" --security-opt no-new-privileges \
-  -v "$hosts_tmp:/etc/hosts" --entrypoint /bin/sh "$IMAGE" -c \
-  "cd /app && python3 -c 'from sandbox import Sandbox; s = Sandbox(); print(s.ensure_hosts(), s.ensure_hosts())' && \
-   $SETPRIV python3 -c 'import socket; print(socket.getaddrinfo(\"localhost\", None)[0][4][0])'")"
+  --mount "type=bind,src=$hosts_tmp,dst=/etc/hosts,readonly" --entrypoint /bin/sh "$IMAGE" -c \
+  "if { echo x >> /etc/hosts; } 2>/dev/null; then echo hosts=writable; else echo hosts=read-only; fi; \
+   echo getent=\$(getent ahostsv4 localhost | awk 'NR == 1 {print \$1}'); \
+   cd /app && python3 -c 'from sandbox import Sandbox; print(\"via=\" + Sandbox().check_localhost())'; \
+   echo hosts_bytes=\$(wc -c < /etc/hosts); \
+   $SETPRIV python3 -c 'import socket; print(\"first=\" + socket.getaddrinfo(\"localhost\", None)[0][4][0])'")"
 rm -f "$hosts_tmp"
-[ "$hosts_out" = "$(printf 'added present\n127.0.0.1')" ] \
-  || fail "empty /etc/hosts: expected 'added present' then 127.0.0.1 for fixer, got: $hosts_out"
-ok "sandbox.py adds 127.0.0.1 localhost to an empty /etc/hosts, once; fixer resolves it"
+want="$(printf 'hosts=read-only\ngetent=127.0.0.1\nvia=nss\nhosts_bytes=0\nfirst=127.0.0.1')"
+[ "$hosts_out" = "$want" ] || fail "empty read-only /etc/hosts: expected '$want', got: $hosts_out"
+ok "empty read-only /etc/hosts (AgentCore): the mount is read-only; getent ahostsv4 localhost = 127.0.0.1 through NSS"
+ok "empty read-only /etc/hosts: Sandbox().check_localhost() = nss, /etc/hosts left untouched; fixer's getaddrinfo(localhost) gives 127.0.0.1 first"
 
 # Defence in depth for WebFetch/WebSearch: the pinned CLI accepts the flag
 # sandbox.py adds to every headless run.

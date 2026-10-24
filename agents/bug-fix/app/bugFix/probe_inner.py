@@ -342,11 +342,15 @@ def cmd_tool(*argv: str) -> dict[str, Any]:
     return {"rc": done.returncode, "out": (done.stdout + done.stderr)[-500:]}
 
 
-def cmd_resolve(host: str, hosts_path: str = "/etc/hosts") -> dict[str, Any]:
-    """How ``host`` resolves here, plus the ``hosts_path`` lines naming it.
+def cmd_resolve(
+    host: str, hosts_path: str = "/etc/hosts", nsswitch_path: str = "/etc/nsswitch.conf"
+) -> dict[str, Any]:
+    """How ``host`` resolves here (``getaddrinfo``, in order), plus the
+    ``hosts_path`` lines naming it and the nsswitch ``hosts:`` line.
 
-    Re-probe 2b: srt's proxy variables say ``localhost``, and the sandbox's
-    network namespace has no DNS, so ``localhost`` must come from /etc/hosts.
+    Re-probes 2b/2c: srt's proxy variables say ``localhost``, and the sandbox's
+    network namespace has no DNS, so ``localhost`` must come from /etc/hosts or
+    from nss-myhostname (AgentCore's /etc/hosts is empty and read-only).
     """
     out: dict[str, Any] = {"addrs": []}
     try:
@@ -360,6 +364,16 @@ def cmd_resolve(host: str, hosts_path: str = "/etc/hosts") -> dict[str, Any]:
     except OSError:
         lines = []
     out["hosts"] = [ln for ln in lines if host in ln.split("#", 1)[0].split()[1:]][:5]
+    out["nsswitch"] = None
+    try:
+        with open(nsswitch_path, encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                fields = ln.split("#", 1)[0].split()
+                if fields[:1] == ["hosts:"]:
+                    out["nsswitch"] = " ".join(fields[1:])
+                    break
+    except OSError:
+        pass
     return out
 
 

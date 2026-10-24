@@ -27,7 +27,7 @@ import main
 import probe
 from heartbeat import read_terminal_payload
 from probe import CheckResult, Verdict
-from sandbox import Outcome, SandboxResult
+from sandbox import Outcome, SandboxResult, SandboxUnavailable
 from scrubber import SecretSet
 from tests.unit.test_main_stub import CONFIG, PAYLOAD, SUPABASE_KEY, FakeSupabase
 
@@ -333,7 +333,11 @@ class TestNetChecks:
 
 
 class TestLocalhostCheck:
-    """Re-probe 2b: srt's proxy is ``localhost``; it must resolve inside the sandbox."""
+    """Re-probes 2b/2c: srt's proxy is ``localhost``; it must resolve to loopback
+    inside the sandbox, IPv4 first (srt's in-namespace bridge may listen on
+    IPv4 only). The detail names the route the wrapper's preflight found:
+    ``via=hosts`` (``/etc/hosts``), ``via=nss`` (``libnss-myhostname``) or
+    ``via=none``."""
 
     def _inner(self, resolve: Any) -> FakeInner:
         return FakeInner(
@@ -344,17 +348,26 @@ class TestLocalhostCheck:
             }
         )
 
-    def test_loopback_passes_and_reports_the_hosts_state(self):
-        inner = self._inner({"addrs": ["127.0.0.1"], "hosts": ["127.0.0.1\tlocalhost"]})
-        (r,) = [x for x in probe.net_checks(inner, hosts_status=lambda: "added") if
+    def test_loopback_passes_and_reports_the_route(self):
+        inner = self._inner(
+            {"addrs": ["127.0.0.1", "::1"], "hosts": [], "nsswitch": "files myhostname dns"}
+        )
+        (r,) = [x for x in probe.net_checks(inner, localhost_via=lambda: "nss") if
                 x.check == "net.localhost"]  # fmt: skip
         assert r.verdict is Verdict.PASS
-        assert "etc_hosts=added" in r.detail
+        assert "via=nss" in r.detail
         assert "127.0.0.1" in r.detail
+        assert "files myhostname dns" in r.detail
         assert ("resolve", ("localhost",), "sandbox") in inner.calls
 
+    def test_via_hosts_is_reported(self):
+        inner = self._inner({"addrs": ["127.0.0.1"], "hosts": ["127.0.0.1\tlocalhost"]})
+        r = probe.net_checks(inner, localhost_via=lambda: "hosts")[0]
+        assert r.verdict is Verdict.PASS
+        assert "via=hosts" in r.detail
+
     def test_it_runs_first(self):
-        inner = self._inner({"addrs": ["::1", "127.0.0.1"], "hosts": []})
+        inner = self._inner({"addrs": ["127.0.0.1", "::1"], "hosts": []})
         assert probe.net_checks(inner)[0].check == "net.localhost"
 
     @pytest.mark.parametrize(
@@ -363,16 +376,27 @@ class TestLocalhostCheck:
             {"addrs": [], "error": "gaierror: [Errno -3] Temporary failure in name resolution"},
             {"addrs": ["10.0.0.5"]},
             {"addrs": ["127.0.0.1", "10.0.0.5"]},
+            # Loopback, but IPv6 first: a v4-only bridge would refuse it.
+            {"addrs": ["::1", "127.0.0.1"]},
+            {"addrs": ["::1"]},
         ],
     )
-    def test_unresolved_or_non_loopback_fails(self, answer):
+    def test_unresolved_non_loopback_or_ipv6_first_fails(self, answer):
         r = probe.net_checks(self._inner(answer))[0]
         assert r.check == "net.localhost"
         assert r.verdict is Verdict.FAIL
 
-    def test_default_hosts_status_is_unchecked(self):
+    def test_default_route_is_unchecked(self):
         r = probe.net_checks(self._inner({"addrs": ["127.0.0.1"]}))[0]
-        assert "etc_hosts=unchecked" in r.detail
+        assert "via=unchecked" in r.detail
+
+    def test_preflight_failure_reports_via_none(self):
+        refused = SandboxUnavailable("sandbox cannot resolve localhost: x")
+        r = probe.net_checks(self._inner(refused), localhost_via=lambda: "none")[0]
+        assert r.check == "net.localhost"
+        assert r.verdict is Verdict.FAIL
+        assert "via=none" in r.detail
+        assert "cannot resolve localhost" in r.detail
 
 
 class TestProcAndEnvChecks:
@@ -565,7 +589,7 @@ class FakeSandbox:
         self.stdout = stdout
         self.outcome = outcome
         self.calls: list[dict[str, Any]] = []
-        self.hosts_status = "added"
+        self.localhost_via = "nss"
 
     def run(self, argv, **kw):
         self.calls.append({"argv": list(argv), **kw})
@@ -986,7 +1010,6 @@ class TestCliChecks:
         assert r.verdict is Verdict.FAIL
 
     def test_version_sandbox_error_is_reported(self):
-        from sandbox import SandboxUnavailable
 
         class SB(FakeSandbox):
             def run(self, argv, **kw):
@@ -1324,7 +1347,6 @@ class TestSandboxChecks:
         }
 
     def test_unavailable(self):
-        from sandbox import SandboxUnavailable
 
         class SB(_SweepSandbox):
             def check_available(self, mode):

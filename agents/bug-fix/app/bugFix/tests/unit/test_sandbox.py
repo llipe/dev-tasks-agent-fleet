@@ -694,23 +694,39 @@ class TestSweepAndReap:
 
 
 # ---------------------------------------------------------------------------
-# S-182 fix round 2: srt's proxy host must resolve inside the sandbox
+# S-182 fix round 3: srt's proxy host must resolve inside the sandbox
 # ---------------------------------------------------------------------------
 
+NSS_OK = "passwd: files\nhosts:          files myhostname dns\nnetworks: files\n"
 
-class TestLoopbackHosts:
-    """Re-probe 2b: inside srt's network namespace there is no DNS, and srt (and
-    the CLI's own Bash sandbox) point every proxy variable at ``localhost``. The
-    image ships a 0-byte ``/etc/hosts`` (BuildKit bind-mounts it, so the
-    Dockerfile can't fill it), so on a runtime that doesn't write one,
-    ``localhost`` fails with EAI_AGAIN and every registry is unreachable. The
-    wrapper (root) adds the loopback entry before any sandboxed run."""
 
-    def test_empty_file_gets_the_ipv4_loopback_entry(self, tmp_path):
-        hosts = tmp_path / "hosts"
-        hosts.write_text("")
-        assert sandbox.ensure_loopback_hosts(str(hosts)) == "added"
-        assert hosts.read_text() == "127.0.0.1\tlocalhost\n"
+@pytest.fixture
+def nss(tmp_path: Path) -> dict[str, Any]:
+    """An empty, read-only hosts file (as on AgentCore), an nsswitch.conf with
+    ``myhostname`` before ``dns``, and a lib dir holding the NSS module."""
+    hosts = tmp_path / "etc-hosts"
+    hosts.write_text("")
+    hosts.chmod(0o444)
+    nsswitch = tmp_path / "nsswitch.conf"
+    nsswitch.write_text(NSS_OK)
+    libdir = tmp_path / "lib"
+    libdir.mkdir()
+    (libdir / sandbox.NSS_MYHOSTNAME_LIB).write_text("")
+    return {
+        "hosts_path": str(hosts),
+        "nsswitch_path": str(nsswitch),
+        "lib_dirs": (str(tmp_path / "missing-lib"), str(libdir)),
+    }
+
+
+class TestLocalhostResolution:
+    """Re-probes 2b and 2c: inside srt's network namespace there is no DNS, and
+    srt (and the CLI's own Bash sandbox) point every proxy variable at
+    ``localhost``. AgentCore's ``/etc/hosts`` is empty **and read-only**, so the
+    wrapper can't add an entry (fix round 2 failed closed on 2c). The image
+    resolves ``localhost`` through NSS (``libnss-myhostname``); before every
+    run the wrapper only *checks* that one of the two routes is in place, and
+    never writes ``/etc/hosts``."""
 
     @pytest.mark.parametrize(
         "text",
@@ -721,11 +737,18 @@ class TestLoopbackHosts:
             "# comment\n10.0.0.5 box\n127.0.0.1   localhost # trailing\n",
         ],
     )
-    def test_existing_loopback_entry_is_left_alone(self, tmp_path, text):
+    def test_loopback_entry_in_hosts_is_via_hosts(self, tmp_path, text):
         hosts = tmp_path / "hosts"
         hosts.write_text(text)
-        assert sandbox.ensure_loopback_hosts(str(hosts)) == "present"
+        got = sandbox.check_localhost_resolution(
+            str(hosts), str(tmp_path / "no-nsswitch"), lib_dirs=()
+        )
+        assert got == "hosts"
         assert hosts.read_text() == text
+
+    def test_empty_read_only_hosts_with_nss_is_via_nss(self, nss):
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
+        assert Path(nss["hosts_path"]).read_text() == ""
 
     @pytest.mark.parametrize(
         "text",
@@ -736,76 +759,140 @@ class TestLoopbackHosts:
             "169.254.1.1 box",
         ],
     )
-    def test_no_loopback_mapping_appends_one_line(self, tmp_path, text):
-        hosts = tmp_path / "hosts"
+    def test_hosts_without_a_loopback_mapping_falls_back_to_nss(self, nss, text):
+        hosts = Path(nss["hosts_path"])
+        hosts.chmod(0o644)
         hosts.write_text(text)
-        assert sandbox.ensure_loopback_hosts(str(hosts)) == "added"
-        body = hosts.read_text()
-        assert body.startswith(text)
-        assert body.splitlines()[-1] == "127.0.0.1\tlocalhost"
-        assert body.count("127.0.0.1\tlocalhost") == 1
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
+        assert hosts.read_text() == text
 
-    def test_idempotent(self, tmp_path):
-        hosts = tmp_path / "hosts"
-        hosts.write_text("")
-        sandbox.ensure_loopback_hosts(str(hosts))
-        assert sandbox.ensure_loopback_hosts(str(hosts)) == "present"
-        assert hosts.read_text() == "127.0.0.1\tlocalhost\n"
+    def test_malformed_hosts_line_is_skipped(self, nss):
+        hosts = Path(nss["hosts_path"])
+        hosts.chmod(0o644)
+        hosts.write_text("not-an-ip localhost\n")
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
 
-    def test_missing_file_is_created(self, tmp_path):
-        hosts = tmp_path / "hosts"
-        assert sandbox.ensure_loopback_hosts(str(hosts)) == "added"
-        assert hosts.read_text() == "127.0.0.1\tlocalhost\n"
-
-    def test_unwritable_without_entry_is_unavailable(self, tmp_path):
-        hosts = tmp_path / "nodir" / "hosts"
+    def test_unreadable_hosts_is_reported_with_the_nss_reason(self, nss, tmp_path):
+        # A directory: open() fails with an OSError that isn't FileNotFoundError.
+        nss["hosts_path"] = str(tmp_path)
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
+        Path(nss["nsswitch_path"]).write_text("hosts: files dns\n")
         with pytest.raises(SandboxUnavailable) as exc:
-            sandbox.ensure_loopback_hosts(str(hosts))
-        assert "localhost" in str(exc.value)
+            sandbox.check_localhost_resolution(**nss)
+        assert f"{tmp_path}: " in str(exc.value)
+        assert "so no loopback entry" in str(exc.value)
+
+    def test_missing_hosts_file_is_not_created(self, nss, tmp_path):
+        nss["hosts_path"] = str(tmp_path / "absent-hosts")
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
+        assert not (tmp_path / "absent-hosts").exists()
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "hosts: files myhostname dns",
+            "hosts: files myhostname",
+            "hosts:\tmyhostname files dns",
+            "hosts: files mdns4_minimal myhostname dns # trailing comment",
+        ],
+    )
+    def test_myhostname_before_dns_or_without_dns_is_accepted(self, nss, line):
+        Path(nss["nsswitch_path"]).write_text(f"passwd: files\n{line}\n")
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
+
+    @pytest.mark.parametrize(
+        ("text", "reason"),
+        [
+            ("hosts: files dns\n", "myhostname"),
+            ("hosts: files dns myhostname\n", "after dns"),
+            ("# hosts: files myhostname dns\nhosts: files dns\n", "myhostname"),
+            ("passwd: files\n", "no hosts line"),
+            ("hosts: files [NOTFOUND=return] myhostname dns\n", "return"),
+        ],
+    )
+    def test_nsswitch_without_a_usable_myhostname_is_unavailable(self, nss, text, reason):
+        Path(nss["nsswitch_path"]).write_text(text)
+        with pytest.raises(SandboxUnavailable) as exc:
+            sandbox.check_localhost_resolution(**nss)
+        msg = str(exc.value)
+        assert msg.startswith("sandbox cannot resolve localhost: ")
+        assert reason in msg
+        assert "no loopback entry" in msg
+
+    def test_missing_nsswitch_is_unavailable(self, nss, tmp_path):
+        nss["nsswitch_path"] = str(tmp_path / "absent-nsswitch")
+        with pytest.raises(SandboxUnavailable) as exc:
+            sandbox.check_localhost_resolution(**nss)
+        assert "absent-nsswitch" in str(exc.value)
+
+    def test_missing_nss_module_is_unavailable(self, nss):
+        nss["lib_dirs"] = nss["lib_dirs"][:1]
+        with pytest.raises(SandboxUnavailable) as exc:
+            sandbox.check_localhost_resolution(**nss)
+        assert sandbox.NSS_MYHOSTNAME_LIB in str(exc.value)
+
+    def test_never_writes_hosts(self):
+        assert not hasattr(sandbox, "ensure_loopback_hosts")
+        assert not hasattr(sandbox, "LOOPBACK_HOSTS_LINE")
+
+    def test_default_paths(self):
+        p = sandbox.DEFAULT_PATHS
+        assert p.hosts == "/etc/hosts"
+        assert p.nsswitch == "/etc/nsswitch.conf"
+        # Debian arm64 (the image) and amd64, merged /usr or not.
+        for d in ("/usr/lib/aarch64-linux-gnu", "/lib/aarch64-linux-gnu"):
+            assert d in p.nss_lib_dirs
+        assert sandbox.NSS_MYHOSTNAME_LIB == "libnss_myhostname.so.2"
+
+    def _nss_paths(self, paths: SandboxPaths, nss: dict[str, Any]) -> SandboxPaths:
+        return paths._replace(
+            hosts=nss["hosts_path"], nsswitch=nss["nsswitch_path"], nss_lib_dirs=nss["lib_dirs"]
+        )
 
     @pytest.mark.parametrize("mode", list(Mode))
-    def test_run_fixes_hosts_before_spawning(self, paths, mode):
-        Path(paths.hosts).write_text("")
+    def test_run_checks_before_spawning(self, paths, nss, mode):
         clock = FakeClock()
         seen: dict[str, str] = {}
+        p = self._nss_paths(paths, nss)
 
         def _popen(cmd, **kw):
-            seen["hosts"] = Path(paths.hosts).read_text()
+            seen["via"] = sb.localhost_via
             return FakeProc(clock, exits_at=0.0)
 
         sb = Sandbox(
-            paths,
+            p,
             popen=_popen,
             clock=clock,
             sleep=clock.sleep,
             sweeper=lambda: None,
             reaper=lambda: None,
         )
-        argv = [paths.claude, "-p", "x"] if mode is Mode.CLI else ["true"]
+        argv = [p.claude, "-p", "x"] if mode is Mode.CLI else ["true"]
         sb.run(argv, mode=mode, cwd="/w", timeout=5)
-        assert seen["hosts"] == "127.0.0.1\tlocalhost\n"
-        assert sb.hosts_status == "added"
+        assert seen["via"] == "nss"
+        assert Path(p.hosts).read_text() == ""
 
-    def test_run_refuses_to_spawn_when_hosts_cannot_be_fixed(self, paths, tmp_path):
-        broken = paths._replace(hosts=str(tmp_path / "nodir" / "hosts"))
+    def test_run_refuses_to_spawn_when_localhost_cannot_resolve(self, paths, nss, tmp_path):
+        Path(nss["nsswitch_path"]).write_text("hosts: files dns\n")
         calls: list[Any] = []
-        sb = Sandbox(broken, popen=lambda *a, **k: calls.append(a), sweeper=lambda: None)
-        with pytest.raises(SandboxUnavailable):
+        sb = Sandbox(
+            self._nss_paths(paths, nss),
+            popen=lambda *a, **k: calls.append(a),
+            sweeper=lambda: None,
+        )
+        with pytest.raises(SandboxUnavailable, match="cannot resolve localhost"):
             sb.run(["true"], cwd="/w", timeout=5)
         assert calls == []
+        assert sb.localhost_via == "none"
 
-    def test_hosts_status_starts_unchecked_and_reports_present(self, paths):
+    def test_localhost_via_starts_unchecked_and_records_the_route(self, paths, nss):
         sb = Sandbox(paths)
-        assert sb.hosts_status == "unchecked"
-        assert sb.ensure_hosts() == "present"
-        assert sb.hosts_status == "present"
-
-    def test_added_is_sticky(self, paths):
-        Path(paths.hosts).write_text("")
-        sb = Sandbox(paths)
-        sb.ensure_hosts()
-        sb.ensure_hosts()
-        assert sb.hosts_status == "added"
+        assert sb.localhost_via == "unchecked"
+        assert sb.check_localhost() == "hosts"
+        assert sb.localhost_via == "hosts"
+        sb = Sandbox(self._nss_paths(paths, nss))
+        assert sb.check_localhost() == "nss"
+        assert sb.localhost_via == "nss"
 
 
 class TestCliDisallowedTools:

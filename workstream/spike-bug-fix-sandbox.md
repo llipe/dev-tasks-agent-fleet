@@ -1,14 +1,18 @@
 # Spike report — bug-fix sandbox on the deployed runtime (S-182, #364)
 
-> **Status: fix round 2, awaiting re-probe 2c.** IC probe run 1 (D-109 image)
+> **Status: fix round 3, awaiting re-probe 2d.** IC probe run 1 (D-109 image)
 > failed on `no_new_privs` (§5.1), which led to D-110. **Re-probe 2b** (runtime
-> v3, D-110 image) gave **34 PASS / 3 FAIL** (§5.2). User namespaces, the
+> v3, D-110 image) gave **34 PASS / 3 FAIL** (§5.2): user namespaces, the
 > setpriv drop, `/proc` isolation, no-escalation, `git push` deny and the board
-> all pass. The three failures have two root causes, both fixed locally (§4.3):
-> (1) `localhost`, srt's proxy host, doesn't resolve inside the sandbox on
-> AgentCore (empty `/etc/hosts`), so no registry is reachable; (2)
-> `cli.deny.webfetch` misread a working tool-wide deny as a fail-open. Re-probe
-> 2c (change record `20261024-bug-fix-spike-probe`) fills the last column; the
+> pass; `localhost`, srt's proxy host, didn't resolve inside the sandbox, and
+> `cli.deny.webfetch` misread a working deny. Fix round 2 (§4.3) appended
+> `127.0.0.1 localhost` to `/etc/hosts` at run time. **Re-probe 2c** (runtime
+> v4) gave **18 PASS / 19 FAIL**, all for one reason: AgentCore's `/etc/hosts`
+> is empty **and read-only**, so the append failed and `sandbox.py` refused
+> every sandboxed run (fail-closed, nothing ran unsandboxed). **Fix round 3**
+> (§4.4, D-111) resolves `localhost` in the image through
+> `libnss-myhostname`, with IPv4 first, and the wrapper only checks it. Re-probe
+> 2d (change record `20261024-bug-fix-spike-probe`) fills the last column; the
 > PASS / FAIL verdict (task 3.9) follows it.
 >
 > **Local is not IC.** The LOCAL rows come from Docker Desktop on an arm64 Mac.
@@ -22,6 +26,7 @@
 | ------- | ---------- | --------------------------------------------------------------- | --------- |
 | 0.1     | 2026-10-23 | Skeleton: phase 1 local evidence, runtime choice, versions, keys | developer |
 | 0.2     | 2026-10-24 | Phase 1b (D-110): IC run 1 summary (FAIL, `no_new_privs`; board PASS); setpriv drop; local evidence with `no-new-privileges` emulated; `setpriv.*`, `noescalate.*`, `userns.available` rows | developer |
+| 0.4     | 2026-10-24 | Re-probe 2c results (18/37: AgentCore's `/etc/hosts` is empty and read-only). Fix round 3 (D-111): `localhost` through `libnss-myhostname` and `/etc/gai.conf` in the image; `sandbox.py` preflight is read-only (`check_localhost_resolution`, `localhost_via`); `net.localhost` reports `via=` and needs `127.0.0.1` first; §4.4 local evidence; 2d column | developer |
 | 0.3     | 2026-10-24 | Re-probe 2b results (34/37). Fix round 2: `/etc/hosts` loopback entry (registries), `cli.deny.*` reads the offered tool list, `--disallowedTools=WebFetch,WebSearch`; §4.3 local evidence; `net.localhost`, `cli.deny.websearch` rows | developer |
 
 ## 1. Versions (image `bug-fix:local`, linux/arm64)
@@ -155,7 +160,33 @@ Profile: the image's default user (root), `--security-opt no-new-privileges`, pl
 | LOCAL-2-04 | `claude -p` init tool list as fixer, fake key, repo settings allowing `WebFetch`/`WebSearch` and asking for bypass | managed policy: **22 tools, WebFetch/WebSearch absent**; same policy with the two denies removed: 24, both present | with the flag (`--disallowedTools=WebFetch,WebSearch` or the space form) and the denies removed: 22, both absent; production argv through `Sandbox.run`: 22, both absent | `permissionMode=default` (bypass refused). The run then stops at `authentication_failed`: the Bash-tool network path through the CLI's own sandbox needs the key and is **IC-only** |
 | LOCAL-2-05 | `image-smoke.sh` | 41 | **44** PASS | new: image `/etc/hosts` is empty; `Sandbox().ensure_hosts()` on an empty, writable `/etc/hosts` gives `added`, then `present`, and fixer resolves `localhost` to `127.0.0.1`; the pinned CLI accepts `--disallowedTools=WebFetch,WebSearch` |
 
+Re-probe 2c showed that fix 1 can't work on AgentCore: its `/etc/hosts` is read-only. Fix round 3 (§4.4) replaces it.
+
 Note on 2b's `net.blocked.*` PASS ×6: every detail reads `Temporary failure in name resolution`. Those targets were blocked because the proxy host itself didn't resolve, not by the allow-list. The verdict was right (fail-closed), but the evidence was weak. With fix 1, a 2c PASS must show the proxy's 403, as LOCAL-2-02 does.
+
+### 4.4 Fix round 3 (after re-probe 2c) — LOCAL, 2026-10-24
+
+**Root cause.** On AgentCore `/etc/hosts` is empty **and read-only** ("Read-only file system", 2c). Fix 1 couldn't append, so `sandbox.py` failed closed on every sandboxed run (19 FAIL, all `SandboxUnavailable: sandbox cannot resolve localhost`). The proxy host can't be changed: srt 0.0.81 sets `http://…@localhost:<port>` with `--setenv` inside bwrap, and the CLI's Bash sandbox does the same.
+
+**Fix 3 (D-111).** `localhost` resolves in the image, without `/etc/hosts` and without DNS:
+
+- The Dockerfile installs `libnss-myhostname` and writes `hosts: files myhostname dns` to `/etc/nsswitch.conf`. A `grep -qx` fails the build if the line didn't take. Debian's postinst already writes that line; the explicit write pins it.
+- `/etc/gai.conf` holds `precedence ::ffff:0:0/96 100`. Without it, nss-myhostname makes `getaddrinfo("localhost")` return `::1` before `127.0.0.1` (measured: `['::1', …, '127.0.0.1', …]` without, `['127.0.0.1', …, '::1', …]` with). srt's in-namespace bridge may listen on IPv4 only.
+- `sandbox.py` no longer writes anything. `check_localhost_resolution` returns `hosts` when `/etc/hosts` maps `localhost` to loopback. It returns `nss` when the nsswitch `hosts:` line lists `myhostname` before `dns` (with no `[…=return]` action ahead of it) and `libnss_myhostname.so.2` is in a lib dir. Otherwise it raises `SandboxUnavailable` with both reasons. `Sandbox.localhost_via` records `hosts`, `nss` or `none`.
+- `net.localhost` reports `via=…`, the sandbox's `/etc/hosts` lines and its nsswitch `hosts:` line. It now passes only when every address is loopback **and `127.0.0.1` is first**.
+
+Note: `getent hosts localhost` prints `::1` even with gai.conf, because it asks for `AF_INET6` first. The smoke script checks `getent ahostsv4` and the `getaddrinfo` order instead, which is what Python, Node and pip use.
+
+Profile for LOCAL-3-02: the §4.3 profile, plus an empty, **read-only** `/etc/hosts` bind-mounted (`--mount type=bind,…,dst=/etc/hosts,readonly`) to emulate AgentCore.
+
+| ID | Check | Before (fix round 2 image) | After (fix round 3) | Detail |
+| -- | ----- | -------------------------- | ------------------- | ------ |
+| LOCAL-3-01 | Append to an empty, read-only `/etc/hosts` | `SandboxUnavailable` on 2c | n/a: nothing is written | locally, the read-only mount gives the same `Read-only file system` on a write |
+| LOCAL-3-02 | `Sandbox().run` through `srt` as fixer, empty read-only `/etc/hosts`: `probe_inner resolve localhost`, `npm view left-pad version`, `pip download six`, `net example.com` | FAIL (refused) | PASS ×4 | `localhost_via=nss`; `addrs=['127.0.0.1', '::1']`, `hosts=[]`, `nsswitch='files myhostname dns'`; npm `1.3.0`; pip saved `six-1.17.0`; example.com `HTTP 403 blocked-by-allowlist`, TCP blocked |
+| LOCAL-3-03 | `image-smoke.sh` | 44 | **47** PASS | new: nsswitch `files myhostname dns`; gai.conf precedence line; with the read-only mount: `getent ahostsv4 localhost` = `127.0.0.1`, `Sandbox().check_localhost()` = `nss` with `/etc/hosts` left at 0 bytes, fixer's `getaddrinfo` gives `127.0.0.1` first. Replaced: the round-2 append check |
+| LOCAL-3-04 | pytest (unit + component) | 518 | **543** PASS | `TestLocalhostResolution`, `TestLocalhostCheck`, `TestResolve`, `test_image_localhost.py` |
+
+Open for 2d: whether AgentCore keeps the image's `/etc/nsswitch.conf` and `/etc/gai.conf` (it replaces `/etc/hosts`; nothing so far shows it touches the others). `net.localhost`'s detail answers it: `via=nss` and `nsswitch='files myhostname dns'`. If 2d fails, the fallback is to run srt in a private mount namespace with its own `/etc/hosts` (D-111).
 
 ## 5. IC results (deployed runtime)
 
@@ -175,39 +206,41 @@ Raw evidence: `infra/changes/20261024-bug-fix-spike-probe/backup/probe-run-1.sse
 - Versions: Claude Code 2.1.309, sandbox-runtime 0.0.81.
 - **Consequence:** D-110, a root wrapper with a `setpriv` drop. The board result (D-105, AC7) stands. The board path doesn't depend on the uid switch, so the re-probe repeats it only as a regression check.
 
-### 5.2 Re-probes 2b (runtime v3, D-110 image) and 2c (fix round 2)
+### 5.2 Re-probes 2b (runtime v3, D-110 image), 2c (fix round 2) and 2d (fix round 3)
 
-Raw evidence for 2b: `infra/changes/20261024-bug-fix-spike-probe/backup/probe-run-2.sse` (leak scan 0); summary in `result.md`, row 2b. **2b: 34 PASS / 3 FAIL.** The 2c column is **pending (IC)** until `infra-engineer` deploys the fix-round-2 image and re-runs the probe.
+Raw evidence for 2b: `infra/changes/20261024-bug-fix-spike-probe/backup/probe-run-2.sse` (leak scan 0); summary in `result.md`, row 2b. **2b: 34 PASS / 3 FAIL.**
 
-| Check | Spec / test | Run 1 (D-109) | Re-probe 2b | Re-probe 2c | Detail (2b) |
-| ----- | ----------- | ------------- | ----------- | ----------- | ----------- |
-| `setpriv.wrapper.root`, `setpriv.drop.uid`, `setpriv.drop.sandbox` | 3.17, D-110 | n/a (new) | PASS ×3 | pending (IC) | wrapper uid 0, `CapEff=a82425fb`, `NoNewPrivs=1`; drop: uid/gid 10002 ×4, caps 0, `NoNewPrivs=1`; in srt `Seccomp=2` |
-| `userns.available` | 3.17, D-110, §12 | n/a (new) | **PASS** | pending (IC) | fixer and root: `bwrap rc=0`, `unshare rc=0`, `max_user_namespaces=32059`. **AgentCore allows user namespaces under `no_new_privs`;** no CLI-runtime fallback needed |
-| `noescalate.fixer.uid`, `noescalate.fixer.sandbox`, `noescalate.no_sudo` | 3.17, D-110, SC-IC-03 | n/a (new) | PASS ×3 | pending (IC) | `setuid(0)=EPERM` (`EINVAL` in srt), `su rc=1`, `setpriv --reuid=0 rc=1`; no sudo |
-| `sudo.fixer.uid`, `sudo.fixer.sandbox`, `sudo.wrapper.root` | 3.16, D-109 (retired) | FAIL, FAIL, PASS | n/a (replaced) | n/a | |
-| `sandbox.available.script`, `sandbox.available.cli`, `sandbox.starts` | §12 "bwrap starts on AgentCore ARM64" | PASS, PASS, FAIL (`no_new_privs`) | PASS ×3 | pending (IC) | `ok exit=0` |
-| `net.localhost` | fix round 2 | n/a | n/a (new) | pending (IC) | 2c detail must show `addrs=['127.0.0.1']`, and `etc_hosts=added` if AgentCore's `/etc/hosts` is empty as inferred |
-| `net.blocked.169.254.170.2`, `.169.254.169.254`, `.169.254.170.23` | 3.6, SC-IC-01 | FAIL (`no_new_privs`) | PASS ×3 (weak) | pending (IC) | `Temporary failure in name resolution`: blocked because the proxy host didn't resolve (§4.3 note) |
-| `net.blocked.example.com`, `.api.github.com`, `.api.anthropic.com` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | PASS ×3 (weak) | pending (IC) | same; 2c must show the proxy's 403 |
-| `net.reachable.registry.npmjs.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | **FAIL** | pending (IC) | `getaddrinfo EAI_AGAIN localhost`: root cause 1, fixed (§4.3) |
-| `net.reachable.pypi.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | **FAIL** | pending (IC) | `Temporary failure in name resolution`: root cause 1, fixed |
-| `proc.wrapper.sandbox`, `proc.wrapper.uid` | 3.7, 3.17, SC-IC-03 | FAIL (`no_new_privs`) | PASS ×2 | pending (IC) | wrapper is pid 1; `environ` and `mem` `EACCES` from both; `cmdline` readable by design |
-| `env.fixer.sandbox`, `env.fixer.uid` | 3.7, SC-IC-03 | FAIL (`no_new_privs`) | PASS ×2 | pending (IC) | uid: `CI HOME LANG PATH`; srt adds its proxy variables only |
-| `policy.tamper`, `secrets.dir.sandbox`, `secrets.dir.uid` | SC-IC-05 (part) | FAIL (`no_new_privs`) | PASS ×3 | pending (IC) | write `EACCES`; canary `ENOENT` (srt) / `EACCES` (uid) |
-| `cli.version` | 3.9 | FAIL (`''`) | PASS | pending (IC) | `2.1.309 (Claude Code)` = pin |
-| `cli.deny.git_push` (denial **and** no ref on the bare remote) | 3.8, SC-IC-04 | FAIL (`no_new_privs`) | PASS | pending (IC) | `denied=True remote_refs=0` |
-| `cli.deny.webfetch` | 3.8, SC-IC-04 | FAIL (`no_new_privs`) | **FAIL (probe misread)** | pending (IC) | `denied=False turns=4 denials=[Bash×3]`: the tool was never offered (root cause 2, §4.3); 2c checks `offered=False` |
-| `cli.deny.websearch` | 3.8, SC-IC-04 | n/a | n/a (new) | pending (IC) | |
-| `board.detect` | 3.15 (1), SC-IC-11 | PASS | PASS | pending (IC) | #5 "Dev-tasks" linked to `llipe/dev-tasks` |
-| `board.add_idempotent` | 3.15 (2), SC-IC-11 | PASS | PASS | pending (IC) | issue #324, same item id twice, not pre-existing |
-| `board.status.in_progress`, `.in_review`, `.ready` | 3.15 (3), SC-IC-11 | PASS ×3 | PASS ×3 | pending (IC) | set and read back |
-| `board.pat_absent.sandbox`, `board.pat_absent.uid` | 3.15 (4), SC-IC-13 | FAIL (`no_new_privs`) | PASS ×2 | pending (IC) | `matches=0 files_scanned=468` |
-| `board.disabled_without_pat` | 3.15 (5), SC-IC-14 | PASS | PASS | pending (IC) | `reason=no_token_secret_id` |
-| `board.cleanup` (card deleted, probe issue closed) | 3.15, SC-IC-12 | PASS | PASS | pending (IC) | card deleted; `llipe/dev-tasks#324` closed |
+Raw evidence for 2c (runtime v4): `backup/probe-run-3.sse` (leak scan 0); `result.md`, row 2c. **2c: 18 PASS / 19 FAIL.** Every FAIL is `SandboxUnavailable: sandbox cannot resolve localhost`: AgentCore's `/etc/hosts` is empty and read-only, so fix round 2 couldn't append and every sandboxed run was refused before it started. Checks that don't use the sandbox passed. The 2d column is **pending (IC)** until `infra-engineer` deploys the fix-round-3 image and re-runs the probe.
+
+| Check | Spec / test | Run 1 (D-109) | Re-probe 2b | Re-probe 2c | Re-probe 2d | Detail (2b) |
+| ----- | ----------- | ------------- | ----------- | ----------- | ----------- | ----------- |
+| `setpriv.wrapper.root`, `setpriv.drop.uid`, `setpriv.drop.sandbox` | 3.17, D-110 | n/a (new) | PASS ×3 | PASS, PASS, FAIL | pending (IC) | wrapper uid 0, `CapEff=a82425fb`, `NoNewPrivs=1`; drop: uid/gid 10002 ×4, caps 0, `NoNewPrivs=1`; in srt `Seccomp=2` |
+| `userns.available` | 3.17, D-110, §12 | n/a (new) | **PASS** | PASS | pending (IC) | fixer and root: `bwrap rc=0`, `unshare rc=0`, `max_user_namespaces=32059`. **AgentCore allows user namespaces under `no_new_privs`;** no CLI-runtime fallback needed |
+| `noescalate.fixer.uid`, `noescalate.fixer.sandbox`, `noescalate.no_sudo` | 3.17, D-110, SC-IC-03 | n/a (new) | PASS ×3 | PASS, FAIL, PASS | pending (IC) | `setuid(0)=EPERM` (`EINVAL` in srt), `su rc=1`, `setpriv --reuid=0 rc=1`; no sudo |
+| `sudo.fixer.uid`, `sudo.fixer.sandbox`, `sudo.wrapper.root` | 3.16, D-109 (retired) | FAIL, FAIL, PASS | n/a (replaced) | n/a | n/a | |
+| `sandbox.available.script`, `sandbox.available.cli`, `sandbox.starts` | §12 "bwrap starts on AgentCore ARM64" | PASS, PASS, FAIL (`no_new_privs`) | PASS ×3 | PASS, PASS, FAIL | pending (IC) | `ok exit=0` |
+| `net.localhost` | fix rounds 2, 3 | n/a | n/a (new) | FAIL | pending (IC) | 2c: `SandboxUnavailable` (`/etc/hosts` read-only). 2d must show `via=nss`, `addrs` with `127.0.0.1` first, `nsswitch='files myhostname dns'` |
+| `net.blocked.169.254.170.2`, `.169.254.169.254`, `.169.254.170.23` | 3.6, SC-IC-01 | FAIL (`no_new_privs`) | PASS ×3 (weak) | FAIL ×3 | pending (IC) | `Temporary failure in name resolution`: blocked because the proxy host didn't resolve (§4.3 note) |
+| `net.blocked.example.com`, `.api.github.com`, `.api.anthropic.com` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | PASS ×3 (weak) | FAIL ×3 | pending (IC) | same; 2c must show the proxy's 403 |
+| `net.reachable.registry.npmjs.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | **FAIL** | FAIL | pending (IC) | `getaddrinfo EAI_AGAIN localhost`: root cause 1, fixed (§4.3) |
+| `net.reachable.pypi.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | **FAIL** | FAIL | pending (IC) | `Temporary failure in name resolution`: root cause 1, fixed |
+| `proc.wrapper.sandbox`, `proc.wrapper.uid` | 3.7, 3.17, SC-IC-03 | FAIL (`no_new_privs`) | PASS ×2 | FAIL, PASS | pending (IC) | wrapper is pid 1; `environ` and `mem` `EACCES` from both; `cmdline` readable by design |
+| `env.fixer.sandbox`, `env.fixer.uid` | 3.7, SC-IC-03 | FAIL (`no_new_privs`) | PASS ×2 | FAIL, PASS | pending (IC) | uid: `CI HOME LANG PATH`; srt adds its proxy variables only |
+| `policy.tamper`, `secrets.dir.sandbox`, `secrets.dir.uid` | SC-IC-05 (part) | FAIL (`no_new_privs`) | PASS ×3 | FAIL, FAIL, PASS | pending (IC) | write `EACCES`; canary `ENOENT` (srt) / `EACCES` (uid) |
+| `cli.version` | 3.9 | FAIL (`''`) | PASS | FAIL | pending (IC) | `2.1.309 (Claude Code)` = pin |
+| `cli.deny.git_push` (denial **and** no ref on the bare remote) | 3.8, SC-IC-04 | FAIL (`no_new_privs`) | PASS | FAIL (`cli`) | pending (IC) | `denied=True remote_refs=0` |
+| `cli.deny.webfetch` | 3.8, SC-IC-04 | FAIL (`no_new_privs`) | **FAIL (probe misread)** | FAIL (`cli`) | pending (IC) | `denied=False turns=4 denials=[Bash×3]`: the tool was never offered (root cause 2, §4.3); 2c checks `offered=False` |
+| `cli.deny.websearch` | 3.8, SC-IC-04 | n/a | n/a (new) | FAIL (`cli`) | pending (IC) | |
+| `board.detect` | 3.15 (1), SC-IC-11 | PASS | PASS | PASS | pending (IC) | #5 "Dev-tasks" linked to `llipe/dev-tasks` |
+| `board.add_idempotent` | 3.15 (2), SC-IC-11 | PASS | PASS | PASS | pending (IC) | issue #324, same item id twice, not pre-existing |
+| `board.status.in_progress`, `.in_review`, `.ready` | 3.15 (3), SC-IC-11 | PASS ×3 | PASS ×3 | PASS ×3 | pending (IC) | set and read back |
+| `board.pat_absent.sandbox`, `board.pat_absent.uid` | 3.15 (4), SC-IC-13 | FAIL (`no_new_privs`) | PASS ×2 | FAIL, PASS | pending (IC) | `matches=0 files_scanned=468` |
+| `board.disabled_without_pat` | 3.15 (5), SC-IC-14 | PASS | PASS | PASS | pending (IC) | `reason=no_token_secret_id` |
+| `board.cleanup` (card deleted, probe issue closed) | 3.15, SC-IC-12 | PASS | PASS | PASS | pending (IC) | card deleted; `llipe/dev-tasks#324` closed |
 
 ## 6. Verdict
 
-Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) and **PASS** on the board. Re-probe 2b: **FAIL** on `net.reachable.*` (root cause 1) and `cli.deny.webfetch` (root cause 2, a probe misread); everything else PASS. Final verdict pending (IC): task 3.9 writes it after re-probe 2c.
+Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) and **PASS** on the board. Re-probe 2b: **FAIL** on `net.reachable.*` (root cause 1) and `cli.deny.webfetch` (root cause 2, a probe misread); everything else PASS. Re-probe 2c: **FAIL** on every sandboxed check (read-only `/etc/hosts`, §4.4); every non-sandbox check PASS. Final verdict pending (IC): task 3.9 writes it after re-probe 2d.
 
 - **Sandbox exit rule (spec §12, AC8):** any FAIL among `setpriv.*`, `sandbox.starts`, `userns.available`, `net.*`, `proc.wrapper.*`, `noescalate.*` or `cli.deny.*` keeps Wave B (#373–#377) blocked and routes to `product-engineer` drift reconciliation.
 - **Board (D-105, AC7):** a FAIL of `board.detect`, `board.add_idempotent` or `board.status.*` sets `BOARD_UPDATES_ENABLED=0` and routes to drift. It does not block Wave B.
@@ -220,4 +253,4 @@ Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) a
 2. ~~Does `sudo` work there?~~ **Answered by run 1: no.** AgentCore sets `no_new_privs` (§5.1), hence D-110. New question: does the runtime run the image as root with `CAP_SETUID`/`CAP_SETGID`? `setpriv.wrapper.root` answers it.
 3. Does the CLI's own Bash sandbox start, and does `failIfUnavailable` refuse when it can't (LOCAL-07)? The `cli.*` checks show denials but not whether an allowed Bash command was sandboxed. If unclear, add a follow-up probe item: a Bash call that writes outside the cwd must fail.
 4. ~~Is the wrapper pid 1 in the AgentCore container?~~ **Answered by 2b: yes** (`proc.wrapper.*` reads `pid=1`).
-5. Is AgentCore's `/etc/hosts` empty (inferred from 2b), and is it writable by the root wrapper? 2c's `net.localhost` answers both: `etc_hosts=added` means it was empty and writable. A `SandboxUnavailable` "not writable" FAIL would need another route, to be designed: srt 0.0.81 has no setting for the in-sandbox proxy host.
+5. ~~Is AgentCore's `/etc/hosts` empty, and is it writable by the root wrapper?~~ **Answered by 2c: empty and read-only.** Hence fix round 3 (§4.4, D-111). New question: does AgentCore keep the image's `/etc/nsswitch.conf` and `/etc/gai.conf`? 2d's `net.localhost` detail answers it (`via=nss`, `nsswitch='files myhostname dns'`, `127.0.0.1` first).

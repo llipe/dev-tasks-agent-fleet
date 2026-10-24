@@ -38,11 +38,14 @@ uid ``fixer``, never in the wrapper's own process or with its env (spec §7, §1
 
    Both runtimes point their proxy variables at ``localhost`` (hard-coded),
    and the sandbox's network namespace has no DNS, so ``localhost`` must come
-   from ``/etc/hosts``. The image's ``/etc/hosts`` is empty and AgentCore
-   doesn't write one (S-182 re-probe 2b: ``getaddrinfo EAI_AGAIN
-   localhost``), so before every run the wrapper adds ``127.0.0.1
-   localhost`` if no loopback entry exists (:func:`ensure_loopback_hosts`),
-   and refuses to start the run if it can't.
+   from NSS without DNS (S-182 re-probe 2b: ``getaddrinfo EAI_AGAIN
+   localhost``). AgentCore's ``/etc/hosts`` is empty **and read-only**
+   (re-probe 2c), so the image resolves it with ``libnss-myhostname``
+   (``hosts: files myhostname dns``) and prefers IPv4 through
+   ``/etc/gai.conf``. Before every run the wrapper only *checks* that
+   ``localhost`` has a route, ``/etc/hosts`` or NSS
+   (:func:`check_localhost_resolution`), and refuses to start the run if
+   neither is in place. It never writes ``/etc/hosts``.
 4. **Wall-clock timeout.** SIGTERM at the deadline (``setpriv`` and
    ``fixer_exec.py`` exec, so the child pid is the runtime itself). If it is
    still alive after :data:`KILL_GRACE_SECONDS` (15 s), every ``fixer``
@@ -102,8 +105,23 @@ _CLI_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 # srt and the CLI's own Bash sandbox point every proxy variable at
 # ``localhost`` (hard-coded in both), and the sandbox's network namespace has
-# no DNS, so ``localhost`` must come from /etc/hosts (S-182 re-probe 2b).
-LOOPBACK_HOSTS_LINE = "127.0.0.1\tlocalhost\n"
+# no DNS (S-182 re-probe 2b). AgentCore's /etc/hosts is empty and read-only
+# (re-probe 2c), so the image resolves ``localhost`` with nss-myhostname; the
+# wrapper only checks that the module is installed and listed before ``dns``.
+NSS_MYHOSTNAME_LIB = "libnss_myhostname.so.2"
+NSS_MYHOSTNAME = "myhostname"
+# Where glibc's NSS modules live: Debian multiarch (the image is arm64), with
+# and without merged /usr, then the usual non-Debian locations.
+NSS_LIB_DIRS: tuple[str, ...] = (
+    "/usr/lib/aarch64-linux-gnu",
+    "/lib/aarch64-linux-gnu",
+    "/usr/lib/x86_64-linux-gnu",
+    "/lib/x86_64-linux-gnu",
+    "/usr/lib64",
+    "/lib64",
+    "/usr/lib",
+    "/lib",
+)
 
 KILL_GRACE_SECONDS = 15.0
 POLL_INTERVAL_SECONDS = 0.2
@@ -171,6 +189,8 @@ class SandboxPaths(NamedTuple):
     kill: str = "/usr/bin/kill"
     pkill: str = "/usr/bin/pkill"
     hosts: str = "/etc/hosts"
+    nsswitch: str = "/etc/nsswitch.conf"
+    nss_lib_dirs: tuple[str, ...] = NSS_LIB_DIRS
 
 
 DEFAULT_PATHS = SandboxPaths()
@@ -189,41 +209,79 @@ def _maps_localhost_to_loopback(text: str) -> bool:
     return False
 
 
-def ensure_loopback_hosts(path: str = "/etc/hosts") -> str:
-    """Make ``localhost`` resolve to loopback from ``path``; ``"present"`` or ``"added"``.
-
-    Why (S-182 re-probe 2b): srt and the CLI's Bash sandbox set every proxy
-    variable to ``http://…@localhost:<port>``, and inside the sandbox's network
-    namespace there is no DNS. The image's own ``/etc/hosts`` is empty
-    (BuildKit bind-mounts it during the build, so the Dockerfile can't fill
-    it); Docker writes one at run time, AgentCore does not. Without the entry
-    every registry fails with ``getaddrinfo EAI_AGAIN localhost``.
-
-    Appends one line, in place (``/etc/hosts`` may be a bind mount, so no
-    rename). Raises :class:`SandboxUnavailable` if the entry is missing and
-    can't be added: running anyway would only produce confusing network errors.
-    """
+def _read(path: str) -> tuple[str | None, str]:
+    """``(text, "")``, or ``(None, reason)`` when ``path`` can't be read."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
-            text = f.read()
+            return f.read(), ""
     except FileNotFoundError:
-        text = ""
+        return None, f"{path} is missing"
     except OSError as exc:
-        raise SandboxUnavailable(
-            f"sandbox cannot resolve localhost: {path}: {exc.strerror}"
-        ) from None
-    if _maps_localhost_to_loopback(text):
-        return "present"
-    prefix = "\n" if text and not text.endswith("\n") else ""
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(prefix + LOOPBACK_HOSTS_LINE)
-    except OSError as exc:
-        raise SandboxUnavailable(
-            f"sandbox cannot resolve localhost: {path} has no loopback entry "
-            f"and is not writable ({exc.strerror})"
-        ) from None
-    return "added"
+        return None, f"{path}: {exc.strerror}"
+
+
+def _nss_hosts_reason(text: str | None, path: str, missing: str) -> str:
+    """Why the nsswitch ``hosts:`` line can't resolve ``localhost`` without
+    DNS, or ``""`` when ``myhostname`` comes before ``dns`` (or there is no
+    ``dns``) with no ``[...=return]`` action ahead of it."""
+    if text is None:
+        return missing
+    for line in text.splitlines():
+        fields = line.split("#", 1)[0].split()
+        if not fields or fields[0] != "hosts:":
+            continue
+        services = fields[1:]
+        line_text = " ".join(services)
+        if NSS_MYHOSTNAME not in services:
+            return f"{path} hosts line '{line_text}' does not list {NSS_MYHOSTNAME}"
+        ahead = services[: services.index(NSS_MYHOSTNAME)]
+        if "dns" in ahead:
+            return f"{path} hosts line '{line_text}' lists {NSS_MYHOSTNAME} after dns"
+        if any(f.startswith("[") and "=return" in f.lower() for f in ahead):
+            return f"{path} hosts line '{line_text}' can return before {NSS_MYHOSTNAME}"
+        return ""
+    return f"{path} has no hosts line"
+
+
+def check_localhost_resolution(
+    hosts_path: str = "/etc/hosts",
+    nsswitch_path: str = "/etc/nsswitch.conf",
+    lib_dirs: Sequence[str] = NSS_LIB_DIRS,
+) -> str:
+    """How ``localhost`` resolves to loopback without DNS: ``"hosts"`` or ``"nss"``.
+
+    Why (S-182 re-probes 2b, 2c): srt and the CLI's Bash sandbox set every
+    proxy variable to ``http://…@localhost:<port>``, and inside the sandbox's
+    network namespace there is no DNS. On AgentCore ``/etc/hosts`` is empty and
+    read-only, so the image resolves ``localhost`` with nss-myhostname.
+
+    - ``"hosts"``: ``hosts_path`` maps ``localhost`` to a loopback address;
+    - ``"nss"``: the nsswitch ``hosts:`` line lists ``myhostname`` before
+      ``dns`` (or has no ``dns``), and :data:`NSS_MYHOSTNAME_LIB` is in one of
+      ``lib_dirs``.
+
+    Read-only: it never writes either file. Raises :class:`SandboxUnavailable`
+    when neither route is in place, since running anyway would only produce
+    ``getaddrinfo EAI_AGAIN localhost`` errors from every registry.
+    """
+    hosts_text, hosts_reason = _read(hosts_path)
+    if hosts_text is not None and _maps_localhost_to_loopback(hosts_text):
+        return "hosts"
+    hosts_why = (
+        f"{hosts_reason}, so no loopback entry for localhost"
+        if hosts_reason
+        else f"{hosts_path} has no loopback entry for localhost"
+    )
+
+    nss_text, nss_missing = _read(nsswitch_path)
+    nss_reason = _nss_hosts_reason(nss_text, nsswitch_path, nss_missing)
+    if not nss_reason and not any(
+        os.path.isfile(os.path.join(d, NSS_MYHOSTNAME_LIB)) for d in lib_dirs
+    ):
+        nss_reason = f"{NSS_MYHOSTNAME_LIB} not found in {', '.join(lib_dirs) or 'no lib dir'}"
+    if not nss_reason:
+        return "nss"
+    raise SandboxUnavailable(f"sandbox cannot resolve localhost: {hosts_why}; {nss_reason}")
 
 
 @dataclass(frozen=True)
@@ -307,17 +365,22 @@ class Sandbox:
         self._kill = kill
         self._sweeper = sweeper or self.sweep
         self._reaper = reaper or reap_zombies
-        self.hosts_status = "unchecked"
+        self.localhost_via = "unchecked"
 
-    # ------------------------------------------------------------ host setup
+    # ------------------------------------------------------------ localhost
 
-    def ensure_hosts(self) -> str:
-        """:func:`ensure_loopback_hosts` on ``paths.hosts``. ``hosts_status`` keeps
-        ``"added"`` once the wrapper had to add the entry, so the probe can say so."""
-        status = ensure_loopback_hosts(self.paths.hosts)
-        if self.hosts_status != "added":
-            self.hosts_status = status
-        return status
+    def check_localhost(self) -> str:
+        """:func:`check_localhost_resolution` on this sandbox's paths.
+        ``localhost_via`` records the route (``hosts``/``nss``), or ``none``
+        when the check refused the run, so the probe can say which."""
+        p = self.paths
+        try:
+            via = check_localhost_resolution(p.hosts, p.nsswitch, p.nss_lib_dirs)
+        except SandboxUnavailable:
+            self.localhost_via = "none"
+            raise
+        self.localhost_via = via
+        return via
 
     # ------------------------------------------------------------ availability
 
@@ -373,7 +436,7 @@ class Sandbox:
         if timeout <= 0:
             raise ValueError("timeout must be positive")
         self.check_available(mode)
-        self.ensure_hosts()
+        self.check_localhost()
         env = build_env(anthropic_api_key)
         cmd = self.build_command(mode, argv)
 

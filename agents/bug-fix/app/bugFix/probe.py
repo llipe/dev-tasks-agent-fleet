@@ -27,8 +27,10 @@ through the scrubber; no token or key is ever put in a detail or in argv.
   (HTTP through the sandbox proxy and a raw TCP connect); ``npm view`` and
   ``pip download`` reach the registries. ``net.localhost`` runs first: srt's
   proxy variables name ``localhost``, so it must resolve to loopback inside the
-  sandbox; the detail says whether the wrapper had to add the ``/etc/hosts``
-  entry (``etc_hosts=added``) and quotes the lines (re-probe 2b).
+  sandbox, ``127.0.0.1`` first (re-probes 2b, 2c). The detail names the route
+  the wrapper's preflight found (``via=hosts`` for ``/etc/hosts``, ``via=nss``
+  for nss-myhostname, ``via=none`` when it refused the run) and quotes the
+  ``/etc/hosts`` lines and the nsswitch ``hosts:`` line seen in the sandbox.
 - ``proc.*``, ``env.*``, ``noescalate.*`` (SC-IC-03, D-110) - as ``fixer``, both
   inside the sandbox and with the ``setpriv`` drop alone: the root wrapper's
   ``/proc/<pid>/environ`` and ``/mem`` are unreadable, no ``AWS_*`` /
@@ -347,20 +349,31 @@ _REGISTRY_TOOLS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 
 def _loopback(addrs: Sequence[str]) -> bool:
+    """Every address is loopback and IPv4 comes first: srt's in-namespace
+    bridge may listen on IPv4 only, so a client trying ``::1`` first fails."""
     try:
-        return bool(addrs) and all(ipaddress.ip_address(a).is_loopback for a in addrs)
+        return (
+            bool(addrs)
+            and addrs[0] == "127.0.0.1"
+            and all(ipaddress.ip_address(a).is_loopback for a in addrs)
+        )
     except ValueError:
         return False
 
 
 def net_checks(
-    inner: Any, hosts_status: Callable[[], str] = lambda: "unchecked"
+    inner: Any, localhost_via: Callable[[], str] = lambda: "unchecked"
 ) -> list[CheckResult]:
     def _localhost_check() -> CheckResult:
-        d = inner.call("resolve", "localhost")
+        try:
+            d = inner.call("resolve", "localhost")
+        except Exception as exc:  # noqa: BLE001 - the preflight's refusal is the evidence
+            detail = f"via={localhost_via()} {type(exc).__name__}: {exc}"
+            return CheckResult("net.localhost", Verdict.FAIL, detail)
         addrs = [str(a) for a in d.get("addrs") or []]
         detail = (
-            f"etc_hosts={hosts_status()} addrs={addrs} hosts={d.get('hosts')} {d.get('error', '')}"
+            f"via={localhost_via()} addrs={addrs} hosts={d.get('hosts')} "
+            f"nsswitch={d.get('nsswitch')!r} {d.get('error', '')}"
         ).strip()
         return CheckResult("net.localhost", _pf(_loopback(addrs)), detail)
 
@@ -1134,7 +1147,7 @@ def build_checks(
         ("setpriv", lambda: setpriv_checks(inner)),
         ("sandbox", lambda: sandbox_checks(sb)),
         ("userns", lambda: userns_checks(inner, paths=paths)),
-        ("net", lambda: net_checks(inner, hosts_status=lambda: sb.hosts_status)),
+        ("net", lambda: net_checks(inner, localhost_via=lambda: sb.localhost_via)),
         ("proc", lambda: proc_checks(inner, pid)),
         ("env", lambda: env_checks(inner)),
         ("noescalate", lambda: noescalate_checks(inner)),

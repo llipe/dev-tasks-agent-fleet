@@ -153,30 +153,38 @@ class TestRepoAndRefs:
 
 
 class TestResolve:
-    def test_resolves_localhost_and_lists_the_hosts_lines(self, tmp_path, monkeypatch):
+    def test_resolves_localhost_and_lists_the_hosts_and_nsswitch_lines(self, tmp_path, monkeypatch):
         hosts = tmp_path / "hosts"
         hosts.write_text("# x\n127.0.0.1\tlocalhost\n10.0.0.5 box\n")
+        nsswitch = tmp_path / "nsswitch.conf"
+        nsswitch.write_text("passwd: files\n# hosts: dns\nhosts:   files myhostname dns\n")
         monkeypatch.setattr(
             probe_inner.socket,
             "getaddrinfo",
             lambda host, *a, **k: [
                 (2, 1, 6, "", ("127.0.0.1", 0)),
                 (2, 2, 17, "", ("127.0.0.1", 0)),
+                (10, 1, 6, "", ("::1", 0, 0, 0)),
             ],
         )
-        d = probe_inner.cmd_resolve("localhost", str(hosts))
-        assert d["addrs"] == ["127.0.0.1"]
+        d = probe_inner.cmd_resolve("localhost", str(hosts), str(nsswitch))
+        # Order kept: the check needs to see which family comes first.
+        assert d["addrs"] == ["127.0.0.1", "::1"]
         assert d["hosts"] == ["127.0.0.1\tlocalhost"]
+        assert d["nsswitch"] == "files myhostname dns"
 
     def test_failure_is_reported_not_raised(self, tmp_path, monkeypatch):
         def _fail(*a, **k):
             raise probe_inner.socket.gaierror(-3, "Temporary failure in name resolution")
 
         monkeypatch.setattr(probe_inner.socket, "getaddrinfo", _fail)
-        d = probe_inner.cmd_resolve("localhost", str(tmp_path / "missing"))
+        d = probe_inner.cmd_resolve(
+            "localhost", str(tmp_path / "missing"), str(tmp_path / "missing-nss")
+        )
         assert d["addrs"] == []
         assert "name resolution" in d["error"]
         assert d["hosts"] == []
+        assert d["nsswitch"] is None
 
     def test_registered(self):
         assert probe_inner.COMMANDS["resolve"] is probe_inner.cmd_resolve
