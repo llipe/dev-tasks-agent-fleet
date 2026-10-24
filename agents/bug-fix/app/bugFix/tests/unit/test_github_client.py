@@ -876,3 +876,29 @@ class TestGraphQLErrorClasses:
         with pytest.raises(GitHubUnavailable) as exc:
             _client(session).graphql("query { x }", {}, label="q")
         assert TOKEN not in str(exc.value) and "upstream" not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        # Garbage after a URL drops that link-value; parsing resyncs at the next comma.
+        ('<https://a/1> junk; rel="next", <https://a/2>; rel="next"', "https://a/2"),
+        # An escaped quote inside a skipped entry does not end the quoted string early.
+        ('junk "x\\", rel=next", <https://a/2>; rel="next"', "https://a/2"),
+        # A parameter with no name, or a bare value that is not a token.
+        ('<https://a/1>; =next, <https://a/2>; rel="next"', "https://a/2"),
+        ('<https://a/1>; rel=@next, <https://a/2>; rel="next"', "https://a/2"),
+        # A valueless parameter is allowed and ignored.
+        ("<https://a/2>; crossorigin; rel=next", "https://a/2"),
+    ],
+)
+def test_the_link_parser_resyncs_after_a_malformed_entry(header, expected):
+    assert parse_link_header(header).get("next") == expected
+
+
+def test_next_link_tolerates_headers_without_get():
+    class Odd:
+        headers = ["not", "a", "mapping"]
+        links = {"next": {"url": "https://api.github.com/x?page=2"}}
+
+    assert next_link(Odd()) == "https://api.github.com/x?page=2"
