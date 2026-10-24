@@ -17,13 +17,9 @@ const CHANGE_DIR = path.join(REPO_ROOT, 'infra', 'changes', '20261024-code-revie
 
 const ACCOUNT = '755641879575';
 const ROLE_ARN = `arn:aws:iam::${ACCOUNT}:role/agent-fleet-code-review-runtime`;
-const MODEL_ID = 'us.openai.gpt-6.1-sol';
-const SOL_ARNS = [
-  `arn:aws:bedrock:us-east-1:${ACCOUNT}:inference-profile/us.openai.gpt-6.1-sol`,
-  'arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-6.1-sol',
-  'arn:aws:bedrock:us-east-2::foundation-model/openai.gpt-6.1-sol',
-  'arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-6.1-sol',
-];
+// D-59: DeepSeek V3.2, on-demand in us-east-1 only (no inference profile).
+const MODEL_ID = 'deepseek.v3.2';
+const MODEL_ARNS = ['arn:aws:bedrock:us-east-1::foundation-model/deepseek.v3.2'];
 const SECRET_ARNS = [
   `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY-wS5xrJ`,
   `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2`,
@@ -69,7 +65,7 @@ describe('agentcore.json (AC-1)', () => {
     expect(runtime.executionRoleArn).toBe(ROLE_ARN);
   });
 
-  test('sets the required env vars (spec §9), MODEL_ID a system profile ID (DR-8, D-58)', () => {
+  test('sets the required env vars (spec §9), MODEL_ID a model or system profile ID, never an ARN (DR-8, D-59)', () => {
     const env = Object.fromEntries(runtime.envVars.map((e: { name: string; value: string }) => [e.name, e.value]));
     expect(env).toEqual({
       SUPABASE_URL: 'https://hegxeycmbmjfgzqpdiik.supabase.co',
@@ -128,11 +124,11 @@ describe('role-policy.json (AC-2, spec §7.2)', () => {
     for (const s of statements) expect(s.Effect).toBe('Allow');
   });
 
-  test('Bedrock: InvokeModel only, on exactly the four GPT-6.1 Sol ARNs', () => {
+  test('Bedrock: InvokeModel only, on exactly the DeepSeek V3.2 model ARN (D-59)', () => {
     const bedrock = statements.filter(s => asList(s.Action).some(a => a.startsWith('bedrock:')));
     expect(bedrock).toHaveLength(1);
     expect(asList(bedrock[0].Action)).toEqual(['bedrock:InvokeModel']);
-    expect([...asList(bedrock[0].Resource)].sort()).toEqual([...SOL_ARNS].sort());
+    expect([...asList(bedrock[0].Resource)].sort()).toEqual([...MODEL_ARNS].sort());
     for (const arn of asList(bedrock[0].Resource)) expect(arn).not.toContain('*');
   });
 

@@ -24,7 +24,10 @@
     {
       "Sid": "XRay",
       "Effect": "Allow",
-      "Action": ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
       "Resource": "*"
     },
     {
@@ -47,7 +50,11 @@
     {
       "Sid": "EcrPull",
       "Effect": "Allow",
-      "Action": ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"],
+      "Action": [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchCheckLayerAvailability"
+      ],
       "Resource": "arn:aws:ecr:us-east-1:755641879575:repository/codereview/*"
     },
     {
@@ -56,7 +63,9 @@
       "Action": "kms:Decrypt",
       "Resource": "arn:aws:kms:us-east-1:755641879575:key/883d383e-570e-4bdc-bc37-43c3ed50bf9b",
       "Condition": {
-        "StringEquals": { "kms:ViaService": "ecr.us-east-1.amazonaws.com" }
+        "StringEquals": {
+          "kms:ViaService": "ecr.us-east-1.amazonaws.com"
+        }
       }
     },
     {
@@ -69,14 +78,11 @@
       ]
     },
     {
-      "Sid": "InvokeGpt61Sol",
+      "Sid": "InvokeDeepSeekV32",
       "Effect": "Allow",
       "Action": "bedrock:InvokeModel",
       "Resource": [
-        "arn:aws:bedrock:us-east-1:755641879575:inference-profile/us.openai.gpt-6.1-sol",
-        "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-6.1-sol",
-        "arn:aws:bedrock:us-east-2::foundation-model/openai.gpt-6.1-sol",
-        "arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-6.1-sol"
+        "arn:aws:bedrock:us-east-1::foundation-model/deepseek.v3.2"
       ]
     }
   ]
