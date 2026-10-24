@@ -327,7 +327,8 @@ switch: RT-02 (`tests/unit/test_markers_property.py`) at 1000 examples per
 property, RT-12 (`tests/unit/test_neutralize_property.py`) at 2000 examples
 with inputs of 0–20,000 characters (long inputs repeat drawn pieces and are
 cut at 20,000, which avoids Hypothesis' buffer limit), and RT-15 at 1000.
-Raising them added about 13 s to `make test` (S-186 fix round, DF-186-03);
+Raising them added about 13 s to `make test` (S-186 fix round, DF-186-03;
+the whole local suite went from 43 s to 60 s with that round's other tests), so
 a profile is only worth adding if that grows past about 60 s.
 `test_neutralize.py::test_a_long_glued_chain_is_linear_not_quadratic` is a
 sanctioned `time.perf_counter` bound (2 s on a 65,536-character chain that
