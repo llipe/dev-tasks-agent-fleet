@@ -329,8 +329,16 @@ with inputs of 0–20,000 characters (long inputs repeat drawn pieces and are
 cut at 20,000, which avoids Hypothesis' buffer limit), RT-15 at 1000 (disposition
 and refusal bodies), and RT-13 (`tests/component/test_label_invariance.py`) at
 200. The shared GitHub client's retry waits never sleep in tests: an autouse
-fixture in `tests/conftest.py` replaces `github_client._sleep`, and the tests that
-assert the waits pass their own `sleep`.
+fixture in `tests/conftest.py` replaces `github_client._sleep` and
+`github_client._monotonic` with one `FakeClock` that a wait advances, so the
+per-operation wait budget (120 s) runs for real with no real sleep. The tests
+that assert the waits or the budget pass their own `sleep` and `clock`
+(`tests.conftest.FakeClock`). `fake_github.py` records the `allow_redirects`
+each request sent and can answer a 3xx (`redirect()`); the `v_runs` double
+records it too. CT-34's agent side (claims resolved by
+`v_runs.effective_status`: active, terminal, missing, unknown) runs against the
+PostgREST double in `tests/component/test_refusal.py`; the real-database read
+at L2.5 is not covered yet.
 Raising them added about 13 s to `make test` (S-186 fix round, DF-186-03;
 the whole local suite went from 43 s to 60 s with that round's other tests), so
 a profile is only worth adding if that grows past about 60 s.
