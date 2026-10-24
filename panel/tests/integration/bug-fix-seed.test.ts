@@ -123,6 +123,41 @@ describe("panel L2.5 — bug-fix seed files (S-184)", () => {
     expect(fromMigration.schema).toEqual(fixtureSchema);
   });
 
+  it("seed.sql carries the migration's whole upsert, set list included, verbatim (TC-184-02)", () => {
+    // The JSON-only check above can't see a drifted name, description, version,
+    // qualifier, requires_repository or a column dropped from the on-conflict
+    // set list. Compare the complete statement, whitespace-normalized.
+    const whole = (sql: string) => {
+      const start = sql.lastIndexOf("insert into agents", sql.indexOf("'bug-fix',"));
+      const end = sql.indexOf(";", sql.indexOf("on conflict (slug) do update", start));
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      return sql
+        .slice(start, end + 1)
+        .replace(/--[^\n]*/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+    const fromMigration = whole(readFileSync(migrationFile(), "utf8"));
+    expect(whole(readFileSync(SEED, "utf8"))).toBe(fromMigration);
+    // Every inserted column except the slug key is restored on conflict.
+    for (const col of [
+      "name",
+      "description",
+      "version",
+      "runtime_arn",
+      "runtime_qualifier",
+      "requires_repository",
+      "max_runtime_seconds",
+      "grace_seconds",
+      "start_timeout_seconds",
+      "default_params",
+      "params_schema",
+    ]) {
+      expect(fromMigration).toContain(`${col} = excluded.${col}`);
+    }
+  });
+
   it("both files carry the S-181 runtime ARN and 3600/120/300 (AC2)", () => {
     for (const path of [migrationFile(), SEED]) {
       const stmt = bugFixStatement(readFileSync(path, "utf8"));

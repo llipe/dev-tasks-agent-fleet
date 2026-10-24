@@ -1,0 +1,479 @@
+{
+  "$comment": "Shared accept/reject corpus for the bug-fix params_schema (spec 5.2 v2.0, S-184). Run through the panel's Ajv (panel/tests/unit/bug-fix-params-schema.test.ts) and the agent's parse_params (tests/unit/test_params_cases.py). Both must agree on `valid` and name `key` as a failing key. `unknown_keys` are rejected by the panel (additionalProperties: false) and ignored by the agent.",
+  "cases": [
+    {
+      "name": "issue_number only",
+      "params": {
+        "issue_number": 7
+      },
+      "valid": true
+    },
+    {
+      "name": "every key at its minimum",
+      "params": {
+        "issue_number": 1,
+        "trigger_comment_id": 1,
+        "project": "a/1",
+        "status_in_progress": "x",
+        "status_in_review": "x",
+        "status_ready": "x",
+        "max_turns": 5,
+        "cli_timeout_minutes": 5,
+        "run_budget_minutes": 10,
+        "max_code_files": 1,
+        "max_code_lines": 10
+      },
+      "valid": true
+    },
+    {
+      "name": "every bounded key at its maximum",
+      "params": {
+        "issue_number": 7,
+        "max_turns": 100,
+        "cli_timeout_minutes": 45,
+        "run_budget_minutes": 55,
+        "max_code_files": 50,
+        "max_code_lines": 2000
+      },
+      "valid": true
+    },
+    {
+      "name": "comment id above 2**31",
+      "params": {
+        "issue_number": 7,
+        "trigger_comment_id": 2500000000
+      },
+      "valid": true
+    },
+    {
+      "name": "issue number 2**40",
+      "params": {
+        "issue_number": 1099511627776
+      },
+      "valid": true
+    },
+    {
+      "name": "integral float max_turns",
+      "params": {
+        "issue_number": 7,
+        "max_turns": 40.0
+      },
+      "valid": true
+    },
+    {
+      "name": "100 two-byte characters",
+      "params": {
+        "issue_number": 7,
+        "status_ready": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      },
+      "valid": true
+    },
+    {
+      "name": "100 astral characters",
+      "params": {
+        "issue_number": 7,
+        "status_ready": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      },
+      "valid": true
+    },
+    {
+      "name": "project 39-char owner, 7-digit number",
+      "params": {
+        "issue_number": 7,
+        "project": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1234567"
+      },
+      "valid": true
+    },
+    {
+      "name": "project with hyphens",
+      "params": {
+        "issue_number": 7,
+        "project": "x-y-z/10"
+      },
+      "valid": true
+    },
+    {
+      "name": "empty object",
+      "params": {},
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number null",
+      "params": {
+        "issue_number": null
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number 0",
+      "params": {
+        "issue_number": 0
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number negative",
+      "params": {
+        "issue_number": -1
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number string",
+      "params": {
+        "issue_number": "12"
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number boolean",
+      "params": {
+        "issue_number": true
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number fractional",
+      "params": {
+        "issue_number": 7.5
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "issue_number array",
+      "params": {
+        "issue_number": [
+          7
+        ]
+      },
+      "valid": false,
+      "key": "issue_number"
+    },
+    {
+      "name": "trigger_comment_id 0",
+      "params": {
+        "issue_number": 7,
+        "trigger_comment_id": 0
+      },
+      "valid": false,
+      "key": "trigger_comment_id"
+    },
+    {
+      "name": "trigger_comment_id string",
+      "params": {
+        "issue_number": 7,
+        "trigger_comment_id": "123"
+      },
+      "valid": false,
+      "key": "trigger_comment_id"
+    },
+    {
+      "name": "max_turns below",
+      "params": {
+        "issue_number": 7,
+        "max_turns": 4
+      },
+      "valid": false,
+      "key": "max_turns"
+    },
+    {
+      "name": "max_turns above",
+      "params": {
+        "issue_number": 7,
+        "max_turns": 101
+      },
+      "valid": false,
+      "key": "max_turns"
+    },
+    {
+      "name": "max_turns fractional",
+      "params": {
+        "issue_number": 7,
+        "max_turns": 40.5
+      },
+      "valid": false,
+      "key": "max_turns"
+    },
+    {
+      "name": "max_turns null",
+      "params": {
+        "issue_number": 7,
+        "max_turns": null
+      },
+      "valid": false,
+      "key": "max_turns"
+    },
+    {
+      "name": "cli_timeout_minutes below",
+      "params": {
+        "issue_number": 7,
+        "cli_timeout_minutes": 4
+      },
+      "valid": false,
+      "key": "cli_timeout_minutes"
+    },
+    {
+      "name": "cli_timeout_minutes above",
+      "params": {
+        "issue_number": 7,
+        "cli_timeout_minutes": 46
+      },
+      "valid": false,
+      "key": "cli_timeout_minutes"
+    },
+    {
+      "name": "run_budget_minutes below",
+      "params": {
+        "issue_number": 7,
+        "run_budget_minutes": 9
+      },
+      "valid": false,
+      "key": "run_budget_minutes"
+    },
+    {
+      "name": "run_budget_minutes above",
+      "params": {
+        "issue_number": 7,
+        "run_budget_minutes": 56
+      },
+      "valid": false,
+      "key": "run_budget_minutes"
+    },
+    {
+      "name": "run_budget_minutes 600",
+      "params": {
+        "issue_number": 7,
+        "run_budget_minutes": 600
+      },
+      "valid": false,
+      "key": "run_budget_minutes"
+    },
+    {
+      "name": "max_code_files below",
+      "params": {
+        "issue_number": 7,
+        "max_code_files": 0
+      },
+      "valid": false,
+      "key": "max_code_files"
+    },
+    {
+      "name": "max_code_files above",
+      "params": {
+        "issue_number": 7,
+        "max_code_files": 51
+      },
+      "valid": false,
+      "key": "max_code_files"
+    },
+    {
+      "name": "max_code_lines below",
+      "params": {
+        "issue_number": 7,
+        "max_code_lines": 9
+      },
+      "valid": false,
+      "key": "max_code_lines"
+    },
+    {
+      "name": "max_code_lines above",
+      "params": {
+        "issue_number": 7,
+        "max_code_lines": 2001
+      },
+      "valid": false,
+      "key": "max_code_lines"
+    },
+    {
+      "name": "status empty",
+      "params": {
+        "issue_number": 7,
+        "status_in_progress": ""
+      },
+      "valid": false,
+      "key": "status_in_progress"
+    },
+    {
+      "name": "status 101 characters",
+      "params": {
+        "issue_number": 7,
+        "status_in_review": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "valid": false,
+      "key": "status_in_review"
+    },
+    {
+      "name": "status 101 astral characters",
+      "params": {
+        "issue_number": 7,
+        "status_ready": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      },
+      "valid": false,
+      "key": "status_ready"
+    },
+    {
+      "name": "status number",
+      "params": {
+        "issue_number": 7,
+        "status_ready": 7
+      },
+      "valid": false,
+      "key": "status_ready"
+    },
+    {
+      "name": "status array",
+      "params": {
+        "issue_number": 7,
+        "status_ready": [
+          "Ready"
+        ]
+      },
+      "valid": false,
+      "key": "status_ready"
+    },
+    {
+      "name": "project number 0",
+      "params": {
+        "issue_number": 7,
+        "project": "llipe/0"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project leading zero",
+      "params": {
+        "issue_number": 7,
+        "project": "llipe/05"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project no number",
+      "params": {
+        "issue_number": 7,
+        "project": "llipe"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project three parts",
+      "params": {
+        "issue_number": 7,
+        "project": "a/b/1"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project 8-digit number",
+      "params": {
+        "issue_number": 7,
+        "project": "llipe/12345678"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project 40-char owner",
+      "params": {
+        "issue_number": 7,
+        "project": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project underscore",
+      "params": {
+        "issue_number": 7,
+        "project": "under_score/1"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project trailing newline",
+      "params": {
+        "issue_number": 7,
+        "project": "llipe/5\n"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project leading space",
+      "params": {
+        "issue_number": 7,
+        "project": " llipe/5"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project non-ASCII digit",
+      "params": {
+        "issue_number": 7,
+        "project": "llipe/١"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project non-ASCII letter",
+      "params": {
+        "issue_number": 7,
+        "project": "é/1"
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project empty",
+      "params": {
+        "issue_number": 7,
+        "project": ""
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "project number type",
+      "params": {
+        "issue_number": 7,
+        "project": 5
+      },
+      "valid": false,
+      "key": "project"
+    },
+    {
+      "name": "first violation in schema order",
+      "params": {
+        "issue_number": 0,
+        "max_turns": 0
+      },
+      "valid": false,
+      "key": "issue_number"
+    }
+  ],
+  "unknown_keys": [
+    "__probe",
+    "repo",
+    "select_labels",
+    "claim_add_labels",
+    "assignee",
+    "foo",
+    "issue",
+    "Issue_number",
+    "issue_number "
+  ]
+}

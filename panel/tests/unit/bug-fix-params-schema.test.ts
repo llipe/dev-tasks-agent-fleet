@@ -101,3 +101,82 @@ describe("bug-fix params_schema boundary table (TC-184-07)", () => {
     expect(validateParams("bug-fix-l1", schema, { issue_number: 1 }).valid).toBe(true);
   });
 });
+
+// The shared accept/reject corpus. The agent's tests/unit/test_params_cases.py
+// runs the same file through parse_params, so Ajv and Python must agree on
+// every case (D-82). The corpus covers integral floats, astral-plane string
+// length, `$` before a trailing newline, and non-ASCII digits.
+interface CorpusCase {
+  name: string;
+  params: Record<string, unknown>;
+  valid: boolean;
+  key?: string;
+}
+const CORPUS = JSON.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        "../../../agents/bug-fix/app/bugFix/tests/fixtures/contract/params_cases.json",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  ),
+) as { cases: CorpusCase[]; unknown_keys: string[] };
+
+describe("bug-fix params shared corpus (panel side, D-82)", () => {
+  it.each(CORPUS.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const res = validateParams("bug-fix-l1", schema, c.params);
+    expect(res.valid).toBe(c.valid);
+    if (res.valid) {
+      expect(res.params).toEqual(c.params);
+      return;
+    }
+    // A missing required key is reported at the root with keyword `required`.
+    const failing = res.errors.map((e) =>
+      e.keyword === "required" ? "issue_number" : e.instancePath.split("/")[1],
+    );
+    expect(failing).toContain(c.key);
+  });
+
+  it.each(CORPUS.unknown_keys)(
+    "rejects the unknown key %j (additionalProperties: false)",
+    (key) => {
+      const res = validateParams("bug-fix-l1", schema, { issue_number: 7, [key]: "SENTINEL" });
+      expect(res.valid).toBe(false);
+      if (!res.valid) expect(res.errors.map((e) => e.keyword)).toContain("additionalProperties");
+    },
+  );
+
+  it("never forwards an unknown key, even next to valid params", () => {
+    const res = validateParams("bug-fix-l1", schema, { issue_number: 7, __probe: { cmd: "x" } });
+    expect(res).toMatchObject({ valid: false });
+    expect(JSON.stringify(res)).not.toContain("cmd");
+  });
+});
+
+describe("bug-fix params errors never echo a value", () => {
+  const SENTINEL = "SENTINEL-VALUE-" + "q".repeat(120);
+  const keys = Object.keys((schema as { properties: Record<string, unknown> }).properties);
+  const inputs: Array<[string, unknown]> = keys.flatMap(
+    (key): Array<[string, unknown]> => [
+      [key, SENTINEL],
+      [key, [SENTINEL]],
+      [key, { v: SENTINEL }],
+    ],
+  );
+
+  it.each(inputs)("%s = <sentinel %#>", (key, value) => {
+    const res = validateParams("bug-fix-l1", schema, { issue_number: 7, [key]: value });
+    expect(res.valid).toBe(false);
+    if (res.valid) return;
+    expect(res.errors.map((e) => e.instancePath)).toContain(`/${key}`);
+    expect(JSON.stringify(res.errors)).not.toContain("SENTINEL");
+  });
+
+  it("an unknown key's error carries neither its value nor its name", () => {
+    const res = validateParams("bug-fix-l1", schema, { issue_number: 7, SENTINEL_KEY: SENTINEL });
+    expect(res.valid).toBe(false);
+    expect(JSON.stringify(res)).not.toContain("SENTINEL");
+  });
+});
