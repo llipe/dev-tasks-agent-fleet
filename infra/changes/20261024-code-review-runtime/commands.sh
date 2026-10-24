@@ -65,3 +65,10 @@ aws bedrock-runtime converse --region us-east-1 --model-id us.openai.gpt-6.1-sol
 aws bedrock-runtime converse --region us-east-1 --model-id deepseek.v3.2 ...            # maxTokens 64 -> max_tokens; 1024 -> tool_use {"verdict":"clear"}
 aws bedrock-runtime converse --region us-east-1 --model-id us.moonshotai.kimi-k3 ...    # maxTokens 64 -> max_tokens; 1024 -> tool_use {"verdict":"clear"}
 aws bedrock-runtime converse --region us-east-1 --model-id mistral.devstral-2-123b ...  # maxTokens 64 -> tool_use {"verdict":"clear"}
+
+# Step 11c: role policy -> DeepSeek V3.2 (backup: backup/role-policy.step5.json), then re-simulate (11 cases)
+aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime \
+  --policy-document file://infra/changes/20261024-code-review-runtime/role-policy.json
+
+# Step 11d: redeploy (diff: MODEL_ID us.openai.gpt-6.1-sol -> deepseek.v3.2 only)
+(cd agents/code-review && agentcore deploy --diff --json && agentcore deploy -y --json)
