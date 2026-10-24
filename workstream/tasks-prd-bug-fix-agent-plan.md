@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.9 | 2026-10-24 | S-189 (developer): 10.1 checked as D-112 (OQ-1: a Python `make install` target, else `repo_gate` "missing install target"; confirmed by @llipe 2026-10-24, recorded via the docs write-back PR). 10.11 base corrected to `integration/bug-fix-agent-wave-a`; 10.12, 10.13 and 10.15 reworded to the D-110 uid model (root wrapper, `fixer` 10002, no `wrapper` user). 10.2–10.10 and 10.12–10.19 checked (test-first; agent gate green, 2579 passed, coverage 97.37%; image smoke 53/53 on a local arm64 build, no deploy). Draft PR #458 open; `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.8 | 2026-10-24 | S-188 (developer): 9.1 worded to the single DF-33 open-claim rule confirmed by @llipe 2026-10-24 (no `pr`, `disposition` or `refusal` marker); 9.8 base corrected to `integration/bug-fix-agent-wave-a`. 9.1–9.7 checked (test-first; agent gate green, 2271 passed, coverage 98%). Draft PR #454 open; `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.7 | 2026-10-24 | S-185 fix round (developer), from the QA gate and the S-185 fidelity report: page caps with pages left raise `GITHUB_UNAVAILABLE` (QA 1); an unknown `v_runs.effective_status` is `SUPABASE_UNAVAILABLE` with a `run_event` warning, and the missing-row warning is a `run_event` too (QA 2, DF-185-03); no request follows a redirect, a 3xx is `GITHUB_REQUEST_REJECTED` (QA 3); the `Link` parser matches `rel` as a whole parameter (QA 4); one 120 s wait budget per logical operation, `Retry-After` honoured up to 60 s (QA 5, DF-185-06); a failed mint is a `CredentialError`, and a refresh re-checks `issues: write` on the new token (QA 6); GraphQL `errors[]` split into transient (retry, then `GITHUB_UNAVAILABLE`) and permanent (`GITHUB_REQUEST_REJECTED`) (DF-185-05); a cross-repo linked PR is named `owner/repo#M` (DF-185-07, CT-33); agent-side CT-34 table (DF-185-08 partial; the L2.5 real-database read remains). No new public error code. DF-185-01/02/04 unchanged. | developer |
 | 2.0.6 | 2026-10-24 | S-185 (developer): 6.1–6.9 checked (test-first; agent gate green, 1858 passed, coverage 97.76%). 6.10 base corrected to `integration/bug-fix-agent-wave-a`; Draft PR #453 open, `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
@@ -68,24 +69,26 @@
 - `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL); S-186: comments, reactions, 65,536-unit truncation; S-185: built on `github_client.py`, issue facts (`IssueFacts`), linked PRs (closing references plus `issue/<N>-` heads); S-188: `delete_comment()` (idempotent, a 404 is already gone)
 - `agents/bug-fix/app/bugFix/markers.py` - Claim, disposition, refusal and `pr` markers; leading block, trust, open claims (S-186); S-188: the single DF-33 open-claim rule (`refusal` closes its own run's claim)
 - `agents/bug-fix/app/bugFix/disposition.py` - Idempotent, ownership-gated disposition (S-186)
-- `agents/bug-fix/app/bugFix/refusal.py` - Preflight, refusal checks and the marked reply; `v_runs` reader (S-185); S-188: duplicate refused-set rule removed (DF-185-04), `active_claim_runs(before=, warn=)` shared with the race check
+- `agents/bug-fix/app/bugFix/refusal.py` - Preflight, refusal checks and the marked reply; `v_runs` reader (S-185); S-188: duplicate refused-set rule removed (DF-185-04), `active_claim_runs(before=, warn=)` shared with the race check; S-189: `post_refusal()`, `repo_gate` items `package.json or Makefile`, `lockfile`, `install`
 - `agents/bug-fix/app/bugFix/claim.py` - Claim comment plus 👀, post-claim race check, withdrawal, ownership gate (S-188)
 - `agents/bug-fix/app/bugFix/github_client.py` - Shared GitHub client: retry policy, typed errors, GraphQL queries, `Link` header parsing (S-185)
 - `agents/bug-fix/app/bugFix/neutralize.py` - Model-text neutralizer (S-186)
 - `agents/bug-fix/app/bugFix/claim.py` - Claim and race check
-- `agents/bug-fix/app/bugFix/toolchain.py` - Stack detection and repo gate (copied from `dependency-update`, extended)
-- `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
-- `agents/bug-fix/app/bugFix/gates.py` - Gate runner
-- `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`; S-185: `unit/test_{refusal,github_client,permissions}.py`, `component/test_{refusal,label_invariance}.py`, extended `fake_github.py`, `unit/test_{credentials,comment_bodies_property}.py` and `tests/conftest.py`; S-188: `unit/test_race.py`, `component/test_claim.py`, `DELETE` in `fake_github.py`, extended `unit/test_{markers,markers_property,config,agentcore_config}.py` and `component/test_issues.py`)
+- `agents/bug-fix/app/bugFix/toolchain.py` - Stack detection, gate names, static `Makefile` parsing and the repo gate, read through a `RepoReader` (copied from `dependency-update` at ff52835, extended; S-189, D-112)
+- `agents/bug-fix/app/bugFix/safe_git.py` - The wrapper's only git: hardened command shape, the wrapper clone, `materialize()` as `fixer`, `capture()`, `TreeReader` (S-189, D-62)
+- `agents/bug-fix/app/bugFix/checkout.py` - Clone, materialize, repo gate (refusal `repo_gate`), frozen install, base gates, `restore_base()`; `CLONE_FAILED`, `INSTALL_FAILED` (S-189)
+- `agents/bug-fix/app/bugFix/gates.py` - Gate runner: four gates plus `audit` in `Mode.SCRIPT`, scrubbed tails (S-189)
+- `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions; S-189: wrapper git end to end, TC-189-19
+- `agents/bug-fix/app/bugFix/tests/fixtures/repos/**` - S-189 fixture repos (README lists each)
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`; S-185: `unit/test_{refusal,github_client,permissions}.py`, `component/test_{refusal,label_invariance}.py`, extended `fake_github.py`, `unit/test_{credentials,comment_bodies_property}.py` and `tests/conftest.py`; S-188: `unit/test_race.py`, `component/test_claim.py`, `DELETE` in `fake_github.py`, extended `unit/test_{markers,markers_property,config,agentcore_config}.py` and `component/test_issues.py`; S-189: `unit/test_{toolchain,safe_git}.py`, `component/{repo_fixtures,test_checkout,test_gates,test_git_confinement,test_safe_git_faults}.py`)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/{params_schema,payload.webhook,payload.manual}.json` - Panel → agent contract fixtures; `params_schema.json` is the spec §5.2 v2.0 copy shared with the panel tests (S-184)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/markers/{*.md,expected.json,.gitattributes}` - CT-32 golden marker bodies, byte-exact (S-186)
-- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section; S-185: refusal checks section; S-188: claim and race check section, `PANEL_BASE_URL`)
+- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section; S-185: refusal checks section; S-188: claim and race check section, `PANEL_BASE_URL`; S-189: checkout, repo gate and gates section, image and testing notes)
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
 - `Makefile` - Repo-root `AGENT_DIRS` includes `agents/bug-fix/app/bugFix` (S-180)
 - `.github/workflows/ci.yml` - `python-quality` matrix entry for `bug-fix` (S-180)
-- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186); GraphQL and fault injection in the double, `Link` header at L1, RT-13, no-sleep retry fixture (S-185); comment deletion in the double (S-188)
+- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186); GraphQL and fault injection in the double, `Link` header at L1, RT-13, no-sleep retry fixture (S-185); comment deletion in the double (S-188); real-git fixture repos, `SpawnSpy`, `StubSandbox`/`LocalSandbox`, and the image-smoke wrapper-git checks (S-189)
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema, webhook-resolve check, and the webhook fire at the seeded runtime ARN (S-184)
 - `panel/tests/unit/bug-fix-params-schema.test.ts` - TC-184-07 boundary table through the panel's Ajv (S-184)
 - `panel/tests/fixtures/github/issue_comment.created.json` - `issue_comment.created` payload, modeled on GitHub's documented shape (not recorded) (S-184)
@@ -94,7 +97,7 @@
 - `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C); root wrapper + `setpriv` fact and the probe-invocation procedure (3.17)
 - `docs/runbooks/README.md` - Runbook index row (3.17: probe in the trigger)
 - `workstream/spike-bug-fix-sandbox.md` - Spike report
-- `workstream/decisions-bug-fix-agent.md` - Append for OQ-1
+- `workstream/decisions-bug-fix-agent.md` - OQ-1 recorded as D-112 by the docs write-back PR (not edited in S-189's PR)
 
 ## Tasks
 
@@ -281,39 +284,42 @@
   - [x] 10.1 **Decide OQ-1 before 10.5:** for Python, require a `make install` target, or end `not_applicable` "missing install target" (the proposal). Append the result to `workstream/decisions-bug-fix-agent.md` as a new `D-NN`, with user confirmation (D-112, recorded via the docs write-back PR)
     > Confirmed by @llipe on 2026-10-24: Python repos need a `make install` target, which the wrapper runs in the sandbox; without it the run ends with refusal `repo_gate`, "missing install target", before any issue change (FR-5). JS stays `pnpm install --frozen-lockfile` or `npm ci`.
   - [x] 10.2 [agents/bug-fix] Fixture repos `tests/fixtures/repos/{js-pnpm-ok, js-missing-typecheck, py-make-ok, py-no-developer-md}`
-  - [ ] 10.3 `[T]` [agents/bug-fix] L1 `tests/unit/test_toolchain.py`: stack detection (pnpm, npm, Makefile, none), gate-name resolution, `Makefile` target parsing (`format_check` ≠ `format-check`) (D-17, D-19)
-  - [ ] 10.4 `[T]` [agents/bug-fix] L2 `tests/component/test_checkout.py` and `test_gates.py` with real `git`:
+  - [x] 10.3 `[T]` [agents/bug-fix] L1 `tests/unit/test_toolchain.py`: stack detection (pnpm, npm, Makefile, none), gate-name resolution, `Makefile` target parsing (`format_check` ≠ `format-check`) (D-17, D-19)
+  - [x] 10.4 `[T]` [agents/bug-fix] L2 `tests/component/test_checkout.py` and `test_gates.py` with real `git`:
     - shallow clone and base SHA recorded;
     - repo gate pass and fail, naming the missing item;
     - per-gate `{pass, exit_code, tail}` with the tail scrubbed;
     - base results recorded, never blocking (D-06, D-14, D-19).
-  - [ ] 10.5 `[I]` [agents/bug-fix] `toolchain.py`: copy from `dependency-update`, add Python `Makefile` targets and the `.claude/agents/developer.md` check (D-06, D-18, D-19)
-  - [ ] 10.6 `[I]` [agents/bug-fix] `checkout.py`: clone into the wrapper clone and materialize `/work/repo` as `fixer` through `safe_git.py` (10.13–10.14, DF-02); install in the sandbox; a missing repo-gate item ends with refusal `repo_gate` through `refusal.py` (6.0, D-92); (JS `pnpm install --frozen-lockfile` or `npm ci`, Python per 10.1) (D-63); `CLONE_FAILED` and `INSTALL_FAILED` codes
-  - [ ] 10.7 `[I]` [agents/bug-fix] `gates.py`: the four gates plus `audit` through `sandbox.py`, with tails scrubbed (D-14)
-  - [ ] 10.8 Edge cases: a `package.json` with no `scripts`; a monorepo root `package.json`; a clone failure; an install failure
-  - [ ] 10.9 Verify AC (v1.4): AC1–AC3 by 10.12–10.16; AC4, AC5, AC7 and AC8 by 10.3 and 10.4; AC6 by the decision-log row from 10.1; AC9 by 10.17 (DF-24)
-  - [ ] 10.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+  - [x] 10.5 `[I]` [agents/bug-fix] `toolchain.py`: copy from `dependency-update`, add Python `Makefile` targets and the `.claude/agents/developer.md` check (D-06, D-18, D-19)
+  - [x] 10.6 `[I]` [agents/bug-fix] `checkout.py`: clone into the wrapper clone and materialize `/work/repo` as `fixer` through `safe_git.py` (10.13–10.14, DF-02); install in the sandbox; a missing repo-gate item ends with refusal `repo_gate` through `refusal.py` (6.0, D-92); (JS `pnpm install --frozen-lockfile` or `npm ci`, Python per 10.1) (D-63); `CLONE_FAILED` and `INSTALL_FAILED` codes
+  - [x] 10.7 `[I]` [agents/bug-fix] `gates.py`: the four gates plus `audit` through `sandbox.py`, with tails scrubbed (D-14)
+  - [x] 10.8 Edge cases: a `package.json` with no `scripts`; a monorepo root `package.json`; a clone failure; an install failure
+  - [x] 10.9 Verify AC (v1.4): AC1–AC3 by 10.12–10.16; AC4, AC5, AC7 and AC8 by 10.3 and 10.4; AC6 by the decision-log row from 10.1; AC9 by 10.17 (DF-24)
+    > AC1: `test_checkout.py::TestClone`, `TestNoTokenAtRest`, image smoke (root 0700 clone). AC2: `test_git_confinement.py::TestHardened`, `tests/unit/test_safe_git.py` (static scan). AC3: `TestMaterialize`, `TestPlantedRepoNeverRuns`, image smoke (fixer-owned files, plants never run). AC4, AC5: `tests/unit/test_toolchain.py`, `test_checkout.py::TestRepoGate`. AC6: D-112 (docs write-back PR). AC7, AC8: `test_gates.py`, `test_checkout.py::TestBaseGates`. AC9: `test_checkout.py::TestInstall`, `TestRestoreBase`.
+  - [x] 10.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+    > Local run done (2026-10-24, developer): agent gate green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 2579 passed, 3 xfailed, coverage 97.37%: `checkout.py` 95%, `safe_git.py` 93%, `gates.py` 96%, `toolchain.py` 96%, `refusal.py` 100%; `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
   - [ ] 10.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
-  - [ ] 10.12 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_git_confinement.py`:
+  - [x] 10.12 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_git_confinement.py`:
     - a `.git/hooks/{post-checkout,pre-commit}`, `core.fsmonitor`, `diff.external` and a filter driver planted in `/work/repo` never run in the root wrapper's git calls during checkout or capture (uid model per D-110);
     - every wrapper git call carries `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `core.hooksPath=/dev/null` and `core.fsmonitor=false`;
     - `safe.directory=*` is never set;
     - `capture()` includes untracked files and stores symlinks without following them (DF-02, DF-01, D-62).
-  - [ ] 10.13 `[I]` [agents/bug-fix] Do this before 10.9. `safe_git.py`:
+  - [x] 10.13 `[I]` [agents/bug-fix] Do this before 10.9. `safe_git.py`:
     - a hardened git runner;
     - the wrapper clone at `/work/wrapper/repo`, mode 0700 (root-owned, uid model per D-110), with `info/exclude` listing only `node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/` (D-83);
     - `materialize(tree, dest)`: `git archive` piped to `tar -x` running as `fixer`;
     - `capture(work_tree)`: `git --git-dir=<wrapper clone> --work-tree=<dir> add -A` (DF-02, D-62).
-  - [ ] 10.14 `[I]` [agents/bug-fix] Do this before 10.9. `checkout.py` clones into the wrapper clone and materializes the base tree into a fresh `/work/repo` as `fixer`. No wrapper git call targets a `fixer`-writable `.git` (DF-02, D-62)
-  - [ ] 10.15 `[I]` [agents/bug-fix] Dockerfile: `/work/wrapper` owned by root with mode 0700, unreadable by `fixer` (uid model per D-110; the `wrapper` user no longer exists). Extend `scripts/image-smoke.sh` to assert this (DF-02, D-62)
-  - [ ] 10.16 Verify AC: the S-189 v1.1 wrapper-clone and `safe_git.py` ACs by 10.12 and the 10.15 smoke check (DF-02, D-62)
-  - [ ] 10.17 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_checkout.py`:
+  - [x] 10.14 `[I]` [agents/bug-fix] Do this before 10.9. `checkout.py` clones into the wrapper clone and materializes the base tree into a fresh `/work/repo` as `fixer`. No wrapper git call targets a `fixer`-writable `.git` (DF-02, D-62)
+  - [x] 10.15 `[I]` [agents/bug-fix] Dockerfile: `/work/wrapper` owned by root with mode 0700, unreadable by `fixer` (uid model per D-110; the `wrapper` user no longer exists). Extend `scripts/image-smoke.sh` to assert this (DF-02, D-62)
+    > The Dockerfile already had `/work/wrapper` `root:root` 0700 (3.17). Added: build fails without git `--attr-source` (≥ 2.40), `/usr/bin/tar` or `/usr/bin/rm`. `image-smoke.sh` now runs `safe_git` end to end as root under `no_new_privs` and asserts TC-189-19. Local arm64 build: 53/53 checks passed (2026-10-24). Not deployed; the redeploy is S-190 via `infra-engineer`.
+  - [x] 10.16 Verify AC: the S-189 v1.1 wrapper-clone and `safe_git.py` ACs by 10.12 and the 10.15 smoke check (DF-02, D-62)
+  - [x] 10.17 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_checkout.py`:
     - an npm fixture installs with `npm ci` and a pnpm fixture with `pnpm install --frozen-lockfile`;
     - an out-of-sync `package-lock.json` gives `INSTALL_FAILED`, and the lockfile is unchanged;
     - a base gate that rewrites a tracked file (an autofix lint) and creates an untracked file has both restored to base before the CLI step, with a `run_event`;
     - ignored `node_modules/` is left as it is (TC-189-14, TC-189-15) (DF-12, D-63).
-  - [ ] 10.18 `[I]` [agents/bug-fix] Do this before 10.9. `checkout.py`: install command per detected manager, and `restore_base()` after install and the base gates (capture → restore changed tracked paths as `fixer` through `safe_git.py`) (DF-12, D-63)
-  - [ ] 10.19 Verify AC: the S-189 v1.2 install and base-restore AC by 10.17 (DF-12, D-63)
+  - [x] 10.18 `[I]` [agents/bug-fix] Do this before 10.9. `checkout.py`: install command per detected manager, and `restore_base()` after install and the base gates (capture → restore changed tracked paths as `fixer` through `safe_git.py`) (DF-12, D-63)
+  - [x] 10.19 Verify AC: the S-189 v1.2 install and base-restore AC by 10.17 (DF-12, D-63)
 
 - [ ] 11.0 Implement Story S-190 (#372 - https://github.com/llipe/dev-tasks-agent-fleet/issues/372): Orchestration, outcome mapping, and reporting through the claim
 
@@ -372,3 +378,6 @@
 | D-102 | Linked-board detection and status mapping. |
 | D-104 | Marked refusal reply. |
 | D-105 | Spike board probe on board #5. |
+| D-110 | Root wrapper drops to `fixer` with `setpriv`; no `sudo`. |
+| D-111 | `localhost` through NSS in the image. |
+| D-112 | Python install is a `make install` target, else refusal `repo_gate` "missing install target" (OQ-1; recorded via the docs write-back PR). |

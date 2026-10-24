@@ -16,7 +16,8 @@ PRD: [`docs/requirements/prd-bug-fix-agent.md`](../../docs/requirements/prd-bug-
 | Markers, neutralizer, comments and reactions, idempotent disposition, SIGTERM disposition hook (`markers.py`, `neutralize.py`, `issues.py`, `disposition.py`; not yet wired into `main.py`) | S-186 |
 | Shared GitHub client with the retry policy, token permissions, issue facts and linked PRs, refusal checks and the marked reply (`github_client.py`, `refusal.py`; not yet wired into `main.py`) | S-185 |
 | Claim with the post-claim race check, `PANEL_BASE_URL` run link (`claim.py`; not yet wired into `main.py`) | S-188 |
-| Checkout, orchestration | S-189, S-190 |
+| Checkout, repo gate, toolchain and gate runner (`safe_git.py`, `toolchain.py`, `checkout.py`, `gates.py`; not yet wired into `main.py`) | S-189 |
+| Orchestration | S-190 |
 | Fix runner, validation, red-to-green, Draft PR, confinement | Wave B (S-191–S-195) |
 
 ## Layout
@@ -45,6 +46,10 @@ agents/bug-fix/
     ├── refusal.py                 # preflight, refusal checks, marked refusal reply (S-185)
     ├── disposition.py             # diagnosis comment + 😕, once per run, after ownership (S-186)
     ├── claim.py                   # claim comment + 👀, post-claim race check, ownership gate (S-188)
+    ├── safe_git.py                # the wrapper's only git: hardened, own clone, trees in/out as fixer (S-189)
+    ├── toolchain.py               # copied from dependency-update + extended: stack, gate names, repo gate (S-189)
+    ├── checkout.py                # clone, repo gate, frozen install, base gates, base restore (S-189)
+    ├── gates.py                   # four gates + audit in the script sandbox, scrubbed tails (S-189)
     ├── sandbox.py                 # starts fixer processes: setpriv drop, env, sandbox, timeout
     ├── fixer_exec.py              # runs as fixer after setpriv; rebuilds the env, refuses root
     ├── probe.py                   # S-182 spike checks (probe mode)
@@ -55,10 +60,10 @@ agents/bug-fix/
     ├── scrubber.py                # copied + extended: secret redaction
     ├── credentials.py             # copied + extended: Supabase key, App token + App id + permissions, fetch_secret_string
     ├── scripts/image-smoke.sh     # image assertions
-    └── tests/{unit,component,fixtures/contract}/   # contract: params_schema.json (spec §5.2), payloads, marker goldens
+    └── tests/{unit,component,fixtures/{contract,repos}}/   # contract: params_schema.json (spec §5.2), payloads, marker goldens; repos: S-189 fixture repos
 ```
 
-Copied modules follow the sibling convention (copy, don't share; D-03). Each starts with a header naming its source path in `agents/security-analyst/app/securityAnalyst/` and the source commit.
+Copied modules follow the sibling convention (copy, don't share; D-03). Each starts with a header naming its source path in `agents/security-analyst/app/securityAnalyst/` and the source commit. `toolchain.py` is the exception to the source agent: it is copied from `agents/dependency-update/app/dependencyUpdate/toolchain.py`, with the same kind of header.
 
 ## Configuration
 
@@ -119,6 +124,19 @@ Every comment the agent posts starts with a hidden marker block, one line per ru
 
 A crashed run leaves its claim comment and 👀. Refusal (d) blocks a new `/bug-fix` only while that run is non-terminal; once the reaper marks it `timed_out`, a new run proceeds (AC-24, D-94).
 
+## Checkout, repo gate and gates (S-189, spec §8.7)
+
+`checkout.run_checkout()` is the `checkout` step. It runs after the refusal checks and **before** the claim, so a repo the agent can't work in gets only a refusal reply, and no issue changes before the repo gate passes (FR-5). Wiring it into `main.py` is S-190.
+
+1. **Clone** (D-62). `safe_git.clone()` shallow-clones `base_branch` of `https://github.com/<owner>/<repo>.git` into the wrapper clone `/work/wrapper/repo` (mode 0700, under root-owned `/work/wrapper`, D-110), with `--no-checkout`, and records the base SHA. `info/exclude` lists only `node_modules/`, `.venv/`, `.pnpm-store/` and `__pycache__/` (D-83). The installation token is an `http.https://github.com/.extraheader` passed through `GIT_CONFIG_*` env variables, never argv or `.git/config`, and redirects are off. A clone failure, or a hostile branch name, is `failed`/`CLONE_FAILED`.
+2. **Materialize.** The base tree goes into the empty `/work/repo` as plain files. `safe_git` builds a tar from raw blobs (`ls-tree` and `cat-file --batch`; not `git archive`, which would apply the repo's `export-ignore`/`export-subst`), and `tar -x` runs as `fixer` through the `setpriv` drop. `/work/repo` has no `.git`; `fixer` may create one, and the wrapper never reads it.
+3. **Repo gate** (FR-6, D-06, D-19, D-112). `toolchain.check_repo_gate()` reads the **base commit in the wrapper clone** (regular blobs only, never the work tree). A root `package.json` means JS/TS, even next to a `Makefile`; it needs scripts `test`, `lint`, `format:check`, `typecheck` and a lockfile (manager: the `packageManager` field, then `pnpm-lock.yaml`, then `package-lock.json`). Otherwise a root `Makefile` means Python; it needs targets `test`, `lint`, `format-check`, `typecheck` and `install`. The `Makefile` is parsed statically (`include` not followed; a comment, `.PHONY` or a prerequisite is not a target; `test::` is). Both need `.claude/agents/developer.md`. A miss is refusal `repo_gate`: the marked reply names the first item from a closed set, `result.summary` names every miss ("missing script typecheck", "missing target format-check", "missing install target"), and the run ends `succeeded`/`not_applicable` with no claim, reaction or board call.
+4. **Install** in the script sandbox as `fixer`: `pnpm install --frozen-lockfile`, `npm ci`, or `make install` (D-63, D-112). A lockfile mismatch fails, and the lockfile is never rewritten. Any failure, including an unavailable sandbox, is `failed`/`INSTALL_FAILED`.
+5. **Base gates** (D-14). `gates.run_gates()` runs `test`, `lint`, `format`, `typecheck`, then `audit` (skipped when the repo has none), each as `<pm> run <script>` or `make <target>` in `Mode.SCRIPT`. Each result is `{pass, exit_code, tail}` plus the command and outcome; the tail is stdout then stderr, scrubbed before it is cut to 4,000 characters. Each gate is a `run_event`, and the report is kept for the PR body. Base results never block.
+6. **Restore the base** (D-63). `checkout.restore_base()` captures `/work/repo` (`git --git-dir=/work/wrapper/repo/.git --work-tree=/work/repo add -A` after a stat-free `read-tree`, so every file is re-hashed), and every path that differs from base is put back as `fixer` (`rm -rf`, then the base version through `tar -x`). It repeats until the tree equals base (an edited `.gitignore` can hide a new file until it is restored), and logs "base runs modified N tracked files; restored". Ignored paths such as `node_modules/` are left as they are.
+
+`safe_git.py` is the only module that runs git (a unit test scans the others). Every call has `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, `--attr-source=<empty tree>` (no `.gitattributes` from the work tree, so no filter driver, textconv or eol conversion) and an explicit `--git-dir` on the wrapper clone, with an env built from scratch. It never sets `safe.directory` and never uses `-C`, `GIT_DIR` or a `cwd` in the work tree. Symlinks are captured as links (mode 120000), never followed; untracked files are included (DF-01); an embedded repository is a gitlink.
+
 ## Refusal checks (S-185, spec §8.2)
 
 `refusal.run_refusal_checks()` is the `preflight` and `refuse` step. It makes no claim and no board call. Wiring it into `main.py` is S-190.
@@ -138,7 +156,8 @@ Faults are never read as "no match" (D-67): exhausted GitHub retries, a spent wa
 - Python 3.13 (wrapper), Node 26 + pnpm 10.11.0, git, make, `bubblewrap`, `socat` and `ripgrep` (the Claude Code sandbox runtime on Linux), `util-linux` (`setpriv`, the drop to `fixer`), and `procps` (`kill` and `pkill` for the post-run sweep). No `sudo`: the build fails if it is present.
 - `@anthropic-ai/claude-code` pinned by `ARG CLAUDE_CODE_VERSION`, and `@anthropic-ai/sandbox-runtime` (`srt`) pinned by `ARG SANDBOX_RUNTIME_VERSION`, both installed root-owned; `DISABLE_AUTOUPDATER=1`.
 - Users: the wrapper (`main.py`) runs as **root**, the image's default user (D-110). `fixer` (uid/gid 10002, in no other group, private home) runs the CLI and repo scripts. There is no other runtime user.
-- Directories: `/work/repo` and `/work/out` owned by `fixer`; `/work/wrapper` and `/work/secrets` `root:root` 0700.
+- Directories: `/work/repo` and `/work/out` owned by `fixer`; `/work/wrapper` (the wrapper clone, `safe_git.py`) and `/work/secrets` `root:root` 0700.
+- git ≥ 2.40 (`--attr-source`), `/usr/bin/tar` and `/usr/bin/rm`, all needed by `safe_git.py`; the build fails without them.
 - `/etc/claude-code/managed-settings.json` and `/etc/bug-fix/srt-settings.json`, `root:root` 0644, directories 0755.
 
 ### Starting processes as `fixer` (`sandbox.py`, D-51, D-110)
@@ -210,11 +229,14 @@ make image-smoke    # build, then scripts/image-smoke.sh bug-fix:local
 - `fixer_exec.py`'s env rebuild and its refusal to run as root;
 - `sandbox.py`'s own paths, prefix and sweep;
 - `localhost` without `/etc/hosts`: with an empty, read-only `/etc/hosts` mounted (as on AgentCore), NSS resolves it to `127.0.0.1` first, and the wrapper's preflight reports `nss`; nsswitch lists `myhostname` before `dns`; `/etc/gai.conf` prefers IPv4;
-- the directory owners and modes, and that `fixer` can't modify either policy file.
+- the directory owners and modes, and that `fixer` can't modify either policy file;
+- the wrapper's git (S-189): git supports `--attr-source`; as the root wrapper under `no_new_privs`, `safe_git.clone` makes `/work/wrapper/repo` root-owned 0700, `materialize` writes `/work/repo` files owned by `fixer` with no `.git`, a `fixer`-planted `.git/hooks` and `core.fsmonitor` never run in the wrapper's capture (with a control showing they do fire under `fixer`'s own git), and `fixer` can't list `/work/wrapper` or read `/work/wrapper/repo/.git/config` (TC-189-19).
 
 The repo-root `make validate` includes this package.
 
 `tests/component/fake_github.py` is an in-memory GitHub REST and GraphQL double at the `requests.Session` boundary, used by `test_issues.py`, `test_disposition.py`, `test_refusal.py`, `test_claim.py` and `test_label_invariance.py`. It serves comments (list, post, delete), reactions, issue facts, open pulls and the closing-reference query (with each PR's repository, for cross-repo cases), with per-route fault injection, 3xx answers (`redirect()`), and a record of each request's `allow_redirects`. It hands the client pre-parsed `links`, so `tests/unit/test_github_client.py` covers the real `Link` header parsing. The marker grammar is pinned by golden bodies in `tests/fixtures/contract/markers/` (CT-32).
+
+The S-189 tests use real `git` on the fixture repos in `tests/fixtures/repos/` (see its README), committed and cloned from a local bare remote by `tests/component/repo_fixtures.py`. `SpawnSpy` there records every spawn `safe_git` makes, checks that every non-git spawn starts with the production `setpriv` drop, and then runs it as the current user. `StubSandbox` answers `Sandbox.run` with scripted results, and `LocalSandbox` runs install and gates for real with npm and pnpm forced offline (the tests that need `npm` or `pnpm` skip without them). `test_git_confinement.py` plants hooks, `core.fsmonitor`, `diff.external` and a filter driver in a `fixer` repository inside the work tree, and checks that no canary fires, with a control that does.
 
 `tests/component/test_sandbox_proc.py` runs the real command chain with real processes. Only `setpriv` and `srt` are replaced by exec-through shims, and the sweep is scoped to a per-test marker (the production sweep would kill every process of the current user).
 
