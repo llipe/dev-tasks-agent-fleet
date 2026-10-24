@@ -54,6 +54,7 @@ import pytest
 from context.diff import escape_path
 from context.verifier import Candidate
 from findings_schema import CATEGORIES, SEVERITIES, SchemaViolation
+from tests.helpers.perf import perf_bound
 from tests.helpers.prng import Tactic, tactic_seed
 from validate import (
     DOWNGRADE_OUTSIDE_DIFF,
@@ -640,7 +641,7 @@ def test_forty_schema_maximal_findings_over_many_files_and_200k_ranges_stay_fast
     checks = [check("V" + "1" * 1000, STATUS_CONFIRMED, "r" * 300)] * 100_000
     start = time.perf_counter()
     result = run(findings, ranges=ranges, checks=checks, shown=[cand(1)])
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
     assert len(result.blocking) == 40
     assert result.counts.verifier_checks_ignored == 100_000
 
@@ -655,4 +656,4 @@ def test_strings_over_the_schema_maximum_are_rejected_before_any_scan():
     ):
         with pytest.raises(SchemaViolation):
             run([finding(**{field: "​" * (size + 10**7)})])
-    assert time.perf_counter() - start < 1.0
+    assert time.perf_counter() - start < perf_bound(1.0)

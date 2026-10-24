@@ -32,6 +32,7 @@ from render import (
     render_failure,
     render_review,
 )
+from tests.helpers.perf import perf_bound
 from tests.helpers.render_inputs import (
     HEAD,
     MODEL,
@@ -989,7 +990,7 @@ def test_truncate_worst_case_at_schema_maxima_escape_heavy():
     assert out.body.endswith("</sub>\n")
     assert content_lt(out.body) == 0
     assert unescaped_mentions(out.body) == []
-    assert elapsed < 5
+    assert elapsed < perf_bound(5)
 
 
 def test_truncate_exactly_60000_untouched_and_60001_truncated():

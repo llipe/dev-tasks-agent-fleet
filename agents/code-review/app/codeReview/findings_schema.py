@@ -55,6 +55,7 @@ __all__ = [
     "CHECK_STATUSES",
     "MAX_FINDINGS",
     "MAX_REVIEW_JSON_CHARS",
+    "MAX_REVIEW_JSON_DEPTH",
     "SEVERITIES",
     "SUBMIT_REVIEW_SCHEMA",
     "SUBMIT_REVIEW_TOOL",
@@ -260,6 +261,28 @@ def validate_review(value: Any) -> dict[str, Any]:
     return review
 
 
+# The schema nests 4 levels (review, findings, finding, field); anything far
+# deeper is not a review. Checked explicitly so rejection does not depend on
+# the interpreter raising RecursionError, which Python 3.14's json no longer
+# does at depths the parser can now handle.
+MAX_REVIEW_JSON_DEPTH = 64
+
+_JSON_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"', re.DOTALL)
+
+
+def _nesting_depth(text: str) -> int:
+    """Return the maximum ``[``/``{`` nesting depth of ``text``, ignoring strings. Linear."""
+    depth = deepest = 0
+    for ch in _JSON_STRING_RE.sub("", text):
+        if ch in "[{":
+            depth += 1
+            if depth > deepest:
+                deepest = depth
+        elif ch in "]}":
+            depth -= 1
+    return deepest
+
+
 def _reject_constant(_name: str) -> Any:
     raise ValueError("non-finite number")
 
@@ -275,6 +298,8 @@ def parse_review_json(text: str) -> Any:
     """
     if len(text) > MAX_REVIEW_JSON_CHARS:
         raise SchemaViolation(_ROOT, RULE_JSON, "is not exactly one JSON object (too long)")
+    if _nesting_depth(text) > MAX_REVIEW_JSON_DEPTH:
+        raise SchemaViolation(_ROOT, RULE_JSON, "is not exactly one JSON object (too deep)")
     try:
         return json.loads(text, parse_constant=_reject_constant)
     except json.JSONDecodeError as exc:

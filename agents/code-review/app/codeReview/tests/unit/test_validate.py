@@ -20,6 +20,7 @@ import pytest
 
 from context.diff import DiffContext, FileDiff, NameOnlyFile, escape_path
 from findings_schema import CATEGORIES, SchemaViolation
+from tests.helpers.perf import perf_bound
 from validate import (
     DOWNGRADE_NO_SCENARIO,
     DOWNGRADE_OUTSIDE_DIFF,
@@ -306,7 +307,7 @@ def test_normalize_file_is_linear_on_hostile_input():
     raw = "`" * 200_000 + "./" * 200_000 + "/" * 200_000 + "a" + "`" * 200_000
     start = time.perf_counter()
     assert normalize_file(raw) == "a"
-    assert time.perf_counter() - start < 1.0
+    assert time.perf_counter() - start < perf_bound(1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +474,7 @@ def test_the_location_check_is_fast_with_many_ranges_and_huge_lines():
     ]
     start = time.perf_counter()
     result = run(findings, ranges=ranges)
-    assert time.perf_counter() - start < 1.0
+    assert time.perf_counter() - start < perf_bound(1.0)
     assert all(f.downgraded == DOWNGRADE_OUTSIDE_DIFF for f in result.findings)
 
 
@@ -592,7 +593,7 @@ def test_is_blank_returns_at_the_first_letter_or_number():
     text = "a" + "\u200b" * 5_000_000
     start = time.perf_counter()
     assert not is_blank(text)
-    assert time.perf_counter() - start < 0.05
+    assert time.perf_counter() - start < perf_bound(0.05)
 
 
 def test_is_blank_is_linear():
@@ -600,7 +601,7 @@ def test_is_blank_is_linear():
     start = time.perf_counter()
     assert is_blank(text)
     assert not is_blank(text + "x")
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
 
 
 # ---------------------------------------------------------------------------

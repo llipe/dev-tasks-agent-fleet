@@ -25,6 +25,7 @@ from findings_schema import (
     validate_review,
 )
 from tests.fixtures.bedrock import finding, valid_review
+from tests.helpers.perf import perf_bound
 
 SENTINEL = "SENTINEL-DO-NOT-ECHO"
 
@@ -156,12 +157,12 @@ def _timed(fn) -> float:
 
 def test_a_huge_string_is_rejected_quickly():
     value = {"findings": [finding(title="t" * 20_000_000)], "verifier_checks": []}
-    assert _timed(lambda: _violation(value)) < 0.5
+    assert _timed(lambda: _violation(value)) < perf_bound(0.5)
 
 
 def test_a_huge_findings_list_is_rejected_by_max_items_before_its_items():
     value = {"findings": [object()] * 5_000_000, "verifier_checks": []}
-    assert _timed(lambda: _violation(value)) < 0.1
+    assert _timed(lambda: _violation(value)) < perf_bound(0.1)
 
 
 def test_deep_nesting_in_a_scalar_field_is_rejected_without_recursion():
@@ -176,7 +177,9 @@ def test_many_verifier_checks_validate_in_linear_time():
     checks = [
         {"candidate_id": f"V{k}", "status": "confirmed", "reason": ""} for k in range(200_000)
     ]
-    assert _timed(lambda: validate_review({"findings": [], "verifier_checks": checks})) < 2.0
+    assert _timed(
+        lambda: validate_review({"findings": [], "verifier_checks": checks})
+    ) < perf_bound(2.0)
 
 
 # --- strict JSON (fallback mode, DF-21 pinned) -------------------------------
@@ -269,3 +272,35 @@ def test_open_objects_and_untyped_arrays_are_supported():
     _check({"a": 1, "b": 2}, {"type": "object", "properties": {"a": {"type": "integer"}}}, "$")
     _check([1, "x"], {"type": "array"}, "$")
     _check({}, {"type": "object", "properties": {"a": {"type": "integer"}}}, "$")
+
+
+def test_parse_rejects_deep_nesting_before_the_json_parser_runs(monkeypatch):
+    # Python 3.14's json parses 100k-deep arrays without RecursionError, so the
+    # depth check must not rely on it.
+    import findings_schema
+
+    def _no_parse(*_a, **_k):
+        raise AssertionError("json.loads must not run on over-deep input")
+
+    monkeypatch.setattr(findings_schema.json, "loads", _no_parse)
+    deep = "[" * (findings_schema.MAX_REVIEW_JSON_DEPTH + 1) + "]" * (
+        findings_schema.MAX_REVIEW_JSON_DEPTH + 1
+    )
+    with pytest.raises(SchemaViolation) as exc:
+        parse_review_json(deep)
+    assert exc.value.rule == "json"
+
+
+def test_parse_depth_ignores_brackets_inside_strings():
+    import findings_schema
+
+    text = '{"findings": [], "verifier_checks": [], "note": "' + "[{" * 500 + '\\"]}"}'
+    assert findings_schema._nesting_depth(text) == 2
+    assert parse_review_json(text)["findings"] == []
+
+
+def test_parse_accepts_nesting_at_the_depth_limit():
+    import findings_schema
+
+    depth = findings_schema.MAX_REVIEW_JSON_DEPTH
+    assert parse_review_json("[" * depth + "]" * depth) is not None

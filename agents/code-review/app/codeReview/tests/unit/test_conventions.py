@@ -37,6 +37,7 @@ from tests.helpers.github_stub import (
     load_fixture,
     text_response,
 )
+from tests.helpers.perf import perf_bound
 
 HEAD = "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
 CONTENTS = "/repos/acme/widgets/contents/"
@@ -348,7 +349,7 @@ def test_hostile_adr_text_is_summarized_quickly():
     text += "## Status" + " " * 100_000 + "#" * 100_000 + " x\n"
     start = time.perf_counter()
     adr_summary("docs/adr/x.md", text * 3)
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
 
 
 def test_403_without_a_warn_callback_still_skips():

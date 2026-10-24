@@ -47,6 +47,7 @@ from context.spec import (
 from context.tokens import estimate
 from github_client import GitHubApiError, GitHubClient, GitHubPermissionDenied, PullRequest
 from tests.helpers.github_stub import StubTransport, json_response, text_response
+from tests.helpers.perf import perf_bound
 
 REPO = "/repos/acme/widgets"
 ISSUES = f"{REPO}/issues"
@@ -277,7 +278,7 @@ def test_hostile_spec_outline_is_trimmed_quickly():
     text, trimmed, _ = trim_spec(
         spec, citations=("1", "2.3"), story_ids=("S-1",), reviewed_paths=("a.py",), cap_tokens=500
     )
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
     assert trimmed and estimate(text) <= 500
 
 
@@ -291,7 +292,7 @@ def test_trim_spec_citation_cost_is_bounded():
     citations = tuple(f"{i}.{i % 7}.9" for i in range(5_940))
     start = time.perf_counter()
     trim_spec(spec, citations=citations, story_ids=(), reviewed_paths=(), cap_tokens=500)
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
 
 
 def test_trim_spec_is_linear_when_sections_and_citations_grow_together():

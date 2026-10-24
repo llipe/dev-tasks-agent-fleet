@@ -18,6 +18,7 @@ from __future__ import annotations
 import time
 
 from context.verifier import Candidate
+from tests.helpers.perf import perf_bound
 from validate import (
     NOT_CHECKED_REASON,
     REASON_MAX_CHARS,
@@ -298,5 +299,5 @@ def test_an_unbounded_check_list_is_linear():
     shown = tuple(cand(k) for k in range(1, 1001))
     start = time.perf_counter()
     out = candidate_statuses(checks, shown=shown, dropped=())
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
     assert all(c.status == STATUS_NOT_REPRODUCED for c in out)

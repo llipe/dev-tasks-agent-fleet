@@ -33,6 +33,7 @@ from context.repo_conventions import (
 from context.tokens import estimate, truncate
 from github_client import GitHubApiError, GitHubClient, GitHubPermissionDenied
 from tests.helpers.github_stub import StubTransport, json_response, text_response
+from tests.helpers.perf import perf_bound
 from tests.helpers.prng import Tactic, tactic_seed
 
 HEAD = "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
@@ -81,7 +82,7 @@ def test_a_20k_entry_listing_with_duplicates_and_non_files_reads_50_validated_na
     stub = _stub({}, entries)
     start = time.perf_counter()
     ctx = _run(stub)
-    assert time.perf_counter() - start < 3.0
+    assert time.perf_counter() - start < perf_bound(3.0)
     adr_reads = [p for p in _requested(stub) if p.startswith("docs/adr/")]
     assert len(adr_reads) == MAX_ADRS == len(set(adr_reads))
     assert adr_reads == sorted(adr_reads)
@@ -175,7 +176,7 @@ def test_huge_adr_bodies_are_summarized_in_linear_time():
     text = "# T\n" + ("x" * 79 + "\n") * 200_000 + "Status: late\n"
     start = time.perf_counter()
     summary = adr_summary("docs/adr/x.md", text)
-    assert time.perf_counter() - start < 2.0
+    assert time.perf_counter() - start < perf_bound(2.0)
     assert summary.status == "Status: late"
 
 
@@ -245,7 +246,7 @@ def test_status_heading_scan_is_linear_in_the_number_of_lines():
     text = "# T\n" + "## Status\n" * 40_000
     start = time.perf_counter()
     adr_summary("docs/adr/x.md", text)
-    assert time.perf_counter() - start < 0.3
+    assert time.perf_counter() - start < perf_bound(0.3)
 
 
 def test_a_bom_prefixed_adr_keeps_its_title():

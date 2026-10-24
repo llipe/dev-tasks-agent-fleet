@@ -30,6 +30,7 @@ from prompt import (
     rubric_version,
     system_prompt,
 )
+from tests.helpers.perf import perf_bound
 from tests.helpers.prompt_inputs import (
     NONCE,
     OTHER_NONCE,
@@ -532,7 +533,7 @@ def test_hostile_content_builds_quickly():
     start = time.perf_counter()
     p = build_prompt(ins, max_context_tokens=400_000, max_diff_lines=2000, nonce=NONCE)
     assert isinstance(p, Prompt)
-    assert time.perf_counter() - start < 5
+    assert time.perf_counter() - start < perf_bound(5)
     parse_blocks(p.user, p.nonce)
 
 

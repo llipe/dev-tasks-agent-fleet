@@ -58,6 +58,7 @@ from render import (
     render_review,
     run_link,
 )
+from tests.helpers.perf import perf_bound
 from tests.helpers.prng import Tactic, tactic_seed
 from tests.helpers.render_inputs import (
     HEAD,
@@ -824,7 +825,7 @@ def test_neutralize_and_code_span_are_linear_on_5mb():
     s = "&@#://www.`\\$‮\n" * 350_000  # about 5 MB
     start = time.perf_counter()
     out = neutralize(s)
-    assert time.perf_counter() - start < 5
+    assert time.perf_counter() - start < perf_bound(5)
     assert len(out) <= 5 * len(s)
     start = time.perf_counter()
     assert len(code_span(s, 200)) <= 1_300
