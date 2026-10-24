@@ -27,6 +27,13 @@ environments:
             project_dir: agents/security-analyst
             runtime_id: securityanalyst_security_analyst-w6CpbYHRE0
             ecr_repository: securityanalyst/security_analyst
+          code-review:
+            project_dir: agents/code-review
+            runtime_id: codereview_code_review-g73KtjA3MT
+            ecr_repository: codereview/code_review
+            execution_role: agent-fleet-code-review-runtime # dedicated role (executionRoleArn); no CDK-made role
+            model_id: deepseek.v3.2 # D-59; on-demand, us-east-1
+            change: infra/changes/20261024-code-review-runtime/
       secrets_prefix: agent-fleet/prod/ # Secrets Manager, referenced by name only
 
     fly:

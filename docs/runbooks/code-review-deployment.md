@@ -45,11 +45,12 @@ construct then imports it read-only and attaches nothing. Without it, the constr
 
 ## 1. Deploy or redeploy the runtime
 
-1. Run the CDK tests. They pin the role policy and the runtime config:
+1. Run the CDK tests. They pin the role policy and the runtime config. Run them **from the `cdk`
+   directory**: the AgentCore construct finds its project from the current directory, so
+   `npm --prefix … test` from the repo root fails with "Could not find agentcore directory".
 
    ```bash
-   npm --prefix agents/code-review/agentcore/cdk ci
-   npm --prefix agents/code-review/agentcore/cdk test
+   cd agents/code-review/agentcore/cdk && npm ci && npm test
    ```
 
 2. Preview the change. Read the diff before applying:

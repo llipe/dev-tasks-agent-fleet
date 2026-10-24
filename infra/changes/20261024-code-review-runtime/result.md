@@ -23,6 +23,6 @@
 
 - Identity: AWS root, explicitly accepted by @llipe on 2026-10-24 for this change.
 - Model: GPT-6.1 Sol (`us.openai.gpt-6.1-sol`), D-58, superseding D-17's GPT-5.6 Sol.
-- The CDK project is not in CI (same as the siblings); its tests run locally: `npm --prefix agents/code-review/agentcore/cdk test`.
+- The CDK project is not in CI (same as the siblings); its tests run locally, from the `cdk` directory (`cd agents/code-review/agentcore/cdk && npm test`); `npm --prefix` from the repo root fails because the construct resolves the project from the current directory.
 
 status: in_progress
