@@ -98,6 +98,64 @@ def make_remote(
     return Remote(url=bare.as_uri(), head=head, src=src, bare=bare)
 
 
+# Hostile trees that `git add` would never write: built object by object with
+# `hash-object --literally`, then pushed to the bare remote. A local push does
+# no fsck, so the clone sees exactly these trees (QA, S-189 gate).
+TreeEntry = tuple[str, bytes, str]  # (mode, name, object id)
+
+
+def write_blob(src: Path, data: bytes) -> str:
+    return (
+        subprocess.run(
+            [GIT, "hash-object", "-w", "--stdin"],
+            cwd=src,
+            env=_HELPER_ENV,
+            input=data,
+            check=True,
+            capture_output=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
+
+
+def write_tree(src: Path, entries: Sequence[TreeEntry]) -> str:
+    """A raw tree object, unchecked: any name, any mode, duplicates allowed."""
+    data = b"".join(
+        mode.encode() + b" " + name + b"\0" + bytes.fromhex(sha)
+        for mode, name, sha in sorted(entries, key=lambda e: e[1])
+    )
+    return (
+        subprocess.run(
+            [GIT, "hash-object", "-t", "tree", "--literally", "-w", "--stdin"],
+            cwd=src,
+            env=_HELPER_ENV,
+            input=data,
+            check=True,
+            capture_output=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
+
+
+def push_hostile_tree(remote: Remote, extra: Callable[[Path], Sequence[TreeEntry]]) -> str:
+    """Replace ``main`` with one commit whose root tree is the current root
+    plus ``extra(src)``. Returns the new head."""
+    src = remote.src
+    base: list[TreeEntry] = []
+    for line in helper_git("ls-tree", "HEAD^{tree}", cwd=src).splitlines():
+        meta, name = line.split("\t", 1)
+        mode, _kind, sha = meta.split()
+        base.append((mode, name.encode(), sha))
+    tree = write_tree(src, [*base, *extra(src)])
+    head = helper_git("commit-tree", tree, "-m", "hostile", cwd=src)
+    helper_git("update-ref", "refs/heads/main", head, cwd=src)
+    helper_git("push", "-q", "-f", str(remote.bare), "main", cwd=src)
+    remote.head = head
+    return head
+
+
 # ---------------------------------------------------------------------------
 # Sandbox doubles
 # ---------------------------------------------------------------------------
@@ -282,6 +340,9 @@ __all__ = [
     "has",
     "helper_git",
     "make_remote",
+    "push_hostile_tree",
     "result",
     "tree_files",
+    "write_blob",
+    "write_tree",
 ]
