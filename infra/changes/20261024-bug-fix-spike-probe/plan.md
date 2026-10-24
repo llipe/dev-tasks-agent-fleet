@@ -54,6 +54,17 @@ Probe run 1 found `no_new_privs` set on AgentCore, so the `sudo` switch (D-109) 
 
 Each step still needs its own approval. Runtime v2 keeps `ALLOW_PROBE=1` until step 3.
 
+## Plan change 2 (approved by @llipe on 2026-10-24, after re-probe 2b: 34 PASS / 3 FAIL)
+
+The fixes go into #443 through `developer`: the in-sandbox proxy resolution for the registry allow-list, and the `WebFetch` deny (managed policy plus `--disallowedTools`). Then:
+
+- **Step 1c:** redeploy (v3 → v4, `ALLOW_PROBE=1` kept).
+- **Step 2c:** re-probe (target 37/37).
+- **Step 3:** remove `ALLOW_PROBE`.
+- **Step 4:** records and verdict.
+
+Each step still needs its own approval.
+
 ## Exit rule (spec §12, D-105)
 
 - **Any sandbox or isolation check fails:** the verdict is FAIL. Wave B (#373–#377) stays blocked, and the finding goes to `product-engineer` drift reconciliation.

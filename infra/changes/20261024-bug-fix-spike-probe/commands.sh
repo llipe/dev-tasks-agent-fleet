@@ -14,3 +14,10 @@ aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --cli-read-timeout
   --runtime-session-id s182-probe-20261024T135601-3eb6b723befe4ab0 \
   --payload "$(printf '{"run_id":"267aba2c-cdad-4b04-ba6d-27d0d530c98b","repository_org":"llipe","repository_name":"bug-fix-smoke","base_branch":"main","params":{},"__probe":true}' | base64)" out.json
 #   raw response kept as backup/probe-run-1.sse (leak scan: 0 hits)
+
+# Step 1b — deploy the D-110 image (root wrapper + setpriv), ALLOW_PROBE=1 kept — applied 2026-10-24T14:26:33Z (runtime v2 -> v3)
+#   from story/S-182-sandbox-spike @ aea27fa; preview: image 5574194c -> f3c16965 only (no IAM/env changes)
+(cd agents/bug-fix && agentcore deploy -y)
+
+# Step 2b — re-probe on runtime v3 — 2026-10-24T14:43:38Z..14:45:28Z; run_id 99eb0cc5-3055-4d2d-8e93-39a426c88cc4
+#   session s182-probe2-20261024T144338-2bede17028fb4cd8; payload as step 2 with the new run_id; raw: backup/probe-run-2.sse (leak scan 0)
