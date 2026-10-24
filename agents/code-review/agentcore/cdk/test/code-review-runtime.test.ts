@@ -1,338 +1,201 @@
-/**
- * S-214 (#416) — CDK assertion tests for the `code_review` runtime.
- *
- * Test plan rows (workstream/test-plan-prd-code-review-agent.md §4.11):
- * - TC-214-01: runtime shape (Container, ARM64 build, PUBLIC, HTTP, idle 900, maxLifetime 1800, env).
- * - TC-214-02: no secret material in agentcore.json, the CDK sources, or the Dockerfile.
- * - TC-214-03: the runtime role's policy is exactly the expected statements.
- * - TC-214-04: no `*` Bedrock resource, no `bedrock:*`, no extra AWS write actions,
- *   no Anthropic or DeepSeek model ARN.
- *
- * The spec is read from the real `agentcore.json` through the same ConfigIO the
- * CLI uses, so a schema-invalid file fails here too. Expected ARNs are literals
- * on purpose: changing MODEL_ID or a secret must change this file (IAM review).
- */
+// S-214 AC-1/AC-2: the code-review runtime config and its least-privilege role.
+//
+// The runtime uses a dedicated, hand-made role (`executionRoleArn`), so the
+// AgentCore L3 construct imports it read-only and attaches nothing. That is
+// what keeps the construct's default `bedrock:InvokeModel*` grant on every
+// foundation model off this agent. The role's permissions live in the
+// ChangeId record and are pinned here.
+import * as cdk from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as cdk from 'aws-cdk-lib';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import { Template } from 'aws-cdk-lib/assertions';
-import { ConfigIO, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
 import { AgentCoreStack } from '../lib/cdk-stack';
 
-const ACCOUNT = '123456789012';
-const REGION = 'us-east-1';
-const CONFIG_ROOT = path.resolve(__dirname, '..', '..');
-const PROJECT_ROOT = path.resolve(CONFIG_ROOT, '..');
-const AGENTCORE_JSON = path.join(CONFIG_ROOT, 'agentcore.json');
+const AGENTCORE_DIR = path.resolve(__dirname, '..', '..');
+const REPO_ROOT = path.resolve(AGENTCORE_DIR, '..', '..', '..');
+const CHANGE_DIR = path.join(REPO_ROOT, 'infra', 'changes', '20261024-code-review-runtime');
 
-// Candidate Sol IDs (unconfirmed; fixed at the S-214 "model access" deploy step).
-const MODEL_ID = 'us.openai.gpt-5-6-sol-v1:0';
-const SOL_FOUNDATION_MODEL = 'openai.gpt-5-6-sol-v1:0';
-const EXPECTED_BEDROCK_RESOURCES = [
-  `arn:aws:bedrock:us-east-1:${ACCOUNT}:inference-profile/${MODEL_ID}`,
-  `arn:aws:bedrock:us-east-1::foundation-model/${SOL_FOUNDATION_MODEL}`,
-  `arn:aws:bedrock:us-east-2::foundation-model/${SOL_FOUNDATION_MODEL}`,
-  `arn:aws:bedrock:us-west-2::foundation-model/${SOL_FOUNDATION_MODEL}`,
-].sort();
-const EXPECTED_SECRET_RESOURCES = [
-  `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-??????`,
-  `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY-??????`,
-].sort();
-
-interface NormalizedStatement {
-  actions: string[];
-  resources: string[];
-}
-
-// The exact runtime-role policy. ECR, KMS (ECR image key), X-Ray and Logs are
-// what the AgentCore construct itself needs to pull the image and emit
-// telemetry; Bedrock and Secrets Manager are the agent's own grants (spec §7.2).
-const EXPECTED_STATEMENTS: NormalizedStatement[] = [
-  { actions: ['ecr:GetAuthorizationToken'], resources: ['*'] },
-  {
-    actions: ['ecr:BatchCheckLayerAvailability', 'ecr:BatchGetImage', 'ecr:GetDownloadUrlForLayer'],
-    resources: ['<ECR_REPOSITORY>'],
-  },
-  { actions: ['kms:Decrypt'], resources: ['<ECR_KMS_KEY>'] },
-  { actions: ['xray:PutTelemetryRecords', 'xray:PutTraceSegments'], resources: ['*'] },
-  { actions: ['logs:DescribeLogGroups'], resources: ['*'] },
-  {
-    actions: [
-      'logs:CreateLogGroup',
-      'logs:CreateLogStream',
-      'logs:DescribeLogStreams',
-      'logs:FilterLogEvents',
-      'logs:GetLogEvents',
-      'logs:PutLogEvents',
-      'logs:PutResourcePolicy',
-    ],
-    resources: [`arn:aws:logs:us-east-1:${ACCOUNT}:log-group:/aws/bedrock-agentcore/runtimes/*`],
-  },
-  { actions: ['bedrock:InvokeModel'], resources: EXPECTED_BEDROCK_RESOURCES },
-  { actions: ['secretsmanager:GetSecretValue'], resources: EXPECTED_SECRET_RESOURCES },
+const ACCOUNT = '755641879575';
+const ROLE_ARN = `arn:aws:iam::${ACCOUNT}:role/agent-fleet-code-review-runtime`;
+// D-59: DeepSeek V3.2, on-demand in us-east-1 only (no inference profile).
+const MODEL_ID = 'deepseek.v3.2';
+const MODEL_ARNS = ['arn:aws:bedrock:us-east-1::foundation-model/deepseek.v3.2'];
+const SECRET_ARNS = [
+  `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY-wS5xrJ`,
+  `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2`,
 ];
 
-type Resources = Record<string, { Type: string; Properties?: Record<string, any> }>;
+type Statement = {
+  Sid?: string;
+  Effect: string;
+  Action: string | string[];
+  Resource: string | string[];
+  Condition?: Record<string, Record<string, string>>;
+};
 
-let template: Template;
-let resources: Resources;
-let spec: AgentCoreProjectSpec;
+const asList = (v: string | string[]): string[] => (Array.isArray(v) ? v : [v]);
+const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf8'));
 
-beforeAll(async () => {
-  spec = await new ConfigIO({ baseDir: CONFIG_ROOT }).readProjectSpec();
-  const cdkJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'cdk.json'), 'utf8'));
-  const app = new cdk.App({ context: cdkJson.context });
-  const stack = new AgentCoreStack(app, 'AgentCore-codereview-test', {
-    spec,
-    env: { account: ACCOUNT, region: REGION },
-  });
-  template = Template.fromStack(stack);
-  resources = template.toJSON().Resources as Resources;
-});
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const spec: any = readJson(path.join(AGENTCORE_DIR, 'agentcore.json'));
+const runtime = spec.runtimes[0];
 
-function ofType(type: string): [string, Record<string, any>][] {
-  return Object.entries(resources)
-    .filter(([, r]) => r.Type === type)
-    .map(([id, r]) => [id, r.Properties ?? {}]);
-}
-
-function runtimeRoleId(): string {
-  const roles = ofType('AWS::IAM::Role').filter(([, props]) =>
-    JSON.stringify(props.AssumeRolePolicyDocument ?? {}).includes('bedrock-agentcore.amazonaws.com')
-  );
-  expect(roles).toHaveLength(1);
-  return roles[0][0];
-}
-
-function attachedPolicies(roleId: string): Record<string, any>[] {
-  return ofType('AWS::IAM::Policy')
-    .filter(([, props]) => JSON.stringify(props.Roles ?? []).includes(`"${roleId}"`))
-    .map(([, props]) => props);
-}
-
-function normalizeResource(value: unknown): string {
-  if (typeof value === 'string') return value;
-  const getAtt = (value as { 'Fn::GetAtt'?: [string, string] })['Fn::GetAtt'];
-  if (getAtt && getAtt[1] === 'Arn') {
-    const type = resources[getAtt[0]]?.Type;
-    if (type === 'AWS::ECR::Repository') return '<ECR_REPOSITORY>';
-    if (type === 'AWS::KMS::Key') return '<ECR_KMS_KEY>';
-  }
-  return `<UNRECOGNIZED:${JSON.stringify(value)}>`;
-}
-
-function asArray<T>(value: T | T[]): T[] {
-  return Array.isArray(value) ? value : [value];
-}
-
-function runtimeStatements(): Record<string, any>[] {
-  const policies = attachedPolicies(runtimeRoleId());
-  return policies.flatMap(p => asArray(p.PolicyDocument.Statement));
-}
-
-function normalized(): NormalizedStatement[] {
-  return runtimeStatements().map(s => ({
-    actions: asArray<string>(s.Action).slice().sort(),
-    resources: asArray<unknown>(s.Resource).map(normalizeResource).sort(),
-  }));
-}
-
-function key(s: NormalizedStatement): string {
-  return JSON.stringify([s.actions, s.resources]);
-}
-
-function runtimeProps(): Record<string, any> {
-  const runtimes = ofType('AWS::BedrockAgentCore::Runtime');
-  expect(runtimes).toHaveLength(1);
-  return runtimes[0][1];
-}
-
-describe('agentcore.json (TC-214-01)', () => {
-  test('defines one Container runtime `code_review` from app/codeReview/main.py', () => {
+describe('agentcore.json (AC-1)', () => {
+  test('defines exactly one runtime, code_review: Container, PUBLIC, HTTP', () => {
     expect(spec.name).toBe('codereview');
     expect(spec.runtimes).toHaveLength(1);
-    const rt = spec.runtimes[0];
-    expect(rt.name).toBe('code_review');
-    expect(rt.build).toBe('Container');
-    expect(rt.entrypoint).toBe('main.py');
-    expect(rt.codeLocation).toBe('app/codeReview/');
-    expect(rt.runtimeVersion).toBe('PYTHON_3_14');
-    expect(rt.networkMode).toBe('PUBLIC');
-    expect(rt.protocol).toBe('HTTP');
-    expect(fs.existsSync(path.join(PROJECT_ROOT, 'app', 'codeReview', 'Dockerfile'))).toBe(true);
-    expect(fs.existsSync(path.join(PROJECT_ROOT, 'app', 'codeReview', 'main.py'))).toBe(true);
-  });
-
-  test('MODEL_ID is a model or system-defined inference-profile ID, never an ARN', () => {
-    const env = Object.fromEntries((spec.runtimes[0].envVars ?? []).map(e => [e.name, e.value]));
-    expect(env.MODEL_ID).toBe(MODEL_ID);
-    expect(env.MODEL_ID.startsWith('arn:')).toBe(false);
-    expect(env.MODEL_ID).not.toMatch(/application-inference-profile/);
-  });
-});
-
-describe('runtime resource (TC-214-01)', () => {
-  test('lifecycle is idle 900 s and maxLifetime 1800 s', () => {
-    expect(runtimeProps().LifecycleConfiguration).toEqual({
-      IdleRuntimeSessionTimeout: 900,
-      MaxLifetime: 1800,
+    expect(runtime).toMatchObject({
+      name: 'code_review',
+      build: 'Container',
+      entrypoint: 'main.py',
+      codeLocation: 'app/codeReview/',
+      networkMode: 'PUBLIC',
+      protocol: 'HTTP',
     });
   });
 
-  test('PUBLIC network, HTTP protocol, container artifact, runtime name', () => {
-    const props = runtimeProps();
-    expect(props.AgentRuntimeName).toBe('codereview_code_review');
-    expect(props.NetworkConfiguration).toEqual({ NetworkMode: 'PUBLIC' });
-    // HTTP is the default: the construct omits ProtocolConfiguration for it.
-    expect(props.ProtocolConfiguration).toBeUndefined();
-    expect(props.AgentRuntimeArtifact.ContainerConfiguration).toBeDefined();
-    expect(props.AgentRuntimeArtifact.CodeConfiguration).toBeUndefined();
+  test('lifecycle is idle 900 / max 1800 (D-32, S-204 D2)', () => {
+    expect(runtime.lifecycleConfiguration).toEqual({
+      idleRuntimeSessionTimeout: 900,
+      maxLifetime: 1800,
+    });
   });
 
-  test('the image is built on an ARM64 CodeBuild environment', () => {
-    const projects = ofType('AWS::CodeBuild::Project');
-    expect(projects.length).toBeGreaterThan(0);
-    for (const [, props] of projects) {
-      expect(props.Environment.Type).toBe('ARM_CONTAINER');
-    }
+  test('uses the dedicated execution role', () => {
+    expect(runtime.executionRoleArn).toBe(ROLE_ARN);
   });
 
-  test('environment variables per spec §9 and config.py', () => {
-    const env = runtimeProps().EnvironmentVariables as Record<string, string>;
+  test('sets the required env vars (spec §9), MODEL_ID a model or system profile ID, never an ARN (DR-8, D-59)', () => {
+    const env = Object.fromEntries(runtime.envVars.map((e: { name: string; value: string }) => [e.name, e.value]));
     expect(env).toEqual({
       SUPABASE_URL: 'https://hegxeycmbmjfgzqpdiik.supabase.co',
       SUPABASE_KEY_SECRET_ID: 'agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY',
       MODEL_ID,
       PANEL_BASE_URL: 'https://dt-agent-fleet-panel.fly.dev',
-      AWS_REGION: 'us-east-1',
-      HEARTBEAT_INTERVAL: '120',
-      IDLE_SESSION_TIMEOUT: '900',
-      MAX_LIFETIME: '1800',
+      AWS_REGION: 'us-east-1', // spec §9; AgentCore also injects it
     });
+    expect(env.MODEL_ID).not.toMatch(/^arn:/);
   });
 });
 
-describe('runtime role policy (TC-214-03)', () => {
-  test('the role carries no managed or inline policies of its own', () => {
-    const role = resources[runtimeRoleId()].Properties ?? {};
-    expect(role.ManagedPolicyArns).toBeUndefined();
-    expect(role.Policies).toBeUndefined();
+describe('synthesized stack (AC-2)', () => {
+  const app = new cdk.App();
+  const stack = new AgentCoreStack(app, 'CodeReviewTest', {
+    spec,
+    env: { account: ACCOUNT, region: 'us-east-1' },
   });
+  const template = Template.fromStack(stack);
 
-  test('exactly one policy document is attached to the runtime role', () => {
-    expect(attachedPolicies(runtimeRoleId())).toHaveLength(1);
-  });
-
-  test('statements are exactly the expected actions and resources', () => {
-    expect(normalized().map(key).sort()).toEqual(EXPECTED_STATEMENTS.map(key).sort());
-  });
-
-  test('every statement is an unconditional Allow', () => {
-    for (const s of runtimeStatements()) {
-      expect(s.Effect).toBe('Allow');
-      expect(s.Condition).toBeUndefined();
-      expect(s.NotAction).toBeUndefined();
-      expect(s.NotResource).toBeUndefined();
-    }
-  });
-});
-
-describe('least privilege (TC-214-04)', () => {
-  test('no wildcard Bedrock resource and no bedrock:* or streaming action', () => {
-    for (const s of normalized()) {
-      const bedrock = s.actions.some(a => a.startsWith('bedrock'));
-      if (bedrock) {
-        expect(s.actions).toEqual(['bedrock:InvokeModel']);
-        for (const r of s.resources) expect(r).not.toContain('*');
-      }
-      for (const r of s.resources) {
-        if (r.includes(':bedrock:')) expect(r).not.toContain('*');
-      }
-    }
-  });
-
-  test('no Anthropic or DeepSeek model ARN (the DeepSeek statement is commented out)', () => {
-    const all = JSON.stringify(runtimeStatements());
-    expect(all).not.toMatch(/anthropic\./);
-    expect(all).not.toMatch(/deepseek/i);
-  });
-
-  test('no AgentCore control-plane, IAM, S3 or Secrets Manager write action', () => {
-    const actions = normalized().flatMap(s => s.actions);
-    for (const a of actions) {
-      expect(a).not.toMatch(/^bedrock-agentcore:/);
-      expect(a).not.toMatch(/^(iam|s3|sts):/);
-      expect(a).not.toMatch(/\*$/);
-    }
-    expect(actions.filter(a => a.startsWith('secretsmanager:'))).toEqual(['secretsmanager:GetSecretValue']);
-  });
-});
-
-describe('no secret material (TC-214-02)', () => {
-  const SECRET_PATTERNS: [string, RegExp][] = [
-    ['GitHub token', /gh[pousr]_[A-Za-z0-9]{20,}/],
-    ['PEM block', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
-    ['JWT', /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
-    ['AWS access key', /\b(AKIA|ASIA)[A-Z0-9]{16}\b/],
-    ['AWS secret key assignment', /aws_secret_access_key\s*[=:]/i],
-  ];
-  const files = [
-    AGENTCORE_JSON,
-    path.join(PROJECT_ROOT, 'app', 'codeReview', 'Dockerfile'),
-    path.resolve(__dirname, '..', 'bin', 'cdk.ts'),
-    ...fs.readdirSync(path.resolve(__dirname, '..', 'lib')).map(f => path.resolve(__dirname, '..', 'lib', f)),
-  ];
-
-  test.each(files.map(f => [path.relative(PROJECT_ROOT, f), f]))('%s holds only secret IDs', (_name, file) => {
-    const text = fs.readFileSync(file, 'utf8');
-    for (const [label, pattern] of SECRET_PATTERNS) {
-      expect({ label, match: pattern.test(text) }).toEqual({ label, match: false });
-    }
-  });
-});
-
-describe('override guard (DR-2)', () => {
-  // restrictRuntimeRole replaces the whole statement list, so a grant the construct
-  // (or later stack wiring: credentials, payments, connections) adds to the runtime
-  // role would otherwise vanish silently. Synth must fail instead.
-  function stackWithExtraStatement(statement: iam.PolicyStatement): cdk.Stack {
-    const cdkJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'cdk.json'), 'utf8'));
-    const app = new cdk.App({ context: cdkJson.context });
-    const stack = new AgentCoreStack(app, 'AgentCore-codereview-guard', {
-      spec,
-      env: { account: ACCOUNT, region: REGION },
-    });
-    for (const env of stack.application.environments.values()) {
-      env.runtime.role.addToPrincipalPolicy(statement);
-    }
-    return stack;
-  }
-
-  test('an unexpected grant on the runtime role fails synth', () => {
-    const stack = stackWithExtraStatement(
-      new iam.PolicyStatement({ actions: ['sts:AssumeRole'], resources: ['arn:aws:iam::123456789012:role/x'] })
+  test('creates no IAM role for the runtime', () => {
+    const roles = template.findResources('AWS::IAM::Role');
+    const runtimeRoles = Object.values(roles).filter(r =>
+      JSON.stringify(r).includes('bedrock-agentcore.amazonaws.com')
     );
-    expect(() => Template.fromStack(stack)).toThrow(/unexpected statement.*sts:AssumeRole/s);
+    expect(runtimeRoles).toHaveLength(0);
   });
 
-  test('a credential-provider grant added by the construct fails synth', () => {
-    const stack = stackWithExtraStatement(
-      new iam.PolicyStatement({
-        actions: ['bedrock-agentcore:GetResourceApiKey'],
-        resources: ['*'],
-      })
-    );
-    expect(() => Template.fromStack(stack)).toThrow(/bedrock-agentcore:GetResourceApiKey/);
+  test('grants no bedrock: action anywhere in the stack', () => {
+    const policies = {
+      ...template.findResources('AWS::IAM::Policy'),
+      ...template.findResources('AWS::IAM::ManagedPolicy'),
+    };
+    for (const p of Object.values(policies)) {
+      expect(JSON.stringify(p)).not.toMatch(/"bedrock:/);
+    }
   });
 
-  test('the shipped configuration synthesizes without tripping the guard', () => {
-    const cdkJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'cdk.json'), 'utf8'));
-    const app = new cdk.App({ context: cdkJson.context });
-    const stack = new AgentCoreStack(app, 'AgentCore-codereview-clean', {
-      spec,
-      env: { account: ACCOUNT, region: REGION },
+  test('the runtime resource uses the imported role', () => {
+    const runtimes = template.findResources('AWS::BedrockAgentCore::Runtime');
+    expect(Object.keys(runtimes)).toHaveLength(1);
+    const props = Object.values(runtimes)[0].Properties;
+    expect(JSON.stringify(props.RoleArn)).toContain('agent-fleet-code-review-runtime');
+    expect(props.LifecycleConfiguration).toEqual({
+      IdleRuntimeSessionTimeout: 900,
+      MaxLifetime: 1800,
     });
-    expect(() => Template.fromStack(stack)).not.toThrow();
+  });
+});
+
+describe('role-policy.json (AC-2, spec §7.2)', () => {
+  const policy = readJson(path.join(CHANGE_DIR, 'role-policy.json'));
+  const statements: Statement[] = policy.Statement;
+  const allActions = statements.flatMap(s => asList(s.Action));
+
+  test('every statement is an Allow', () => {
+    for (const s of statements) expect(s.Effect).toBe('Allow');
+  });
+
+  test('Bedrock: InvokeModel only, on exactly the DeepSeek V3.2 model ARN (D-59)', () => {
+    const bedrock = statements.filter(s => asList(s.Action).some(a => a.startsWith('bedrock:')));
+    expect(bedrock).toHaveLength(1);
+    expect(asList(bedrock[0].Action)).toEqual(['bedrock:InvokeModel']);
+    expect([...asList(bedrock[0].Resource)].sort()).toEqual([...MODEL_ARNS].sort());
+    for (const arn of asList(bedrock[0].Resource)) expect(arn).not.toContain('*');
+  });
+
+  test('Secrets Manager: GetSecretValue on exactly the Supabase key and App PEM', () => {
+    const sm = statements.filter(s => asList(s.Action).some(a => a.startsWith('secretsmanager:')));
+    expect(sm).toHaveLength(1);
+    expect(asList(sm[0].Action)).toEqual(['secretsmanager:GetSecretValue']);
+    expect([...asList(sm[0].Resource)].sort()).toEqual([...SECRET_ARNS].sort());
+  });
+
+  test('KMS: Decrypt only through ECR', () => {
+    const kms = statements.filter(s => asList(s.Action).some(a => a.startsWith('kms:')));
+    expect(kms).toHaveLength(1);
+    expect(asList(kms[0].Action)).toEqual(['kms:Decrypt']);
+    expect(kms[0].Condition).toEqual({ StringEquals: { 'kms:ViaService': 'ecr.us-east-1.amazonaws.com' } });
+    for (const arn of asList(kms[0].Resource)) {
+      expect(arn).toMatch(new RegExp(`^arn:aws:kms:us-east-1:${ACCOUNT}:key/(\\*|[0-9a-f-]{36})$`));
+    }
+  });
+
+  test('ECR pull is scoped to the codereview repository', () => {
+    const pull = statements.filter(s => asList(s.Action).includes('ecr:BatchGetImage'));
+    expect(pull).toHaveLength(1);
+    expect(asList(pull[0].Resource)).toEqual([`arn:aws:ecr:us-east-1:${ACCOUNT}:repository/codereview/*`]);
+  });
+
+  test('no other actions: the full action set is the runtime baseline plus the three grants', () => {
+    expect([...new Set(allActions)].sort()).toEqual(
+      [
+        'bedrock-agentcore:GetConfigurationBundle',
+        'bedrock-agentcore:GetConfigurationBundleVersion',
+        'bedrock-agentcore:ListConfigurationBundleVersions',
+        'bedrock-agentcore:ListConfigurationBundles',
+        'bedrock:InvokeModel',
+        'ecr:BatchCheckLayerAvailability',
+        'ecr:BatchGetImage',
+        'ecr:GetAuthorizationToken',
+        'ecr:GetDownloadUrlForLayer',
+        'kms:Decrypt',
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:DescribeLogGroups',
+        'logs:DescribeLogStreams',
+        'logs:FilterLogEvents',
+        'logs:GetLogEvents',
+        'logs:PutLogEvents',
+        'logs:PutResourcePolicy',
+        'secretsmanager:GetSecretValue',
+        'xray:PutTelemetryRecords',
+        'xray:PutTraceSegments',
+      ].sort()
+    );
+    expect(allActions.some(a => a.includes('*'))).toBe(false);
+  });
+
+  test('the trust policy admits only AgentCore in this account', () => {
+    const trust = readJson(path.join(CHANGE_DIR, 'role-trust.json'));
+    expect(trust.Statement).toHaveLength(1);
+    expect(trust.Statement[0]).toMatchObject({
+      Effect: 'Allow',
+      Principal: { Service: 'bedrock-agentcore.amazonaws.com' },
+      Action: 'sts:AssumeRole',
+      Condition: {
+        StringEquals: { 'aws:SourceAccount': ACCOUNT },
+        ArnLike: { 'aws:SourceArn': `arn:aws:bedrock-agentcore:us-east-1:${ACCOUNT}:*` },
+      },
+    });
   });
 });

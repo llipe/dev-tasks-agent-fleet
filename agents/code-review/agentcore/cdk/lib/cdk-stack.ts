@@ -11,7 +11,6 @@ import {
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
-import { restrictRuntimeRole } from './runtime-policy';
 
 /**
  * Harness deployment config: role-scoped fields (for IAM role + container build)
@@ -125,13 +124,6 @@ export class AgentCoreStack extends Stack {
       appProps.credentials = credentials;
     }
     this.application = new AgentCoreApplication(this, 'Application', appProps as any);
-
-    // code-review (S-214, spec §7.2): replace the construct's broad default runtime
-    // policy (wildcard Bedrock models, Configuration Bundle writes) with the exact
-    // least-privilege list in runtime-policy.ts. Pinned by test/code-review-runtime.test.ts.
-    for (const env of this.application.environments.values()) {
-      restrictRuntimeRole(env);
-    }
 
     // Create AgentCoreMcp if there are gateways configured
     if (mcpSpec?.agentCoreGateways && mcpSpec.agentCoreGateways.length > 0) {

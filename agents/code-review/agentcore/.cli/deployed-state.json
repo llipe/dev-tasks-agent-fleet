@@ -1,0 +1,17 @@
+{
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "code_review": {
+            "runtimeId": "codereview_code_review-g73KtjA3MT",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/codereview_code_review-g73KtjA3MT",
+            "roleArn": "arn:aws:iam::755641879575:role/agent-fleet-code-review-runtime"
+          }
+        },
+        "stackName": "AgentCore-codereview-default",
+        "deployHash": "781c801a53b65bab"
+      }
+    }
+  }
+}

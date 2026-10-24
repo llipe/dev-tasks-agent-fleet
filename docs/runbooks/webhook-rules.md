@@ -159,6 +159,16 @@ parameters to a payload path. For example `pr_number` ← `issue.number`.
   delivery rather than starting a broken run.
 - A required parameter may be left empty in the grid if a payload row fills it, but then a
   delivery without that path is rejected.
+- **Add the payload row before clearing the field.** Save checks the form as it is. If a
+  required parameter is empty and no payload row covers it yet, save fails with
+  "params must have required property '<name>'". Typing a value to get past that is the trap:
+  a value in the grid is sent with **every** run, so a rule meant to review "the PR that was
+  commented on" reviews that one fixed PR instead. Order: **+ Add payload value** → choose the
+  parameter → path → then clear the parameter in the grid → save. A worked example is the
+  `/review` rule in [`code-review-deployment.md`](code-review-deployment.md#4-set-up-the-code-review-pr-comment-trigger).
+- One path per parameter. To fill the same parameter from two events with different payloads
+  (for example `issue.number` on `issue_comment` and `pull_request.number` on
+  `pull_request_review_comment`), use two rules.
 
 List-typed parameters such as the security-analyst's `scanners` show as "unsupported" in
 the grid and keep the agent's default.

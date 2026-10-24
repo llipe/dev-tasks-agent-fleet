@@ -16,15 +16,13 @@
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
+      "executionRoleArn": "arn:aws:iam::755641879575:role/agent-fleet-code-review-runtime",
       "envVars": [
         { "name": "SUPABASE_URL", "value": "https://hegxeycmbmjfgzqpdiik.supabase.co" },
         { "name": "SUPABASE_KEY_SECRET_ID", "value": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY" },
-        { "name": "MODEL_ID", "value": "us.openai.gpt-5-6-sol-v1:0" },
+        { "name": "MODEL_ID", "value": "deepseek.v3.2" },
         { "name": "PANEL_BASE_URL", "value": "https://dt-agent-fleet-panel.fly.dev" },
-        { "name": "AWS_REGION", "value": "us-east-1" },
-        { "name": "HEARTBEAT_INTERVAL", "value": "120" },
-        { "name": "IDLE_SESSION_TIMEOUT", "value": "900" },
-        { "name": "MAX_LIFETIME", "value": "1800" }
+        { "name": "AWS_REGION", "value": "us-east-1" }
       ],
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 900,
