@@ -1,6 +1,6 @@
 # Copied from agents/security-analyst/app/securityAnalyst/tests/unit/test_credentials.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
-# Unchanged below this header: covers the copied module of the same name.
+# Extended (S-186): `TokenContext.app_id` from the installation row (D-53).
 """Unit tests for credentials module."""
 
 from __future__ import annotations
@@ -391,6 +391,17 @@ class TestResolveGithubCredentials:
         mock_mint.assert_called_once_with(10, 20, "-----BEGIN RSA PRIVATE KEY-----\n...")
         assert ctx.token == "ghs_resolved"
         assert ctx.installation_id == 20
+        # S-186: the fleet App id that marker trust checks against (D-53).
+        assert ctx.app_id == 10
+
+    @patch("credentials.mint_installation_token")
+    def test_refresh_keeps_the_app_id(self, mock_mint):
+        mock_mint.return_value = "ghs_new"
+        old = TokenContext(token="ghs_old", issued_at=0.0, installation_id=20, app_id=10)
+        with patch("credentials.time.monotonic", return_value=10_000.0):
+            new = refresh_if_stale(old, "pem", 10)
+        assert new.token == "ghs_new"
+        assert new.app_id == 10
 
 
 # ---------------------------------------------------------------------------
