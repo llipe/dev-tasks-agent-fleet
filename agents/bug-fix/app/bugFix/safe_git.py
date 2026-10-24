@@ -44,6 +44,26 @@ runs git against a ``.git`` that ``fixer`` can write: ``/work/repo`` is
    ``http.followRedirects=false`` can't follow a redirect elsewhere. The remote
    URL is token-free.
 
+6. **Only plain files are read** (S-189 fix round, QA-189-01/-02). Before
+   root git reads the work tree (:meth:`SafeGit.capture`, and so every base
+   restore), :func:`check_work_tree` walks it with ``lstat`` (no link is
+   followed) and refuses any regular file with ``st_nlink > 1`` (a hardlink
+   ``fixer`` made to a file it can't read would put that file's bytes in the
+   captured change), and any FIFO, socket or device node (a FIFO named
+   ``.gitignore`` would block root ``git add`` in ``open()`` until the git
+   timeout). The dependency directories of :data:`EXCLUDE_LINES` are skipped:
+   git never descends into them, and pnpm/uv hardlink into them by design.
+   ``fs.protected_hardlinks=1`` would stop the hardlink at the kernel; the
+   image smoke asserts it and :func:`link_protection` logs it at run time,
+   but the walk doesn't rely on it.
+7. **Tree entries are checked twice.** The clone runs with
+   ``transfer``/``fetch``/``receive.fsckObjects`` (:data:`CLONE_FSCK_ARGS`),
+   so git itself rejects ``.git``, ``..`` and duplicate entries; and
+   :func:`_safe_rel` refuses any ``.git`` component (case-insensitive, plus
+   the NTFS/HFS+ lookalikes git rejects) before materialize writes it.
+   Materialize also caps the entry count and total size
+   (:data:`MAX_TAR_ENTRIES`, :data:`MAX_TAR_BYTES`) before streaming.
+
 ``fixer`` spawns (``tar``, ``rm``) go through ``sandbox.fixer_prefix``:
 ``setpriv --reuid=10002 … -- python3 -I fixer_exec.py``. No repo code runs
 here: these are fixed system binaries.
@@ -72,9 +92,38 @@ GIT_TIMEOUT_SECONDS = 300.0
 MAX_BLOB_BYTES = 1024 * 1024  # TreeReader only: the repo gate reads small files
 RM_CHUNK = 200
 
+# Tar-bomb caps for materialize (gap 5), checked against the tree listing
+# before any byte is streamed. A repository bug-fix can work in is far below
+# both: 100,000 entries is a large monorepo, and 2 GiB of tracked blobs is
+# well past what a shallow clone into the microVM's /work can hold anyway.
+MAX_TAR_ENTRIES = 100_000
+MAX_TAR_BYTES = 2 * 1024**3
+
+# The link-protection sysctls (QA-189-01). Logged at run time, never enforced
+# there: local Docker may differ from AgentCore (verified live by #446).
+PROC_SYS_FS = "/proc/sys/fs"
+LINK_PROTECTION_KEYS: tuple[str, ...] = ("protected_hardlinks", "protected_symlinks")
+
 # The clone's info/exclude: dependency directories only (D-83). Build outputs
 # are governed by the repo's own .gitignore.
 EXCLUDE_LINES: tuple[str, ...] = ("node_modules/", ".venv/", ".pnpm-store/", "__pycache__/")
+
+# The clone verifies every object it receives (QA-189-03): with strict fsck,
+# git refuses trees with ``.git``, ``..`` or duplicate entries. One cosmetic
+# check is ignored: zero-padded tree modes (``040000``) exist in real older
+# repositories and say nothing about paths.
+CLONE_FSCK_ARGS: tuple[str, ...] = (
+    "-c",
+    "transfer.fsckObjects=true",
+    "-c",
+    "fetch.fsckObjects=true",
+    "-c",
+    "receive.fsckObjects=true",
+    "-c",
+    "fetch.fsck.zeroPaddedFilemode=ignore",
+    "-c",
+    "receive.fsck.zeroPaddedFilemode=ignore",
+)
 
 # Every wrapper git call starts with these (D-62).
 HARDENED_ARGS: tuple[str, ...] = (
@@ -129,6 +178,27 @@ class GitError(Exception):
     """A wrapper git call or a fixer file operation failed. Scrubbed message."""
 
     code = "GIT_FAILED"
+
+
+class UnsafeWorkTree(GitError):
+    """The work tree holds a hardlinked file or a FIFO, socket or device node
+    (QA-189-01, -02). Fixed text, never a path: names are ``fixer``'s.
+
+    §8.9 code: ``CLONE_FAILED``, the code of every wrapper-side checkout step
+    (DF-189-02). §8.9 gives every ``failed`` code a breaker count, so this one
+    counts too; the spec has no uncounted ``failed`` row. After the CLI
+    (S-193) the same finding is better read as the ``needs_review`` "entry
+    type" row, which doesn't count.
+    """
+
+    code = "CLONE_FAILED"
+
+
+class TarBombError(GitError):
+    """The tree is over :data:`MAX_TAR_ENTRIES` or :data:`MAX_TAR_BYTES`
+    (gap 5). §8.9 code ``CLONE_FAILED`` (a wrapper-side checkout step)."""
+
+    code = "CLONE_FAILED"
 
 
 @dataclass(frozen=True)
@@ -236,10 +306,28 @@ def parse_raw_diff(raw: str) -> list[Change]:
     return out
 
 
+# Code points HFS+ ignores in names (git's ``is_hfs_dotgit`` list).
+_HFS_IGNORABLE = dict.fromkeys(
+    map(
+        ord,
+        "\u200c\u200d\u200e\u200f\u202a\u202b\u202c\u202d\u202e"
+        "\u206a\u206b\u206c\u206d\u206e\u206f\ufeff",
+    )
+)
+
+
+def is_dotgit_component(name: str) -> bool:
+    """``name`` is ``.git`` to some filesystem git supports: any case, NTFS
+    trailing dots and spaces, the 8.3 short name ``git~1``, or HFS+
+    zero-width characters (QA-189-03; git's ``verify_path``)."""
+    folded = name.translate(_HFS_IGNORABLE).lower()
+    return folded.rstrip(". ") == ".git" or folded == "git~1"
+
+
 def _safe_rel(path: str) -> bool:
     if not path or path.startswith("/") or "\0" in path:
         return False
-    return all(p not in ("", ".", "..") for p in path.split("/"))
+    return all(p not in ("", ".", "..") and not is_dotgit_component(p) for p in path.split("/"))
 
 
 def _check_dir(dest: str) -> None:
@@ -249,6 +337,71 @@ def _check_dir(dest: str) -> None:
         raise GitError("destination is missing") from None
     if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
         raise GitError("destination is not a plain directory")
+
+
+# ---------------------------------------------------------------------------
+# The work-tree walk (QA-189-01, -02) and the link-protection preflight
+# ---------------------------------------------------------------------------
+
+# Directory names git never descends into here (info/exclude, D-83).
+WALK_SKIP_DIRS: frozenset[str] = frozenset(line.rstrip("/") for line in EXCLUDE_LINES)
+
+
+def classify_entry(mode: int, nlink: int) -> str | None:
+    """``"hardlink"``, ``"special"`` or ``None`` (fine) for one ``lstat``."""
+    if stat.S_ISREG(mode):
+        return "hardlink" if nlink > 1 else None
+    if stat.S_ISDIR(mode) or stat.S_ISLNK(mode):
+        return None
+    return "special"  # FIFO, socket, character or block device, anything else
+
+
+def check_work_tree(root: str) -> None:
+    """Walk ``root`` with ``lstat`` and refuse what root git must not read.
+
+    Raises :class:`UnsafeWorkTree` (fixed text with counts, never a path) on
+    any regular file with more than one link, or any FIFO, socket or device
+    node, anywhere but the :data:`WALK_SKIP_DIRS` directories. Links are
+    never followed. An unreadable directory fails closed too.
+    """
+    _check_dir(root)
+    counts = {"hardlink": 0, "special": 0}
+    pending = [root]
+    while pending:
+        current = pending.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    st = entry.stat(follow_symlinks=False)
+                    if stat.S_ISDIR(st.st_mode):
+                        if entry.name not in WALK_SKIP_DIRS:
+                            pending.append(entry.path)
+                        continue
+                    kind = classify_entry(st.st_mode, st.st_nlink)
+                    if kind is not None:
+                        counts[kind] += 1
+        except OSError:
+            raise UnsafeWorkTree("unsafe work tree: a directory could not be read") from None
+    if counts["hardlink"] or counts["special"]:
+        raise UnsafeWorkTree(
+            f"unsafe work tree: {counts['hardlink']} hardlinked file(s), "
+            f"{counts['special']} special file(s)"
+        )
+
+
+def link_protection(base: str | None = None) -> dict[str, str]:
+    """``fs.protected_hardlinks`` and ``fs.protected_symlinks`` as read, or
+    ``"unavailable"`` (no /proc, or a value that isn't a small integer)."""
+    base = PROC_SYS_FS if base is None else base
+    out: dict[str, str] = {}
+    for key in LINK_PROTECTION_KEYS:
+        try:
+            with open(os.path.join(base, key), encoding="ascii") as f:
+                value = f.read(16).strip()
+        except (OSError, ValueError):
+            value = ""
+        out[key] = value if value.isdigit() and len(value) <= 3 else "unavailable"
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -379,9 +532,10 @@ class SafeGit:
         tracked and untracked files, symlinks as links, excludes skipped.
 
         The index is first reset to ``base`` with no stat data, so every file
-        is hashed again rather than trusted by size and mtime.
+        is hashed again rather than trusted by size and mtime. Before any git
+        call, :func:`check_work_tree` refuses hardlinks and special files.
         """
-        _check_dir(work_tree)
+        check_work_tree(work_tree)
         self.run("read-tree", base or self.base_sha)
         self.run("add", "-A", "--", ".", work_tree=work_tree)
         tree = self.run("write-tree").strip()
@@ -432,6 +586,7 @@ class SafeGit:
             entries = {p: e for p, e in entries.items() if p in wanted}
         if not entries:
             return 0
+        self._check_caps(tree, entries)
         with tempfile.TemporaryFile() as err:
             tar = self._spawn_fixer(
                 [self.tools.tar, "-x", "-f", "-", "-C", dest],
@@ -462,6 +617,23 @@ class SafeGit:
                 err.seek(0)
                 raise self._fail(f"tar -x as fixer (exit {code})", err.read())
         return len(entries)
+
+    def _check_caps(self, tree: str, entries: dict[str, tuple[str, str]]) -> None:
+        """Gap 5: refuse a tree over the entry or byte cap before streaming."""
+        if len(entries) > MAX_TAR_ENTRIES:
+            raise TarBombError(f"tree over the tar cap: more than {MAX_TAR_ENTRIES} entries")
+        total = 0
+        out = self.run("ls-tree", "-r", "-z", "-l", "--full-tree", tree)
+        for record in out.split("\0"):
+            if not record:
+                continue
+            meta, _, path = record.partition("\t")
+            parts = meta.split()
+            if len(parts) != 4 or path not in entries or not parts[3].isdigit():
+                continue  # trees and gitlinks have no size ("-")
+            total += int(parts[3])
+            if total > MAX_TAR_BYTES:
+                raise TarBombError(f"tree over the tar cap: more than {MAX_TAR_BYTES} bytes")
 
     def _stream_tar(self, entries: dict[str, tuple[str, str]], sink: IO[bytes]) -> None:
         """A tar of ``entries`` built here, blob by blob, raw (no attributes)."""
@@ -613,6 +785,7 @@ def clone(
     cmd = [
         tools.git,
         *HARDENED_ARGS,
+        *CLONE_FSCK_ARGS,
         "-c",
         "http.followRedirects=false",
         "clone",

@@ -12,8 +12,8 @@ Two kinds of attacker:
 
 Locally every process runs as one user and ``tar`` may be bsdtar, so the
 assertions are on what the wrapper reads, writes and stores, not on uids.
-Known defects are pinned with ``xfail(strict=True)`` (QA-189-01 to -03): the
-fix turns the test green and the marker is removed in the same change.
+QA-189-01 to -03 were pinned with ``xfail(strict=True)``; the S-189 fix round
+removed the markers, so the tests must pass.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from safe_git import GitError
+from safe_git import GitError, UnsafeWorkTree
 from tests.component.repo_fixtures import (
     StubSandbox,
     helper_git,
@@ -64,8 +64,10 @@ class TestHostileTrees:
             return [("40000", b"..", sub)]
 
         push_hostile_tree(world.remote, dotdot)
-        git = world.git()
-        with pytest.raises(GitError, match="unsafe path"):
+        # The clone's fsckObjects refuses it first (QA-189-03); _safe_rel is
+        # the second line (tests/unit/test_safe_git_paths.py).
+        with pytest.raises(GitError, match="unsafe path|git clone failed"):
+            git = world.git()
             git.materialize(git.base_sha, str(world.work))
         assert not (world.work.parent / "pwn.txt").exists()
         assert list(world.work.iterdir()) == []
@@ -83,8 +85,8 @@ class TestHostileTrees:
             return [("120000", b"zlink", link), ("40000", b"zlink", sub)]
 
         push_hostile_tree(world.remote, dup)
-        git = world.git()
-        with contextlib.suppress(GitError):
+        with contextlib.suppress(GitError):  # fsckObjects: duplicateEntries
+            git = world.git()
             git.materialize(git.base_sha, str(world.work))
         assert list(outside.iterdir()) == []
 
@@ -163,18 +165,6 @@ class TestHostileTrees:
         assert list((world.work / "vendor" / "lib").iterdir()) == []
         assert not canary.exists()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "QA-189-03: materialize writes a tree entry named `.git` (any case) into "
-            "/work/repo, so a hostile remote plants /work/repo/.git/config (hooks, "
-            "core.fsmonitor) for every fixer-side git during install and the base "
-            "gates, against 'no .git in /work/repo' (TC-189-02); the run then fails "
-            "late as CLONE_FAILED at restore (`read-tree`: invalid path). _safe_rel "
-            "accepts `.git`; the clone has no transfer.fsckObjects. Expected: "
-            "materialize (or the clone) refuses the tree before anything is written."
-        ),
-    )
     @pytest.mark.parametrize("name", [b".git", b".GIT"])
     def test_a_dotgit_tree_entry_is_refused(self, tmp_path, name):
         world = World(tmp_path)
@@ -246,26 +236,17 @@ class TestHostileWorkTree:
         assert "new.txt" in entries
         assert entries[".gitignore"][0] == "120000"
 
-    def test_a_fifo_file_is_skipped_not_read(self, tmp_path):
+    def test_a_fifo_file_is_refused_fast_not_read(self, tmp_path):
+        """QA-189-02: the lstat walk refuses a FIFO before root git reads the
+        tree (it used to be skipped by ``add``; now nothing reads it at all)."""
         world, git = _materialized(tmp_path)
         git.tools = replace(git.tools, timeout=10)
         os.mkfifo(world.work / "pipe")
         started = time.monotonic()
-        tree = git.capture(str(world.work))
+        with pytest.raises(UnsafeWorkTree):
+            git.capture(str(world.work))
         assert time.monotonic() - started < 5
-        assert "pipe" not in git.ls_tree(tree)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "QA-189-02: a FIFO named .gitignore (any directory) blocks the root "
-            "`git add -A` in open() until GIT_TIMEOUT_SECONDS (300 s), so a base run "
-            "can stall the checkout 5 minutes and end it as CLONE_FAILED, which "
-            "counts toward the breaker. Expected: capture fails fast or skips "
-            "non-regular exclude files (an lstat walk refusing FIFOs/sockets before "
-            "`add`)."
-        ),
-    )
     @pytest.mark.parametrize("where", [".gitignore", "src/.gitignore"])
     def test_a_fifo_gitignore_does_not_stall_the_capture(self, tmp_path, where):
         world, git = _materialized(tmp_path)
@@ -276,19 +257,6 @@ class TestHostileWorkTree:
             git.capture(str(world.work))
         assert time.monotonic() - started < 2
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "QA-189-01: capture() hashes a hardlinked file's content as root. "
-            "With fs.protected_hardlinks=0 (the kernel default; the AgentCore "
-            "microVM value is unverified, and image-smoke runs on local Docker), "
-            "fixer can link a same-filesystem file it cannot read into /work/repo "
-            "and root stores its bytes in the captured change, i.e. the PR. "
-            "Expected: capture refuses (or skips) regular files with st_nlink > 1 "
-            "that are not fixer's, or the runtime asserts protected_hardlinks=1; "
-            "if fixed at the image level, replace this with that check."
-        ),
-    )
     def test_a_hardlink_to_a_file_outside_the_tree_is_not_captured(self, tmp_path):
         world, git = _materialized(tmp_path)
         secret = tmp_path / "root-only.txt"

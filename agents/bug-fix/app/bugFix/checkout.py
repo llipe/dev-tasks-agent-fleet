@@ -43,7 +43,8 @@ Outcomes (:class:`CheckoutResult`):
 ``proceed``   the run continues to the claim
 ``refused``   refusal ``repo_gate``: ``succeeded``/``not_applicable``
 ``failed``    ``CLONE_FAILED`` (clone, materialize, capture or restore;
-              wrapper-side) or ``INSTALL_FAILED`` (the install command,
+              wrapper-side, including an unsafe work tree, QA-189-01/-02,
+              and a tree over the tar caps, gap 5) or ``INSTALL_FAILED`` (the install command,
               including an unavailable sandbox); both count toward the
               breaker (spec §8.9)
 ============  ============================================================
@@ -63,7 +64,7 @@ from typing import Any
 from gates import GATE_TIMEOUT_SECONDS, GateReport, SandboxLike, run_gates
 from issues import IssuesClient
 from refusal import CheckOutcome, Refusal, post_refusal
-from safe_git import EXCLUDE_LINES, GitError, GitTools, SafeGit, clone
+from safe_git import EXCLUDE_LINES, GitError, GitTools, SafeGit, clone, link_protection
 from sandbox import Mode, SandboxError
 from scrubber import SecretsLike, scrub_all, tail
 from toolchain import RepoGate, Toolchain, check_repo_gate
@@ -220,6 +221,19 @@ def run_checkout(
     scrub = [*(secrets.values() if hasattr(secrets, "values") else secrets)]
     if token:
         scrub.append(token)
+
+    # 0. Preflight: record the link-protection sysctls (QA-189-01). Evidence
+    # only: check_work_tree refuses hardlinks whatever they say, and local
+    # Docker may differ from AgentCore (the live value is probe #446's).
+    lp = link_protection()
+    _event(
+        run,
+        "info" if all(v == "1" for v in lp.values()) else "warn",
+        "preflight: fs.protected_hardlinks={protected_hardlinks} "
+        "fs.protected_symlinks={protected_symlinks}".format(**lp),
+        scrub,
+        **lp,
+    )
 
     # 1. Clone into the wrapper clone (D-62).
     try:
