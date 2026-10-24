@@ -1,6 +1,6 @@
 # Copied from agents/security-analyst/app/securityAnalyst/tests/unit/test_signal_backstop.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
-# Unchanged below this header: covers the copied module of the same name.
+# Extended (S-186): `handle_termination` edge cases for the disposition hook.
 """
 Unit tests for the best-effort terminal-report backstop on abrupt termination
 (issue #98, AC6 / EC-5 / EC-7).

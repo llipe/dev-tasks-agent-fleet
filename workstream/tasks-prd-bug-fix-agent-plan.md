@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.4 | 2026-10-24 | S-186 (developer): 7.1–7.10 checked (test-first; `make validate` green, 1136 passed, coverage 97.89%). 7.11 base corrected to `integration/bug-fix-agent-wave-a`; Draft PR #451 open, `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.3 | 2026-10-24 | S-184 (developer): 5.1–5.5, 5.8, 5.9 and 5.11 checked; migration `20261024130000_seed_bug_fix_agent.sql` verified on the local stack only. 5.6/5.7 (cloud apply gate), 5.10 (manual UI), 5.12 (`coverage_gate`, cloud part) and 5.13 (verifier) left to the planner. Relevant Files updated. | developer |
 | 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. 3.11–3.13 checked (552 passed, coverage_gate PASS 97.5%, verifier Medium/Major); 3.16 marked superseded; 3.13 base corrected (DF-182-08). | planner |
 | 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
@@ -50,7 +51,7 @@
 - `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, util-linux (`setpriv`), libnss-myhostname + `/etc/gai.conf` (`localhost` without `/etc/hosts`, D-111), pinned Claude Code and sandbox runtime; the wrapper runs as root, no `sudo` (D-110)
 - `agents/bug-fix/app/bugFix/managed-settings.json` - Managed Claude Code policy, installed at `/etc/claude-code/`
 - `agents/bug-fix/app/bugFix/{Makefile,pyproject.toml}` - Agent quality gates
-- `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended)
+- `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended; S-186: `signal_backstop.py` disposition hook with a 10 s budget, `TokenContext.app_id` in `credentials.py`)
 - `agents/bug-fix/app/bugFix/config.py` - Typed env config
 - `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration
 - `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9)
@@ -60,25 +61,26 @@
 - `agents/bug-fix/app/bugFix/probe_inner.py` - The probe's `fixer`-side helper, stdlib only (S-182)
 - `agents/bug-fix/app/bugFix/srt-settings.json` - `/etc/bug-fix/srt-settings.json`: sandbox-runtime policy for `fixer` scripts (S-182)
 - `agents/bug-fix/app/bugFix/params.py` - Typed params: spec §5.2 v2.0 bounds and seed-equal defaults (S-184, D-82, D-93)
-- `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL)
-- `agents/bug-fix/app/bugFix/markers.py` - Claim and disposition markers
-- `agents/bug-fix/app/bugFix/disposition.py` - Idempotent disposition
+- `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL); S-186: comments, reactions, 65,536-unit truncation
+- `agents/bug-fix/app/bugFix/markers.py` - Claim, disposition, refusal and `pr` markers; leading block, trust, open claims (S-186)
+- `agents/bug-fix/app/bugFix/disposition.py` - Idempotent, ownership-gated disposition (S-186)
 - `agents/bug-fix/app/bugFix/refusal.py` - Refusal checks and reply
 - `agents/bug-fix/app/bugFix/github_client.py` - Shared GitHub client and retry policy
-- `agents/bug-fix/app/bugFix/neutralize.py` - Model-text neutralizer
+- `agents/bug-fix/app/bugFix/neutralize.py` - Model-text neutralizer (S-186)
 - `agents/bug-fix/app/bugFix/claim.py` - Claim and race check
 - `agents/bug-fix/app/bugFix/toolchain.py` - Stack detection and repo gate (copied from `dependency-update`, extended)
 - `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`)
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/{params_schema,payload.webhook,payload.manual}.json` - Panel → agent contract fixtures; `params_schema.json` is the spec §5.2 v2.0 copy shared with the panel tests (S-184)
-- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs
+- `agents/bug-fix/app/bugFix/tests/fixtures/contract/markers/{*.md,expected.json,.gitattributes}` - CT-32 golden marker bodies, byte-exact (S-186)
+- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section)
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
 - `Makefile` - Repo-root `AGENT_DIRS` includes `agents/bug-fix/app/bugFix` (S-180)
 - `.github/workflows/ci.yml` - `python-quality` matrix entry for `bug-fix` (S-180)
-- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180)
+- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186)
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema, webhook-resolve check, and the webhook fire at the seeded runtime ARN (S-184)
 - `panel/tests/unit/bug-fix-params-schema.test.ts` - TC-184-07 boundary table through the panel's Ajv (S-184)
 - `panel/tests/fixtures/github/issue_comment.created.json` - `issue_comment.created` payload, modeled on GitHub's documented shape (not recorded) (S-184)
@@ -240,9 +242,10 @@
   - [x] 7.5 `[I]` [agents/bug-fix] `neutralize.py` (D-65, D-85)
   - [x] 7.6 `[I]` [agents/bug-fix] `issues.py`: comments and reactions (`eyes`, `rocket`, `confused`); a reaction 4xx is logged and not fatal
   - [x] 7.7 `[I]` [agents/bug-fix] `disposition.py` and the `signal_backstop.py` hook (10-second budget)
-  - [ ] 7.8 Edge cases: CRLF bodies; a diagnosis truncated to 65,536 characters
-  - [ ] 7.9 Verify AC (v2.0): AC1, AC2 and AC4 by 7.1–7.2; AC3, AC5 and AC6 by 7.3
-  - [ ] 7.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+  - [x] 7.8 Edge cases: CRLF bodies; a diagnosis truncated to 65,536 characters
+  - [x] 7.9 Verify AC (v2.0): AC1, AC2 and AC4 by 7.1–7.2; AC3, AC5 and AC6 by 7.3
+  - [x] 7.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+    > Local run done (2026-10-24, developer): agent `make validate` green (1136 passed, 3 xfailed, coverage 97.89%, `pip-audit` clean). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
   - [ ] 7.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] ~~8.0 Implement Story S-187 (#369)~~ — **removed in v2.0** (D-90); linked-PR detection moved to 6.0; #369 closed as not planned.
