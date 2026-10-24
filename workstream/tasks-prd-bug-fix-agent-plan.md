@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.5 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. 7.2 notes the D-65 amendment (references kept as written). 6.2 and 9.2 name the in-repo GitHub double (`fake_github.py`) instead of `responses`; 6.3 adds a parser-level `Link`-header unit test. S-199 is outside this Wave A list; its stories and test plan carry the same harness. | product-engineer |
 | 2.0.4 | 2026-10-24 | S-186 (developer): 7.1–7.10 checked (test-first; `make validate` green, 1136 passed, coverage 97.89%). 7.11 base corrected to `integration/bug-fix-agent-wave-a`; Draft PR #451 open, `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.3 | 2026-10-24 | S-184 (developer): 5.1–5.5, 5.8, 5.9 and 5.11 checked; migration `20261024130000_seed_bug_fix_agent.sql` verified on the local stack only. 5.6/5.7 (cloud apply gate), 5.10 (manual UI), 5.12 (`coverage_gate`, cloud part) and 5.13 (verifier) left to the planner. Relevant Files updated. | developer |
 | 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. 3.11–3.13 checked (552 passed, coverage_gate PASS 97.5%, verifier Medium/Major); 3.16 marked superseded; 3.13 base corrected (DF-182-08). | planner |
@@ -211,12 +212,12 @@
     - the decision table, first match wins: `pull_request`, `closed`, `linked_pr`, `active_run`, plus `invalid_params`;
     - fixed text per code (snapshot);
     - a refusal marker is never a claim (D-92, D-104).
-  - [ ] 6.2 `[T]` [agents/bug-fix] L2 `tests/component/test_refusal.py` with `responses`:
+  - [ ] 6.2 `[T]` [agents/bug-fix] L2 `tests/component/test_refusal.py` with the in-repo GitHub double `tests/component/fake_github.py`, not `responses` (DF-186-02):
     - each code posts exactly one marked reply, with no reaction, claim or board call;
     - the happy path proceeds;
     - a reply-post failure is logged and the outcome is unchanged;
     - missing `issues: write` → `failed`/`GITHUB_PERMISSION_MISSING` (D-58).
-  - [ ] 6.3 `[T]`/`[I]` [agents/bug-fix] `github_client.py`: 5xx and secondary rate limits retried 3 times, then `GITHUB_UNAVAILABLE`; an unexpected 4xx on a write → `GITHUB_REQUEST_REJECTED` (D-67)
+  - [ ] 6.3 `[T]`/`[I]` [agents/bug-fix] `github_client.py`: 5xx and secondary rate limits retried 3 times, then `GITHUB_UNAVAILABLE`; an unexpected 4xx on a write → `GITHUB_REQUEST_REJECTED` (D-67); an L1 parser-level test of real `Link`-header pagination parsing, which the L2 double does not exercise (DF-186-02)
   - [ ] 6.4 `[I]` [agents/bug-fix] `credentials.py`: return the minted token's `permissions` (D-58)
   - [ ] 6.5 `[I]` [agents/bug-fix] `issues.py`: issue facts (`state`, `pull_request`), and linked PRs through GraphQL `closedByPullRequestsReferences` plus open PRs with head `issue/<N>-` (D-55)
   - [ ] 6.6 `[I]` [agents/bug-fix] `refusal.py`: checks in order; `active_run` reads trusted claim markers and `v_runs.effective_status` (a Supabase failure → `SUPABASE_UNAVAILABLE`); the reply with the `refusal` marker and fixed text (D-92, D-104)
@@ -231,7 +232,7 @@
     - a round-trip for `claim`, `disposition`, `refusal` (`reason=`) and `pr`;
     - the leading marker block;
     - forged markers (human author, wrong App id, `user.type == "User"`) untrusted (D-53, D-80, D-104).
-  - [x] 7.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_neutralize.py`: closing keywords, `owner/repo#N`, issue URLs and `@mentions`, plus `hypothesis` property tests (D-65)
+  - [x] 7.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_neutralize.py`: closing keywords, `owner/repo#N`, issue URLs and `@mentions`, plus `hypothesis` property tests (D-65; references kept as written, `(ref <reference as written>)`, per the DF-186-01 amendment)
   - [x] 7.3 `[T]` [agents/bug-fix] L2 `tests/component/test_disposition.py`:
     - diagnosis comment plus 😕;
     - no label or assignee calls;
@@ -255,7 +256,7 @@
   > Note: the claim is 👀 plus a marker comment, with no labels and no assignee (D-93). The race check stays (D-54).
 
   - [ ] 9.1 `[T]` [agents/bug-fix] L1 race verdicts: an earlier terminal claim is ignored; an earlier active claim with no `pr` or `disposition` marker means this run lost (D-54)
-  - [ ] 9.2 `[T]` [agents/bug-fix] L2 `tests/component/test_claim.py`:
+  - [ ] 9.2 `[T]` [agents/bug-fix] L2 `tests/component/test_claim.py`, with the in-repo GitHub double (DF-186-02):
     - a happy claim: the marker comment first, then 👀;
     - a lost race: only this run's comment is deleted → `not_applicable`/`active_run`, with no board call;
     - a crash after the comment, once the run is terminal: a new run proceeds (AC-24);
