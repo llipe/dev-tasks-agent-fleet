@@ -183,7 +183,7 @@
     - after `db reset`, the row exists (`requires_repository`, 3600/120/300, the ARN);
     - `validateParams` accepts `{issue_number: 7}` and rejects `{}`, `{issue_number: 0}` and `{select_labels: [...]}`;
     - `resolveRoute` with the runbook mapping (`issue.number`, `comment.id`) yields valid params (D-88, D-93).
-  - [ ] 5.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_params.py`: valid params; missing `issue_number`; each bound's edges and a wrong type; defaults applied for budgets, caps and status names; unknown keys ignored (D-82)
+  - [x] 5.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_params.py`: valid params; missing `issue_number`; each bound's edges and a wrong type; defaults applied for budgets, caps and status names; unknown keys ignored (D-82)
   - [ ] 5.3 `[I]` [supabase] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql`: an upsert with `params_schema` from spec §5.2 v2.0, and `default_params` holding only budgets, caps and status names
   - [ ] 5.4 [supabase] Document the rollback in the migration header: `delete from agents where slug = 'bug-fix'`
   - [ ] 5.5 [supabase] Mirror the row in `supabase/seed.sql`

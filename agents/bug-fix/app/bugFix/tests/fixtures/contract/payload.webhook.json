@@ -1,0 +1,7 @@
+{
+  "run_id": "0b9c6f3e-6a2d-4b8e-9d51-1f2a3b4c5d6e",
+  "repository_org": "acme",
+  "repository_name": "widgets",
+  "base_branch": "main",
+  "params": { "issue_number": 7, "trigger_comment_id": 123 }
+}

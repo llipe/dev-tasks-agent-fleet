@@ -53,6 +53,23 @@ class TestRuntime:
         assert life["maxLifetime"] == config.MAX_LIFETIME
         assert life["idleRuntimeSessionTimeout"] == config.IDLE_SESSION_TIMEOUT
 
+    @pytest.mark.parametrize("source", ["migration", "seed.sql"])
+    def test_seed_max_runtime_seconds_equals_max_lifetime(self, source: str):
+        # TC-184-04 (S-184 AC2, research Q7): the seed's max_runtime_seconds
+        # MUST equal maxLifetime, in the migration and in seed.sql.
+        repo = AGENT.parents[1]
+        if source == "migration":
+            found = sorted((repo / "supabase" / "migrations").glob("*_seed_bug_fix_agent.sql"))
+            assert len(found) == 1
+            sql = found[0].read_text()
+        else:
+            sql = (repo / "supabase" / "seed.sql").read_text()
+        stmt = sql[sql.index("'bug-fix',") :]
+        stmt = stmt[: stmt.index("on conflict (slug)")]
+        match = re.search(r"\b(\d+),\s*-- max_runtime_seconds", stmt)
+        assert match, f"no max_runtime_seconds in the {source} bug-fix row"
+        assert int(match.group(1)) == _runtime()["lifecycleConfiguration"]["maxLifetime"]
+
     def test_env_vars(self):
         env = _env()
         if PROBE_WINDOW:
