@@ -1,7 +1,9 @@
-"""RT-02: marker parsing, forgery and open-claim invariants (S-186 AC1, AC2; D-53, D-80).
+"""RT-02: marker parsing, forgery, open-claim and race invariants
+(S-186 AC1, AC2; S-188 AC2; D-53, D-54, D-80).
 
-The race verdict itself (oracle 7) belongs to ``claim.py`` (S-188); the
-open-claim set it reads is covered here.
+One open-claim rule (DF-33, confirmed by @llipe 2026-10-24): a trusted claim
+for run R is open until a trusted ``pr``, ``disposition`` or ``refusal`` marker
+for R exists. Oracle (7), the race verdict, runs ``claim.race_winner``.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import re
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from claim import race_winner
 from markers import KINDS, REFUSAL_REASONS, Marker, build, open_claims, parse_block
 
 APP_ID = 4242
@@ -99,8 +102,8 @@ def test_open_claim_invariants(spec, pool, rnd):
 
     result = open_claims(comments, APP_ID)
 
-    # (3) The oracle: trusted claims with no trusted pr/disposition for the run.
-    closed = {pool[ri] for kind, ri, t in spec if t and kind in ("pr", "disposition")}
+    # (3) The oracle: trusted claims with no trusted pr/disposition/refusal for the run.
+    closed = {pool[ri] for kind, ri, t in spec if t and kind in ("pr", "disposition", "refusal")}
     expected = sorted(
         (cid, pool[ri])
         for cid, (kind, ri, t) in enumerate(spec, start=1)
@@ -120,7 +123,51 @@ def test_open_claim_invariants(spec, pool, rnd):
             m = Marker(kind, rid, "closed" if kind == "refusal" else None)
             assert open_claims([*comments, _comment(extra, m, False)], APP_ID) == result
 
-    # (6) A trusted refusal never changes the set.
+    # (6) A trusted refusal never opens a claim: it only closes its own run's.
     for rid in pool:
         m = Marker("refusal", rid, "active_run")
-        assert open_claims([*comments, _comment(extra, m, True)], APP_ID) == result
+        got = open_claims([*comments, _comment(extra, m, True)], APP_ID)
+        assert got == [(cid, r) for cid, r in result if r != rid]
+
+
+STATUSES = ("queued", "running", "succeeded", "failed", "timed_out", "canceled", None)
+
+
+@settings(max_examples=1000, deadline=None)
+@given(
+    comment_lists,
+    st.lists(run_ids, min_size=5, max_size=5, unique=True),
+    st.lists(st.sampled_from(STATUSES), min_size=5, max_size=5),
+    st.integers(1, 21),
+    st.randoms(),
+)
+def test_race_verdict(spec, pool, statuses, own_cid, rnd):
+    # (7) This run (pool[0], comment own_cid) loses iff an open claim with a
+    # lower comment id belongs to another, non-terminal run. A missing v_runs
+    # row counts as finished (CT-34).
+    own = pool[0]
+    comments = []
+    for cid, (kind, ri, trusted_flag) in enumerate(spec, start=1):
+        marker = Marker(kind, pool[ri], "closed" if kind == "refusal" else None)
+        comments.append(_comment(cid, marker, trusted_flag))
+    status_of = {rid: s for rid, s in zip(pool, statuses, strict=True) if s is not None}
+
+    def read(ids):
+        return {i: status_of[i] for i in ids if i in status_of}
+
+    rnd.shuffle(comments)
+    winner = race_winner(comments, APP_ID, own, own_cid, read, warn=lambda _m: None)
+
+    active = [
+        (cid, rid)
+        for cid, rid in open_claims(comments, APP_ID)
+        if cid < own_cid and rid != own and status_of.get(rid) in ("queued", "running")
+    ]
+    assert (winner is not None) == bool(active)
+    if winner is not None:
+        assert winner == active[0][1]
+    # (5) An untrusted comment of any kind never changes the verdict.
+    for kind in KINDS:
+        m = Marker(kind, pool[1], "closed" if kind == "refusal" else None)
+        forged = [*comments, _comment(max(own_cid - 1, 1) if kind == "claim" else 99, m, False)]
+        assert race_winner(forged, APP_ID, own, own_cid, read, warn=lambda _m: None) == winner

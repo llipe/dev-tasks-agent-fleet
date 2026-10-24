@@ -258,10 +258,28 @@ class TestOpenClaims:
         comments = [_marked(1, "claim", RUN_A), _marked(2, "pr", RUN_A)]
         assert open_claims(comments, APP_ID) == []
 
-    def test_refusal_never_opens_or_closes_a_claim(self):
+    def test_closing_kinds_are_pr_disposition_and_refusal(self):
+        # DF-33 (confirmed by @llipe 2026-10-24): one open-claim rule.
+        assert markers.CLOSING_KINDS == frozenset({"pr", "disposition", "refusal"})
+
+    def test_refusal_never_opens_a_claim(self):
+        comments = [_marked(1, "refusal", RUN_A, "active_run")]
+        assert open_claims(comments, APP_ID) == []
+
+    def test_refusal_closes_its_own_claim(self):
+        # DF-33: a trusted refusal for the same run closes its claim.
+        comments = [_marked(1, "claim", RUN_A), _marked(2, "refusal", RUN_A, "repo_gate")]
+        assert open_claims(comments, APP_ID) == []
+
+    def test_another_runs_refusal_does_not_close_this_claim(self):
         comments = [_marked(1, "claim", RUN_A), _marked(2, "refusal", RUN_B, "active_run")]
         assert open_claims(comments, APP_ID) == [(1, RUN_A)]
-        comments = [_marked(1, "claim", RUN_A), _marked(2, "refusal", RUN_A, "closed")]
+
+    def test_untrusted_refusal_does_not_close_a_trusted_claim(self):
+        comments = [
+            _marked(1, "claim", RUN_A),
+            _marked(2, "refusal", RUN_A, "closed", app_id=None, user_type="User"),
+        ]
         assert open_claims(comments, APP_ID) == [(1, RUN_A)]
 
     def test_order_comes_from_comment_id_not_list_order(self):
