@@ -125,6 +125,17 @@ class TestClosingKeywords:
         assert out == expected
         assert neutralize(out) == out
 
+    def test_a_long_glued_chain_is_linear_not_quadratic(self):
+        # Each replacement exposed one more glued keyword, one pass at a time:
+        # 65,536 characters took ~14 s, beyond the 10 s SIGTERM budget.
+        import time
+
+        text = "close #1" * (65_536 // 8)
+        start = time.perf_counter()
+        out = neutralize(text)
+        assert time.perf_counter() - start < 2.0
+        assert out == "(ref #1)" * (65_536 // 8)
+
     def test_keyword_glued_to_underscore_is_still_neutralized(self):
         # Over-neutralizing is harmless; under-neutralizing closes an issue.
         assert neutralize("_fixes #1") == "_(ref #1)"

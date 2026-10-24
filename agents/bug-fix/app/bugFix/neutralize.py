@@ -48,24 +48,57 @@ _TARGET = (
     r"|<" + _REFERENCE + r">"
     r"|[\[*_`<]*" + _REFERENCE + r")"
 )
+# The keyword-boundary rule (no ASCII letter or digit just before the
+# keyword) is applied in ``_pass``, so a keyword glued to the end of the
+# previous replacement can be accepted in the same pass.
 _CLOSING = re.compile(
-    r"(?<![A-Za-z0-9])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?P<ref>"
-    + _TARGET
-    + r")",
+    r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?P<ref>" + _TARGET + r")",
     re.IGNORECASE,
 )
 _AT = re.compile("@(?!" + ZWSP + ")")
+
+
+def _glued(text: str, start: int) -> bool:
+    if start == 0:
+        return False
+    before = text[start - 1]
+    return before.isascii() and before.isalnum()
+
+
+def _pass(text: str) -> str:
+    """One left-to-right replacement pass.
+
+    A keyword glued to the end of the previous replacement counts as free:
+    the replacement ends with ``)``, so the next pass would accept it anyway.
+    Accepting it now keeps a ``close #1close #1…`` chain linear instead of
+    one pass per link (65,536 characters took ~14 s).
+    """
+    out: list[str] = []
+    pos = 0  # end of the text already copied to ``out``
+    i = 0
+    while True:
+        m = _CLOSING.search(text, i)
+        if m is None:
+            break
+        if m.start() != pos and _glued(text, m.start()):
+            i = m.start() + 1
+            continue
+        out.append(text[pos : m.start()])
+        out.append(f"(ref {m.group('ref')})")
+        pos = i = m.end()
+    out.append(text[pos:])
+    return "".join(out)
 
 
 def neutralize(text: str) -> str:
     """Return ``text`` with closing references and mentions defused."""
     if not isinstance(text, str):
         raise TypeError("neutralize() needs a str")
-    # Repeat to a fixed point: a replacement can expose a keyword that was
-    # glued to the previous reference (``#1close #1`` -> ``(ref #1)close #1``).
-    # Each pass removes at least one keyword, so the loop terminates.
+    # Repeat to a fixed point: a replacement can expose a keyword, for example
+    # inside a reference it consumed. Each pass removes at least one keyword,
+    # so the loop terminates.
     while True:
-        out = _CLOSING.sub(lambda m: f"(ref {m.group('ref')})", text)
+        out = _pass(text)
         if out == text:
             break
         text = out
