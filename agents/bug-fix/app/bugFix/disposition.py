@@ -22,8 +22,12 @@ Safety rules:
 - **Idempotent per run.** A trusted ``disposition`` marker for this ``run_id``
   on the issue (D-53) means it was already applied, so nothing is written. A
   forged marker (a human, another App) never suppresses it. In-process, a
-  disposition that has finished or is in flight is never started again, so the
-  ``finally`` path and the SIGTERM backstop can't both post.
+  finished disposition is never started again, and an in-flight one is never
+  started twice, with one exception: the SIGTERM backstop takes over a
+  disposition the dying process can no longer finish (the ``finally`` path
+  suspended under the signal handler). An owner that has not started posting
+  is preempted atomically, so it can't post too; a post that may have landed
+  is re-checked against the trusted marker first (DF-186-04).
 - **Text.** Every variable part is CRLF-normalized, scrubbed of secrets,
   neutralized (D-65, D-85), and has ``<!--`` defused, so model text can't add a
   marker or hide content. A fixed line always follows the marker, so model
@@ -38,6 +42,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -56,6 +61,9 @@ RETRY_LINE = (
 )
 _RUN_LINK = re.compile(r"https://\S+")
 _LOCK_TIMEOUT = 1.0
+# The longest the backstop waits for a live owner's in-flight post. The
+# backstop's own budget (10 s) abandons it sooner in practice.
+_POST_WAIT = 30.0
 
 
 @dataclass(frozen=True)
@@ -168,7 +176,11 @@ class Disposer:
         self.board_ready = board_ready
         self._owned = threading.Event()
         self._lock = threading.Lock()
-        self._busy = False
+        self._idle = threading.Condition(self._lock)
+        # Single flight: the owning thread id (None when idle) and its phase,
+        # "list" until it has decided to post, then "post".
+        self._owner: int | None = None
+        self._phase = "list"
         self._done = False
 
     # -- ownership ---------------------------------------------------------------
@@ -182,27 +194,75 @@ class Disposer:
         self._owned.set()
 
     def backstop_action(self) -> Callable[[], DispositionResult] | None:
-        """The SIGTERM backstop's disposition, or ``None`` before confirmed ownership."""
+        """The SIGTERM backstop's disposition, or ``None`` before confirmed ownership.
+
+        Called by the signal handler, so ``threading.get_ident()`` here is the
+        handler's thread: a disposition owned by that thread is suspended under
+        the handler and will never finish, because the process dies after it.
+        """
         if not self.ownership_confirmed:
             return None
-        return lambda: self.dispose(BACKSTOP_DIAGNOSIS)
+        handler = threading.get_ident()
+        return lambda: self._dispose(BACKSTOP_DIAGNOSIS, takeover_from=handler)
 
     # -- in-process single flight -----------------------------------------------
 
-    def _begin(self) -> bool:
+    def _begin(self, takeover_from: int | None = None) -> bool:
+        """Become the owner. ``takeover_from`` is set only by the SIGTERM backstop.
+
+        Without it, an in-flight disposition means "in progress". With it, the
+        backstop takes over, because after the handler the process dies and
+        the in-flight owner never finishes:
+
+        - an owner still listing is preempted: its pre-post check
+          (:meth:`_may_post`) fails, so it can never post as well;
+        - an owner suspended under the handler (``takeover_from``) while
+          posting is taken over too; the backstop's re-list sees the marker if
+          that post landed, so nothing is posted twice;
+        - a live owner on another thread that is already posting is waited
+          for, since its post is about to land; the budget bounds the wait.
+        """
         if not self._lock.acquire(timeout=_LOCK_TIMEOUT):
             return False
         try:
-            if self._busy:
+            me = threading.get_ident()
+            if takeover_from is not None:
+                deadline = time.monotonic() + _POST_WAIT
+                while (
+                    self._owner is not None
+                    and self._owner != takeover_from
+                    and self._phase == "post"
+                ):
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        return False
+                    self._idle.wait(min(left, 0.05))
+            elif self._owner is not None:
                 return False
-            self._busy = True
+            self._owner = me
+            self._phase = "list"
             return True
         finally:
             self._lock.release()
 
+    def _may_post(self) -> bool:
+        """Atomically move to the post phase, unless preempted or already done."""
+        with self._lock:
+            if self._owner != threading.get_ident() or self._done:
+                return False
+            self._phase = "post"
+            return True
+
+    def _still_owner(self) -> bool:
+        with self._lock:
+            return self._owner == threading.get_ident()
+
     def _end(self) -> None:
         with self._lock:
-            self._busy = False
+            if self._owner == threading.get_ident():
+                self._owner = None
+                self._phase = "list"
+            self._idle.notify_all()
 
     # -- reporting ---------------------------------------------------------------
 
@@ -220,21 +280,42 @@ class Disposer:
 
     def dispose(self, diagnosis: Diagnosis) -> DispositionResult:
         """Apply the disposition once. GitHub errors on the read or the comment raise."""
+        return self._dispose(diagnosis)
+
+    def _dispose(self, diagnosis: Diagnosis, takeover_from: int | None = None) -> DispositionResult:
         if not self.ownership_confirmed:
             return DispositionResult("not_owned")
         if self._done:
             return DispositionResult("already_disposed")
-        if not self._begin():
+        if not self._begin(takeover_from):
             return DispositionResult("in_progress")
         try:
+            if self._done:  # an owner the backstop waited for has finished
+                return DispositionResult("already_disposed")
             comments = self.client.list_comments(self.issue_number)
             if has_trusted(comments, self.app_id, "disposition", self.run_id):
                 self._done = True
-                self._event("info", "disposition already applied for this run; nothing written")
-                return DispositionResult("already_disposed")
+                if takeover_from is None:
+                    self._event("info", "disposition already applied for this run; nothing written")
+                    return DispositionResult("already_disposed")
+                # The suspended owner's post landed but it never reacted. Both
+                # the reaction and the board status are idempotent on GitHub.
+                reaction = self._react()
+                board = self._board()
+                self._event(
+                    "info",
+                    "disposition already posted; completed it "
+                    f"(reaction {reaction}, board {board})",
+                )
+                return DispositionResult("already_disposed", reaction=reaction, board=board)
+            if not self._may_post():
+                return DispositionResult("in_progress")
             body = build_body(self.run_id, diagnosis, self.secrets, self.run_link)
             created = self.client.post_comment(self.issue_number, body)
             self._done = True
+            if not self._still_owner():
+                # Taken over while posting: the backstop completes the rest.
+                return DispositionResult("already_disposed")
             reaction = self._react()
             board = self._board()
             self._event("info", f"disposition applied (reaction {reaction}, board {board})")

@@ -8,12 +8,15 @@ in-memory :class:`FakeGitHub`, so the code under test builds its real requests.
 from __future__ import annotations
 
 import logging
+import os
+import signal
 import threading
 import time
 from unittest.mock import MagicMock
 
 import pytest
 
+import signal_backstop
 from disposition import Diagnosis, Disposer, build_body
 from issues import (
     MAX_COMMENT_CHARS,
@@ -293,17 +296,6 @@ class _FrozenFirstList(FakeGitHub):
         return super().request(method, url, **kwargs)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DEFECT (S-186): a SIGTERM that arrives while the finally-path disposition is in "
-        "flight on the main thread makes the backstop return 'in_progress' at once; the "
-        "handler then re-raises SIGTERM and the process dies, so no diagnosis comment and "
-        "no confused reaction are posted. That breaks test-plan invariant (7) and EC-11 "
-        "('a lost disposition'), since SIGTERM is not a kill outright. The handler also "
-        "reports 'Disposition attempted before stopping.' although nothing was attempted."
-    ),
-)
 def test_sigterm_during_an_in_flight_disposition_still_posts_it():
     gh = _FrozenFirstList()
     d = _disposer(gh)
@@ -322,3 +314,123 @@ def test_sigterm_during_an_in_flight_disposition_still_posts_it():
     finally:
         gh.release.set()
         main.join(5)
+
+
+def _comment_posts(gh: FakeGitHub) -> list:
+    return [c for c in gh.writes() if c.path.endswith(f"/issues/{ISSUE}/comments")]
+
+
+def test_a_preempted_list_phase_owner_never_posts_after_it_resumes():
+    """DF-186-04: once the backstop has taken over, the resumed owner can't post too."""
+    gh = _FrozenFirstList()
+    d = _disposer(gh)
+    results: list = []
+    main = threading.Thread(
+        target=lambda: results.append(d.dispose(Diagnosis(why="w", tried="t"))), daemon=True
+    )
+    main.start()
+    assert gh.entered.wait(2)
+    run = MagicMock()
+    run._terminal = False
+    handle_termination(lambda: run, list, d.backstop_action, "SIGTERM", budget=2.0)
+    gh.release.set()
+    main.join(5)
+    assert len(_comment_posts(gh)) == 1
+    assert gh.reactions == [(TRIGGER, "confused")]
+    assert results[0].status in ("already_disposed", "in_progress")
+    assert run.fail.call_args.kwargs["error_message"].endswith(
+        "Disposition posted before stopping."
+    )
+
+
+class _SignalDuring(FakeGitHub):
+    """Delivers a real SIGTERM to this process while the main thread is inside
+    the first ``method`` call, so the handler runs on the suspended owner's
+    thread. For a POST the comment is recorded first: the post has landed."""
+
+    def __init__(self, method: str, reraised: list[int]) -> None:
+        super().__init__()
+        self.method = method
+        self.reraised = reraised
+        self._first = True
+
+    def request(self, method, url, **kwargs):
+        if method != self.method or not self._first:
+            return super().request(method, url, **kwargs)
+        self._first = False
+        resp = super().request(method, url, **kwargs)
+        os.kill(os.getpid(), signal.SIGTERM)
+        deadline = time.monotonic() + 5
+        while not self.reraised and time.monotonic() < deadline:
+            time.sleep(0.005)  # the handler runs here, on this (main) thread
+        return resp
+
+
+@pytest.mark.parametrize(
+    ("method", "detail"),
+    [
+        ("GET", "Disposition posted before stopping."),
+        ("POST", "Disposition was already posted for this run; nothing new was written."),
+    ],
+)
+def test_real_sigterm_on_the_owner_thread_disposes_exactly_once(monkeypatch, method, detail):
+    """The finally path runs on the main thread and SIGTERM suspends it mid-call.
+
+    GET: the listing had not seen a marker, so the backstop posts the disposition.
+    POST: the interrupted post had already landed, so the backstop's re-list sees
+    its trusted marker and posts nothing; it still adds the missing 😕.
+    """
+    assert threading.current_thread() is threading.main_thread()
+    reraised: list[int] = []
+    monkeypatch.setattr(signal_backstop.signal, "raise_signal", reraised.append)
+    gh = _SignalDuring(method, reraised)
+    d = _disposer(gh)
+    run = MagicMock()
+    run._terminal = False
+    original = signal.getsignal(signal.SIGTERM)
+    try:
+        signal_backstop.install_termination_backstop(
+            lambda: run, list, get_disposition=d.backstop_action, budget=3.0
+        )
+        result = d.dispose(Diagnosis(why="w", tried="t"))
+    finally:
+        signal.signal(signal.SIGTERM, original)
+    assert reraised == [signal.SIGTERM]
+    assert len(_comment_posts(gh)) == 1
+    assert gh.reactions == [(TRIGGER, "confused")]
+    assert run.fail.call_args.kwargs["error_message"].endswith(detail)
+    # The resumed owner sees it was taken over and writes nothing more.
+    assert result.status in ("already_disposed", "in_progress")
+
+
+class _SlowFirstPost(FakeGitHub):
+    def __init__(self) -> None:
+        super().__init__()
+        self.posting = threading.Event()
+        self._first = True
+
+    def request(self, method, url, **kwargs):
+        if method == "POST" and self._first and url.endswith("/comments"):
+            self._first = False
+            self.posting.set()
+            time.sleep(0.3)
+        return super().request(method, url, **kwargs)
+
+
+def test_a_live_owner_already_posting_is_waited_for_not_duplicated():
+    """An owner on another, running thread that is mid-post finishes its post;
+    the backstop waits for it instead of posting a second comment."""
+    gh = _SlowFirstPost()
+    d = _disposer(gh)
+    main = threading.Thread(target=d.dispose, args=(Diagnosis(why="w", tried="t"),), daemon=True)
+    main.start()
+    assert gh.posting.wait(2)
+    run = MagicMock()
+    run._terminal = False
+    handle_termination(lambda: run, list, d.backstop_action, "SIGTERM", budget=2.0)
+    main.join(5)
+    assert len(_comment_posts(gh)) == 1
+    assert gh.reactions == [(TRIGGER, "confused")]
+    assert run.fail.call_args.kwargs["error_message"].endswith(
+        "Disposition was already posted for this run; nothing new was written."
+    )

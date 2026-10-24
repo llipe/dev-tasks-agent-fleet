@@ -2,7 +2,8 @@
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
 # Extended (S-186): before `fail()`, the handler runs the run's disposition
 # with a 10-second budget, only when the claim's ownership is confirmed (D-81).
-# `report_abrupt_termination` is unchanged.
+# `report_abrupt_termination` is unchanged. The `fail()` detail names what the
+# disposition did: posted, already posted, skipped, failed or abandoned.
 """
 Best-effort terminal-report backstop on abrupt termination (issue #98, AC6).
 
@@ -84,18 +85,48 @@ def run_with_budget(action: Callable[[], object], budget: float) -> bool:
     An exception in ``action`` is logged (by type only) and counts as ended. A
     thread still running at the budget is abandoned; it dies with the process.
     """
+    return _run_with_budget(action, budget)[0]
+
+
+def _run_with_budget(
+    action: Callable[[], object], budget: float
+) -> tuple[bool, object, BaseException | None]:
+    """Like :func:`run_with_budget`, also returning the result or the exception."""
     done = threading.Event()
+    outcome: dict[str, Any] = {"result": None, "error": None}
 
     def _target() -> None:
         try:
-            action()
+            outcome["result"] = action()
         except Exception as exc:  # noqa: BLE001 — a backstop must never raise
             log.warning("backstop disposition failed (%s)", type(exc).__name__)
+            outcome["error"] = exc
         finally:
             done.set()
 
     threading.Thread(target=_target, name="bug-fix-backstop-disposition", daemon=True).start()
-    return done.wait(budget)
+    finished = done.wait(budget)
+    return finished, outcome["result"], outcome["error"]
+
+
+_DETAILS = {
+    "applied": "Disposition posted before stopping.",
+    "already_disposed": "Disposition was already posted for this run; nothing new was written.",
+    "in_progress": "Disposition skipped: another disposition for this run was still in flight.",
+    "not_owned": "Disposition skipped: claim ownership was not confirmed.",
+}
+
+
+def _detail(finished: bool, result: object, error: BaseException | None, budget: float) -> str:
+    """The ``fail()`` detail naming what the backstop's disposition did."""
+    if not finished:
+        return f"Disposition abandoned after {budget:g} s."
+    if error is not None:
+        return f"Disposition attempted but failed ({type(error).__name__})."
+    status = getattr(result, "status", None)
+    return _DETAILS.get(
+        status if isinstance(status, str) else "", "Disposition attempted before stopping."
+    )
 
 
 def handle_termination(
@@ -112,12 +143,12 @@ def handle_termination(
         try:
             action = get_disposition()
         except Exception:  # noqa: BLE001 — a backstop must never raise
-            action = None
-    if action is not None:
-        if run_with_budget(action, budget):
-            detail = "Disposition attempted before stopping."
+            detail = "Disposition skipped: it could not be prepared."
         else:
-            detail = f"Disposition abandoned after {budget:g} s."
+            if action is None:
+                detail = _DETAILS["not_owned"]
+    if action is not None:
+        detail = _detail(*_run_with_budget(action, budget), budget)
     try:
         run = get_run()
         secrets = get_secrets()
