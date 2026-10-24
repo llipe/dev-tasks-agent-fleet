@@ -179,7 +179,7 @@
 
   > Note: issue-mode params (D-93, D-102). `issue_number` is the only required key. Needs the runtime ARN from 2.4.
 
-  - [ ] 5.1 `[T]` [panel] L2.5 `panel/tests/integration/bug-fix-seed.test.ts`:
+  - [x] 5.1 `[T]` [panel] L2.5 `panel/tests/integration/bug-fix-seed.test.ts`:
     - after `db reset`, the row exists (`requires_repository`, 3600/120/300, the ARN);
     - `validateParams` accepts `{issue_number: 7}` and rejects `{}`, `{issue_number: 0}` and `{select_labels: [...]}`;
     - `resolveRoute` with the runbook mapping (`issue.number`, `comment.id`) yields valid params (D-88, D-93).

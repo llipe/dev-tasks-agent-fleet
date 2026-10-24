@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["issue_number"],
+  "properties": {
+    "issue_number": { "type": "integer", "minimum": 1, "title": "Issue number" },
+    "trigger_comment_id": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "Triggering comment id (for reactions)"
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]{1,39}/[1-9][0-9]{0,6}$",
+      "title": "Projects v2 board override (owner/number)"
+    },
+    "status_in_progress": { "type": "string", "minLength": 1, "maxLength": 100, "default": "In progress" },
+    "status_in_review": { "type": "string", "minLength": 1, "maxLength": 100, "default": "In review" },
+    "status_ready": { "type": "string", "minLength": 1, "maxLength": 100, "default": "Ready" },
+    "max_turns": { "type": "integer", "minimum": 5, "maximum": 100, "default": 40 },
+    "cli_timeout_minutes": { "type": "integer", "minimum": 5, "maximum": 45, "default": 30 },
+    "run_budget_minutes": { "type": "integer", "minimum": 10, "maximum": 55, "default": 55 },
+    "max_code_files": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 },
+    "max_code_lines": { "type": "integer", "minimum": 10, "maximum": 2000, "default": 400 }
+  }
+}
