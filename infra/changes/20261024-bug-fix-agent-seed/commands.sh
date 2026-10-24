@@ -17,3 +17,6 @@ supabase db push --dry-run --linked   # 18:17:28Z -> only 20261024130000_seed_bu
 # Step 1 — apply — 2026-10-24T18:17:38Z..18:17:44Z
 supabase db push --linked --yes       # Applying migration 20261024130000_seed_bug_fix_agent.sql... Finished
 supabase db query --linked "select slug, requires_repository, params_schema->'required' as required, runtime_arn, max_runtime_seconds, grace_seconds, start_timeout_seconds, is_enabled ... from agents where slug = 'bug-fix';" > backup/agents.after-step1.json
+
+# Step 2 — @llipe invoked from the panel (/agents/bug-fix/invoke, issue_number 119) — run 436458f2-efa1-4f19-9e24-6b479853756e, 18:30:50Z..18:30:51Z
+supabase db query --linked "select a.slug, r.trigger_type, r.status, r.outcome, ... from runs r join agents a on a.id=r.agent_id where r.id='436458f2-efa1-4f19-9e24-6b479853756e';" > backup/run-step2.json

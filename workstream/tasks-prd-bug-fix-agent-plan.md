@@ -191,15 +191,15 @@
   - [x] 5.3 `[I]` [supabase] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql`: an upsert with `params_schema` from spec §5.2 v2.0, and `default_params` holding only budgets, caps and status names
   - [x] 5.4 [supabase] Document the rollback in the migration header: `delete from agents where slug = 'bug-fix'`
   - [x] 5.5 [supabase] Mirror the row in `supabase/seed.sql`
-  - [ ] 5.6 **Confirmation gate:** ask the user before applying the migration to any shared or cloud project
-  - [ ] 5.7 [supabase] Apply after confirmation, then verify: `select slug, params_schema->'required' from agents where slug='bug-fix'`
+  - [x] 5.6 **Confirmation gate:** ask the user before applying the migration to any shared or cloud project
+  - [x] 5.7 [supabase] Apply after confirmation, then verify: `select slug, params_schema->'required' from agents where slug='bug-fix'`
   - [x] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
   - [x] 5.9 Edge cases: a `project` that fails the pattern; a 100-character status name; `trigger_comment_id` as a string
-  - [ ] 5.10 Manual UI: `/agents/bug-fix/invoke` shows `issue_number` as required
+  - [x] 5.10 Manual UI: `/agents/bug-fix/invoke` shows `issue_number` as required
   - [x] 5.11 Verify AC (v2.0): AC1–AC3 and AC5 by 5.1; AC4 by 5.2
-  - [ ] 5.12 Run tests: `supabase db reset`, `pnpm --filter panel run test:integration`, `make test`; gates; `make validate`; record `coverage_gate`
+  - [x] 5.12 Run tests: `supabase db reset`, `pnpm --filter panel run test:integration`, `make test`; gates; `make validate`; record `coverage_gate`
     > Local run done (2026-10-24, developer): `supabase db reset --local`, `test:integration` 42 files / 328 tests with `REQUIRE_LOCAL_DB=1`, agent `make validate` green. Panel `audit` fails on a pre-existing advisory outside this story (`zod` via `agents/dependency-update/agentcore/cdk`). Open: `coverage_gate` (planner's `qa-engineer`) and the post-apply cloud check.
-  - [ ] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [x] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply
 
