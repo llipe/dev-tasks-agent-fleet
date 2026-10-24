@@ -29,6 +29,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 import requests
 
@@ -42,6 +43,12 @@ TRUNCATION_NOTICE = "\n\n… (truncated)"
 REACTIONS: tuple[str, ...] = ("eyes", "rocket", "confused")
 _MAX_PAGES = 100
 _NAME = re.compile(r"[A-Za-z0-9._-]+")
+# A pagination link's path, relative to the API base (see _check_next).
+_NEXT_PATH = re.compile(
+    r"/(?:repos/(?P<owner>[A-Za-z0-9._-]+)/(?P<repo>[A-Za-z0-9._-]+)"
+    r"|repositories/(?P<repo_id>[1-9][0-9]*))"
+    r"/issues/(?P<issue>[1-9][0-9]*)/comments"
+)
 
 
 class GitHubError(Exception):
@@ -180,11 +187,12 @@ class IssuesClient:
     # -- comments ----------------------------------------------------------------
 
     def list_comments(self, issue_number: int, *, timeout: float | None = None) -> list[dict]:
-        """Every comment on the issue, following pagination on the API host only."""
+        """Every comment on the issue, following pagination on this resource only."""
         label = self._path(f"/issues/{issue_number}/comments")
         url: str | None = self.api_url + label
         params: dict[str, Any] | None = {"per_page": 100}
         out: list[dict] = []
+        repo_ids: set[str] = set()
         for _ in range(_MAX_PAGES):
             if url is None:
                 break
@@ -198,8 +206,45 @@ class IssuesClient:
             out.extend(c for c in page if isinstance(c, dict))
             nxt = (getattr(resp, "links", None) or {}).get("next") or {}
             url = nxt.get("url")
+            if url is not None:
+                repo_ids = self._check_next(url, issue_number, label, repo_ids)
             params = None  # the next link carries its own query
         return out
+
+    def _check_next(
+        self, url: object, issue_number: int, label: str, repo_ids: set[str]
+    ) -> set[str]:
+        """Allow a ``next`` link only to this issue's comments (QA gap 5).
+
+        The host check in :meth:`_request` keeps the token on the API host;
+        this keeps it on the listed resource. GitHub writes the link either as
+        ``/repos/{owner}/{repo}/issues/{n}/comments`` or as
+        ``/repositories/{id}/issues/{n}/comments``; the repository id must not
+        change between pages. The raw path must match exactly, so ``..``, an
+        encoded ``/`` or ``.``, another issue or another resource is refused.
+        Returns the repository ids seen so far.
+        """
+        refused = GitHubRequestRejected(f"GET {label}: next link leaves the listed comments")
+        if not isinstance(url, str):
+            raise refused
+        parts = urlsplit(url)
+        base = urlsplit(self.api_url).path.rstrip("/")
+        if parts.fragment or not parts.path.startswith(base + "/"):
+            raise refused
+        m = _NEXT_PATH.fullmatch(parts.path[len(base) :])
+        if m is None or m.group("issue") != str(issue_number):
+            raise refused
+        if m.group("repo_id") is not None:
+            seen = repo_ids | {m.group("repo_id")}
+            if len(seen) > 1:
+                raise refused
+            return seen
+        if (m.group("owner").lower(), m.group("repo").lower()) != (
+            self.owner.lower(),
+            self.repo.lower(),
+        ):
+            raise refused
+        return repo_ids
 
     def post_comment(
         self, issue_number: int, body: str, *, timeout: float | None = None

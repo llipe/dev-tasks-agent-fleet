@@ -67,6 +67,69 @@ class TestComments:
             _client(gh).list_comments(7)
         assert all(c.url.startswith(API + "/") for c in gh.calls)
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/repos/o/r/issues/8/comments?page=2",  # another issue
+            "/repos/o/other/issues/7/comments?page=2",  # another repository
+            "/repos/x/r/issues/7/comments?page=2",
+            "/repos/o/r/issues/7/events?page=2",  # another resource
+            "/repos/o/r/issues/7/comments/1?page=2",
+            "/repos/o/r/issues/7/comments/../../8/comments?page=2",
+            "/repos/o/r/issues/../pulls/7/comments?page=2",
+            "/repos/o/r/issues/7/comments/%2e%2e/x?page=2",
+            "/repos/o/r/issues/7/comments/..",
+            "/repos/o/r/issues/7%2Fcomments?page=2",
+            "/repos/o/r/issues/07/comments?page=2",
+            "/repositories/1/issues/8/comments?page=2",
+            "/repositories/1/../2/issues/7/comments?page=2",
+            "/repositories/x/issues/7/comments?page=2",
+            "/user",
+            "/app/installations",
+            "/repos/o/r/issues/7/comments?page=2#frag",
+        ],
+    )
+    def test_next_link_must_stay_on_the_listed_resource(self, path):
+        # QA gap 5: the API host alone is not enough; the token is only ever
+        # sent to this issue's comments.
+        gh = FakeGitHub(per_page_cap=1, next_link_override=API + path)
+        gh.add_comment(7, "a")
+        gh.add_comment(7, "b")
+        with pytest.raises(GitHubRequestRejected) as exc:
+            _client(gh).list_comments(7)
+        assert len(gh.calls) == 1
+        assert TOKEN not in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/repos/o/r/issues/7/comments?per_page=1&page=2",
+            "/repos/O/R/issues/7/comments?per_page=1&page=2",  # GitHub names are case-insensitive
+            "/repositories/123/issues/7/comments?per_page=1&page=2",
+        ],
+    )
+    def test_next_link_on_the_listed_resource_is_followed(self, path):
+        gh = FakeGitHub(per_page_cap=1, next_link_override=API + path)
+        gh.add_comment(7, "a")
+        gh.add_comment(7, "b")
+        assert [c["body"] for c in _client(gh).list_comments(7)] == ["a", "b"]
+
+    def test_the_repository_id_may_not_change_between_pages(self):
+        class _Hopping(FakeGitHub):
+            def _list(self, issue, params):
+                page = int(params.get("page", 1))
+                self.next_link_override = (
+                    f"{API}/repositories/{page}/issues/{issue}/comments?per_page=1&page={page + 1}"
+                )
+                return super()._list(issue, params)
+
+        gh = _Hopping(per_page_cap=1)
+        for body in "abc":
+            gh.add_comment(7, body)
+        with pytest.raises(GitHubRequestRejected):
+            _client(gh).list_comments(7)
+        assert len(gh.calls) == 2
+
     def test_list_comments_4xx_is_rejected(self):
         gh = FakeGitHub(list_status=404)
         with pytest.raises(GitHubRequestRejected) as exc:
