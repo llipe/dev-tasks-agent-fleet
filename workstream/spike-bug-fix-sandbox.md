@@ -1,14 +1,15 @@
 # Spike report — bug-fix sandbox on the deployed runtime (S-182, #364)
 
-> **Status: phase 1b (D-110), awaiting the re-probe.** IC probe run 1
-> (2026-10-24, the D-109 image) **failed** on sandbox and isolation. The cause:
-> AgentCore sets `no_new_privs`, so setuid `sudo` can't run (§5.1). The board
-> probe passed. D-110 replaces the sudo switch with a root wrapper that drops
-> to `fixer` with `setpriv`. §4.2 holds its local evidence, with
-> `no-new-privileges` emulated. Every re-probe row reads **pending (IC)** until
-> `infra-engineer` redeploys and re-runs the probe (change record
-> `20261024-bug-fix-spike-probe`, steps 1b and 2b). The PASS / FAIL verdict (task
-> 3.9) is written after that run.
+> **Status: fix round 2, awaiting re-probe 2c.** IC probe run 1 (D-109 image)
+> failed on `no_new_privs` (§5.1), which led to D-110. **Re-probe 2b** (runtime
+> v3, D-110 image) gave **34 PASS / 3 FAIL** (§5.2). User namespaces, the
+> setpriv drop, `/proc` isolation, no-escalation, `git push` deny and the board
+> all pass. The three failures have two root causes, both fixed locally (§4.3):
+> (1) `localhost`, srt's proxy host, doesn't resolve inside the sandbox on
+> AgentCore (empty `/etc/hosts`), so no registry is reachable; (2)
+> `cli.deny.webfetch` misread a working tool-wide deny as a fail-open. Re-probe
+> 2c (change record `20261024-bug-fix-spike-probe`) fills the last column; the
+> PASS / FAIL verdict (task 3.9) follows it.
 >
 > **Local is not IC.** The LOCAL rows come from Docker Desktop on an arm64 Mac.
 > It isn't AgentCore (a Firecracker microVM), and its kernel, seccomp and
@@ -21,6 +22,7 @@
 | ------- | ---------- | --------------------------------------------------------------- | --------- |
 | 0.1     | 2026-10-23 | Skeleton: phase 1 local evidence, runtime choice, versions, keys | developer |
 | 0.2     | 2026-10-24 | Phase 1b (D-110): IC run 1 summary (FAIL, `no_new_privs`; board PASS); setpriv drop; local evidence with `no-new-privileges` emulated; `setpriv.*`, `noescalate.*`, `userns.available` rows | developer |
+| 0.3     | 2026-10-24 | Re-probe 2b results (34/37). Fix round 2: `/etc/hosts` loopback entry (registries), `cli.deny.*` reads the offered tool list, `--disallowedTools=WebFetch,WebSearch`; §4.3 local evidence; `net.localhost`, `cli.deny.websearch` rows | developer |
 
 ## 1. Versions (image `bug-fix:local`, linux/arm64)
 
@@ -67,7 +69,7 @@ Phase 1 found each key below in the settings schema compiled into CLI 2.1.309 (s
 
 | Key | Where | Purpose | Status |
 | --- | ----- | ------- | ------ |
-| `permissions.deny` (`Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, Read/Edit `//proc/**`, `//etc/claude-code/**`, `//work/secrets/**`) | `permissions` | D-51 deny rules | present in schema; IC pending (`cli.deny.*`) |
+| `permissions.deny` (`Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, Read/Edit `//proc/**`, `//etc/claude-code/**`, `//work/secrets/**`) | `permissions` | D-51 deny rules | IC 2b: `git push` denied, no ref. The bare `WebFetch`/`WebSearch` form is a **tool-wide deny: the CLI removes the tool from the list offered to the model** (LOCAL-2-04), so no denial is ever recorded; 2c checks the offered list |
 | `permissions.disableBypassPermissionsMode: "disable"` | `permissions` | no bypass mode from a repo | present in schema; IC pending |
 | `allowManagedPermissionRulesOnly: true` | top level (next to `disablePluginDirectory`) | repo, user, local and `--settings` permission rules are **ignored**, not just outranked | **added in phase 1**; IC pending |
 | `allowManagedHooksOnly: true` | top level | D-29: only managed hooks run | **added in phase 1**; IC pending |
@@ -133,6 +135,28 @@ The harness calls the real `probe.py` check groups with the production `Sandbox(
 
 Overall: **default + NNP 12 PASS / 17 FAIL.** All 17 failures are bwrap's namespace refusal, which `userns.available` names. **Permissive + NNP: 29 PASS / 0 FAIL.** The setpriv drop, the `/proc` isolation from a root wrapper and the no-escalation checks pass in both profiles. Whether AgentCore allows user namespaces is the open question for the re-probe. Not run locally, as before: `cli.deny.*` and the live `board.*` checks.
 
+### 4.3 Fix round 2 (after re-probe 2b) — LOCAL, 2026-10-24
+
+Profile: the image's default user (root), `--security-opt no-new-privileges`, plus `seccomp=unconfined`, `apparmor=unconfined` and `systempaths=unconfined` (re-probe 2b showed AgentCore allows user namespaces; Docker's masked `/proc` paths otherwise stop bwrap mounting a fresh procfs). The chain is the production one: `Sandbox().run` → `setpriv` → `fixer_exec.py` → `srt` → `bwrap`.
+
+**Root cause 1 — registries (`net.reachable.*`).** srt 0.0.81 hard-codes `localhost` in every proxy variable (`dist/sandbox/sandbox-utils.js`: `HTTP_PROXY=http://${auth}localhost:${httpProxyPort}`, and the same for HTTPS/ALL/FTP/GRPC/Docker/`GIT_SSH_COMMAND`). No setting changes it. The CLI's native binary embeds the same strings (`HTTP_PROXY=http://${i}localhost:${e}`, `TCP6-LISTEN:${D},ipv6only=0`), so its Bash sandbox uses the same mechanism. Inside the sandbox's network namespace there is no DNS, so `localhost` must come from `/etc/hosts` (`nsswitch`: `files dns`). The image's `/etc/hosts` is **0 bytes**: BuildKit bind-mounts it during the build, so even a `COPY hosts /etc/hosts` doesn't persist (tested). Docker writes its own at run time, which hid the problem in §4.1/§4.2. AgentCore evidently doesn't. The in-namespace relay listens dual-stack (`TCP6-LISTEN … ipv6only=0`, falling back to `TCP4-LISTEN`), so an IPv4 entry is enough.
+
+**Fix 1.** Before every run (both modes), `sandbox.py` makes sure `/etc/hosts` maps `localhost` to a loopback address (`ensure_loopback_hosts`). If no such line exists, it appends `127.0.0.1\tlocalhost` once, in place. If it can't, it refuses the run (`SandboxUnavailable`). `Sandbox.hosts_status` records `added` or `present`, and the probe's new first check, `net.localhost`, reports it. One system-level fix covers srt and the CLI's Bash sandbox.
+
+**Root cause 2 — `cli.deny.webfetch`.** Not a fail-open. In 2b, `turns=4` and the denials were three `Bash` calls (`git push`, `gh`, `curl`); the model never called WebFetch. A tool-wide deny removes the tool from the list the CLI offers the model, so no `permission_denials` entry can appear, and the check only looked for one.
+
+**Fix 2.** `cli_checks` runs `--output-format stream-json --verbose` and reads the `system/init` event's `tools`. `cli.deny.webfetch` and the new `cli.deny.websearch` pass when the tool is **not offered**, or is offered and denied. Defence in depth: `Sandbox.build_command` adds `--disallowedTools=WebFetch,WebSearch` (one token, because the option is variadic) straight after the binary on every `-p`/`--print` run. The probe and the S-190 agent go through it, so IC 2c measures policy and flag together; LOCAL-2-04 isolates the policy.
+
+| ID | Check | Before (D-110 image) | After (fix round 2) | Detail |
+| -- | ----- | -------------------- | ------------------- | ------ |
+| LOCAL-2-01 | Reproduce 2b: `npm view left-pad version`, `pip download six` as fixer in srt with an **empty** `/etc/hosts` mounted | FAIL ×2 | PASS ×2 | before: `getaddrinfo EAI_AGAIN localhost` and pip `Failed to resolve 'localhost' ([Errno -3] Temporary failure in name resolution)`, matching 2b's strings. After: the wrapper added `127.0.0.1\tlocalhost`; `1.3.0`, `six-1.17.0` saved |
+| LOCAL-2-02 | probe `net_checks` (real `Inner` + `Sandbox`), empty `/etc/hosts` | n/a | PASS ×9 | `net.localhost`: `etc_hosts=added addrs=['127.0.0.1']`. Link-local ×3: proxy `HTTP 403 blocked-by-allowlist`. `example.com`, `api.github.com`, `api.anthropic.com`: `Tunnel connection failed: 403 host is not on the allow list`. Raw TCP blocked ×6. Registries ×2 PASS |
+| LOCAL-2-03 | Control: same image with Docker's own `/etc/hosts` | PASS (npm, pip; `curl example.com` → `CONNECT tunnel failed, response 403`) | PASS | why §4.1/§4.2 never saw it |
+| LOCAL-2-04 | `claude -p` init tool list as fixer, fake key, repo settings allowing `WebFetch`/`WebSearch` and asking for bypass | managed policy: **22 tools, WebFetch/WebSearch absent**; same policy with the two denies removed: 24, both present | with the flag (`--disallowedTools=WebFetch,WebSearch` or the space form) and the denies removed: 22, both absent; production argv through `Sandbox.run`: 22, both absent | `permissionMode=default` (bypass refused). The run then stops at `authentication_failed`: the Bash-tool network path through the CLI's own sandbox needs the key and is **IC-only** |
+| LOCAL-2-05 | `image-smoke.sh` | 41 | **44** PASS | new: image `/etc/hosts` is empty; `Sandbox().ensure_hosts()` on an empty, writable `/etc/hosts` gives `added`, then `present`, and fixer resolves `localhost` to `127.0.0.1`; the pinned CLI accepts `--disallowedTools=WebFetch,WebSearch` |
+
+Note on 2b's `net.blocked.*` PASS ×6: every detail reads `Temporary failure in name resolution`. Those targets were blocked because the proxy host itself didn't resolve, not by the allow-list. The verdict was right (fail-closed), but the evidence was weak. With fix 1, a 2c PASS must show the proxy's 403, as LOCAL-2-02 does.
+
 ## 5. IC results (deployed runtime)
 
 Run by `infra-engineer` with `ALLOW_PROBE=1` (task 3.5) and the payload `{"run_id": …, "__probe": true, …}` (procedure: `docs/runbooks/bug-fix-agent.md`, "Run the sandbox probe"). One row per `run_event`.
@@ -151,38 +175,39 @@ Raw evidence: `infra/changes/20261024-bug-fix-spike-probe/backup/probe-run-1.sse
 - Versions: Claude Code 2.1.309, sandbox-runtime 0.0.81.
 - **Consequence:** D-110, a root wrapper with a `setpriv` drop. The board result (D-105, AC7) stands. The board path doesn't depend on the uid switch, so the re-probe repeats it only as a regression check.
 
-### 5.2 Re-probe (D-110 image) — pending (IC)
+### 5.2 Re-probes 2b (runtime v3, D-110 image) and 2c (fix round 2)
 
-| Check | Spec / test | Run 1 (D-109) | Re-probe | Detail |
-| ----- | ----------- | ------------- | -------- | ------ |
-| `setpriv.wrapper.root`, `setpriv.drop.uid`, `setpriv.drop.sandbox` | 3.17, D-110 | n/a (new) | pending (IC) | |
-| `userns.available` | 3.17, D-110, §12 | n/a (new) | pending (IC) | decides the CLI-runtime fallback |
-| `noescalate.fixer.uid`, `noescalate.fixer.sandbox`, `noescalate.no_sudo` | 3.17, D-110, SC-IC-03 | n/a (new) | pending (IC) | |
-| `sudo.fixer.uid`, `sudo.fixer.sandbox`, `sudo.wrapper.root` | 3.16, D-109 (retired) | FAIL, FAIL, PASS | n/a (replaced by `setpriv.*` / `noescalate.*`) | `no_new_privs` |
-| `sandbox.available.script`, `sandbox.available.cli`, `sandbox.starts` | §12 "bwrap starts on AgentCore ARM64" | PASS, PASS, FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.blocked.169.254.170.2` | 3.6, SC-IC-01 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.blocked.169.254.169.254` | 3.6, SC-IC-01 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.blocked.169.254.170.23` | SC-IC-01 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.blocked.example.com` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.blocked.api.github.com`, `net.blocked.api.anthropic.com` | SC-IC-02 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.reachable.registry.npmjs.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `net.reachable.pypi.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `proc.wrapper.sandbox`, `proc.wrapper.uid` | 3.7, 3.17, SC-IC-03 | FAIL (`no_new_privs`) | pending (IC) | the wrapper is now root: fixer must still get `EACCES` |
-| `env.fixer.sandbox`, `env.fixer.uid` | 3.7, SC-IC-03 | FAIL (`no_new_privs`) | pending (IC) |  |
-| `policy.tamper`, `secrets.dir.sandbox`, `secrets.dir.uid` | SC-IC-05 (part) | FAIL (`no_new_privs`) | pending (IC) |  |
-| `cli.version` | 3.9 | FAIL (`''`: ran through the failing sudo) | pending (IC) | detail now carries rc, outcome and stderr |
-| `cli.deny.git_push` (denial **and** no ref on the bare remote) | 3.8, SC-IC-04 | FAIL (`no_new_privs`) (as group `cli`) | pending (IC) |  |
-| `cli.deny.webfetch` | 3.8, SC-IC-04 | FAIL (`no_new_privs`) (as group `cli`) | pending (IC) |  |
-| `board.detect` | 3.15 (1), SC-IC-11 | PASS | pending (IC) | #5 "Dev-tasks" linked to `llipe/dev-tasks` |
-| `board.add_idempotent` | 3.15 (2), SC-IC-11 | PASS | pending (IC) | issue #324, same item id twice |
-| `board.status.in_progress`, `.in_review`, `.ready` | 3.15 (3), SC-IC-11 | PASS ×3 | pending (IC) | set and read back |
-| `board.pat_absent.sandbox`, `board.pat_absent.uid` | 3.15 (4), SC-IC-13 | FAIL (`no_new_privs`) | pending (IC) | the PAT-in-fixer scan never ran |
-| `board.disabled_without_pat` | 3.15 (5), SC-IC-14 | PASS | pending (IC) | Checks the config contract; `projects.py` lands with S-199 and re-runs this |
-| `board.cleanup` (card deleted, probe issue closed) | 3.15, SC-IC-12 | PASS | pending (IC) | card deleted; `llipe/dev-tasks#324` closed |
+Raw evidence for 2b: `infra/changes/20261024-bug-fix-spike-probe/backup/probe-run-2.sse` (leak scan 0); summary in `result.md`, row 2b. **2b: 34 PASS / 3 FAIL.** The 2c column is **pending (IC)** until `infra-engineer` deploys the fix-round-2 image and re-runs the probe.
+
+| Check | Spec / test | Run 1 (D-109) | Re-probe 2b | Re-probe 2c | Detail (2b) |
+| ----- | ----------- | ------------- | ----------- | ----------- | ----------- |
+| `setpriv.wrapper.root`, `setpriv.drop.uid`, `setpriv.drop.sandbox` | 3.17, D-110 | n/a (new) | PASS ×3 | pending (IC) | wrapper uid 0, `CapEff=a82425fb`, `NoNewPrivs=1`; drop: uid/gid 10002 ×4, caps 0, `NoNewPrivs=1`; in srt `Seccomp=2` |
+| `userns.available` | 3.17, D-110, §12 | n/a (new) | **PASS** | pending (IC) | fixer and root: `bwrap rc=0`, `unshare rc=0`, `max_user_namespaces=32059`. **AgentCore allows user namespaces under `no_new_privs`;** no CLI-runtime fallback needed |
+| `noescalate.fixer.uid`, `noescalate.fixer.sandbox`, `noescalate.no_sudo` | 3.17, D-110, SC-IC-03 | n/a (new) | PASS ×3 | pending (IC) | `setuid(0)=EPERM` (`EINVAL` in srt), `su rc=1`, `setpriv --reuid=0 rc=1`; no sudo |
+| `sudo.fixer.uid`, `sudo.fixer.sandbox`, `sudo.wrapper.root` | 3.16, D-109 (retired) | FAIL, FAIL, PASS | n/a (replaced) | n/a | |
+| `sandbox.available.script`, `sandbox.available.cli`, `sandbox.starts` | §12 "bwrap starts on AgentCore ARM64" | PASS, PASS, FAIL (`no_new_privs`) | PASS ×3 | pending (IC) | `ok exit=0` |
+| `net.localhost` | fix round 2 | n/a | n/a (new) | pending (IC) | 2c detail must show `addrs=['127.0.0.1']`, and `etc_hosts=added` if AgentCore's `/etc/hosts` is empty as inferred |
+| `net.blocked.169.254.170.2`, `.169.254.169.254`, `.169.254.170.23` | 3.6, SC-IC-01 | FAIL (`no_new_privs`) | PASS ×3 (weak) | pending (IC) | `Temporary failure in name resolution`: blocked because the proxy host didn't resolve (§4.3 note) |
+| `net.blocked.example.com`, `.api.github.com`, `.api.anthropic.com` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | PASS ×3 (weak) | pending (IC) | same; 2c must show the proxy's 403 |
+| `net.reachable.registry.npmjs.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | **FAIL** | pending (IC) | `getaddrinfo EAI_AGAIN localhost`: root cause 1, fixed (§4.3) |
+| `net.reachable.pypi.org` | 3.6, SC-IC-02 | FAIL (`no_new_privs`) | **FAIL** | pending (IC) | `Temporary failure in name resolution`: root cause 1, fixed |
+| `proc.wrapper.sandbox`, `proc.wrapper.uid` | 3.7, 3.17, SC-IC-03 | FAIL (`no_new_privs`) | PASS ×2 | pending (IC) | wrapper is pid 1; `environ` and `mem` `EACCES` from both; `cmdline` readable by design |
+| `env.fixer.sandbox`, `env.fixer.uid` | 3.7, SC-IC-03 | FAIL (`no_new_privs`) | PASS ×2 | pending (IC) | uid: `CI HOME LANG PATH`; srt adds its proxy variables only |
+| `policy.tamper`, `secrets.dir.sandbox`, `secrets.dir.uid` | SC-IC-05 (part) | FAIL (`no_new_privs`) | PASS ×3 | pending (IC) | write `EACCES`; canary `ENOENT` (srt) / `EACCES` (uid) |
+| `cli.version` | 3.9 | FAIL (`''`) | PASS | pending (IC) | `2.1.309 (Claude Code)` = pin |
+| `cli.deny.git_push` (denial **and** no ref on the bare remote) | 3.8, SC-IC-04 | FAIL (`no_new_privs`) | PASS | pending (IC) | `denied=True remote_refs=0` |
+| `cli.deny.webfetch` | 3.8, SC-IC-04 | FAIL (`no_new_privs`) | **FAIL (probe misread)** | pending (IC) | `denied=False turns=4 denials=[Bash×3]`: the tool was never offered (root cause 2, §4.3); 2c checks `offered=False` |
+| `cli.deny.websearch` | 3.8, SC-IC-04 | n/a | n/a (new) | pending (IC) | |
+| `board.detect` | 3.15 (1), SC-IC-11 | PASS | PASS | pending (IC) | #5 "Dev-tasks" linked to `llipe/dev-tasks` |
+| `board.add_idempotent` | 3.15 (2), SC-IC-11 | PASS | PASS | pending (IC) | issue #324, same item id twice, not pre-existing |
+| `board.status.in_progress`, `.in_review`, `.ready` | 3.15 (3), SC-IC-11 | PASS ×3 | PASS ×3 | pending (IC) | set and read back |
+| `board.pat_absent.sandbox`, `board.pat_absent.uid` | 3.15 (4), SC-IC-13 | FAIL (`no_new_privs`) | PASS ×2 | pending (IC) | `matches=0 files_scanned=468` |
+| `board.disabled_without_pat` | 3.15 (5), SC-IC-14 | PASS | PASS | pending (IC) | `reason=no_token_secret_id` |
+| `board.cleanup` (card deleted, probe issue closed) | 3.15, SC-IC-12 | PASS | PASS | pending (IC) | card deleted; `llipe/dev-tasks#324` closed |
 
 ## 6. Verdict
 
-Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) and **PASS** on the board. Final verdict pending (IC): task 3.9 writes it after the D-110 re-probe.
+Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) and **PASS** on the board. Re-probe 2b: **FAIL** on `net.reachable.*` (root cause 1) and `cli.deny.webfetch` (root cause 2, a probe misread); everything else PASS. Final verdict pending (IC): task 3.9 writes it after re-probe 2c.
 
 - **Sandbox exit rule (spec §12, AC8):** any FAIL among `setpriv.*`, `sandbox.starts`, `userns.available`, `net.*`, `proc.wrapper.*`, `noescalate.*` or `cli.deny.*` keeps Wave B (#373–#377) blocked and routes to `product-engineer` drift reconciliation.
 - **Board (D-105, AC7):** a FAIL of `board.detect`, `board.add_idempotent` or `board.status.*` sets `BOARD_UPDATES_ENABLED=0` and routes to drift. It does not block Wave B.
@@ -191,7 +216,8 @@ Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) a
 
 ## 7. Open questions for the IC run
 
-1. Does AgentCore allow unprivileged user namespaces (bwrap) under its `no_new_privs`? Default Docker does not (LOCAL-02, LOCAL-1b-05). `no_new_privs` alone doesn't block them (permissive + NNP passes). The re-probe's `userns.available` answers it.
+1. ~~Does AgentCore allow unprivileged user namespaces (bwrap) under its `no_new_privs`?~~ **Answered by 2b: yes** (`userns.available` PASS, fixer and root).
 2. ~~Does `sudo` work there?~~ **Answered by run 1: no.** AgentCore sets `no_new_privs` (§5.1), hence D-110. New question: does the runtime run the image as root with `CAP_SETUID`/`CAP_SETGID`? `setpriv.wrapper.root` answers it.
 3. Does the CLI's own Bash sandbox start, and does `failIfUnavailable` refuse when it can't (LOCAL-07)? The `cli.*` checks show denials but not whether an allowed Bash command was sandboxed. If unclear, add a follow-up probe item: a Bash call that writes outside the cwd must fail.
-4. Is the wrapper pid 1 in the AgentCore container? If not, orphans are reaped by whatever is pid 1 there, not by `sandbox.reap_zombies`.
+4. ~~Is the wrapper pid 1 in the AgentCore container?~~ **Answered by 2b: yes** (`proc.wrapper.*` reads `pid=1`).
+5. Is AgentCore's `/etc/hosts` empty (inferred from 2b), and is it writable by the root wrapper? 2c's `net.localhost` answers both: `etc_hosts=added` means it was empty and writable. A `SandboxUnavailable` "not writable" FAIL would need another route, to be designed: srt 0.0.81 has no setting for the in-sandbox proxy host.

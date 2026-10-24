@@ -89,7 +89,8 @@ setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-priv
 - **The drop.** The child has uid and gid 10002 (real, effective, saved and filesystem), no supplementary groups, no capabilities (inheritable cleared; permitted, effective and ambient are cleared by the uid change), and `no_new_privs` set. A setuid-root binary therefore can't take it back to root, and `setuid(0)`, `su` and `setpriv --reuid=0` fail. A process with another uid can't read the root wrapper's `/proc/<pid>/environ` or `/proc/<pid>/mem`.
 - **Mitigations for a root wrapper (D-110).** There is one microVM per AgentCore session. The wrapper never runs model output or repo scripts in its own process. Nothing but wrapper code runs as root. `fixer_exec.py` refuses to exec while its uid or euid is 0, so a failed drop never runs a command as root.
 - **Minimal env.** The spawn env is built from an allow-list, never from `os.environ`: `ANTHROPIC_API_KEY` (only when passed), `PATH`, `HOME=/home/fixer`, `LANG`, `CI=1`. `setpriv` passes it through unchanged, and `fixer_exec.py` rebuilds the final env from the same allow-list. No value is put in argv.
-- **Sandbox.** Two modes, and no bare exec. `SCRIPT` (install, gates, tests, probe helpers) runs under `srt --settings /etc/bug-fix/srt-settings.json`: bwrap with no network namespace, a fresh pid namespace and `/proc`, and srt's filtering proxy limited to the same four registries as the managed policy. `CLI` runs only the pinned `claude` binary, which enforces its own Bash sandbox from the managed policy. (Nesting `claude` in `srt` would cut it off from the Anthropic API.)
+- **Sandbox.** Two modes, and no bare exec. `SCRIPT` (install, gates, tests, probe helpers) runs under `srt --settings /etc/bug-fix/srt-settings.json`: bwrap with no network namespace, a fresh pid namespace and `/proc`, and srt's filtering proxy limited to the same four registries as the managed policy. `CLI` runs only the pinned `claude` binary, which enforces its own Bash sandbox from the managed policy. (Nesting `claude` in `srt` would cut it off from the Anthropic API.) Every headless run (`-p`/`--print`) also gets `--disallowedTools=WebFetch,WebSearch`, on top of the managed deny.
+- **`localhost` for the sandbox proxy.** srt and the CLI's Bash sandbox point their proxy variables at `localhost` (hard-coded), and the sandbox's network namespace has no DNS. The image's `/etc/hosts` is empty (BuildKit can't fill it), and AgentCore doesn't write one. So before every run the wrapper appends `127.0.0.1 localhost` if no loopback entry exists, and raises `SandboxUnavailable` if it can't. Without it every registry fails with `getaddrinfo EAI_AGAIN localhost` (S-182 re-probe 2b).
 - **Timeout.** SIGTERM at the wall-clock deadline. `setpriv` and `fixer_exec.py` exec, so the child pid is the runtime itself. If the child is still alive 15 s later, every `fixer` process is swept and the child gets SIGKILL. The timeout outcome is distinct from a non-zero exit (srt itself exits 0 after a relayed SIGTERM).
 - **No survivors (D-62).** After every run the sweep kills every `fixer` process, daemons included, in two passes. First, `kill -9 -- -1` as `fixer`: one kernel pass over every process `fixer` may signal, which a fork loop can't outrun. Second, `pkill -KILL -u 10002` as root. Then zombies are reaped.
 - A missing `setpriv`, `python3`, `fixer_exec.py`, `srt`, settings file or `claude` raises `SandboxUnavailable`.
@@ -102,6 +103,7 @@ setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-priv
 - Managed-only: `allowManagedPermissionRulesOnly` (repo, user and `--settings` permission rules are ignored, not just outranked), `sandbox.network.allowManagedDomainsOnly`, `allowManagedHooksOnly` and `allowManagedMcpServersOnly` (D-29).
 - Network allow-list: exactly `registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`. No link-local, no GitHub, no wildcard.
 - Deny: `Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, and Read/Edit of `/proc/**`, `/etc/claude-code/**` and `/work/secrets/**`.
+  The bare `WebFetch`/`WebSearch` entries are tool-wide denies: the CLI removes those tools from the list it offers the model, so a run never records a denial for them. Keep them unscoped. A `WebFetch(domain:…)` rule would leave the tool offered.
 
 Path rules use Claude Code's `//` prefix for an absolute path (`Read(//proc/**)`). A single leading `/` is resolved relative to the settings file, so `Read(/proc/**)` here would guard `/etc/claude-code/proc/**`.
 
@@ -115,11 +117,11 @@ Each check is one `run_event` `{check, verdict: PASS|FAIL, detail}`, scrubbed, a
 - `setpriv.*`: the wrapper is root with `CAP_SETUID`/`CAP_SETGID`, and a dropped process has uid/gid 10002, no groups, no capabilities and `NoNewPrivs: 1`.
 - `sandbox.*`: the sandbox runtime starts.
 - `userns.available`: reported on its own. Can `fixer`'s `bwrap` create the user, pid and net namespaces under AgentCore's `no_new_privs`? The detail adds `unshare`, the sysctls and the same measurement as root.
-- `net.*`: credential and metadata endpoints and non-registry hosts are blocked; registries are reachable.
+- `net.*`: `net.localhost` first (srt's proxy host resolves to loopback in the sandbox), then: credential and metadata endpoints and non-registry hosts are blocked; registries are reachable.
 - `proc.*`, `env.*` and `noescalate.*`: as `fixer`, inside the sandbox and with the drop alone. `noescalate.*` covers `setuid(0)`, `su` and `setpriv --reuid=0`, and checks that no `sudo` is present.
 - `policy.*` / `secrets.*`.
 - `cli.version`: exit code, outcome and stderr are always in the detail.
-- `cli.*`: `claude -p` in a throwaway repo whose `.claude/settings.json` allows what the managed policy denies.
+- `cli.*`: `claude -p` in a throwaway repo whose `.claude/settings.json` allows what the managed policy denies. `cli.deny.webfetch`/`websearch` read the tool list from the `stream-json` init event: they pass when the tool isn't offered, or is offered and denied.
 - `board.*` (D-105: the linked board #5 of `llipe/dev-tasks`, with cleanup in a `finally`). The PAT check passes only a SHA-256 digest to `fixer`.
 
 ## Testing

@@ -39,6 +39,7 @@ How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsd
   It grants **no `bedrock:*`**.
 - **Model:** the Anthropic API, through `ANTHROPIC_API_KEY` (D-50), not Bedrock.
 - **The wrapper runs as root and drops to `fixer` with `setpriv` (D-110).** AgentCore runs the container with `no_new_privs` set, so setuid `sudo` can't run. Probe run 1 failed 22 checks on exactly this ("The 'no new privileges' flag is set, which prevents sudo from running as root"). The image has no `sudo`. `main.py` runs as root and starts every process that runs model output or repo code through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, which works under `no_new_privs`. Only wrapper code runs as root. If the runtime ever stops running the image as root, or drops `CAP_SETUID`/`CAP_SETGID`, every sandboxed step fails with a `setpriv` error. The probe's `setpriv.wrapper.root` check shows it.
+- **The wrapper adds `127.0.0.1 localhost` to `/etc/hosts` before every sandboxed run.** srt and the CLI's Bash sandbox reach their filtering proxy as `localhost`, and AgentCore leaves `/etc/hosts` empty. Without the entry, `npm`/`pip` fail with `getaddrinfo EAI_AGAIN localhost` (re-probe 2b). If `/etc/hosts` can't be written, the run fails with `SandboxUnavailable: sandbox cannot resolve localhost`. The probe's `net.localhost` check shows the state (`etc_hosts=added|present`).
 
 ## Steps
 
