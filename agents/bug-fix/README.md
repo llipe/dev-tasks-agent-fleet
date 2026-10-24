@@ -115,7 +115,7 @@ Every comment the agent posts starts with a hidden marker block, one line per ru
 
 Faults are never read as "no match" (D-67): exhausted GitHub retries end `GITHUB_UNAVAILABLE`, another 4xx `GITHUB_REQUEST_REJECTED`, a `v_runs` read failure `SUPABASE_UNAVAILABLE`, all with no write.
 
-`github_client.GitHubClient` is the shared transport. A request is tried at most 3 times. Reads (`GET`, GraphQL queries) retry transport errors, 5xx and rate limits with backoff (1 s, 2 s). Writes retry only rate limits, because GitHub may already have applied a write that answered 5xx. `Retry-After` and `x-ratelimit-reset` are honoured up to 30 s; a longer wait gives up at once. A 404 is data where the caller says so. `next_link()` reads the real `Link` header. `issues.IssuesClient` is built on it.
+`github_client.GitHubClient` is the shared transport. A request is tried at most 3 times. Reads (`GET`, GraphQL queries) retry transport errors, 5xx and rate limits with backoff (1 s, 2 s). Writes retry only rate limits, because GitHub may already have applied a write that answered 5xx. `Retry-After` and `x-ratelimit-reset` are honoured up to 60 s, so GitHub's common secondary-limit `Retry-After: 60` is retried; a longer wait gives up at once. A secondary limit with no usable header waits 60 s, as GitHub advises. Every logical operation (a call, a paged list, a GraphQL query with its own `RATE_LIMITED` retries) runs against one monotonic deadline, 120 s unless the caller sets one with `GitHubClient.deadline()`. A wait that would pass it is not taken, and the call ends `GITHUB_UNAVAILABLE`. A 404 is data where the caller says so. `next_link()` reads the real `Link` header. `issues.IssuesClient` is built on it.
 
 ## Image
 

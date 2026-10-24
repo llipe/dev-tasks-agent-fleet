@@ -17,8 +17,10 @@ import requests
 
 import github_client
 from github_client import (
+    DEFAULT_BUDGET_SECONDS,
     MAX_ATTEMPTS,
     MAX_WAIT_SECONDS,
+    SECONDARY_LIMIT_WAIT_SECONDS,
     GitHubClient,
     GitHubError,
     GitHubRequestRejected,
@@ -27,6 +29,7 @@ from github_client import (
     parse_link_header,
 )
 from issues import IssuesClient
+from tests.conftest import FakeClock
 
 API = "https://api.github.com"
 TOKEN = "ghs_" + "Z" * 36
@@ -186,7 +189,8 @@ class TestReadRetries:
         session = Scripted(real_response(403, payload, headers=headers), real_response(200, {}))
         _client(session, sleeps).request("GET", f"{API}/repos/o/r/issues/1", label="x")
         assert len(session.calls) == 2
-        assert sleeps.waits == [7.0 if headers else 1.0]
+        # No header: GitHub's guidance for a secondary limit is at least a minute.
+        assert sleeps.waits == [7.0 if headers else SECONDARY_LIMIT_WAIT_SECONDS]
 
     def test_429_is_retried(self):
         sleeps = Sleeps()
@@ -224,11 +228,11 @@ class TestReadRetries:
         assert len(session.calls) == 1
 
     @pytest.mark.parametrize("value", ["soon", "-3", "nan", ""])
-    def test_an_unreadable_retry_after_falls_back_to_backoff(self, value):
+    def test_an_unreadable_retry_after_waits_the_secondary_minimum(self, value):
         sleeps = Sleeps()
         session = Scripted(real_response(429, {}, headers={"retry-after": value}), 200)
         _client(session, sleeps).request("GET", f"{API}/x", label="x")
-        assert sleeps.waits == [1.0]
+        assert sleeps.waits == [SECONDARY_LIMIT_WAIT_SECONDS]
 
 
 class TestWrites:
@@ -393,7 +397,7 @@ class TestWaitsAreBounded:
         sleeps = Sleeps()
         session = Scripted(real_response(429, {}, headers={"retry-after": value}), 200)
         _client(session, sleeps).request("GET", f"{API}/x", label="x")
-        assert sleeps.waits == [1.0]
+        assert sleeps.waits == [SECONDARY_LIMIT_WAIT_SECONDS]
 
     def test_a_retry_after_at_the_cap_is_taken(self):
         sleeps = Sleeps()
@@ -671,3 +675,125 @@ class TestNoRedirects:
         session = Scripted(_redirect(302))
         with pytest.raises(GitHubRequestRejected):
             IssuesClient("o", "r", TOKEN, session=session).list_comments(7)
+
+
+# ---------------------------------------------------------------------------
+# QA 5 / DF-185-06: Retry-After up to 60 s, inside one total wait budget
+# ---------------------------------------------------------------------------
+
+
+def _timed(session: Any, clock: FakeClock, **kw: Any) -> GitHubClient:
+    return GitHubClient(TOKEN, session=session, sleep=clock.sleep, clock=clock, **kw)
+
+
+def _secondary(retry_after: str | None = None) -> requests.Response:
+    headers = {"retry-after": retry_after} if retry_after is not None else {}
+    return real_response(
+        403, {"message": "You have exceeded a secondary rate limit."}, headers=headers
+    )
+
+
+class TestWaitBudget:
+    def test_the_defaults(self):
+        assert DEFAULT_BUDGET_SECONDS == 120.0
+        assert MAX_WAIT_SECONDS == SECONDARY_LIMIT_WAIT_SECONDS == 60.0
+        assert GitHubClient(TOKEN).budget == DEFAULT_BUDGET_SECONDS
+
+    def test_the_common_retry_after_60_is_retried(self):
+        clock = FakeClock()
+        session = Scripted(_secondary("60"), real_response(200, {}))
+        resp = _timed(session, clock).request("GET", f"{API}/x", label="x")
+        assert resp is not None and resp.status_code == 200
+        assert clock.waits == [60.0]
+
+    def test_a_retry_after_over_60_gives_up_at_once(self):
+        clock = FakeClock()
+        session = Scripted(_secondary("61"))
+        with pytest.raises(GitHubUnavailable):
+            _timed(session, clock).request("GET", f"{API}/x", label="x")
+        assert clock.waits == [] and len(session.calls) == 1
+
+    def test_without_a_header_a_secondary_limit_waits_a_minute(self):
+        clock = FakeClock()
+        session = Scripted(_secondary(), real_response(200, {}))
+        _timed(session, clock).request("GET", f"{API}/x", label="x")
+        assert clock.waits == [SECONDARY_LIMIT_WAIT_SECONDS]
+
+    def test_a_wait_past_the_deadline_is_never_taken(self):
+        clock = FakeClock()
+        session = Scripted(_secondary())
+        with pytest.raises(GitHubUnavailable) as exc:
+            _timed(session, clock, budget=100).request("GET", f"{API}/x", label="GET /x")
+        # 60 s fits; a second 60 s would end at 120 s, past the 100 s budget.
+        assert clock.waits == [60.0]
+        assert len(session.calls) == 2
+        assert exc.value.code == "GITHUB_UNAVAILABLE"
+        assert "budget" in str(exc.value)
+
+    def test_a_caller_set_deadline_bounds_every_wait(self):
+        clock = FakeClock()
+        client = _timed(Scripted(_secondary("45")), clock)
+        with pytest.raises(GitHubUnavailable), client.deadline(30):
+            client.request("GET", f"{API}/x", label="x")
+        assert clock.waits == []
+
+    def test_a_nested_deadline_keeps_the_outer_one(self):
+        clock = FakeClock()
+        client = _timed(Scripted(_secondary("20"), _secondary("20"), 200), clock)
+        with pytest.raises(GitHubUnavailable), client.deadline(30), client.deadline(500):
+            client.request("GET", f"{API}/x", label="x")
+        assert clock.waits == [20.0]
+
+    def test_each_operation_gets_its_own_budget(self):
+        clock = FakeClock()
+        session = Scripted(_secondary("60"), 200, _secondary("60"), 200)
+        client = _timed(session, clock, budget=90)
+        client.request("GET", f"{API}/x", label="x")
+        client.request("GET", f"{API}/y", label="y")
+        assert clock.waits == [60.0, 60.0]
+
+    def test_graphql_rate_limits_and_http_retries_share_one_budget(self):
+        clock = FakeClock()
+        limited = real_response(200, {"errors": [{"type": "RATE_LIMITED", "message": "x"}]})
+        session = Scripted(502, 502, limited, limited, real_response(200, {"data": {}}))
+        with pytest.raises(GitHubUnavailable):
+            _timed(session, clock).graphql("query { x }", {}, label="q")
+        # HTTP backoff 1 s + 2 s, one GraphQL wait of 60 s; a second would pass 120 s.
+        assert clock.waits == [1.0, 2.0, 60.0]
+        assert sum(clock.waits) <= DEFAULT_BUDGET_SECONDS
+
+    def test_pages_share_one_budget(self):
+        clock = FakeClock()
+        answers = []
+        for n in range(1, 4):
+            answers += [_secondary(), _page(n, more=True)]
+        session = Scripted(*answers)
+        with pytest.raises(GitHubUnavailable):
+            _timed(session, clock).get_paged(
+                f"{API}/x", label="GET /x", params=None, allow_next=lambda _u: None, max_pages=5
+            )
+        assert clock.waits == [60.0, 60.0]
+        assert clock.now - 1_000.0 <= DEFAULT_BUDGET_SECONDS
+
+    def test_slow_requests_use_up_the_budget_too(self):
+        clock = FakeClock()
+
+        class Slow(Scripted):
+            def request(self, method, url, **kw):
+                clock.now += 50
+                return super().request(method, url, **kw)
+
+        session = Slow(502)
+        with pytest.raises(GitHubUnavailable):
+            _timed(session, clock, budget=100).request("GET", f"{API}/x", label="x")
+        # 50 + 1 + 50 = 101: the third attempt never starts.
+        assert len(session.calls) == 2
+        # A request never waits on the network past the deadline either.
+        assert session.kwargs[1]["timeout"] <= 100 - 51
+
+    def test_a_write_rate_limit_wait_stays_in_the_budget(self):
+        clock = FakeClock()
+        session = Scripted(_secondary("60"), _secondary("60"), 201)
+        with pytest.raises(GitHubUnavailable):
+            _timed(session, clock, budget=100).request("POST", f"{API}/x", label="x")
+        assert clock.waits == [60.0]

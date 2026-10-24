@@ -14,9 +14,19 @@ times:
   retried on a 5xx or a transport error, because GitHub may already have
   applied it, and a retry would post the same comment twice.
 
-A rate-limit wait honours ``Retry-After`` or ``x-ratelimit-reset``. A wait
-beyond :data:`MAX_WAIT_SECONDS` isn't taken: the call gives up at once, so a
-long primary-limit reset can't consume the run budget.
+A rate-limit wait honours ``Retry-After`` or ``x-ratelimit-reset`` up to
+:data:`MAX_WAIT_SECONDS` (60 s), so GitHub's common secondary-limit
+``Retry-After: 60`` is retried; a longer one gives up at once. A secondary limit
+with no usable header waits :data:`SECONDARY_LIMIT_WAIT_SECONDS` (60 s), as
+GitHub advises.
+
+Wait budget (QA 5, DF-185-06). Each logical operation (one call, a paged list,
+a GraphQL query with its own ``RATE_LIMITED`` retries) runs against one
+monotonic deadline, :data:`DEFAULT_BUDGET_SECONDS` (120 s) unless the caller
+sets one with :meth:`GitHubClient.deadline` or ``budget``. Every retry wait,
+HTTP or GraphQL, on any page, must end by the deadline, no attempt starts after
+it, and a request's own timeout is cut to what remains. A wait that would pass
+it is not taken: the call raises :class:`GitHubUnavailable` at once.
 
 Redirects are never followed (``allow_redirects=False``, QA 3): a redirect
 could carry the token off the API host, and GitHub doesn't apply a redirected
@@ -52,7 +62,8 @@ import logging
 import math
 import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from typing import Any, Protocol
 
 import requests
@@ -64,7 +75,12 @@ API_VERSION = "2022-11-28"
 DEFAULT_TIMEOUT = 15.0
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS: tuple[float, ...] = (1.0, 2.0)
-MAX_WAIT_SECONDS = 30.0
+# The longest single rate-limit wait honoured (``Retry-After`` or a reset).
+MAX_WAIT_SECONDS = 60.0
+# A secondary limit with no usable header: GitHub asks for at least a minute.
+SECONDARY_LIMIT_WAIT_SECONDS = 60.0
+# The wait budget of one logical operation (a call, a paged list, a query).
+DEFAULT_BUDGET_SECONDS = 120.0
 _READ_METHODS = frozenset({"GET", "HEAD"})
 _LINK_TARGET = re.compile(r"[ \t]*<([^<>]*)>")
 # An RFC 9110 token: a Link parameter name or an unquoted value.
@@ -75,6 +91,11 @@ _MUTATION = re.compile(r"^\s*mutation\b", re.IGNORECASE)
 def _sleep(seconds: float) -> None:
     """The default wait between attempts (tests replace it)."""
     time.sleep(seconds)
+
+
+def _monotonic() -> float:
+    """The default deadline clock (tests replace it)."""
+    return time.monotonic()
 
 
 class GitHubError(Exception):
@@ -286,16 +307,27 @@ def _seconds(value: str | None) -> float | None:
     return seconds
 
 
-def rate_limit_wait(resp: Any, attempt: int) -> float:
-    """Seconds to wait before retrying a rate-limited response."""
+def rate_limit_wait(resp: Any) -> float | None:
+    """Seconds to wait before retrying a rate-limited response; ``None`` to give up.
+
+    - A readable ``Retry-After`` is honoured up to :data:`MAX_WAIT_SECONDS`
+      (60 s), so GitHub's common secondary-limit ``Retry-After: 60`` is retried.
+    - A primary limit (``x-ratelimit-remaining: 0``) waits until
+      ``x-ratelimit-reset``, also up to :data:`MAX_WAIT_SECONDS`.
+    - Otherwise (a secondary limit with no usable header) it waits
+      :data:`SECONDARY_LIMIT_WAIT_SECONDS`, GitHub's "at least one minute".
+
+    The caller still refuses any wait that would pass its deadline.
+    """
     retry_after = _seconds(_header(resp, "retry-after"))
     if retry_after is not None:
-        return retry_after
+        return retry_after if retry_after <= MAX_WAIT_SECONDS else None
     if _header(resp, "x-ratelimit-remaining") == "0":
         reset = _seconds(_header(resp, "x-ratelimit-reset"))
         if reset is not None:
-            return max(0.0, reset - time.time())
-    return _backoff(attempt)
+            wait = max(0.0, reset - time.time())
+            return wait if wait <= MAX_WAIT_SECONDS else None
+    return SECONDARY_LIMIT_WAIT_SECONDS
 
 
 def _backoff(attempt: int) -> float:
@@ -308,7 +340,13 @@ def _backoff(attempt: int) -> float:
 
 
 class GitHubClient:
-    """REST and GraphQL calls with the retry policy above."""
+    """REST and GraphQL calls with the retry policy above.
+
+    ``budget`` is the wait budget of one logical operation, in seconds
+    (default :data:`DEFAULT_BUDGET_SECONDS`). ``sleep`` and ``clock`` (a
+    monotonic clock) are injectable for tests. A client is not thread-safe:
+    the deadline is per client.
+    """
 
     def __init__(
         self,
@@ -318,15 +356,56 @@ class GitHubClient:
         api_url: str = API_URL,
         timeout: float = DEFAULT_TIMEOUT,
         sleep: Callable[[float], None] | None = None,
+        clock: Callable[[], float] | None = None,
+        budget: float = DEFAULT_BUDGET_SECONDS,
     ) -> None:
         self._token = token
         # A ``requests.Session``, or any object with the same ``request()``.
         self.session: Any = session if session is not None else requests.Session()
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
+        self.budget = budget
         self._sleep_fn = sleep
+        self._clock_fn = clock
+        self._deadline: float | None = None
 
-    def _wait(self, seconds: float) -> None:
+    # -- the deadline (QA 5) ------------------------------------------------------
+
+    def _now(self) -> float:
+        return (self._clock_fn or _monotonic)()
+
+    @contextmanager
+    def deadline(self, seconds: float | None = None) -> Iterator[None]:
+        """Run one logical operation against a monotonic deadline.
+
+        The deadline is now plus ``seconds`` (default: :attr:`budget`). Every
+        retry wait inside, HTTP and GraphQL, on any page, must end by then, and
+        no attempt starts after it; otherwise the call raises
+        :class:`GitHubUnavailable`. A nested ``deadline()`` keeps the outer one,
+        so a caller can bound a whole sequence of calls. Each public call opens
+        its own when none is open.
+        """
+        if self._deadline is not None:
+            yield
+            return
+        self._deadline = self._now() + (self.budget if seconds is None else seconds)
+        try:
+            yield
+        finally:
+            self._deadline = None
+
+    def _remaining(self) -> float:
+        assert self._deadline is not None  # set by deadline()
+        return self._deadline - self._now()
+
+    def _wait(self, seconds: float, what: str, status: int | None = None) -> None:
+        """Sleep ``seconds`` before a retry, or give up if that passes the deadline."""
+        if seconds > self._remaining():
+            raise GitHubUnavailable(
+                f"{what}; a {seconds:.0f}s retry wait would pass the operation's time budget",
+                status=status,
+            )
+        log.warning("%s; retrying in %.1fs", what, seconds)
         (self._sleep_fn or _sleep)(seconds)
 
     def _headers(self) -> dict[str, str]:
@@ -355,12 +434,40 @@ class GitHubClient:
         ``idempotent`` defaults to ``True`` for reads; a GraphQL query passes it
         explicitly, because it is a ``POST`` that changes nothing.
         """
+        with self.deadline():
+            return self._request(
+                method,
+                url,
+                label=label,
+                json=json,
+                params=params,
+                timeout=timeout,
+                idempotent=idempotent,
+                not_found_ok=not_found_ok,
+            )
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        label: str,
+        json: Any,
+        params: dict[str, Any] | None,
+        timeout: float | None,
+        idempotent: bool | None,
+        not_found_ok: bool,
+    ) -> Response | None:
         method = method.upper()
         if not url.startswith(self.api_url + "/"):
             raise GitHubRequestRejected(f"{method} {label}: URL is not on the GitHub API host")
         retry_faults = method in _READ_METHODS if idempotent is None else idempotent
         for attempt in range(MAX_ATTEMPTS):
             last = attempt == MAX_ATTEMPTS - 1
+            remaining = self._remaining()
+            if remaining <= 0:
+                raise GitHubUnavailable(f"{method} {label}: the operation's time budget ran out")
+            per_call = self.timeout if timeout is None else timeout
             try:
                 resp: Response = self.session.request(
                     method,
@@ -368,7 +475,7 @@ class GitHubClient:
                     headers=self._headers(),
                     json=json,
                     params=params,
-                    timeout=self.timeout if timeout is None else timeout,
+                    timeout=min(per_call, remaining),
                     allow_redirects=False,
                 )
             except requests.RequestException as exc:
@@ -377,24 +484,21 @@ class GitHubClient:
                 )
                 if last or not retry_faults:
                     raise error from None
-                log.warning("%s; retrying", error)
-                self._wait(_backoff(attempt))
+                self._wait(_backoff(attempt), str(error))
                 continue
             status = resp.status_code
             if is_rate_limited(resp):
-                wait = rate_limit_wait(resp, attempt)
-                if last or wait > MAX_WAIT_SECONDS:
-                    raise GitHubUnavailable(
-                        f"{method} {label} was rate limited ({status})", status=status
-                    )
-                log.warning("%s %s rate limited (%s); waiting %.1fs", method, label, status, wait)
-                self._wait(wait)
+                wait = rate_limit_wait(resp)
+                what = f"{method} {label} was rate limited ({status})"
+                if last or wait is None:
+                    raise GitHubUnavailable(what, status=status)
+                self._wait(wait, what, status)
                 continue
             if status >= 500:
+                what = f"{method} {label} returned {status}"
                 if last or not retry_faults:
-                    raise GitHubUnavailable(f"{method} {label} returned {status}", status=status)
-                log.warning("%s %s returned %s; retrying", method, label, status)
-                self._wait(_backoff(attempt))
+                    raise GitHubUnavailable(what, status=status)
+                self._wait(_backoff(attempt), what, status)
                 continue
             if 300 <= status < 400:
                 # Never followed (QA 3): a redirect could carry the token off
@@ -419,13 +523,25 @@ class GitHubClient:
     ) -> dict[str, Any]:
         """Run a GraphQL **query** and return its ``data``.
 
-        A ``RATE_LIMITED`` error is retried like a rate-limited response. Any
-        other GraphQL error is :class:`GitHubRequestRejected`, naming only the
-        error types, never their messages. A mutation is refused: writes go
-        through REST with their own policy.
+        A ``RATE_LIMITED`` error is retried like a rate-limited response, inside
+        the same deadline as the HTTP retries. Any other GraphQL error is
+        :class:`GitHubRequestRejected`, naming only the error types, never their
+        messages. A mutation is refused: writes go through REST with their own
+        policy.
         """
         if _MUTATION.match(query):
             raise ValueError("graphql() runs queries only")
+        with self.deadline():
+            return self._graphql(query, variables, label=label, timeout=timeout)
+
+    def _graphql(
+        self,
+        query: str,
+        variables: Mapping[str, Any],
+        *,
+        label: str,
+        timeout: float | None,
+    ) -> dict[str, Any]:
         url = self.api_url + "/graphql"
         name = f"POST /graphql ({label})"
         body = {"query": query, "variables": dict(variables)}
@@ -452,9 +568,11 @@ class GitHubClient:
                     else set()
                 )
                 if "RATE_LIMITED" in types:
-                    if attempt == MAX_ATTEMPTS - 1:
-                        raise GitHubUnavailable(f"{name} was rate limited")
-                    self._wait(_backoff(attempt))
+                    wait = rate_limit_wait(resp)
+                    what = f"{name} was rate limited"
+                    if attempt == MAX_ATTEMPTS - 1 or wait is None:
+                        raise GitHubUnavailable(what)
+                    self._wait(wait, what)
                     continue
                 raise GitHubRequestRejected(f"{name} returned errors {types or ['unknown']}")
             data = payload.get("data")
@@ -480,6 +598,18 @@ class GitHubClient:
         :class:`GitHubUnavailable`: a truncated list would read as "no match"
         (a missed claim marker or linked PR), which D-67 forbids.
         """
+        with self.deadline():
+            return self._get_paged(url, label, params, allow_next, max_pages, timeout)
+
+    def _get_paged(
+        self,
+        url: str,
+        label: str,
+        params: dict[str, Any] | None,
+        allow_next: Callable[[object], None],
+        max_pages: int,
+        timeout: float | None,
+    ) -> list[Any]:
         out: list[Any] = []
         nxt = url
         for _ in range(max_pages):

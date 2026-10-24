@@ -9,7 +9,8 @@ module has no call for either, and :class:`IssueFacts` carries no labels
 
 Transport, retries and error mapping come from the shared
 :class:`github_client.GitHubClient` (S-185, D-67): reads retry transient faults,
-writes retry only rate limits, and failures raise :class:`GitHubUnavailable`
+writes retry only rate limits, every operation runs under one wait budget, and
+failures raise :class:`GitHubUnavailable`
 (``GITHUB_UNAVAILABLE``) or :class:`GitHubRequestRejected`
 (``GITHUB_REQUEST_REJECTED``). The exception here: a reaction 4xx (a deleted
 trigger comment returns 404, a bad id 422) is logged and returned as
@@ -41,6 +42,7 @@ from urllib.parse import urlsplit
 from github_client import (
     API_URL,
     API_VERSION,
+    DEFAULT_BUDGET_SECONDS,
     DEFAULT_TIMEOUT,
     GitHubClient,
     GitHubError,
@@ -164,11 +166,21 @@ class IssuesClient(GitHubClient):
         api_url: str = API_URL,
         timeout: float = DEFAULT_TIMEOUT,
         sleep: Callable[[float], None] | None = None,
+        clock: Callable[[], float] | None = None,
+        budget: float = DEFAULT_BUDGET_SECONDS,
     ) -> None:
         for name in (owner, repo):
             if not _NAME.fullmatch(name or "") or name in (".", ".."):
                 raise ValueError("owner and repo must be plain GitHub names")
-        super().__init__(token, session=session, api_url=api_url, timeout=timeout, sleep=sleep)
+        super().__init__(
+            token,
+            session=session,
+            api_url=api_url,
+            timeout=timeout,
+            sleep=sleep,
+            clock=clock,
+            budget=budget,
+        )
         self.owner = owner
         self.repo = repo
         self._open_pulls: list[dict] | None = None
@@ -272,6 +284,10 @@ class IssuesClient(GitHubClient):
         :class:`GitHubUnavailable`, and ``hasNextPage`` without a cursor is
         :class:`GitHubRequestRejected`: neither is read as "no linked PR" (D-67).
         """
+        with self.deadline():
+            return self._closing_prs(issue_number)
+
+    def _closing_prs(self, issue_number: int) -> list[int]:
         label = "POST /graphql (closedByPullRequestsReferences)"
         found: list[int] = []
         after: str | None = None
@@ -322,9 +338,10 @@ class IssuesClient(GitHubClient):
         """The lowest-numbered open linked PR (D-55), or ``None``.
 
         The closing references are asked first; open PRs are listed only when
-        none is found.
+        none is found. Both run under one deadline (QA 5).
         """
-        found = self.closing_prs(issue_number) or self.branch_prs(issue_number)
+        with self.deadline():
+            found = self.closing_prs(issue_number) or self.branch_prs(issue_number)
         return min(found) if found else None
 
     # -- comments ----------------------------------------------------------------

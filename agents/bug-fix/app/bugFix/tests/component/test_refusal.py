@@ -655,6 +655,14 @@ class TestGitHubFaults:
         gh.faults["issue"] = [FakeResponse(403, {"message": "x"}, {"retry-after": "3"})]
         assert _check(gh, sb).status == "proceed"
 
+    @pytest.mark.parametrize("route", ["issue", "graphql", "pulls", "comments_get"])
+    def test_a_retry_after_of_60_is_honoured_not_abandoned(self, route):
+        """DF-185-06: GitHub's common secondary-limit wait is retried within the budget."""
+        gh, sb = _gh_for("proceed")
+        gh.faults[route] = [FakeResponse(403, {"message": "x"}, {"retry-after": "60"})]
+        assert _check(gh, sb).status == "proceed"
+        assert len([c for c in gh.calls if _route(c) == route]) == 2
+
     def test_graphql_errors_are_rejected_not_read_as_unlinked(self):
         gh, sb = _gh_for("proceed")
         gh.faults["graphql"] = [FakeResponse(200, {"errors": [{"type": "FORBIDDEN"}]})]
