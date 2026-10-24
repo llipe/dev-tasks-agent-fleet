@@ -8,6 +8,7 @@ Drift findings are advisory and **non-blocking** to PR readiness and issue compl
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 1.1 | 2026-10-24 | §6 Reconciliation added: DF-33 and DF-185-01/02/03/05/06/07 written back to spec v2.4, stories v2.3 and test plan v2.2, confirmed by @llipe 2026-10-24. | product-engineer |
 | 1.0 | 2026-10-24 | Audit Mode run for S-185 against PRD v2.1, spec v2.3 (§6, §8.2, §8.3, §8.6, §8.9, §9, §14), task list §6.0 (v2.0.6), decisions D-55, D-58, D-65 (amended), D-67, D-82, D-90–D-92, D-102, D-104, and test plan / traceability v2.1 (TC-185-*, CT-07/12/13/33/34, RT-13, RT-15, DF-33/34/38). | verifier |
 
 ## 1. Summary for stakeholders
@@ -113,3 +114,14 @@ Every item below is **non-blocking** to PR readiness and issue completion.
 | DF-185-07 | `developer`: render cross-repo PRs as `owner/repo#M`, prefer same-repo, add the CT-33 cross-repo test. |
 | DF-185-08 | `product-engineer`: remap or reassign CT-07/12/13/33/34 in the traceability matrix; add CT-34 where it lands. |
 | DF-185-09 | `planner`: record `make validate` and `coverage_gate` at the story gate. |
+
+## 6. Reconciliation
+
+`product-engineer`, 2026-10-24, confirmed by @llipe 2026-10-24. Non-blocking: ran after the #453 merge.
+
+| Finding | Route |
+|---|---|
+| 01–03, 05–07 | spec v2.4 / test plan v2.2 |
+| 04 | DF-33 resolved; the code moves into `markers.open_claims()` in S-188 (#370) |
+| 08 | CT-33/34 tests added in the fix round; the real-database L2.5 for CT-34 is a residual |
+| 09 | recorded on PR #453 |
