@@ -1,0 +1,17 @@
+{
+  "run_id": "7f1e2d3c-4b5a-4968-8776-655443322110",
+  "repository_org": "acme",
+  "repository_name": "widgets",
+  "base_branch": "main",
+  "params": {
+    "issue_number": 7,
+    "status_in_progress": "In progress",
+    "status_in_review": "In review",
+    "status_ready": "Ready",
+    "max_turns": 40,
+    "cli_timeout_minutes": 30,
+    "run_budget_minutes": 55,
+    "max_code_files": 10,
+    "max_code_lines": 400
+  }
+}

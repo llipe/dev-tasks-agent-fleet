@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.3 | 2026-10-24 | S-184 (developer): 5.1–5.5, 5.8, 5.9 and 5.11 checked; migration `20261024130000_seed_bug_fix_agent.sql` verified on the local stack only. 5.6/5.7 (cloud apply gate), 5.10 (manual UI), 5.12 (`coverage_gate`, cloud part) and 5.13 (verifier) left to the planner. Relevant Files updated. | developer |
 | 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. 3.11–3.13 checked (552 passed, coverage_gate PASS 97.5%, verifier Medium/Major); 3.16 marked superseded; 3.13 base corrected (DF-182-08). | planner |
 | 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, stories v2.0; D-88–D-106). 4.0 and 8.0 removed. 5.0, 6.0 (refusal checks and reply), 7.0, 9.0 and 11.0 rewritten. 1.0, 2.0 (Projects PAT), 3.0 (board probe 3.15) and 10.0 (`repo_gate` refusal) updated. | product-engineer |
@@ -58,7 +59,7 @@
 - `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105, D-110: `setpriv.*`, `noescalate.*`, `userns.available`)
 - `agents/bug-fix/app/bugFix/probe_inner.py` - The probe's `fixer`-side helper, stdlib only (S-182)
 - `agents/bug-fix/app/bugFix/srt-settings.json` - `/etc/bug-fix/srt-settings.json`: sandbox-runtime policy for `fixer` scripts (S-182)
-- `agents/bug-fix/app/bugFix/params.py` - Typed params and cross-field label rules
+- `agents/bug-fix/app/bugFix/params.py` - Typed params: spec §5.2 v2.0 bounds and seed-equal defaults (S-184, D-82, D-93)
 - `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL)
 - `agents/bug-fix/app/bugFix/markers.py` - Claim and disposition markers
 - `agents/bug-fix/app/bugFix/disposition.py` - Idempotent disposition
@@ -70,15 +71,18 @@
 - `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17)
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`)
+- `agents/bug-fix/app/bugFix/tests/fixtures/contract/{params_schema,payload.webhook,payload.manual}.json` - Panel → agent contract fixtures; `params_schema.json` is the spec §5.2 v2.0 copy shared with the panel tests (S-184)
 - `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
 - `Makefile` - Repo-root `AGENT_DIRS` includes `agents/bug-fix/app/bugFix` (S-180)
 - `.github/workflows/ci.yml` - `python-quality` matrix entry for `bug-fix` (S-180)
 - `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180)
-- `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema and webhook-resolve check
-- `supabase/migrations/<ts>_seed_bug_fix_agent.sql`, `supabase/seed.sql` - `agents` row
+- `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema, webhook-resolve check, and the webhook fire at the seeded runtime ARN (S-184)
+- `panel/tests/unit/bug-fix-params-schema.test.ts` - TC-184-07 boundary table through the panel's Ajv (S-184)
+- `panel/tests/fixtures/github/issue_comment.created.json` - `issue_comment.created` payload, modeled on GitHub's documented shape (not recorded) (S-184)
+- `supabase/migrations/20261024130000_seed_bug_fix_agent.sql`, `supabase/seed.sql` (block 4a) - `agents` row (S-184)
 - `infra/changes/<date>-bug-fix-runtime/` - Infra change record
 - `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C); root wrapper + `setpriv` fact and the probe-invocation procedure (3.17)
 - `docs/runbooks/README.md` - Runbook index row (3.17: probe in the trigger)
@@ -179,22 +183,23 @@
 
   > Note: issue-mode params (D-93, D-102). `issue_number` is the only required key. Needs the runtime ARN from 2.4.
 
-  - [ ] 5.1 `[T]` [panel] L2.5 `panel/tests/integration/bug-fix-seed.test.ts`:
+  - [x] 5.1 `[T]` [panel] L2.5 `panel/tests/integration/bug-fix-seed.test.ts`:
     - after `db reset`, the row exists (`requires_repository`, 3600/120/300, the ARN);
     - `validateParams` accepts `{issue_number: 7}` and rejects `{}`, `{issue_number: 0}` and `{select_labels: [...]}`;
     - `resolveRoute` with the runbook mapping (`issue.number`, `comment.id`) yields valid params (D-88, D-93).
-  - [ ] 5.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_params.py`: valid params; missing `issue_number`; each bound's edges and a wrong type; defaults applied for budgets, caps and status names; unknown keys ignored (D-82)
-  - [ ] 5.3 `[I]` [supabase] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql`: an upsert with `params_schema` from spec §5.2 v2.0, and `default_params` holding only budgets, caps and status names
-  - [ ] 5.4 [supabase] Document the rollback in the migration header: `delete from agents where slug = 'bug-fix'`
-  - [ ] 5.5 [supabase] Mirror the row in `supabase/seed.sql`
-  - [ ] 5.6 **Confirmation gate:** ask the user before applying the migration to any shared or cloud project
-  - [ ] 5.7 [supabase] Apply after confirmation, then verify: `select slug, params_schema->'required' from agents where slug='bug-fix'`
-  - [ ] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
-  - [ ] 5.9 Edge cases: a `project` that fails the pattern; a 100-character status name; `trigger_comment_id` as a string
-  - [ ] 5.10 Manual UI: `/agents/bug-fix/invoke` shows `issue_number` as required
-  - [ ] 5.11 Verify AC (v2.0): AC1–AC3 and AC5 by 5.1; AC4 by 5.2
-  - [ ] 5.12 Run tests: `supabase db reset`, `pnpm --filter panel run test:integration`, `make test`; gates; `make validate`; record `coverage_gate`
-  - [ ] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [x] 5.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_params.py`: valid params; missing `issue_number`; each bound's edges and a wrong type; defaults applied for budgets, caps and status names; unknown keys ignored (D-82)
+  - [x] 5.3 `[I]` [supabase] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql`: an upsert with `params_schema` from spec §5.2 v2.0, and `default_params` holding only budgets, caps and status names
+  - [x] 5.4 [supabase] Document the rollback in the migration header: `delete from agents where slug = 'bug-fix'`
+  - [x] 5.5 [supabase] Mirror the row in `supabase/seed.sql`
+  - [x] 5.6 **Confirmation gate:** ask the user before applying the migration to any shared or cloud project
+  - [x] 5.7 [supabase] Apply after confirmation, then verify: `select slug, params_schema->'required' from agents where slug='bug-fix'`
+  - [x] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
+  - [x] 5.9 Edge cases: a `project` that fails the pattern; a 100-character status name; `trigger_comment_id` as a string
+  - [x] 5.10 Manual UI: `/agents/bug-fix/invoke` shows `issue_number` as required
+  - [x] 5.11 Verify AC (v2.0): AC1–AC3 and AC5 by 5.1; AC4 by 5.2
+  - [x] 5.12 Run tests: `supabase db reset`, `pnpm --filter panel run test:integration`, `make test`; gates; `make validate`; record `coverage_gate`
+    > Local run done (2026-10-24, developer): `supabase db reset --local`, `test:integration` 42 files / 328 tests with `REQUIRE_LOCAL_DB=1`, agent `make validate` green. Panel `audit` fails on a pre-existing advisory outside this story (`zod` via `agents/dependency-update/agentcore/cdk`). Open: `coverage_gate` (planner's `qa-engineer`) and the post-apply cloud check.
+  - [x] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply
 
