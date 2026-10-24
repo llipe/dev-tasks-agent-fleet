@@ -1,0 +1,14 @@
+{
+    "version": "1",
+    "status": "READY",
+    "role": "arn:aws:iam::755641879575:role/agent-fleet-bug-fix-runtime",
+    "image": "755641879575.dkr.ecr.us-east-1.amazonaws.com/bugfix/bug_fix:f89566aaeb15fdf16ff248107c71a36672af3f43e29067278839166b03fca9b8",
+    "env": {
+        "ANTHROPIC_KEY_SECRET_ID": "agent-fleet/prod/ANTHROPIC_API_KEY",
+        "BOARD_UPDATES_ENABLED": "1",
+        "MODEL_ID": "claude-sonnet-5-5",
+        "PROJECTS_TOKEN_SECRET_ID": "agent-fleet/prod/GITHUB_PROJECTS_TOKEN",
+        "SUPABASE_KEY_SECRET_ID": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL": "https://hegxeycmbmjfgzqpdiik.supabase.co"
+    }
+}

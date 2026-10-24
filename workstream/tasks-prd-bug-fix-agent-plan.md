@@ -159,6 +159,12 @@
     - `sandbox.py`: spawn through `sudo -u fixer --` with the allow-listed env passed explicitly.
     - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
     - IC (3.7): as `fixer`, `/proc/<wrapper pid>/environ` is unreadable.
+  - [ ] 3.17 `[T]`/`[I]` [agents/bug-fix] (D-110, replaces D-109 after probe run 1 found `no_new_privs` on AgentCore)
+    - Dockerfile: the wrapper runs as root; remove `sudo` and `/etc/sudoers.d/bug-fix`.
+    - `sandbox.py`/`fixer_exec.py`: launch through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, with the allow-listed env passed explicitly.
+    - `image-smoke.sh`: `setpriv` drop gives uid 10002 with no capabilities; `fixer` can't regain root; `fixer` can't read the root wrapper's `/proc/<pid>/environ` or `mem`; no `sudo` binary.
+    - Probe: the uid and `sudo` checks change to `setpriv` and no-escalation checks; add a user-namespace check for `bwrap`/`srt` under `no_new_privs`.
+    - Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b and 2b).
   - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
   - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`
