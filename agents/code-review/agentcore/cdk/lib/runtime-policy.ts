@@ -126,10 +126,80 @@ function platformStatements(stack: Stack, ecr: AgentEcrRepository): iam.PolicySt
 }
 
 /**
+ * Every (action, resource) grant `@aws/agentcore-cdk` 0.1.0-alpha.49 puts on a
+ * Container runtime's role with this project's config: the ones dropped (wildcard
+ * Bedrock, Configuration Bundle) and the ones re-emitted unchanged by
+ * `platformStatements`. Compared pair by pair because `minimizePolicies` merges
+ * statements. Any other grant on the role at synth time means the construct or
+ * the stack added something this override would silently discard (DR-2), so
+ * synth fails and a human decides whether to keep it.
+ */
+function knownConstructGrants(stack: Stack, ecr: AgentEcrRepository): [string[], string][] {
+  const p = stack.partition;
+  return [
+    [
+      ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream', 'bedrock:CountTokens'],
+      `arn:${p}:bedrock:*::foundation-model/*`,
+    ],
+    [
+      ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream', 'bedrock:CountTokens'],
+      `arn:${p}:bedrock:*:${stack.account}:inference-profile/*`,
+    ],
+    [
+      [
+        'bedrock-agentcore:GetConfigurationBundle',
+        'bedrock-agentcore:GetConfigurationBundleVersion',
+        'bedrock-agentcore:ListConfigurationBundles',
+        'bedrock-agentcore:ListConfigurationBundleVersions',
+        'bedrock-agentcore:CreateConfigurationBundle',
+        'bedrock-agentcore:UpdateConfigurationBundle',
+        'bedrock-agentcore:DeleteConfigurationBundle',
+      ],
+      `arn:${p}:bedrock-agentcore:*:*:configuration-bundle/*`,
+    ],
+    ...platformStatements(stack, ecr).flatMap(s => s.resources.map(r => [s.actions, r] as [string[], string])),
+  ];
+}
+
+function asList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : value === undefined ? [] : [value];
+}
+
+/**
+ * Synth-time errors for grants on the role's original document outside the
+ * known construct grants. Returns one error per offending statement.
+ */
+export function unexpectedGrants(stack: Stack, ecr: AgentEcrRepository, document: iam.PolicyDocument): string[] {
+  const key = (action: unknown, resource: unknown) => JSON.stringify([action, stack.resolve(resource)]);
+  const known = new Set(
+    knownConstructGrants(stack, ecr).flatMap(([actions, resource]) => actions.map(a => key(a, resource)))
+  );
+  const json = stack.resolve(document) as { Statement?: Record<string, unknown>[] } | undefined;
+  const errors: string[] = [];
+  for (const statement of json?.Statement ?? []) {
+    const shapeOk =
+      statement.Effect === 'Allow' &&
+      statement.NotAction === undefined &&
+      statement.NotResource === undefined &&
+      statement.Condition === undefined;
+    const pairsOk = asList(statement.Action).every(a => asList(statement.Resource).every(r => known.has(key(a, r))));
+    if (!shapeOk || !pairsOk) {
+      errors.push(
+        `code_review runtime role: unexpected statement ${JSON.stringify(statement)}. ` +
+          'restrictRuntimeRole would drop it; add it to runtime-policy.ts (and the test) or remove its source.'
+      );
+    }
+  }
+  return errors;
+}
+
+/**
  * Replace the runtime role's construct-generated policy document with the exact
  * least-privilege statement list. Throws at synth if the construct tree no
  * longer has the shape this relies on (an `@aws/agentcore-cdk` upgrade), so the
- * override can never silently stop applying.
+ * override can never silently stop applying, and fails synth if the original
+ * document holds a statement outside `knownConstructGrants`, so it can
+ * never silently drop a grant either.
  */
 export function restrictRuntimeRole(environment: AgentEnvironment): void {
   const stack = Stack.of(environment);
@@ -146,6 +216,10 @@ export function restrictRuntimeRole(environment: AgentEnvironment): void {
   if (!(cfnPolicy instanceof iam.CfnPolicy)) {
     throw new Error('code_review: runtime role has no DefaultPolicy to restrict');
   }
+  // Checked at synth, not now: stack wiring that runs after this call (payments,
+  // connections) can still add statements to the same DefaultPolicy.
+  const original = (policy as iam.Policy).document;
+  environment.node.addValidation({ validate: () => unexpectedGrants(stack, ecr, original) });
   const statements = [...platformStatements(stack, ecr), bedrockStatement(stack), secretsStatement(stack)];
   cfnPolicy.addPropertyOverride(
     'PolicyDocument.Statement',
