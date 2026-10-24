@@ -53,12 +53,17 @@ RUN if [ -s /usr/local/share/ca-certificates/extra-ca.crt ]; then \
 # /usr/bin/kill and /usr/bin/pkill for the post-run sweep of every fixer
 # process (D-62); libnss-myhostname resolves `localhost` (see below). The
 # build fails if setpriv is missing or sudo is present.
+# safe_git.py (S-189, D-62) needs git >= 2.40 for `--attr-source` (the wrapper
+# reads no attributes from a fixer-written .gitattributes), and spawns
+# /usr/bin/tar and /usr/bin/rm as fixer; the build fails without them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bubblewrap ca-certificates curl git gnupg libnss-myhostname make procps ripgrep \
       socat util-linux && \
     rm -rf /var/lib/apt/lists/* && \
     command -v setpriv && \
-    ! command -v sudo
+    ! command -v sudo && \
+    git --attr-source=4b825dc642cb6eb9a060e54bf8d69288fbee4904 version && \
+    test -x /usr/bin/git && test -x /usr/bin/tar && test -x /usr/bin/rm
 
 # `localhost` for the sandbox proxy (S-182 fix round 3). AgentCore's /etc/hosts
 # is empty and read-only (re-probe 2c), and the sandbox's network namespace has
@@ -104,9 +109,11 @@ RUN groupadd --gid "${FIXER_UID}" fixer && \
       --shell /bin/bash fixer && \
     chmod 0700 /home/fixer
 
-# Work directories (spec §7, D-62):
+# Work directories (spec §7, D-62, D-110):
 #   /work/repo, /work/out  -> fixer: the checkout the CLI edits, and its output
 #   /work/wrapper          -> root, 0700: the wrapper's own clone
+#                             (/work/wrapper/repo, safe_git.py, S-189); fixer
+#                             can't list it or read its .git
 #   /work/secrets          -> root, 0700: never readable by fixer (and
 #                             denied in the managed policy as well)
 RUN install -d -o root -g root -m 0755 /work && \

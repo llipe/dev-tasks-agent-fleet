@@ -25,6 +25,14 @@
 #     them, /root or /home of anyone else;
 #   - policy: /etc/claude-code/managed-settings.json is root:root 0644, and as
 #     fixer it can't be appended to and the directory isn't writable;
+#   - wrapper git (S-189, D-62, D-110): git supports --attr-source; as the
+#     root wrapper under no_new_privs, safe_git.clone puts a local bare remote
+#     into /work/wrapper/repo (mode 0700), materialize writes /work/repo as
+#     fixer (files owned by 10002, no .git) through the real setpriv drop, a
+#     fixer-planted .git/hooks and core.fsmonitor in /work/repo never run in
+#     the wrapper's capture, which sees only the fixer's file edit; as fixer,
+#     /work/wrapper can't be listed and /work/wrapper/repo/.git/config can't
+#     be read (TC-189-19);
 #   - localhost (S-182 re-probes 2b, 2c; fix round 3): the image's /etc/hosts
 #     is empty; nsswitch has `hosts: files myhostname dns`; /etc/gai.conf
 #     prefers IPv4; with an empty, read-only /etc/hosts bind-mounted (as on
@@ -316,5 +324,64 @@ if as_agentcore "$SETPRIV sh -c \"echo '{}' >> $srt_policy\"" >/dev/null 2>&1; t
   fail "fixer can append to $srt_policy"
 fi
 ok "fixer can't modify $srt_policy"
+
+# --- Wrapper git (S-189: TC-189-18, TC-189-19; D-62, D-110) -----------------------
+as_root 'git --attr-source=4b825dc642cb6eb9a060e54bf8d69288fbee4904 version' >/dev/null \
+  || fail "git does not support --attr-source (safe_git.py needs git >= 2.40)"
+ok "$(as_root 'git --version') supports --attr-source"
+
+# One container, as AgentCore runs it (root, no_new_privs): a local bare
+# remote, then safe_git's clone, materialize as fixer, a fixer plant, capture.
+git_out="$(docker run --rm -i --platform "$PLATFORM" --security-opt no-new-privileges \
+  -w /app --entrypoint python3 "$IMAGE" - <<'PY'
+import os, stat, subprocess, sys
+sys.path.insert(0, "/app")
+from safe_git import clone
+from sandbox import DEFAULT_PATHS, as_fixer
+
+E = {"PATH": "/usr/bin:/bin", "HOME": "/root", "GIT_CONFIG_GLOBAL": "/dev/null",
+     "GIT_AUTHOR_NAME": "s", "GIT_AUTHOR_EMAIL": "s@s", "GIT_COMMITTER_NAME": "s",
+     "GIT_COMMITTER_EMAIL": "s@s"}
+def sh(*a, **k): subprocess.run(list(a), check=True, env=E, stdout=subprocess.DEVNULL, **k)
+os.makedirs("/tmp/src/src")
+open("/tmp/src/src/app.py", "w").write("x = 1\n")
+sh("git", "init", "-q", "-b", "main", "/tmp/src")
+sh("git", "-C", "/tmp/src", "add", "-A")
+sh("git", "-C", "/tmp/src", "commit", "-q", "-m", "s")
+sh("git", "clone", "-q", "--bare", "/tmp/src", "/tmp/remote.git")
+
+git = clone("file:///tmp/remote.git", "main", "/work/wrapper/repo")
+print("clone_mode=" + oct(stat.S_IMODE(os.stat("/work/wrapper/repo").st_mode)))
+print("clone_owner=%d" % os.stat("/work/wrapper/repo").st_uid)
+git.materialize(git.base_sha, "/work/repo")
+print("file_owner=%d" % os.lstat("/work/repo/src/app.py").st_uid)
+print("dotgit=%s" % os.path.exists("/work/repo/.git"))
+
+fixer = [*as_fixer(DEFAULT_PATHS), "/usr/bin/env", "HOME=/home/fixer", "PATH=/usr/bin:/bin"]
+plant = ("cd /work/repo && git init -q && "
+         "printf '#!/bin/sh\\ntouch /tmp/canary-hook\\n' > .git/hooks/post-index-change && "
+         "chmod +x .git/hooks/post-index-change && "
+         "git config core.fsmonitor 'touch /tmp/canary-fsmonitor; false' && "
+         "echo edit > src/app.py")
+subprocess.run([*fixer, "sh", "-c", plant], check=True)
+tree = git.capture("/work/repo")
+print("changes=" + ",".join(sorted(c.path for c in git.changes(git.tree_of(git.base_sha), tree))))
+print("canary=%s" % (os.path.exists("/tmp/canary-hook") or os.path.exists("/tmp/canary-fsmonitor")))
+r = subprocess.run([*fixer, "cat", "/work/wrapper/repo/.git/config"], capture_output=True)
+print("fixer_reads_config=%s" % (r.returncode == 0))
+r = subprocess.run([*fixer, "ls", "/work/wrapper"], capture_output=True)
+print("fixer_lists_wrapper=%s" % (r.returncode == 0))
+# Control: the plants are live when git does use the fixer repository.
+subprocess.run([*fixer, "sh", "-c", "cd /work/repo && git add -A"], capture_output=True)
+print("control=%s" % (os.path.exists("/tmp/canary-hook") or os.path.exists("/tmp/canary-fsmonitor")))
+PY
+)" || fail "wrapper git smoke failed: $git_out"
+want_git="$(printf 'clone_mode=0o700\nclone_owner=0\nfile_owner=10002\ndotgit=False\nchanges=src/app.py\ncanary=False\nfixer_reads_config=False\nfixer_lists_wrapper=False\ncontrol=True')"
+[ "$git_out" = "$want_git" ] || fail "wrapper git: expected '$want_git', got: $git_out"
+ok "safe_git.clone as root under no_new_privs: /work/wrapper/repo is root-owned 0700"
+ok "materialize: /work/repo files owned by fixer (10002) through setpriv, no .git"
+ok "a fixer-planted .git/hooks and core.fsmonitor never run in the wrapper's capture; the capture sees only src/app.py"
+ok "as fixer, /work/wrapper can't be listed and /work/wrapper/repo/.git/config can't be read (TC-189-19)"
+ok "control: the plants do fire when git uses the fixer repository"
 
 echo "image-smoke: ${pass} checks passed for ${IMAGE}"
