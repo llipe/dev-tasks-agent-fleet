@@ -83,6 +83,10 @@ _ORDER: tuple[str, ...] = (
     "max_code_lines",
 )
 
+# The schema's keys, in schema order. S-185 names one in an ``invalid_params``
+# refusal, so the reply's key always comes from this closed set (D-104).
+SCHEMA_KEYS: tuple[str, ...] = _ORDER
+
 
 class ParamsError(ValueError):
     """The payload ``params`` are invalid. Names the key, never the value."""

@@ -1,11 +1,14 @@
 # Copied from agents/security-analyst/app/securityAnalyst/credentials.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
 # Extended (S-182): `fetch_secret_string`, a generic Secrets Manager read used for
-# the Anthropic key and the Projects token (D-50, D-99). Spec §8.1 extends it
-# further in later stories: token permissions (D-58).
+# the Anthropic key and the Projects token (D-50, D-99).
 # Extended (S-186): `TokenContext.app_id`, the fleet App id from the
 # `github_installations` row, which marker trust checks against (D-53). A non-int
 # or bool `app_id` is a typed `INVALID_APP_ID` error.
+# Extended (S-185): the minted token's `permissions` (D-58). `mint_installation`
+# returns the token and its permissions, `TokenContext.permissions` carries them,
+# and `has_issues_write` is the preflight check. `mint_installation_token` keeps
+# the sibling's token-only signature.
 """
 Credential resolution — Supabase service role key from Secrets Manager
 and GitHub App installation token minting.
@@ -15,7 +18,10 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, NamedTuple
 
 import boto3
 import jwt
@@ -59,6 +65,9 @@ class TokenContext:
     installation_id: int
     # The fleet App id (D-53). ``None`` only for a context built by hand.
     app_id: int | None = None
+    # The minted token's ``permissions`` object (D-58). ``None`` only for a
+    # context built by hand, which therefore fails the ``issues: write`` check.
+    permissions: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.app_id is not None:
@@ -198,11 +207,42 @@ def _fetch_pem(secret_arn: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+class MintedToken(NamedTuple):
+    """An installation token and the ``permissions`` GitHub granted it (D-58)."""
+
+    token: str
+    permissions: Mapping[str, str]
+
+
+def _permissions(value: Any) -> Mapping[str, str]:
+    """The ``permissions`` object as a read-only ``{name: level}`` map.
+
+    Anything malformed (absent, not an object, non-string entries) is dropped,
+    so it reads as "not granted" and fails closed.
+    """
+    if not isinstance(value, Mapping):
+        return MappingProxyType({})
+    return MappingProxyType(
+        {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
+    )
+
+
+def has_issues_write(permissions: object) -> bool:
+    """True iff the token was granted ``issues: write`` (D-58)."""
+    return isinstance(permissions, Mapping) and permissions.get("issues") == "write"
+
+
 def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
+    """The installation token only (the sibling's signature). See :func:`mint_installation`."""
+    return mint_installation(app_id, installation_id, pem).token
+
+
+def mint_installation(app_id: int, installation_id: int, pem: str) -> MintedToken:
     """
     Sign an RS256 JWT as the GitHub App and exchange it for an installation token.
 
     The JWT is valid for 9 minutes (iat - 60s for clock skew, exp + 540s).
+    Returns the token with the ``permissions`` GitHub granted it (D-58).
     """
     now = int(time.time())
     assertion = jwt.encode(
@@ -227,7 +267,8 @@ def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
             f"Could not reach GitHub to mint installation token: {exc}",
         ) from exc
     resp.raise_for_status()
-    return resp.json()["token"]
+    payload = resp.json()
+    return MintedToken(payload["token"], _permissions(payload.get("permissions")))
 
 
 # ---------------------------------------------------------------------------
@@ -253,12 +294,13 @@ def resolve_github_credentials(
     row = _get_installation(org, url, key)
     app_id = _check_app_id(row.get("app_id"))
     pem = _fetch_pem(row["private_key_secret_arn"])
-    token = mint_installation_token(app_id, row["installation_id"], pem)
+    minted = mint_installation(app_id, row["installation_id"], pem)
     return TokenContext(
-        token=token,
+        token=minted.token,
         issued_at=time.monotonic(),
         installation_id=row["installation_id"],
         app_id=app_id,
+        permissions=minted.permissions,
     )
 
 
@@ -271,5 +313,6 @@ def refresh_if_stale(token_ctx: TokenContext, pem: str, app_id: int) -> TokenCon
             issued_at=time.monotonic(),
             installation_id=token_ctx.installation_id,
             app_id=token_ctx.app_id,
+            permissions=token_ctx.permissions,
         )
     return token_ctx
