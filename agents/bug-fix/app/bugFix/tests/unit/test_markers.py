@@ -260,7 +260,7 @@ class TestOpenClaims:
 
     def test_closing_kinds_are_pr_disposition_and_refusal(self):
         # DF-33 (confirmed by @llipe 2026-10-24): one open-claim rule.
-        assert markers.CLOSING_KINDS == frozenset({"pr", "disposition", "refusal"})
+        assert frozenset({"pr", "disposition", "refusal"}) == markers.CLOSING_KINDS
 
     def test_refusal_never_opens_a_claim(self):
         comments = [_marked(1, "refusal", RUN_A, "active_run")]

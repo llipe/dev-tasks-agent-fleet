@@ -27,6 +27,11 @@ never runs once one matches:
                       ``v_runs.effective_status``
 ====================  =====================================================
 
+The open-claim half of ``active_run`` is :func:`markers.open_claims`, the one
+definition of an open claim (DF-33) that the post-claim race check in
+``claim.py`` shares; the status half is :func:`active_claim_runs`, which the
+race check calls too.
+
 ``repo_gate`` is decided after the clone (S-189), which calls
 :func:`build_reply` and :meth:`IssuesClient.post_comment` the same way. A
 ``GET /issues/{n}`` 404 (no such number, or a transferred issue) is refusal
@@ -69,7 +74,7 @@ import requests
 from credentials import CredentialError, TokenContext, has_issues_write
 from github_client import GitHubError
 from issues import IssueFacts, IssuesClient, LinkedPr
-from markers import build, canonical_run_id, open_claims, trusted_markers
+from markers import build, canonical_run_id, open_claims
 from params import SCHEMA_KEYS, Params, ParamsError, parse_params
 from scrubber import SecretsLike, scrub_all, scrub_exception
 
@@ -232,20 +237,27 @@ def build_reply(
 
 
 def open_claim_runs(
-    comments: Iterable[Any], app_id: int, own_run_id: str | None = None
+    comments: Iterable[Any],
+    app_id: int,
+    own_run_id: str | None = None,
+    *,
+    before: int | None = None,
 ) -> list[str]:
-    """Run ids of trusted claims with no trusted ``pr``, ``disposition`` or ``refusal``.
+    """Run ids of the open claims of :func:`markers.open_claims` (DF-33).
 
-    A ``refusal`` marker never opens a claim (D-104); a trusted one for the same
-    run closes it, as spec §8.2 states. Forged markers count for nothing
-    (D-53). This run's own id is excluded. Unique, in comment order.
+    That is the one rule: a trusted claim with no trusted ``pr``,
+    ``disposition`` or ``refusal`` marker for its run. A ``refusal`` never
+    opens a claim (D-104), and forged markers count for nothing (D-53). This
+    run's own id is excluded. With ``before`` (the race check), only claims
+    whose comment id is lower count; a closing marker still counts wherever it
+    sits. Unique, in comment order.
     """
-    comments = list(comments)
-    refused = {m.run_id for _, m in trusted_markers(comments, app_id) if m.kind == "refusal"}
     own = canonical_run_id(own_run_id) if own_run_id is not None else None
     out: list[str] = []
-    for _, rid in open_claims(comments, app_id):
-        if rid in refused or rid == own or rid in out:
+    for cid, rid in open_claims(comments, app_id):
+        if before is not None and cid >= before:
+            break
+        if rid == own or rid in out:
             continue
         out.append(rid)
     return out
@@ -331,7 +343,25 @@ def has_active_run(
 ) -> bool:
     """Refusal (d): an open trusted claim whose run is ``queued`` or ``running``.
 
-    Each claimed run resolves by its ``v_runs.effective_status`` (CT-34):
+    See :func:`active_claim_runs` for how each claimed run resolves.
+    """
+    return bool(active_claim_runs(comments, app_id, own_run_id, read_statuses, warn=warn))
+
+
+def active_claim_runs(
+    comments: Iterable[Any],
+    app_id: int,
+    own_run_id: str,
+    read_statuses: Callable[[Sequence[str]], Mapping[str, str]],
+    *,
+    before: int | None = None,
+    warn: Callable[[str], None] | None = None,
+) -> list[str]:
+    """Run ids of the open claims (:func:`open_claim_runs`) whose run is active.
+
+    Shared by refusal (d) and the post-claim race check (``before`` = this
+    run's claim comment id). Each claimed run resolves by its
+    ``v_runs.effective_status`` (CT-34):
 
     - :data:`NON_TERMINAL_STATUSES` → active;
     - :data:`TERMINAL_STATUSES` → finished;
@@ -343,20 +373,21 @@ def has_active_run(
       claim order.
 
     ``warn`` reports a warning as a ``run_event`` (the step passes one);
-    without it the warning goes to the log only.
+    without it the warning goes to the log only. The result keeps comment
+    order, so its first item is the earliest active claim.
     """
-    candidates = open_claim_runs(comments, app_id, own_run_id)
+    candidates = open_claim_runs(comments, app_id, own_run_id, before=before)
     if not candidates:
-        return False
+        return []
     report = warn if warn is not None else (lambda m: log.warning("%s", m))
     statuses = read_statuses(candidates)
-    active = False
+    active: list[str] = []
     for rid in candidates:
         status = statuses.get(rid)
         if status is None:
             report(f"claim for run {rid} has no v_runs row; treated as terminal")
         elif status in NON_TERMINAL_STATUSES:
-            active = True
+            active.append(rid)
         elif status not in TERMINAL_STATUSES:
             report(f"claim for run {rid} has an unknown effective_status; failing closed")
             raise SupabaseUnavailable(f"v_runs returned an unknown effective_status for run {rid}")

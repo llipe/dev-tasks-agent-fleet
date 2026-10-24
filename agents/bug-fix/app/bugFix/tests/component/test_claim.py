@@ -31,7 +31,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from claim import CLAIM_LINE, ClaimOutcome, Claimer, build_claim_body, claim_issue
+from claim import CLAIM_LINE, Claimer, ClaimOutcome, build_claim_body, claim_issue
 from disposition import Diagnosis, Disposer
 from issues import IssuesClient
 from markers import build, parse_block
@@ -351,7 +351,9 @@ class TestLostRace:
         # Pinned per spec §8.6 as written; recorded as DF-32.
         gh, _sb, _theirs, _out = self._lost()
         assert (TRIGGER, "eyes") in gh.reactions
-        assert not any(m.kind == "refusal" for c in gh.comments[ISSUE] for m in parse_block(c["body"]))
+        assert not any(
+            m.kind == "refusal" for c in gh.comments[ISSUE] for m in parse_block(c["body"])
+        )
 
     def test_a_delete_404_is_logged_and_the_run_still_withdraws(self):
         gh = _gh()
@@ -696,3 +698,13 @@ def test_no_label_or_assignee_request_on_any_path(path):
         disposer.dispose(Diagnosis(why="x", tried="y"))
     _no_label_or_assignee_call(gh)
     assert {c.method for c in gh.writes()} <= {"POST", "DELETE"}
+
+
+def test_a_failing_run_reporter_never_changes_the_outcome():
+    gh = _gh()
+    _seed_claim(gh, OTHER)
+    run = MagicMock()
+    run.info.side_effect = RuntimeError("reporter down")
+    run.warn.side_effect = RuntimeError("reporter down")
+    out = _claim(gh, FakeSupabase({OTHER: "running"}), run=run)
+    assert (out.status, out.withdrawal) == ("lost", "deleted")

@@ -20,9 +20,15 @@ Parsing rules:
   is the fleet App id (an ``int``) and ``user.type == "Bot"``. The login is never
   consulted, because an App can be renamed (D-53).
 
-Claim lifecycle: a trusted ``claim`` is **open** until a trusted ``pr`` or
-``disposition`` marker exists for the same ``run_id``. A ``refusal`` never opens
-or closes a claim (D-104). Ordering always uses the integer comment id.
+Claim lifecycle: there is **one** definition of an open claim (DF-33, confirmed
+by @llipe 2026-10-24). A trusted ``claim`` for run R is open while no trusted
+``pr``, ``disposition`` or ``refusal`` marker exists for R. A ``refusal`` never
+opens a claim (D-104); it only closes its own run's. :func:`open_claims` is that
+rule, shared by refusal (d) in ``refusal.py`` and the post-claim race check in
+``claim.py``. Both then drop the claims whose run is terminal in
+``v_runs.effective_status``: a missing row counts as finished, with a warning
+(CT-34), and an unknown status fails closed with ``SUPABASE_UNAVAILABLE``.
+Ordering always uses the integer comment id.
 """
 
 from __future__ import annotations
@@ -43,8 +49,8 @@ REFUSAL_REASONS: tuple[str, ...] = (
     "repo_gate",
     "invalid_params",
 )
-# Kinds that close an open claim for the same run_id.
-CLOSING_KINDS: frozenset[str] = frozenset({"pr", "disposition"})
+# Kinds that close an open claim for the same run_id (DF-33).
+CLOSING_KINDS: frozenset[str] = frozenset({"pr", "disposition", "refusal"})
 
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _LINE = re.compile(
@@ -157,7 +163,8 @@ def trusted_markers(comments: Iterable[Any], app_id: int) -> list[tuple[int, Mar
 
 
 def open_claims(comments: Iterable[Any], app_id: int) -> list[tuple[int, str]]:
-    """``(comment id, run_id)`` of each trusted claim not closed by ``pr``/``disposition``."""
+    """``(comment id, run_id)`` of each trusted claim not closed by a trusted
+    ``pr``, ``disposition`` or ``refusal`` marker for its run (DF-33), by id."""
     found = trusted_markers(comments, app_id)
     closed = {m.run_id for _, m in found if m.kind in CLOSING_KINDS}
     return [(cid, m.run_id) for cid, m in found if m.kind == "claim" and m.run_id not in closed]
