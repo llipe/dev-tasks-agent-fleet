@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { AnySchema } from "ajv";
 import { describe, expect, it } from "vitest";
+import { buildFieldDescriptors } from "@/lib/schema/form";
 import { validateParams } from "@/lib/schema/validate";
 
 // L1 — S-184 (#366) TC-184-07 and the 5.9 edge cases: the boundary table for
@@ -78,6 +79,21 @@ describe("bug-fix params_schema boundary table (TC-184-07)", () => {
     const res = check({ [key]: value });
     expect(res.valid).toBe(false);
     if (!res.valid) expect(res.errors.map((e) => e.instancePath)).toContain(`/${key}`);
+  });
+
+  it("drives an invoke form with issue_number as the only required field (TC-184-17 support)", () => {
+    // Automated support for the manual UI check (5.10), which stays manual.
+    const fields = buildFieldDescriptors(schema);
+    expect(fields.filter((f) => f.required).map((f) => f.name)).toEqual(["issue_number"]);
+    expect(fields.find((f) => f.name === "issue_number")).toMatchObject({
+      label: "Issue number",
+      min: 1,
+    });
+    const names = fields.map((f) => f.name);
+    for (const gone of ["select_labels", "assignee", "repo", "schedule"]) {
+      expect(names).not.toContain(gone);
+    }
+    expect(fields.every((f) => !f.disabled)).toBe(true);
   });
 
   it("requires issue_number and nothing else", () => {
