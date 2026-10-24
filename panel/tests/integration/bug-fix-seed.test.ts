@@ -338,13 +338,12 @@ describe.skipIf(!probe.available)("panel L2.5 — bug-fix resolveRoute (S-184 AC
     expect(res.droppedKeys).toEqual([]);
   });
 
+  const issueOf = (p: Record<string, unknown>) => p.issue as Record<string, unknown>;
+
   it.each([
-    ["issue.number missing", (p: Record<string, unknown>) => delete (p.issue as never)["number"]],
-    ["issue.number null", (p: Record<string, unknown>) => ((p.issue as never)["number"] = null)],
-    [
-      "issue.number a string",
-      (p: Record<string, unknown>) => ((p.issue as never)["number"] = "12"),
-    ],
+    ["issue.number missing", (p: Record<string, unknown>) => void delete issueOf(p).number],
+    ["issue.number null", (p: Record<string, unknown>) => void (issueOf(p).number = null)],
+    ["issue.number a string", (p: Record<string, unknown>) => void (issueOf(p).number = "12")],
   ])("rejects %s as invalid_params (CT-24 a-c)", async (_label, patch) => {
     const res = await resolveRoute(dbDeps(), rule(), payloadFor(repoName, patch));
     expect(res).toEqual({ ok: false, reason: "invalid_params" });
