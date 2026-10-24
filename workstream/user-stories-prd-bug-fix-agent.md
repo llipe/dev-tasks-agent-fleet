@@ -9,6 +9,7 @@
 
 | Version | Date       | Summary                                                  | Author           |
 | ------- | ---------- | -------------------------------------------------------- | ---------------- |
+| 2.3 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07, confirmed by @llipe 2026-10-24. DF-33: S-185-AC2 and S-188-AC2 use one open-claim definition (spec v2.4 §8.2): a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`; no row counts as finished with a warning, and an unknown status fails closed as `SUPABASE_UNAVAILABLE`. It lives in `markers.open_claims()`, which S-188 takes over. DF-185-01/02/03/05/06/07: S-185-AC3 names a cross-repo linked PR `owner/repo#M`; S-185-AC5 states the GitHub client's retry and fault semantics (spec v2.4 §8.9, §9); the S-185 edge-case matrix gains the cross-repo, missing-row and unknown-status cases. | product-engineer |
 | 2.2 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. DF-186-01: S-186-AC4 and S-194-AC3 now state `(ref <reference as written>)`, with `#N` → `(ref #N)` unchanged (D-65 amendment). DF-186-02: S-185, S-188 and S-199 L2 tests name the in-repo GitHub double instead of `responses`; S-185 adds a parser-level `Link`-header unit test. | product-engineer |
 | 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108): new S-200 (trigger guardrail scope and blocked 👎 reaction) in Wave C. | product-engineer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, D-88–D-106). Removed: S-183, S-187, S-196. Rewritten: S-184, S-185 (refusal checks and reply), S-186, S-188, S-190, S-197, S-198. Small updates: S-180, S-181, S-182 (board probe), S-189, S-194. New: S-199 (Projects v2 board updates). Wave B is unchanged except S-194. | product-engineer |
@@ -326,12 +327,18 @@ This story covers D-92 and D-104, spec §8.2, and PRD FR-5. It replaces the labe
   - `pull_request`: the issue payload has `pull_request`;
   - `closed`: `state != open`;
   - `linked_pr`: an open closing-reference PR, or an open PR with head ref `issue/<N>-…` (D-55);
-  - `active_run`: a trusted claim marker with no `pr`, `disposition` or `refusal` marker for its run, whose run is non-terminal in `v_runs`.
+  - `active_run`: an **open claim** for another run (spec §8.2, DF-33). A claim is open for run R when a trusted claim marker for R exists, no trusted `pr`, `disposition` or `refusal` marker for R exists, and R is not terminal in `v_runs.effective_status`. A claimed R with no `v_runs` row counts as finished, with a `run_event` warning (CT-34). An unknown `effective_status` fails closed as `failed`/`SUPABASE_UNAVAILABLE`.
   
   The `repo_gate` refusal comes from S-189.
-- [ ] **Reply:** each refusal posts exactly one comment. Its first line is `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->`, followed by the fixed text for that code and the run link. It contains no model text and adds **no** reaction (D-104).
+- [ ] **Reply:** each refusal posts exactly one comment. Its first line is `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->`, followed by the fixed text for that code and the run link. It contains no model text and adds **no** reaction (D-104). A linked PR in this repository is named `#M`; one in another repository is named `owner/repo#M`. When several match, a same-repo PR is named first, then the lowest `(owner, repo, number)` (DF-185-07).
 - [ ] A refusal ends `succeeded`/`not_applicable` with `result.reason = <code>`. It makes no claim and no board call (D-92, D-102).
-- [ ] A failure to post the reply is logged and the outcome is unchanged. Exhausted GitHub retries end `failed`/`GITHUB_UNAVAILABLE`; a Supabase read failure in `active_run` ends `failed`/`SUPABASE_UNAVAILABLE` (D-67).
+- [ ] A failure to post the reply is logged and the outcome is unchanged. Exhausted GitHub retries end `failed`/`GITHUB_UNAVAILABLE`; a Supabase read failure in `active_run` ends `failed`/`SUPABASE_UNAVAILABLE` (D-67). GitHub client semantics (spec §8.9, §9; DF-185-01/02/05/06):
+  - reads retry 5xx and transport errors; writes retry **only** rate limits, never a 5xx or a transport error;
+  - 3 attempts in total, inside a 120 s monotonic budget per logical operation; `Retry-After` is honoured up to 60 s, and a secondary limit with no header waits 60 s; a wait past the budget is `GITHUB_UNAVAILABLE`;
+  - a 3xx is never followed: `GITHUB_REQUEST_REJECTED` (`SUPABASE_UNAVAILABLE` on the `v_runs` read), and a redirected POST is never reported as posted;
+  - a page cap reached with pages left is `GITHUB_UNAVAILABLE`, never "no match";
+  - GraphQL `errors[]` of a transient type are retried, then `GITHUB_UNAVAILABLE`; any other is `GITHUB_REQUEST_REJECTED`;
+  - a token mint failure is `CREDENTIALS_UNAVAILABLE`; a refreshed token without `issues: write` is `GITHUB_PERMISSION_MISSING`.
 
 #### Business Rules
 
@@ -346,7 +353,7 @@ This story covers D-92 and D-104, spec §8.2, and PRD FR-5. It replaces the labe
 - **Unit Tests:** refusal decision table; fixed text per code (snapshot); a refusal marker never counts as a claim; `github_client.py` parses a real `Link` header (pagination), which the L2 double does not exercise (DF-186-02).
 - **Integration Tests:** L2 with the in-repo GitHub double (`tests/component/fake_github.py`, DF-186-02): each code posts one marked reply and makes zero claim or board calls; the happy path proceeds; a reply-post failure is logged and the outcome is unchanged.
 - **Manual/UI Testing:** `/bug-fix` on a PR, on a closed issue, and twice in quick succession on a fixture repo.
-- **Edge-Case Matrix:** an issue that is both closed and a PR (the first code wins); a linked PR from a fork; an `active_run` marker from an untrusted author (ignored); a terminal claim (proceeds).
+- **Edge-Case Matrix:** an issue that is both closed and a PR (the first code wins); a linked PR from a fork; a cross-repo closing PR (named `owner/repo#M`); an `active_run` marker from an untrusted author (ignored); a terminal claim (proceeds); a claim with no `v_runs` row (proceeds, with a warning); an unknown `effective_status` (`SUPABASE_UNAVAILABLE`).
 - **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/unit/test_refusal.py`, `tests/component/test_refusal.py`.
 - **Execution Commands:** `make test`.
 
@@ -453,7 +460,7 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 #### Acceptance Criteria
 
 - [ ] **Claim:** post the claim marker comment with the run link, then add 👀 to `trigger_comment_id` when it's present. No label or assignee changes (FR-7, FR-8).
-- [ ] **Post-check:** if a trusted claim with a lower comment id and no `pr` or `disposition` marker belongs to another non-terminal run, this run deletes its own comment and ends `not_applicable`, reason `active_run`. It makes no board call.
+- [ ] **Post-check:** if an **open claim** (spec §8.2, DF-33: a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`) with a lower comment id belongs to another run, this run deletes its own comment and ends `not_applicable`, reason `active_run`. It makes no board call. A claim with no `v_runs` row counts as finished, with a warning; an unknown `effective_status` is a post-check failure (`SUPABASE_UNAVAILABLE`, next AC).
 - [ ] **Ownership gate:** only a confirmed claim enables the disposition and board updates. If the post-check fails (`SUPABASE_UNAVAILABLE`), the run keeps its comment, applies nothing else and ends `failed` (D-81).
 - [ ] PRD AC-3: after a claim, the trigger comment has 👀, the issue has a claim comment with the run link and marker, and labels and assignees are unchanged.
 - [ ] PRD AC-20: two claims a moment apart produce one owner and one withdrawal.
@@ -465,6 +472,7 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 #### Technical Notes
 
 - `PANEL_BASE_URL` in `config.py` and `agentcore.json` builds the run link.
+- **One open-claim definition (DF-33).** The post-check and S-185's refusal (d) call the same `markers.open_claims()`. S-185 layered the `refusal` rule and the `v_runs` status resolution in `refusal.py` (`open_claim_runs`, `has_active_run`); this story moves them into `markers.open_claims()`, points `refusal.py` at it, and corrects the `markers.py` docstring ("a `refusal` never opens or closes a claim" becomes "never opens; a trusted one closes its own run's claim").
 
 #### Testing Requirements
 
@@ -486,7 +494,7 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 
 #### Files to Create/Modify
 
-- `claim.py`, `config.py`, `agentcore/agentcore.json`, `tests/component/test_claim.py`.
+- `claim.py`, `markers.py`, `refusal.py`, `config.py`, `agentcore/agentcore.json`, `tests/component/test_claim.py`, `tests/unit/test_markers.py`.
 
 #### Definition of Done Checklist
 
