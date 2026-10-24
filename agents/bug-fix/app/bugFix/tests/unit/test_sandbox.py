@@ -928,3 +928,90 @@ class TestCliDisallowedTools:
     def test_script_mode_never_gets_it(self, paths):
         cmd = Sandbox(paths).build_command(Mode.SCRIPT, ["npm", "-p", "x"])
         assert self.FLAG not in cmd
+
+
+# ---------------------------------------------------------------------------
+# qa-engineer completion gate (S-182): kill path on error, flag strength,
+# and nsswitch action-block parsing
+# ---------------------------------------------------------------------------
+
+
+class TestKillOnError:
+    """If waiting for the child fails for any reason, including a
+    ``BaseException`` such as ``KeyboardInterrupt``, the child gets SIGKILL
+    before the post-run sweep and reap, so no fixer process outlives the run."""
+
+    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt])
+    def test_child_is_killed_then_swept_and_reaped(self, paths, exc):
+        clock = FakeClock()
+        events: list[str] = []
+
+        class Exploding(FakeProc):
+            def poll(self):
+                raise exc("poll failed")
+
+        sb, _ = _sandbox(paths, Exploding(clock, exits_at=0.0), clock, events)
+        with pytest.raises(exc):
+            sb.run(["true"], cwd="/w", timeout=5)
+        assert events == [f"signal:{int(signal.SIGKILL)}", "sweep", "reap"]
+
+
+class TestCliDisallowedToolsStrength:
+    """A caller-supplied, weaker ``--disallowedTools`` value never replaces the
+    wrapper's own flag: only the exact full token counts as already present."""
+
+    @pytest.mark.parametrize(
+        "weaker",
+        ["--disallowedTools=WebFetch", "--disallowedTools=WebSearch", "--disallowedTools="],
+    )
+    def test_weaker_caller_value_still_gets_the_full_flag(self, paths, weaker):
+        cmd = Sandbox(paths).build_command(Mode.CLI, [paths.claude, weaker, "-p", "x"])
+        i = cmd.index(paths.claude)
+        assert cmd[i + 1] == sandbox.CLI_DISALLOWED_FLAG
+        assert weaker in cmd[i + 2 :]
+
+
+class TestNsswitchActionBlocks:
+    """glibc's nsswitch parser allows whitespace inside ``[...]`` blocks, around
+    ``=``, and several ``STATUS=action`` pairs in one block. Each line below
+    stops the lookup after ``files`` (empty ``/etc/hosts`` -> NOTFOUND ->
+    return), so ``myhostname`` is never reached and the preflight must refuse.
+
+    Known defect: ``_nss_hosts_reason`` only inspects single tokens that
+    start with ``[`` and contain ``=return``, so these forms pass the
+    preflight (fail-open). Mitigated in the shipped image: the Dockerfile
+    writes the exact line ``hosts: files myhostname dns`` and image-smoke
+    asserts it. Strict xfail: remove the marker once the parser is fixed."""
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="S-182 QA gap: multi-token [..=return] action blocks are not detected",
+    )
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "hosts: files [ NOTFOUND=return ] myhostname dns",
+            "hosts: files [NOTFOUND = return] myhostname dns",
+            "hosts: files [SUCCESS=continue NOTFOUND=return] myhostname dns",
+        ],
+    )
+    def test_spaced_or_multi_action_return_block_is_refused(self, nss, line):
+        Path(nss["nsswitch_path"]).write_text(f"{line}\n")
+        with pytest.raises(SandboxUnavailable, match="return"):
+            sandbox.check_localhost_resolution(**nss)
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "hosts: files [NOTFOUND=RETURN] myhostname dns",
+            "hosts: files [!UNAVAIL=return] myhostname dns",
+        ],
+    )
+    def test_single_token_return_block_any_case_is_refused(self, nss, line):
+        Path(nss["nsswitch_path"]).write_text(f"{line}\n")
+        with pytest.raises(SandboxUnavailable, match="can return before myhostname"):
+            sandbox.check_localhost_resolution(**nss)
+
+    def test_continue_block_ahead_of_myhostname_is_accepted(self, nss):
+        Path(nss["nsswitch_path"]).write_text("hosts: files [NOTFOUND=continue] myhostname dns\n")
+        assert sandbox.check_localhost_resolution(**nss) == "nss"
