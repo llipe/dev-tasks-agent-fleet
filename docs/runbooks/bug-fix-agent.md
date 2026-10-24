@@ -15,7 +15,7 @@ How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsd
 - A secret change affects every subsequent run.
 - The panel invoke policy is shared with the sibling agents. Change it only by adding resources.
 
-> **Status (stub, S-181):** the runtime runs the S-180 scaffold. The panel can't invoke it until S-184 seeds the `agents` row. The `/bug-fix` webhook rule, the board, and live verification are documented in S-197. Follow-up #421 adds a panel Settings UI for the Projects token.
+> **Status (Wave A):** the runtime runs the scaffold and answers `not_applicable` until the fix loop lands (Wave B). S-184 adds the `agents` seed row (migration `20261024130000_seed_bug_fix_agent.sql`); the panel can invoke the agent once that migration is applied to the live project (see "Seed row"). The `/bug-fix` webhook rule, the board, and live verification are documented in S-197. Follow-up #421 adds a panel Settings UI for the Projects token.
 
 ## Preconditions
 
@@ -49,6 +49,19 @@ How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsd
 2. Deploy: `agentcore deploy -y`. This builds the image in CodeBuild and updates the runtime.
 3. If a deploy recreates the ECR repository with a **new KMS key**, update `EcrImageDecrypt` in `role-policy.json` to the new key ARN, then `aws iam put-role-policy --role-name agent-fleet-bug-fix-runtime --policy-name bug-fix-runtime --policy-document file://infra/changes/20261023-bug-fix-runtime/role-policy.json`. Otherwise the runtime can't pull its image.
 4. Commit the CLI's `agents/bug-fix/agentcore/.cli/deployed-state.json`.
+
+### Seed row (S-184): apply, verify, roll back
+
+The `agents` row for `bug-fix` lives in `supabase/migrations/20261024130000_seed_bug_fix_agent.sql`, mirrored in `supabase/seed.sql`. It holds the runtime ARN, the 3600/120/300 timeouts, and the params schema (`issue_number` is the only required key, `additionalProperties: false`). Apply it to the live project only through `/infra-engineer`, with explicit approval.
+
+1. Preview: `supabase db push --dry-run`. It lists every migration the live project hasn't recorded. Stop if it lists anything besides this one.
+2. Apply: `supabase db push`.
+3. Verify: `select slug, requires_repository, params_schema->'required' from agents where slug = 'bug-fix';` should return `bug-fix | t | ["issue_number"]`. Then open `/agents/bug-fix/invoke` and check that `issue_number` is the only required field.
+4. Re-applying the upsert keeps one row and restores every field except `is_enabled`, so an operator's disable sticks.
+
+Rollback: `delete from agents where slug = 'bug-fix';`.
+- It fails while any `runs` row references the agent, because `runs.agent_id` is `ON DELETE RESTRICT`.
+- It **cascades** to the agent's `webhook_rules` and `schedules`, so it would silently remove the `/bug-fix` rule. Export them first: `select * from webhook_rules where agent_id = (select id from agents where slug = 'bug-fix');`, and the same for `schedules`.
 
 ### Run the sandbox probe (S-182, D-70)
 
@@ -106,7 +119,7 @@ The fleet App (`4687256`, installation `156226839`) needs **Issues: read and wri
 - **Runtime:** `aws bedrock-agentcore-control get-agent-runtime --region us-east-1 --agent-runtime-id bugfix_bug_fix-BiuPsdGSPK` shows `READY`, and `roleArn` = `agent-fleet-bug-fix-runtime`.
 - **Permissions:** `aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::755641879575:role/agent-fleet-bug-fix-runtime --action-names secretsmanager:GetSecretValue bedrock:InvokeModel --resource-arns <the 4 secret ARNs> <a Sonnet foundation-model ARN>` shows the four secrets `allowed` and Bedrock `implicitDeny`. The reference evidence is `infra/changes/20261023-bug-fix-runtime/backup/simulation-8a.json`.
 - **Panel invoke:** simulating `bedrock-agentcore:InvokeAgentRuntime` for role `panel-agentcore-invoke` on the bug-fix runtime ARN is `allowed`, and still `allowed` for both sibling runtimes.
-- **Smoke invoke:** `aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --agent-runtime-arn arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/bugfix_bug_fix-BiuPsdGSPK --runtime-session-id <≥33 chars> --payload "$(printf '{"run_id":"<uuid>","repository_org":"llipe","repository_name":"bug-fix-smoke","base_branch":"main","params":{}}' | base64)" out.json` returns HTTP 200. While it runs the stub, it answers `not_applicable` / `not yet implemented`.
+- **Smoke invoke:** `aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --agent-runtime-arn arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/bugfix_bug_fix-BiuPsdGSPK --runtime-session-id <≥33 chars> --payload "$(printf '{"run_id":"<uuid>","repository_org":"llipe","repository_name":"bug-fix-smoke","base_branch":"main","params":{"issue_number":<N>}}' | base64)" out.json` returns HTTP 200. While it runs the stub, it answers `not_applicable` / `not yet implemented`.
 - **App token:** minting an installation token shows `permissions.issues == "write"` (see `result.md`, step 10b). Print only the permissions, never the token.
 
 ## Rollback

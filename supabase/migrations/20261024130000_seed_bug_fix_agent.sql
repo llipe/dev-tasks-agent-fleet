@@ -29,6 +29,9 @@
 --
 -- Rollback (no run may reference the row: runs.agent_id is ON DELETE RESTRICT):
 --   delete from agents where slug = 'bug-fix';
+-- Warning: the delete CASCADES to the agent's webhook_rules and schedules
+-- rows, so it would silently remove the `/bug-fix` rule (S-197). Export them
+-- first (docs/runbooks/bug-fix-agent.md, "Seed row").
 -- =====================================================================
 
 insert into agents (
