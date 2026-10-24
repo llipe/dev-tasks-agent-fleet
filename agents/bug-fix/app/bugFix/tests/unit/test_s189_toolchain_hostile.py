@@ -4,7 +4,7 @@ completion gate; FR-6, D-63, D-112).
 The repo gate reads repo-controlled text as root, so parsing must never
 execute anything, and the gate argv must come from the fixed gate names only,
 whatever the repository says. QA-189-04 (a ``packageManager`` field without
-its lockfile passes the gate) is pinned with ``xfail(strict=True)``.
+its lockfile passed the gate) was a strict xfail; the fix round removed it.
 """
 
 from __future__ import annotations
@@ -116,19 +116,6 @@ def test_python_without_install_is_the_d112_miss():
     assert [m.describe() for m in gate.missing] == ["missing install target"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-189-04: detect_package_manager returns the `packageManager` field "
-        "without checking that the manager's lockfile exists, so a JS repo with "
-        "`packageManager` and no (or the other manager's) lockfile passes the repo "
-        "gate; the frozen install then fails and the run ends INSTALL_FAILED "
-        "(counted by the breaker) instead of refusal repo_gate 'lockfile', the "
-        "item refusal.REPO_GATE_ITEMS added for 'no lockfile for a frozen install "
-        "(D-63)'. Expected: the lockfile miss whenever the chosen manager's "
-        "lockfile is absent."
-    ),
-)
 @pytest.mark.parametrize(
     ("field", "lock"),
     [("pnpm@9.1.0", None), ("npm@10.8.0", None), ("npm@10.8.0", "pnpm-lock.yaml")],

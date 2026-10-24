@@ -6,7 +6,9 @@
 # optional-script contract. Added the Python stack (Makefile targets), static
 # Makefile parsing, the `.claude/agents/developer.md` check and the repo gate,
 # all read through a RepoReader rather than the filesystem (D-06, D-18, D-19,
-# D-112).
+# D-112). S-189 fix round: a packageManager field needs its own lockfile;
+# yarn and bun are refused by name (QA-189-04); the makefile is the one GNU
+# make reads (DF-189-08).
 """
 Toolchain detection and the repo gate (spec §8.7 ``checkout``; FR-6;
 D-06, D-17, D-18, D-19, D-63, D-112).
@@ -15,13 +17,19 @@ D-06, D-17, D-18, D-19, D-63, D-112).
 exists too (pinned, TC-189-05). Otherwise a root ``Makefile`` means Python.
 Otherwise the repo has no supported stack.
 
-**JS/TS** (D-17). The package manager is the ``packageManager`` field when it
-names pnpm or npm, then ``pnpm-lock.yaml``, then ``package-lock.json``. Gates
+**JS/TS** (D-17). The package manager is the ``packageManager`` field, which
+must name pnpm or npm and have that manager's lockfile (``pnpm-lock.yaml`` or
+``package-lock.json``; else the ``lockfile`` miss). Without the field it is
+``pnpm-lock.yaml``, then ``package-lock.json``. yarn and bun (a
+``packageManager: yarn@…`` or ``bun@…``, or only a ``yarn.lock``, ``bun.lockb``
+or ``bun.lock``) are the :data:`UNSUPPORTED_PM_ITEM` miss (QA-189-04). Gates
 are root ``package.json`` scripts, run as ``<pm> run <name>``. Install is
 frozen: ``pnpm install --frozen-lockfile`` or ``npm ci`` (D-63). A monorepo is
 handled at its root: the root scripts and the root lockfile.
 
-**Python** (D-18, D-19, D-112). Gates are ``Makefile`` targets, run as
+**Python** (D-18, D-19, D-112). The makefile is the first of
+:data:`MAKEFILE_NAMES` that exists, GNU make's own order (DF-189-08): make
+reads that one and ignores the rest, so the gate does too. Gates are its targets, run as
 ``make <name>``. Install is ``make install``; a repo without an ``install``
 target is refused ("missing install target").
 
@@ -53,6 +61,8 @@ from typing import Protocol
 DEVELOPER_MD = ".claude/agents/developer.md"
 PACKAGE_JSON = "package.json"
 MAKEFILE = "Makefile"
+# GNU make's default makefile order: it reads the first that exists.
+MAKEFILE_NAMES: tuple[str, ...] = ("GNUmakefile", "makefile", MAKEFILE)
 MAX_FILE_BYTES = 1024 * 1024
 
 # Supported package managers, in detection precedence order for lockfiles.
@@ -62,6 +72,8 @@ _LOCKFILES: tuple[tuple[str, str], ...] = (
 )
 
 _SUPPORTED = {"pnpm", "npm"}
+# Lockfiles of managers bug-fix doesn't run (QA-189-04).
+_UNSUPPORTED_LOCKFILES: tuple[str, ...] = ("yarn.lock", "bun.lockb", "bun.lock")
 
 # The four blocking gates, by logical name, in run order (D-14).
 GATE_ORDER: tuple[str, ...] = ("test", "lint", "format", "typecheck")
@@ -89,11 +101,13 @@ INSTALL_ARGV: Mapping[str, tuple[str, ...]] = {
 
 MANIFEST_ITEM = "package.json or Makefile"
 LOCKFILE_ITEM = "lockfile"
+UNSUPPORTED_PM_ITEM = "supported package manager (pnpm or npm)"
 # Every item a miss can name. refusal.REPO_GATE_ITEMS must contain all of them.
 MISS_ITEMS: tuple[str, ...] = (
     DEVELOPER_MD,
     MANIFEST_ITEM,
     LOCKFILE_ITEM,
+    UNSUPPORTED_PM_ITEM,
     *dict.fromkeys([*JS_GATE_NAMES.values(), *PY_GATE_NAMES.values()]),
     PY_INSTALL_TARGET,
 )
@@ -117,6 +131,15 @@ class RepoReader(Protocol):
     def read_text(self, path: str) -> str | None:
         """The text of the regular file at repo-relative ``path``, or ``None``."""
         ...
+
+
+def _exists(reader: RepoReader, path: str) -> bool:
+    """``path`` has an entry of any kind (a symlink or an oversized file
+    included). Readers without ``exists`` fall back to ``read_text``."""
+    exists = getattr(reader, "exists", None)
+    if exists is not None:
+        return bool(exists(path))
+    return reader.read_text(path) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +167,10 @@ class DirReader:
 
     def __init__(self, root: str) -> None:
         self.root = root
+
+    def exists(self, path: str) -> bool:
+        parts = _safe_rel(path)
+        return parts is not None and os.path.lexists(os.path.join(self.root, *parts))
 
     def read_text(self, path: str) -> str | None:
         parts = _safe_rel(path)
@@ -196,24 +223,43 @@ def detect_package_manager(reader: RepoReader) -> str:
     Detect the package manager for the repository.
 
     Precedence:
-      1. ``packageManager`` field in package.json (e.g. ``"pnpm@9.1.0"``),
-         when it names a supported manager.
+      1. ``packageManager`` field in package.json (e.g. ``"pnpm@9.1.0"``).
+         It must name pnpm or npm (else ``UNSUPPORTED_PACKAGE_MANAGER``), and
+         that manager's lockfile must exist (else ``NO_LOCKFILE``): corepack
+         runs the named manager whatever lockfile is there (QA-189-04).
       2. Presence of ``pnpm-lock.yaml`` -> pnpm.
       3. Presence of ``package-lock.json`` -> npm.
+      4. Only ``yarn.lock``, ``bun.lockb`` or ``bun.lock`` ->
+         ``UNSUPPORTED_PACKAGE_MANAGER``.
 
-    Raises ``ToolchainError('NO_PACKAGE_MANAGER', ...)`` if none match.
+    Lockfiles are checked for presence, not read, so a lockfile over the
+    reader's size cap still counts. Raises
+    ``ToolchainError('NO_PACKAGE_MANAGER', ...)`` if nothing matches.
     """
     pkg = _read_package_json(reader)
 
     field = pkg.get("packageManager")
-    if isinstance(field, str) and field:
+    if isinstance(field, str) and field.strip():
         name = field.split("@", 1)[0].strip().lower()
-        if name in _SUPPORTED:
-            return name
+        if name not in _SUPPORTED:
+            raise ToolchainError(
+                "UNSUPPORTED_PACKAGE_MANAGER", "packageManager names neither pnpm nor npm"
+            )
+        lockfile = dict(_LOCKFILES)[name]
+        if not _exists(reader, lockfile):
+            raise ToolchainError(
+                "NO_LOCKFILE", f"packageManager is {name} but {lockfile} is absent"
+            )
+        return name
 
     for name, lockfile in _LOCKFILES:
-        if reader.read_text(lockfile) is not None:
+        if _exists(reader, lockfile):
             return name
+
+    if any(_exists(reader, lockfile) for lockfile in _UNSUPPORTED_LOCKFILES):
+        raise ToolchainError(
+            "UNSUPPORTED_PACKAGE_MANAGER", "only a yarn or bun lockfile is present"
+        )
 
     searched = ", ".join(lockfile for _, lockfile in _LOCKFILES)
     raise ToolchainError(
@@ -325,7 +371,8 @@ def parse_make_targets(text: str) -> frozenset[str]:
 @dataclass(frozen=True)
 class GateMiss:
     """One missing repo-gate item: ``item`` (from :data:`MISS_ITEMS`) and its
-    ``kind``: ``file``, ``manifest``, ``lockfile``, ``script`` or ``target``."""
+    ``kind``: ``file``, ``manifest``, ``lockfile``, ``manager``, ``script`` or
+    ``target``."""
 
     item: str
     kind: str
@@ -389,12 +436,23 @@ class RepoGate:
         return "repo gate: " + "; ".join(m.describe() for m in self.missing)
 
 
+def makefile_name(reader: RepoReader) -> str | None:
+    """The makefile GNU make would read: the first of :data:`MAKEFILE_NAMES`
+    with an entry of any kind (DF-189-08). A symlinked or oversized one is
+    still the one make uses, so the gate never falls through to the next."""
+    for name in MAKEFILE_NAMES:
+        if _exists(reader, name):
+            return name
+    return None
+
+
 def detect_stack(reader: RepoReader) -> Stack | None:
-    """JS when a root ``package.json`` exists (it wins over a ``Makefile``),
-    Python when only a root ``Makefile`` exists, else ``None``."""
+    """JS when a root ``package.json`` exists (it wins over a makefile),
+    Python when only a root makefile exists (any of :data:`MAKEFILE_NAMES`),
+    else ``None``."""
     if reader.read_text(PACKAGE_JSON) is not None:
         return Stack.JS
-    if reader.read_text(MAKEFILE) is not None:
+    if makefile_name(reader) is not None:
         return Stack.PYTHON
     return None
 
@@ -419,9 +477,12 @@ def check_repo_gate(reader: RepoReader) -> RepoGate:
         scripts = package_scripts(reader)
         try:
             manager: str | None = detect_package_manager(reader)
-        except ToolchainError:
+        except ToolchainError as exc:
             manager = None
-            missing.append(GateMiss(LOCKFILE_ITEM, "lockfile"))
+            if exc.code == "UNSUPPORTED_PACKAGE_MANAGER":
+                missing.append(GateMiss(UNSUPPORTED_PM_ITEM, "manager"))
+            else:
+                missing.append(GateMiss(LOCKFILE_ITEM, "lockfile"))
         for logical in GATE_ORDER:
             if JS_GATE_NAMES[logical] not in scripts:
                 missing.append(GateMiss(JS_GATE_NAMES[logical], "script"))
@@ -432,7 +493,10 @@ def check_repo_gate(reader: RepoReader) -> RepoGate:
             else None
         )
     else:
-        targets = parse_make_targets(reader.read_text(MAKEFILE) or "")
+        # A makefile the reader can't read (a symlink, too big) has no
+        # targets here: every gate is named missing, never a different file.
+        name = makefile_name(reader)
+        targets = parse_make_targets((reader.read_text(name) if name else None) or "")
         for logical in GATE_ORDER:
             if PY_GATE_NAMES[logical] not in targets:
                 missing.append(GateMiss(PY_GATE_NAMES[logical], "target"))

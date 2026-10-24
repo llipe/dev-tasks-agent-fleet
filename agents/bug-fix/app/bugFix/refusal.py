@@ -98,16 +98,16 @@ REPLY_TEXT: Mapping[str, str] = {
         "another bug-fix run is already working on #{issue}. "
         "Wait for it to finish, then comment `/bug-fix` again if it's still needed."
     ),
-    "repo_gate": (
-        "this repository is missing `{detail}`, which bug-fix needs before it can work here."
-    ),
+    # ``{detail}`` is the item's fixed phrase from REPO_GATE_PHRASES (DF-189-05).
+    "repo_gate": "this repository is {detail}, which bug-fix needs before it can work here.",
     "invalid_params": "the run parameter `{detail}` is missing or invalid.",
 }
 # The closed sets a reply's variable parts come from (RT-15 oracle (2)).
 INVALID_PARAMS_KEYS: tuple[str, ...] = (*SCHEMA_KEYS, "params")
 # S-189 adds the items ``toolchain.MISS_ITEMS`` can name: no manifest at all,
-# no lockfile for a frozen install (D-63), and Python's ``install`` target
-# (D-112). A unit test pins MISS_ITEMS ⊆ REPO_GATE_ITEMS.
+# no lockfile for a frozen install (D-63), Python's ``install`` target
+# (D-112), and (fix round, QA-189-04) a manager other than pnpm or npm. A unit
+# test pins MISS_ITEMS ⊆ REPO_GATE_ITEMS.
 REPO_GATE_ITEMS: tuple[str, ...] = (
     ".claude/agents/developer.md",
     "package.json",
@@ -120,7 +120,32 @@ REPO_GATE_ITEMS: tuple[str, ...] = (
     "package.json or Makefile",
     "lockfile",
     "install",
+    "supported package manager (pnpm or npm)",
 )
+# The fixed phrase each item renders as (DF-189-05): it says what kind of
+# thing is missing. ``install`` keeps D-112's wording, "missing install
+# target". Item names shared by both stacks (test, lint, typecheck) name both
+# kinds, because the reply gets the item only. No phrase holds user text.
+_GATE = "missing the `{0}` gate (a `package.json` script or a Makefile target)"
+REPO_GATE_PHRASES: Mapping[str, str] = {
+    ".claude/agents/developer.md": "missing `.claude/agents/developer.md`",
+    "package.json": "missing `package.json`",
+    "Makefile": "missing `Makefile`",
+    "test": _GATE.format("test"),
+    "lint": _GATE.format("lint"),
+    "format:check": "missing the `package.json` script `format:check`",
+    "format-check": "missing the Makefile target `format-check`",
+    "typecheck": _GATE.format("typecheck"),
+    "package.json or Makefile": "missing a root `package.json` or Makefile",
+    "lockfile": (
+        "missing the lockfile its package manager needs "
+        "(`pnpm-lock.yaml` for pnpm, `package-lock.json` for npm)"
+    ),
+    "install": "missing install target (the Makefile target `install`)",
+    "supported package manager (pnpm or npm)": (
+        "missing a supported package manager (pnpm or npm; yarn and bun are not supported)"
+    ),
+}
 _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {
     "repo_gate": REPO_GATE_ITEMS,
     "invalid_params": INVALID_PARAMS_KEYS,
@@ -219,9 +244,10 @@ def reply_line(refusal: Refusal, issue_number: int | None) -> str:
         raise ValueError("the issue number must be a positive integer")
     if issue_number is not None and not _positive(issue_number):
         raise ValueError("the issue number must be a positive integer")
-    return REPLY_PREFIX + REPLY_TEXT[code].format(
-        issue=issue_number, pr=pr_ref, detail=refusal.detail
-    )
+    detail = refusal.detail
+    if code == "repo_gate" and detail is not None:  # in the closed set (checked above)
+        detail = REPO_GATE_PHRASES[detail]
+    return REPLY_PREFIX + REPLY_TEXT[code].format(issue=issue_number, pr=pr_ref, detail=detail)
 
 
 def build_reply(

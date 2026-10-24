@@ -33,6 +33,7 @@ from checkout import (
 )
 from issues import IssuesClient
 from markers import parse_block
+from refusal import REPO_GATE_PHRASES
 from scrubber import SecretSet
 from tests.component.fake_github import APP_ID, TOKEN, FakeGitHub
 from tests.component.repo_fixtures import (
@@ -356,7 +357,7 @@ class TestRepoGate:
         body = writes[0].json["body"]
         block = parse_block(body)
         assert [(m.kind, m.run_id, m.reason) for m in block] == [("refusal", RUN, "repo_gate")]
-        assert f"`{item}`" in body
+        assert REPO_GATE_PHRASES[item] in body  # DF-189-05: the fixed phrase
         assert LINK in body
         # No reaction, no install, no gates: nothing ran in the sandbox.
         assert not any("reactions" in w.path for w in writes)

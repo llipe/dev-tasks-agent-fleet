@@ -82,8 +82,17 @@ class TestDetection:
     @pytest.mark.parametrize(
         ("files", "stack", "manager"),
         [
-            ({"package.json": pkg(packageManager="pnpm@10.11.0")}, Stack.JS, "pnpm"),
-            ({"package.json": pkg(packageManager="npm@10.0.0")}, Stack.JS, "npm"),
+            # The field needs its own lockfile (QA-189-04).
+            (
+                {"package.json": pkg(packageManager="pnpm@10.11.0"), "pnpm-lock.yaml": "x"},
+                Stack.JS,
+                "pnpm",
+            ),
+            (
+                {"package.json": pkg(packageManager="npm@10.0.0"), "package-lock.json": "{}"},
+                Stack.JS,
+                "npm",
+            ),
             ({"package.json": pkg(), "pnpm-lock.yaml": "x"}, Stack.JS, "pnpm"),
             ({"package.json": pkg(), "package-lock.json": "{}"}, Stack.JS, "npm"),
             ({"Makefile": "test:\n"}, Stack.PYTHON, "make"),
@@ -109,8 +118,22 @@ class TestDetection:
         assert "missing package.json or Makefile" in gate.summary
 
     def test_packagemanager_field_beats_lockfiles(self):
-        reader = MapReader({"package.json": pkg(packageManager="npm@10"), "pnpm-lock.yaml": "x"})
+        reader = MapReader(
+            {
+                "package.json": pkg(packageManager="npm@10"),
+                "pnpm-lock.yaml": "x",
+                "package-lock.json": "{}",
+            }
+        )
         assert detect_package_manager(reader) == "npm"
+
+    def test_packagemanager_field_without_its_lockfile_raises(self):
+        """QA-189-04: corepack runs the named manager, so the other manager's
+        lockfile can't stand in for it."""
+        reader = MapReader({"package.json": pkg(packageManager="npm@10"), "pnpm-lock.yaml": "x"})
+        with pytest.raises(ToolchainError) as info:
+            detect_package_manager(reader)
+        assert info.value.code == "NO_LOCKFILE"
 
     def test_pnpm_lockfile_beats_npm_lockfile(self):
         reader = MapReader(
@@ -118,10 +141,18 @@ class TestDetection:
         )
         assert detect_package_manager(reader) == "pnpm"
 
-    @pytest.mark.parametrize("field", ["yarn@4.1.0", "bun@1", "", 7, None])
-    def test_unsupported_packagemanager_falls_through_to_lockfiles(self, field):
+    @pytest.mark.parametrize("field", ["", "  ", 7, None])
+    def test_an_empty_or_non_string_field_falls_through_to_lockfiles(self, field):
         reader = MapReader({"package.json": pkg(packageManager=field), "package-lock.json": "{}"})
         assert detect_package_manager(reader) == "npm"
+
+    @pytest.mark.parametrize("field", ["yarn@4.1.0", "bun@1"])
+    def test_a_yarn_or_bun_field_is_unsupported(self, field):
+        """QA-189-04: it no longer falls through to a lockfile."""
+        reader = MapReader({"package.json": pkg(packageManager=field), "package-lock.json": "{}"})
+        with pytest.raises(ToolchainError) as info:
+            detect_package_manager(reader)
+        assert info.value.code == "UNSUPPORTED_PACKAGE_MANAGER"
 
     def test_no_manager_raises_with_code(self):
         with pytest.raises(ToolchainError) as info:

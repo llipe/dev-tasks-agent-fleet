@@ -743,6 +743,11 @@ class TreeReader:
         self.git = git
         self.rev = rev
 
+    def exists(self, path: str) -> bool:
+        """``path`` is an entry of any mode (a symlink or an oversized blob
+        included), at exactly that path."""
+        return _safe_rel(path) and path in self.git.ls_tree(self.rev, [path])
+
     def read_text(self, path: str) -> str | None:
         if not _safe_rel(path):
             return None

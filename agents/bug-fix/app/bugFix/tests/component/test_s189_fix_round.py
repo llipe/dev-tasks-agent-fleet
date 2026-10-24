@@ -303,3 +303,86 @@ class TestTarCaps:
         assert out.status == "failed"
         assert out.error_code == CLONE_FAILED
         assert "tar cap" in out.summary
+
+
+# ---------------------------------------------------------------------------
+# QA-189-04, DF-189-05, DF-189-08 through the real TreeReader and the reply
+# ---------------------------------------------------------------------------
+
+_DEV = {".claude/agents/developer.md": "# developer\n"}
+_SCRIPTS = '{"name":"x","version":"1.0.0","scripts":{"test":"t","lint":"l","format:check":"f","typecheck":"c"}%s}'
+_MK = "install:\n\t@true\ntest:\n\t@true\nlint:\n\t@true\nformat-check:\n\t@true\ntypecheck:\n\t@true\n"
+
+
+class TestRepoGateFixRound:
+    def _refused(self, env):
+        out = env.checkout()
+        assert out.status == "refused", out.summary
+        writes = env.gh.writes()
+        assert len(writes) == 1
+        return out, writes[0].json["body"]
+
+    def test_a_yarn_repo_is_refused_as_an_unsupported_manager(self, tmp_path):
+        files = {**_DEV, "package.json": _SCRIPTS % "", "yarn.lock": "# yarn\n"}
+        env = Env(tmp_path, None, files=files)
+        out, body = self._refused(env)
+        assert "yarn and bun are not supported" in body
+        assert "lockfile" not in body
+        assert "supported package manager (pnpm or npm)" in out.summary
+
+    def test_a_pnpm_field_without_pnpm_lock_is_refused_before_install(self, tmp_path):
+        files = {
+            **_DEV,
+            "package.json": _SCRIPTS % ',"packageManager":"pnpm@10.11.0"',
+            "package-lock.json": "{}",
+        }
+        env = Env(tmp_path, None, files=files)
+        sb = StubSandbox()
+        out = env.checkout(sb)
+        assert out.status == "refused"
+        assert sb.calls == []  # never INSTALL_FAILED (breaker), always the refusal
+        assert "`pnpm-lock.yaml` for pnpm" in env.gh.writes()[0].json["body"]
+
+    def test_a_lockfile_over_the_read_cap_still_counts(self, tmp_path):
+        """Presence, not content: a 2 MiB pnpm-lock.yaml is a lockfile."""
+        big = "lockfileVersion: '9.0'\n" + "# pad\n" * (2 * 1024 * 1024 // 6)
+        env = Env(tmp_path, "js-pnpm-ok", files={"pnpm-lock.yaml": big})
+        out = env.checkout()
+        assert out.status == "proceed", out.summary
+
+    def test_python_without_install_replies_missing_install_target(self, tmp_path):
+        env = Env(tmp_path, "py-no-install")
+        _, body = self._refused(env)
+        assert "this repository is missing install target (the Makefile target `install`)" in body
+
+    def test_a_gnumakefile_beside_a_makefile_is_the_one_judged(self, tmp_path):
+        files = {**_DEV, "Makefile": _MK, "GNUmakefile": "test:\n\t@true\n"}
+        env = Env(tmp_path, None, files=files)
+        out, _ = self._refused(env)
+        assert out.repo_gate is not None
+        assert {m.item for m in out.repo_gate.missing} == {
+            "lint",
+            "format-check",
+            "typecheck",
+            "install",
+        }
+
+    def test_a_gnumakefile_alone_passes(self, tmp_path):
+        env = Env(tmp_path, None, files={**_DEV, "GNUmakefile": _MK})
+        out = env.checkout()
+        assert out.status == "proceed", out.summary
+
+    def test_tree_reader_exists_sees_symlinks_and_big_blobs(self, tmp_path):
+        world = World(tmp_path, files={"big.txt": "x" * (2 * 1024 * 1024)})
+        os.symlink("Makefile", world.remote.src / "GNUmakefile")
+        from tests.component.repo_fixtures import helper_git
+
+        helper_git("add", "-A", cwd=world.remote.src)
+        helper_git("commit", "-q", "-m", "l", cwd=world.remote.src)
+        helper_git("push", "-q", str(world.remote.bare), "main", cwd=world.remote.src)
+        git = world.git()
+        reader = git.reader(git.base_sha)
+        assert reader.exists("GNUmakefile") and reader.read_text("GNUmakefile") is None
+        assert reader.exists("big.txt") and reader.read_text("big.txt") is None
+        assert not reader.exists("makefile")
+        assert not reader.exists(".git")
