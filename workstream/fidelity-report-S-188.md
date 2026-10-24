@@ -144,6 +144,22 @@ The case for deciding now: S-190 wires these outcomes into `main.py`, so leaving
 
 ---
 
+## 6. Reconciliation
+
+`product-engineer` write-back, confirmed by @llipe 2026-10-24 (same PR as D-112 / OQ-1).
+
+| Finding | Route |
+| --- | --- |
+| DF-188-01, DF-188-02, DF-188-05 | Spec v2.5 / test plan v2.3 (also stories v2.4, matrix v2.2, D-67 amendment). The `github_client.py` docstring fix for DF-188-02 is a small code follow-up. |
+| DF-188-03 | DF-38 race-loss part decided: a non-404 `DELETE` fault ends `failed` with its D-67 code, no disposition, no board call; a 404 ends `not_applicable`/`active_run` (spec v2.5 §8.6, §8.9; D-54 amendment; TC-185-14) |
+| DF-188-04 | Accepted as is |
+| DF-188-06 | The #370 body is refreshed by the planner |
+| DF-188-07 | Planner bookkeeping |
+
+Non-blocking: ran after the #454 merge.
+
+---
+
 ## Output contract
 
 - Mode / phase: Audit / Phase 4 complete.

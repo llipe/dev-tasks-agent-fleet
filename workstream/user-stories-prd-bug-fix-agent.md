@@ -9,6 +9,7 @@
 
 | Version | Date       | Summary                                                  | Author           |
 | ------- | ---------- | -------------------------------------------------------- | ---------------- |
+| 2.4 | 2026-10-24 | D-112 / OQ-1 and drift reconciliation of DF-38 (race-loss part) and S-188 audit findings DF-188-01/02/05, confirmed by @llipe 2026-10-24, against spec v2.5. D-112 / OQ-1: S-189's "OQ-1 resolved" AC, context, technical notes, edge-case matrix and steps now state the rule: a Python repo must provide `make install`, run in the sandbox; without it, refusal `repo_gate` "missing install target", `not_applicable`, before any issue change (FR-5); JS unchanged. DF-188-01: the S-188 technical note names both halves of the open-claim rule, `markers.open_claims()` (markers) and `refusal.active_claim_runs()` (`v_runs` status), shared by refusal (d) and the race check. DF-38 (race-loss part) and DF-188-02: S-188 gains a business rule for withdrawal faults (a non-404 `DELETE` fault → `failed` with its D-67 code, no disposition, no board call; a 404 → `not_applicable`/`active_run`; the single-id `DELETE` is retried on a 5xx). DF-188-05 is a test-plan change only. | product-engineer |
 | 2.3 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07, confirmed by @llipe 2026-10-24. DF-33: S-185-AC2 and S-188-AC2 use one open-claim definition (spec v2.4 §8.2): a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`; no row counts as finished with a warning, and an unknown status fails closed as `SUPABASE_UNAVAILABLE`. It lives in `markers.open_claims()`, which S-188 takes over. DF-185-01/02/03/05/06/07: S-185-AC3 names a cross-repo linked PR `owner/repo#M`; S-185-AC5 states the GitHub client's retry and fault semantics (spec v2.4 §8.9, §9); the S-185 edge-case matrix gains the cross-repo, missing-row and unknown-status cases. | product-engineer |
 | 2.2 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. DF-186-01: S-186-AC4 and S-194-AC3 now state `(ref <reference as written>)`, with `#N` → `(ref #N)` unchanged (D-65 amendment). DF-186-02: S-185, S-188 and S-199 L2 tests name the in-repo GitHub double instead of `responses`; S-185 adds a parser-level `Link`-header unit test. | product-engineer |
 | 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108): new S-200 (trigger guardrail scope and blocked 👎 reaction) in Wave C. | product-engineer |
@@ -468,11 +469,12 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 #### Business Rules
 
 - The claim never assigns anyone (FR-8).
+- **Withdrawal faults** (DF-38 race-loss part, decided by @llipe 2026-10-24; D-54 amendment; spec v2.5 §8.6, §8.9). The loser's `DELETE` of its own claim comment is retried on a 5xx or a transport error, because it is idempotent (DF-188-02, D-67 amendment). A 404 means the comment is already gone, and the run ends `not_applicable`/`active_run`. Any other fault ends `failed` with its D-67 code (`GITHUB_UNAVAILABLE` or `GITHUB_REQUEST_REJECTED`), with no disposition and no board call. The stranded comment stops counting once the run is terminal and can never outrank the winner.
 
 #### Technical Notes
 
 - `PANEL_BASE_URL` in `config.py` and `agentcore.json` builds the run link.
-- **One open-claim definition (DF-33).** The post-check and S-185's refusal (d) call the same `markers.open_claims()`. S-185 layered the `refusal` rule and the `v_runs` status resolution in `refusal.py` (`open_claim_runs`, `has_active_run`); this story moves them into `markers.open_claims()`, points `refusal.py` at it, and corrects the `markers.py` docstring ("a `refusal` never opens or closes a claim" becomes "never opens; a trusted one closes its own run's claim").
+- **One open-claim definition (DF-33), in two shared halves (DF-188-01, v2.4).** The marker half is `markers.open_claims()`: trusted claims not closed by a trusted `pr`, `disposition` or `refusal` marker for the same run, with no I/O. The `v_runs` status half is `refusal.active_claim_runs()`, which resolves those runs (no row = finished with a warning; unknown status = `SUPABASE_UNAVAILABLE`). Refusal (d) and the race post-check both call `active_claim_runs()`, the race check with `before` = this run's claim comment id, so neither half is duplicated. S-188 removed the duplicate `refusal` rule from `refusal.py` and corrected the `markers.py` docstring ("a `refusal` never opens or closes a claim" became "never opens; a trusted one closes its own run's claim").
 
 #### Testing Requirements
 
@@ -513,7 +515,7 @@ So that the agent only works where it can prove a fix (FR-5, FR-6).
 
 #### Context
 
-This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It also resolves spec OQ-1 (the Python install contract).
+This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It also implements D-112, which resolved spec OQ-1 (the Python install contract).
 
 #### Acceptance Criteria
 
@@ -522,9 +524,9 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 - [ ] The base tree is materialized into a fresh `/work/repo` with `git archive <base>` piped into `tar -x` **running as `fixer`**. A planted `.git/hooks/*` or `core.fsmonitor` in `/work/repo` never runs as `wrapper` (TC-193-14 shape, applied at checkout) (D-62).
 - [ ] `toolchain.py` (copied from `dependency-update`, extended) detects JS/TS (pnpm or npm) or Python (`Makefile`).
 - [ ] The repo gate requires `.claude/agents/developer.md` plus `test`, `lint`, `format:check`, `typecheck` (JS scripts) or `test`, `lint`, `format-check`, `typecheck` (Make targets). A missing item ends with refusal `repo_gate` (a marked reply via S-185, D-92), naming it, before the claim (AC-4).
-- [ ] **OQ-1 resolved and recorded in the PR:**
-  - the proposal is a `make install` target for Python, otherwise `not_applicable`;
-  - the decision is appended to the decision log as a new `D-NN`.
+- [ ] **OQ-1 resolved as D-112** (confirmed by @llipe 2026-10-24; already recorded in the decision log, cited in the PR):
+  - a Python repo must provide a `make install` target, and the wrapper runs it in the sandbox;
+  - with no such target, the run ends `not_applicable` through the `repo_gate` refusal, naming "missing install target", before any issue change (FR-5).
 - [ ] `gates.py` runs the four gates and `audit` through `sandbox.py` and returns per-gate `{pass, exit_code, tail}`, with the tail scrubbed.
 - [ ] Base-tree gate results are recorded in `run_events` and kept for the PR body. They never block.
 - [ ] Install uses `pnpm install --frozen-lockfile` (pnpm) or `npm ci` (npm). A lockfile mismatch fails with `INSTALL_FAILED` and never rewrites the lockfile. After install and the base gates, any changed tracked path is restored to base as `fixer`, with a `run_event`, so the CLI starts from an exact base tree (TC-189-14, TC-189-15) (D-63, DF-12).
@@ -536,13 +538,14 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 #### Technical Notes
 
 - JS install: `pnpm install --frozen-lockfile` or `npm ci` in the sandbox, with registry-only network (D-63).
+- Python install (D-112): `make install` in the sandbox, with registry-only network. The `install` target is checked with the other Make targets in the repo gate. The wrapper never falls back to pip, uv or poetry.
 
 #### Testing Requirements
 
 - **Unit Tests:** stack detection table (pnpm, npm, Makefile, none), gate-name resolution, and `Makefile` target parsing.
 - **Integration Tests:** L2 with real `git` on fixture repos: `js-pnpm-ok`, `js-missing-typecheck`, `py-make-ok`, `py-no-developer-md`. The gate runner runs against a stub sandbox.
 - **Manual/UI Testing:** none.
-- **Edge-Case Matrix:** a `Makefile` with `format_check` instead of `format-check` (counts as missing); a `package.json` with no `scripts`; a monorepo with a root `package.json`; a clone failure → `failed` / `CLONE_FAILED`; an install failure → `failed` / `INSTALL_FAILED`.
+- **Edge-Case Matrix:** a Python `Makefile` with the four gate targets but no `install` (refusal `repo_gate` "missing install target", D-112); a `Makefile` with `format_check` instead of `format-check` (counts as missing); a `package.json` with no `scripts`; a monorepo with a root `package.json`; a clone failure → `failed` / `CLONE_FAILED`; an install failure → `failed` / `INSTALL_FAILED`.
 - **Acceptance-Criteria Mapping:** AC1–AC6 → `test_toolchain.py`, `tests/component/test_checkout.py`, `tests/component/test_gates.py`.
 - **Execution Commands:** `make test`.
 
@@ -556,15 +559,15 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 2. Toolchain tests, then the implementation.
 3. Checkout.
 4. Gates.
-5. The OQ-1 decision.
+5. The D-112 Python install (`make install` target check and run).
 
 #### Files to Create/Modify
 
-- `toolchain.py`, `checkout.py`, `gates.py`, `tests/fixtures/repos/*`, tests; `workstream/decisions-bug-fix-agent.md` (append).
+- `toolchain.py`, `checkout.py`, `gates.py`, `tests/fixtures/repos/*`, tests. D-112 is already in `workstream/decisions-bug-fix-agent.md`.
 
 #### Definition of Done Checklist
 
-- [ ] Tests passing · [ ] Agent gate green · [ ] OQ-1 decision recorded · [ ] AC mapped · [ ] PR merged
+- [ ] Tests passing · [ ] Agent gate green · [ ] OQ-1 decision recorded (D-112) · [ ] AC mapped · [ ] PR merged
 
 ---
 
