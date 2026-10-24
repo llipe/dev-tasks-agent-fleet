@@ -10,6 +10,8 @@ Served (S-186): issue comments (list, paged; post) and comment reactions.
 Served (S-185): issue facts (``GET /repos/o/r/issues/{n}``), open pull requests
 (``GET /repos/o/r/pulls``, paged), and the GraphQL closing-reference query
 (``POST /graphql``, ``closedByPullRequestsReferences``, paged by cursor).
+Served (S-188): comment deletion (``DELETE /repos/o/r/issues/comments/{id}``,
+204, or 404 for an id it doesn't hold), recorded in ``deleted``.
 
 Pagination here hands the client a pre-parsed ``links`` dict, like
 ``requests.Response.links``; it never builds a ``Link`` header. The real header
@@ -18,7 +20,7 @@ parsing is covered at L1 by ``tests/unit/test_github_client.py`` (DF-186-02).
 Fault injection (S-185): ``faults[route]`` is a list of responses (an ``int``
 status, a :class:`FakeResponse`, or an exception) served, in order, before the
 route's normal answer. Routes: ``issue``, ``pulls``, ``graphql``,
-``comments_get``, ``comments_post``, ``reaction``.
+``comments_get``, ``comments_post``, ``reaction``, ``comment_delete``.
 
 Redirects (S-185, QA 3): :func:`redirect` builds a 3xx answer with a
 ``Location`` off the API host, for ``faults``. Each :class:`Call` records the
@@ -41,6 +43,7 @@ TOKEN = "ghs_" + "T" * 36
 
 _COMMENTS = re.compile(r"^/(?:repos/[^/]+/[^/]+|repositories/\d+)/issues/(\d+)/comments$")
 _REACTIONS = re.compile(r"^/repos/[^/]+/[^/]+/issues/comments/(\d+)/reactions$")
+_COMMENT = re.compile(r"^/repos/[^/]+/[^/]+/issues/comments/(\d+)$")
 _ISSUE = re.compile(r"^/repos/[^/]+/[^/]+/issues/(\d+)$")
 _PULLS = re.compile(r"^/(?:repos/[^/]+/[^/]+|repositories/\d+)/pulls$")
 _GRAPHQL = "/graphql"
@@ -129,6 +132,8 @@ class FakeGitHub:
     closing_refs: dict[int, list[dict]] = field(default_factory=dict)
     graphql_page_size: int = 100
     faults: dict[str, list[Any]] = field(default_factory=dict)
+    # S-188
+    deleted: list[int] = field(default_factory=list)
 
     # -- seeding -----------------------------------------------------------
 
@@ -255,6 +260,9 @@ class FakeGitHub:
                 self.reactions.append((int(m.group(1)), json["content"]))
                 return FakeResponse(self.reaction_status, {"content": json["content"]})
             return FakeResponse(self.reaction_status, {"message": "nope"}, self.extra_headers)
+        m = _COMMENT.match(parts.path)
+        if m and method == "DELETE":
+            return self._fault("comment_delete") or self._delete(int(m.group(1)))
         m = _ISSUE.match(parts.path)
         if m and method == "GET":
             fault = self._fault("issue")
@@ -268,6 +276,15 @@ class FakeGitHub:
             return self._fault("pulls") or self._pulls(merged)
         if parts.path == _GRAPHQL and method == "POST":
             return self._fault("graphql") or self._graphql(json or {})
+        return FakeResponse(404, {"message": "Not Found"})
+
+    def _delete(self, cid: int) -> FakeResponse:
+        for items in self.comments.values():
+            for comment in items:
+                if comment["id"] == cid:
+                    items.remove(comment)
+                    self.deleted.append(cid)
+                    return FakeResponse(204, None)
         return FakeResponse(404, {"message": "Not Found"})
 
     def _list(self, issue: int, params: dict[str, Any]) -> FakeResponse:
