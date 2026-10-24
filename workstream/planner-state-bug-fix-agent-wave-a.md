@@ -19,7 +19,7 @@
 | 2 | S-181 | #363 | ✅ Merged | #442 | story/S-181-infra-runtime |
 | 3 | S-182 | #364 | ✅ Merged | #443 | story/S-182-sandbox-spike |
 | 4 | S-184 | #366 | ✅ Merged | #449 | story/S-184-agents-seed |
-| 5 | S-186 | #368 | 🔄 Next (after the main sync) | — | — |
+| 5 | S-186 | #368 | 🔄 Next | — | — |
 | 6 | S-185 | #367 | ⏳ Pending | — | — |
 | 7 | S-188 | #370 | ⏳ Pending | — | — |
 | 8 | S-189 | #371 | ⏳ Pending (OQ-1 decision) | — | — |
@@ -27,9 +27,9 @@
 
 ## Current Position
 
-- Next story: S-186 (#368), after merging `main` into the integration branch (190 commits behind, 8 conflicting files)
-- Last merged PR: #449 (`cbec1a5`)
-- Integration branch HEAD: `cbec1a5`
+- Next story: S-186 (#368)
+- Last merged PR: #450 (main sync)
+- Integration branch HEAD: `c7a5f89`
 
 ## Decisions Log
 
@@ -41,3 +41,4 @@
 - 2026-10-24: S-182 (#443) merged. Spike verdict **PASS** on AgentCore: re-probe 2d gave 39/39 on runtime v5 (change record `infra/changes/20261024-bug-fix-spike-probe/`, verified; every step approved by @llipe). It took three fix rounds: D-110 (`no_new_privs` blocks `sudo`, so the root wrapper drops with `setpriv`), fix round 2 (`--disallowedTools`, localhost), and D-111 (AgentCore's `/etc/hosts` is empty and read-only, so localhost resolves via image NSS). Runtime v6 has `ALLOW_PROBE` removed and refuses probes. Gates: quality PASS (552 passed, 3 strict xfails); `qa-engineer` coverage_gate PASS (97.5%); verifier Medium/Major with 10 advisory findings (DF-182-01..10), routed to drift reconciliation (approved by @llipe). DF-182-04 (no IC proof that an allowed model Bash call runs inside the CLI sandbox) becomes a follow-up issue that blocks S-191 (#373). Memo: developer intent and outcome written (cc0b7289, 6776b00f).
 - 2026-10-24: S-184 (#449) merged (`cbec1a5`). Migration `20261024130000_seed_bug_fix_agent.sql` applied to the live project after @llipe's confirmation (change record `infra/changes/20261024-bug-fix-agent-seed/`, verified). The first push was refused because the live project had main's `20261022120000_seed_code_review_agent.sql`, applied by another session; that file was copied byte-identical from main. Live panel invoke (S-181 AC4) verified: run `436458f2`, `not_applicable` from the stub. Gates: quality PASS except `audit` (GHSA-mrhx-c7xc-m3w5, predates this story and is fixed on main by #441, so it clears at the main sync); `qa-engineer` coverage_gate PASS (agent 97.66%, `params.py` 100%; shared 52-case parity corpus); verifier High/Minor (DF-184-01..03 fixed in the PR; DF-184-05 RT-14 routed to #423). Memo: developer intent and outcome written (d12866ce, 41236438).
 - 2026-10-24: The integration branch must take `main` (190 commits, including the CI for integration branches (#444), the zod fix (#441), and the docs rename) before S-186. A trial merge conflicts in ci.yml, Makefile, README.md, TESTING.md, the roadmap, runbooks/README.md, and the two old-name foundation docs.
+- 2026-10-24: `main` merged into the integration branch through PR #450 (`c7a5f89`); CI green on all 9 jobs. Both lines kept in the 8 conflicting files plus `supabase/seed.sql` (bug-fix block relabelled 4a2). The code-review test `test_migration_file_name_sorts_after_existing_migrations` was relaxed so that only other agents' data-only seeds may sort after its seed; planner-reviewed and kept. The doc rename is NOT on main yet, so the old names stay. Panel `pnpm audit` locally still reports 24 dev-tooling advisories (vitest, vite, …), the same as on `main`; that's a separate change on main, not this run.
