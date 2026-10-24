@@ -1,0 +1,36 @@
+{
+  "url": "https://api.github.com/repos/acme/widgets/pulls/42",
+  "id": 1000042,
+  "number": 42,
+  "state": "open",
+  "locked": false,
+  "title": "feat(widgets): add widget sizes",
+  "body": "Closes #41\n\nAlso fixes #40.\n\nSee Spec \u00a78.2.",
+  "user": {
+    "login": "octo-dev",
+    "type": "User"
+  },
+  "draft": false,
+  "merged": false,
+  "merged_at": null,
+  "head": {
+    "label": "acme:issue/41-widget-sizes",
+    "ref": "issue/41-widget-sizes",
+    "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d",
+    "repo": {
+      "full_name": "acme/widgets"
+    }
+  },
+  "base": {
+    "label": "acme:main",
+    "ref": "main",
+    "sha": "3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c",
+    "repo": {
+      "full_name": "acme/widgets"
+    }
+  },
+  "html_url": "https://github.com/acme/widgets/pull/42",
+  "additions": 7,
+  "deletions": 3,
+  "changed_files": 5
+}

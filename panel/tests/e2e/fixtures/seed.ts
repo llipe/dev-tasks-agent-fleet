@@ -285,19 +285,41 @@ export async function readRun(runId: string): Promise<{
 }
 
 /**
- * Toggle every seeded agent's `is_enabled` flag. Used only by the empty-fleet
- * edge case (Scenario 1.16), which must present the dashboard's "no agents
- * configured" state; restore to `true` immediately after.
+ * Ids of the agents that were enabled before `setSeededAgentEnabled(false)`
+ * disabled the fleet; `null` when the fleet is in its seeded state.
+ */
+let enabledBeforeDisable: string[] | null = null;
+
+/**
+ * Disable the whole fleet (`false`) or restore its seeded state (`true`).
+ * Used only by the empty-fleet edge case (Scenario 1.16), which must present
+ * the dashboard's "no agents configured" state; restore immediately after.
  *
- * Updates ALL rows in `agents`, not one hardcoded slug: `seed.sql` grew a
- * second agent (`security-analyst`, S-125) after this fixture was written,
- * and disabling only `dependency-update` left one agent still enabled, so
- * the "no agents configured" state never rendered (caught by CI on the
- * security-analyst consolidated PR, #247).
+ * Disabling updates ALL rows in `agents`, not one hardcoded slug: `seed.sql`
+ * grew a second agent (`security-analyst`, S-125) after this fixture was
+ * written, and disabling only `dependency-update` left one agent still
+ * enabled, so the "no agents configured" state never rendered (caught by CI
+ * on the security-analyst consolidated PR, #247).
+ *
+ * Restoring re-enables exactly the agents that were enabled before the
+ * disable, never every row: `code-review` is seeded DISABLED until S-214
+ * deploys its runtime (D-39, #406), and a blanket `set is_enabled = true`
+ * would leak an enabled agent with a placeholder runtime_arn into every
+ * later spec. With no prior disable, restoring is a no-op.
  */
 export async function setSeededAgentEnabled(enabled: boolean): Promise<void> {
   await withDb(async (c) => {
-    await c.query(`update agents set is_enabled = $1`, [enabled]);
+    if (!enabled) {
+      if (enabledBeforeDisable === null) {
+        const r = await c.query<{ id: string }>(`select id from agents where is_enabled`);
+        enabledBeforeDisable = r.rows.map((row) => row.id);
+      }
+      await c.query(`update agents set is_enabled = false`);
+      return;
+    }
+    if (enabledBeforeDisable === null) return;
+    await c.query(`update agents set is_enabled = (id = any($1::uuid[]))`, [enabledBeforeDisable]);
+    enabledBeforeDisable = null;
   });
 }
 

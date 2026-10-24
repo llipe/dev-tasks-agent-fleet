@@ -1,0 +1,21 @@
+--- a/src/app.py
++++ b/src/app.py
+@@ -1,4 +1,6 @@
+ import sys
+-SIZES = ()
++SIZES = ("s", "m", "l")
++
++
+ def main():
+     return 0
+--- /dev/null
++++ b/docs/notes with space.md
+@@ -0,0 +1,2 @@
++# Notes
++Sizes are s, m, l.
+--- a/src/old_name.py
++++ b/src/new_name.py
+@@ -1,2 +1,2 @@
+-NAME = "old"
++NAME = "new"
+ VALUE = 1

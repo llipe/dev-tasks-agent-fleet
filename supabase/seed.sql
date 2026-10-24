@@ -207,6 +207,96 @@ on conflict (slug) do update
       params_schema         = excluded.params_schema;
 
 -- ---------------------------------------------------------------------
+-- 4a. code-review agent (S-204, spec §5.1)
+--    Mirrored by migrations/20261022120000_seed_code_review_agent.sql (prod).
+--    runtime_arn is a placeholder until the first `agentcore deploy` (Wave B,
+--    S-214) sets it. It is deliberately NOT in the `do update` list, so
+--    re-running this seed never overwrites a deployed ARN with the placeholder.
+--    The row starts disabled (is_enabled = false, D-39): the placeholder ARN
+--    cannot be invoked. S-214 sets runtime_arn and is_enabled = true in one
+--    explicit update. is_enabled is NOT in the `do update` list either, so an
+--    operator's later enable survives re-running this seed.
+--    max_runtime_seconds (1800) MUST equal maxLifetime in
+--    agents/code-review/agentcore/agentcore.json and MAX_LIFETIME in the
+--    agent's config.py; grace_seconds (120) MUST equal its GRACE_SECONDS.
+--    start_timeout_seconds (300) is the queue clock (D9), as for the siblings.
+--    params_schema / default_params MUST equal config.PARAMS_SCHEMA /
+--    DEFAULT_PARAMS (pinned by the agent's tests/unit/test_seed_contract.py).
+-- ---------------------------------------------------------------------
+insert into agents (
+  slug, name, description, version,
+  runtime_arn, runtime_qualifier,
+  is_enabled,
+  requires_repository, max_runtime_seconds, grace_seconds, start_timeout_seconds,
+  default_params, params_schema
+)
+values (
+  'code-review',
+  'Code Review',
+  'Reviews one pull request against its linked issues, spec, and verifier report with one Bedrock call, and posts one PR comment.',
+  '0.1.0',
+  'pending-deploy:code-review',  -- placeholder; set by S-214 after the first deploy
+  'DEFAULT',
+  false,  -- is_enabled: disabled until S-214 deploys the runtime (D-39)
+  true,   -- requires_repository
+  1800,  -- 30 min: MUST equal maxLifetime in agentcore.json
+  120,   -- grace_seconds
+  300,   -- start_timeout_seconds: queue clock (D9), NOT idleRuntimeSessionTimeout
+  '{"max_diff_lines":2000,"max_context_tokens":150000,"max_suggestions":5,"run_timeout_seconds":900,"reasoning_effort":"high"}'::jsonb,
+  $json${
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["pr_number"],
+    "properties": {
+      "pr_number": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Pull request number"
+      },
+      "max_diff_lines": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 10000,
+        "default": 2000
+      },
+      "max_context_tokens": {
+        "type": "integer",
+        "minimum": 20000,
+        "maximum": 400000,
+        "default": 150000
+      },
+      "max_suggestions": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 20,
+        "default": 5
+      },
+      "run_timeout_seconds": {
+        "type": "integer",
+        "minimum": 120,
+        "maximum": 900,
+        "default": 900
+      },
+      "reasoning_effort": {
+        "type": "string",
+        "enum": ["low", "medium", "high"],
+        "default": "high"
+      }
+    }
+  }$json$::jsonb
+)
+on conflict (slug) do update
+  set name                  = excluded.name,
+      description           = excluded.description,
+      version               = excluded.version,
+      requires_repository   = excluded.requires_repository,
+      max_runtime_seconds   = excluded.max_runtime_seconds,
+      grace_seconds         = excluded.grace_seconds,
+      start_timeout_seconds = excluded.start_timeout_seconds,
+      default_params        = excluded.default_params,
+      params_schema         = excluded.params_schema;
+
+-- ---------------------------------------------------------------------
 -- 4b. Webhook fixture (S-165)  -- LOCAL DEV / E2E ONLY
 --    One DISABLED sample endpoint + one rule routing a PR review comment
 --    "security review" to security-analyst on the payload's repository.

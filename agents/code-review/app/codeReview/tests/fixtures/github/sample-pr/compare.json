@@ -1,0 +1,13 @@
+{
+  "url": "https://api.github.com/repos/acme/widgets/compare/3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c...9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d",
+  "status": "ahead",
+  "ahead_by": 2,
+  "behind_by": 0,
+  "base_commit": {
+    "sha": "3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c"
+  },
+  "merge_base_commit": {
+    "sha": "7e1d3c5b9a8f6e4d2c0b1a3f5e7d9c8b6a4f2e0d"
+  },
+  "total_commits": 2
+}

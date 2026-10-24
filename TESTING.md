@@ -38,15 +38,16 @@ This is a **pnpm workspace with two declared packages** (`pnpm-workspace.yaml`):
 A third package sits outside the pnpm workspace (it is a separate Python
 project, not a Node package): `agents/dependency-update/app/dependencyUpdate`
 — the `dependency-update` agent (the original, and still active, codebase) —
-and `agents/security-analyst/app/securityAnalyst` — the `security-analyst`
+`agents/security-analyst/app/securityAnalyst` — the `security-analyst`
 agent (S-125–S-141), which mirrors the sibling's layout, Makefile, and
-`pyproject.toml` conventions.
+`pyproject.toml` conventions — and `agents/code-review/app/codeReview` — the
+`code-review` agent (S-204 onward), which mirrors `security-analyst`.
 
 Root `package.json` (`private: true`, `packageManager: pnpm@10.11.0`,
 `engines.node: ">=24 <27"`) declares thin aggregate scripts that all delegate
 via `pnpm --filter panel run ...` — see Commands below. The repo-root
 `Makefile` is the actual cross-language aggregate: it runs a Python branch
-(`*-py`, looping over both agent package dirs in `AGENT_DIRS`) and a JS/TS
+(`*-py`, looping over every agent package dir in `AGENT_DIRS`) and a JS/TS
 branch (`*-js`, delegating into `panel` via the pnpm workspace) and fails if
 either fails.
 
@@ -54,8 +55,8 @@ either fails.
 
 | Layer    | Name                      | Scope                                                                                                                             | Status |
 | -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| 1        | Deterministic foundations | Unit tests and schema/contract assertions with no network, database, or wall-clock dependency.                                    | configured — `dependency-update` and `security-analyst` `tests/unit/` (pytest `unit` marker); `panel` Vitest `unit` project (`panel/tests/unit/`). |
-| 2        | Constrained model/tool    | CLI, filesystem, subprocess, component, and fixture tests with external providers replaced by deterministic fixtures or stubs. | configured — `dependency-update` and `security-analyst` `tests/component/` (pytest `component` marker; `security-analyst`'s mock `subprocess.run` for all five scanners and drive `main.invoke()` end to end); `panel` Vitest `component` project (`panel/tests/component/`, jsdom, mocked externals). |
+| 1        | Deterministic foundations | Unit tests and schema/contract assertions with no network, database, or wall-clock dependency.                                    | configured — `dependency-update`, `security-analyst`, and `code-review` `tests/unit/` (pytest `unit` marker); `panel` Vitest `unit` project (`panel/tests/unit/`). |
+| 2        | Constrained model/tool    | CLI, filesystem, subprocess, component, and fixture tests with external providers replaced by deterministic fixtures or stubs. | configured — `dependency-update` and `security-analyst` `tests/component/` (pytest `component` marker; `security-analyst`'s mock `subprocess.run` for all five scanners and drive `main.invoke()` end to end); `code-review` `tests/integration/` (pytest `integration` marker; drives `main.invoke()` against a reporter sink with the `requests` transport stubbed, and context assembly — `context/diff.py` from S-206, `context/issues.py` and `context/spec.py` from S-207, and the S-209 prompt built on top of them — through the real `GitHubClient` over recorded fixtures (`sample-pr` with a hand-written golden diff; `issue-315` with the #315 issue shape and the webhook-triggers spec), and from S-213 the whole pipeline through `tests/helpers/pipeline_run.py` with `FakeConverse`); `panel` Vitest `component` project (`panel/tests/component/`, jsdom, mocked externals). |
 | 2.5      | Integration               | Real database, migrations, RLS, and schema contracts without a mocked data layer.                                                 | **configured** — `panel` Vitest `integration` project (`panel/tests/integration/`), against a real local Postgres brought up by the Supabase CLI (`supabase start` / `supabase db reset`). Docker-gated via `panel/tests/integration/db.ts` (`probeLocalDb`); see CI-vs-local gating below. Not applicable to `dependency-update` (no owned database) or the CDK package. |
 | E2E      | End-to-end                | Playwright full-stack browser scenarios.                                                                                          | **configured** — `panel/playwright.config.ts` + `panel/tests/e2e/` (retries 0, one worker, headless in CI, `webServer` = `next dev`), driving the browser against the real local Supabase stack with AgentCore stubbed at the HTTP boundary. |
 | Contract | Contract validation       | `dt verify` API-spec diff, impact, and drift checks.                                                                              | not configured; no repository API spec (`panel` has no OpenAPI surface yet). |
@@ -101,6 +102,7 @@ can no longer pass CI vacuously.
 | ---------------------- | --------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | `dependency-update` (`agents/dependency-update/app/dependencyUpdate/`) | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; all external I/O (boto3, `requests`, `jwt`, `subprocess`) mocked                                    | pytest-cov 7.1.0, branch coverage on; `[tool.coverage]` config; `coverage_gate` MEASURED (no `fail_under` floor yet) |
 | `security-analyst` (`agents/security-analyst/app/securityAnalyst/`)     | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; scanner binaries (`semgrep`, `gitleaks`, `trivy`, `checkov`, `codeql`) are NEVER invoked — every runner mocks `subprocess.run` against checked-in JSON/SARIF fixtures in `tests/fixtures/`; `boto3`/`requests`/`jwt` mocked as in the sibling | pytest-cov, branch coverage on; `[tool.coverage]` config with **`fail_under = 90`** (set at PRD close; measured 97%) |
+| `code-review` (`agents/code-review/app/codeReview/`)                   | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network. `tests/unit/` (Layer 1, `unit` marker) and `tests/integration/` (Layer 2, `integration` marker: `invoke` against a reporter sink that replaces only the vendored reporter's HTTP layer, `requests` transport stubbed to refuse every call; context-assembly tests drive the real `GitHubClient` over `StubTransport` and compare against a checked-in golden file such as `tests/fixtures/github/sample-pr/expanded_diff.golden`). `tests/fixtures/params_cases.json` is shared with the panel (CT-01). GitHub calls are stubbed by `tests/helpers/github_stub.py` (`StubTransport`, recorded `tests/fixtures/github/`) | pytest-cov, branch coverage on; **`fail_under = 90`** from the first story (`main.py` is not omitted) |
 | `agentcore-cdk-app` (`agents/dependency-update/agentcore/cdk/`)        | TypeScript                        | jest 29 (ts-jest)                    | `pnpm test` (→ `jest`), run from the package dir; not reached by the repo-root aggregate                  | Node (jest default); CDK `Template` synth assertions                                                                                       | none configured                                                                                              |
 | `panel` (`panel/`)     | TypeScript (Next.js 15, React 19) | Vitest 3.2.x (`unit`/`component`/`integration` projects) + Playwright | `pnpm --filter panel run test` (→ `vitest run`, all three projects); `test:unit` / `test:integration` (`--passWithNoTests`) run one project; `test:e2e` (→ `playwright test`) gated separately; reachable from repo-root `make validate`/`pnpm run validate` | Node (unit + integration), jsdom (component, `setupFiles: tests/setup.ts`); `integration` project pinned `singleFork`/sequential (shared local Postgres — avoids the cross-file `reap_stale_runs()` race) | `@vitest/coverage-v8` (`pnpm --filter panel run test:coverage`) |
 
@@ -137,6 +139,7 @@ runs but no AWS call is made.
 | -------------------- | -------------------------------------------------------- | ---------------------------------------------------- | ----------------------- |
 | `dependency-update` | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (`.github/workflows/ci.yml`, `python-quality` job) | `PYTHON_3_14` (AgentCore); Docker build base `python:3.13-slim` |
 | `security-analyst`  | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (same job; `agent` matrix axis added at PRD close) | AgentCore container built from `python:3.13-slim` (Dockerfile pins CodeQL 2.27.0, Gitleaks 8.30.1, Trivy 0.74.0, Node 22, `semgrep` 1.180.0 in an isolated venv at `/opt/semgrep` (#360), `checkov` via `pyproject.toml`) |
+| `code-review`       | CPython 3.13.x (dev venv)                                | **3.13 + 3.14 matrix** (same job; added at S-204) | AgentCore container built from `python:3.13-slim` with no system toolchains (runtime lands with S-214) |
 | `panel`             | Node `>=24 <27` per `package.json` `engines`; the pnpm-managed install **hard-rejects** an ambient Node outside that range (`ERR_PNPM_UNSUPPORTED_ENGINE` reproduced live against Node 26 — see Harness defects) | Node **22** pinned (`actions/setup-node@v4`, `panel-quality` job) | Fly.io deploy (pre-deploy scaffold; see `docs/technical-guidelines.md` §13) |
 | `agentcore-cdk-app` | Node (unpinned locally)                                  | not in CI yet                                        | n/a — build/deploy tooling |
 
@@ -176,28 +179,30 @@ thin `pnpm --filter panel run <script>` wrappers, so `pnpm run test` /
 | `dependency-update` | Audit                         | `make audit` → `pip-audit . --strict`                                                    |
 | `dependency-update` | **Aggregate gate**            | `make validate` → lint + format-check + typecheck + test-cov + audit (fail-fast)          |
 | `security-analyst`  | All of the above              | Identical `Makefile` targets (`make test`, `test-unit`, `test-component`, `lint`, `format-check`, `typecheck`, `test-cov`, `audit`, `validate`) run from `agents/security-analyst/app/securityAnalyst/` |
+| `code-review`       | All of the above              | Same targets run from `agents/code-review/app/codeReview/`, with `test-integration` (`python -m pytest -m integration`) in place of `test-component`; `make audit` is plain `pip-audit . --strict` (no exception) |
 | `security-analyst`  | Audit                         | `make audit` → `pip-audit . --strict`, no ignored vulnerabilities. `semgrep` is installed in its own venv in the Dockerfile, not in `pyproject.toml`, so its exact `mcp`/`opentelemetry-api` pins stay out of the audited tree (#360). `tests/unit/test_semgrep_isolation.py` pins this |
 | `agentcore-cdk-app` | Run test / build / format     | `pnpm test` (→ `jest`) / `pnpm run build` (→ `tsc`) / `pnpm run format:check` (from its own package dir) |
 
 ### Repo-root aggregate (`Makefile`)
 
 The repo-root `Makefile` runs both branches: `make install|lint|format-check|typecheck|test|audit|validate`
-each fan out to a `-py` target (loops `make -C <dir>` over both agent package dirs in `AGENT_DIRS`, fail-fast)
+each fan out to a `-py` target (loops `make -C <dir>` over every agent package dir in `AGENT_DIRS`, fail-fast)
 and a `-js` target (delegates via `pnpm --filter panel run ...`), and the
 aggregate fails if either branch fails. `make validate` = `validate-py` +
 `validate-js`.
 
 ### Gate reachability
 
-- **Aggregate test command:** `make test` (repo root) reaches `dependency-update` and `security-analyst` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
+- **Aggregate test command:** `make test` (repo root) reaches `dependency-update`, `security-analyst`, and `code-review` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
 - **CI gate:** `.github/workflows/ci.yml` runs two jobs on every push/PR to `main`: `python-quality` (3.13 + 3.14 matrix — lint → format-check → typecheck → `pytest --cov` → `make audit`, so each agent's Makefile is the single source of its `pip-audit` flags) and `panel-quality` (Node 22 — boots the Supabase stack with `REQUIRE_LOCAL_DB=1`, lint → format:check → typecheck → the S-122 auth-gate parser test + shellcheck → `test:coverage` (incl. gated Layer 2.5) → Playwright E2E → audit). Neither job has a `paths:` filter excluding its package.
-- **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); both Python agents deploy via the AgentCore CLI/CDK. None invokes the aggregate gate automatically.
+- **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); `dependency-update` and `security-analyst` deploy via the AgentCore CLI/CDK; `code-review` is not deployed yet (its runtime lands with S-214). None invokes the aggregate gate automatically.
 
 ## Coverage
 
 ### Thresholds and baseline policy
 
 - **`security-analyst`:** pytest-cov, branch coverage on, `fail_under = 90` enforced by `make test-cov`/`make validate` and CI (set at PRD close, 2026-09-17, after porting the sibling's `credentials`/`signal_backstop`/`scrubber` tests; measured 97%, 712 tests). `main.py` and `agent_reporter.py` are coverage-omitted as in the sibling.
+- **`code-review`:** pytest-cov, branch coverage on, `fail_under = 90` enforced by `make test-cov`/`make validate` and CI from the scaffold story (S-204). Only `agent_reporter.py` (vendored, byte-identical to the sibling) is coverage-omitted; `main.py` is measured. Baseline at S-204: **98%** (356 tests, 2 skipped until `agentcore.json` lands with S-214). Wave A PRD-level gate (2026-10-23, `integration/code-review-agent` @ `9e1d73e` plus `tests/integration/test_cross_story_joins.py`): **99.51%** (4,104 statements, 1,154 branches; 3,115 passed, 2 skipped, 2 strict xfails pinning QA-PRD-01/02). After the Wave A QA fix (`fix/S-213-wave-a-qa`): **99.64%**, 3,160 passed, 2 skipped, 0 xfails; every module 100% except `pipeline.py` 97% and `main.py` 98% (defensive failure-path branches). Detail: `workstream/coverage-report-prd-code-review-agent.md`.
 - **`dependency-update`:** pytest-cov 7.1.0, branch coverage on, config in `pyproject.toml`. No hard `fail_under` floor yet — coverage is measured and reported on every `make test-cov`/`make validate` run. Baseline: high (~90%+) on the implemented pipeline modules; `credentials.py` **100%** (as of #106/#108/#109); `main.py` and `agent_reporter.py` remain coverage-excluded/untested (see gap table in `docs/technical-guidelines.md` §11/§18 and the archived per-issue fidelity reports for the full per-module figures).
 - **`panel`:** `@vitest/coverage-v8` is configured (`vitest.config.ts` declares the provider; `test:coverage` is a real, runnable script) and reachable from CI (`panel-quality` job runs `test:coverage`, not just `test`). **No repo-level numeric coverage baseline has been recorded for `panel` as a whole** — individual stories have recorded per-module coverage figures in their own fidelity reports (see `workstream/fidelity-report-S-*.md`), but no aggregate `panel`-wide percentage has been captured and committed here. This is a tracked gap, not a `SKIPPED` provider situation — the tooling exists and runs; only the aggregate number has never been pulled and recorded in this file.
 - **`agentcore-cdk-app`:** no coverage tooling configured (out of scope — IaC synth smoke test only).
@@ -240,6 +245,75 @@ patched at the module boundary (`credentials.boto3`, `credentials.requests`,
 `credentials.jwt`). `tests/conftest.py` centralizes temp-dir project fixtures
 and auto-applies `unit`/`component` markers by directory. `tests/fixtures/`
 remains empty (`.gitkeep` only) — no recorded API payloads yet.
+
+**`code-review`.** `GitHubClient` takes an injected transport: tests use
+`tests/helpers/github_stub.py` (`StubTransport`, which records every call and
+answers from a route table) and the recorded fixtures under
+`tests/fixtures/github/<sample>/` (`routes.json` plus GitHub-shaped bodies,
+loaded with `load_fixture("sample-pr")` or `load_fixture("issue-315")`; no real tokens, accounts, or SHAs).
+Fidelity-report inputs for the Layer 1 verifier parser (S-208) live in
+`tests/fixtures/reports/` (a byte copy of `workstream/fidelity-report-S-170.md`
+plus synthetic AC-7, no-heading, numbered-heading, empty, and bullet-list
+reports, described in that directory's `README.md`) and are loaded with
+`tests/helpers/reports.py::report_text(<file name>)`, which decodes the bytes so
+line endings are exactly the ones on disk.
+The budget and prompt tests (S-209) build the readers' outputs directly with
+`tests/helpers/prompt_inputs.py` (`inputs()`, `diff_ctx()`, `issue()`,
+`candidate()`, and friends; no GitHub) and read a rendered prompt back with
+`parse_blocks(user, nonce)`, an independent splitter on the run's nonce that
+fails on an unclosed block or a stray end marker. Inject `nonce=` (16 lowercase
+hex) and, for forced collisions, `nonce_factory=`; never assert on a random
+nonce. `tests/integration/test_prompt_sample_pr.py::render_sample_prompt()`
+renders the `sample-pr` prompt with a fixed nonce through the real readers.
+Bedrock is never called: `tests/fixtures/bedrock.py::FakeConverse` (S-210,
+reused by S-213) stands in for the `bedrock-runtime` client, records a deep
+copy of every request so tests assert exact Converse shapes, answers from a
+script of responses (`tool_use_response`, `text_response`), botocore errors
+(`validation_error`, `tool_choice_rejected`, `context_length_rejected`,
+`access_denied`, `throttled`, ...: the modeled `ClientError` subclasses the real
+client raises, with full `ResponseMetadata`), or callables, and fails on a call
+past the end of its script. `tests/helpers/bedrock_run.py::run()` drives
+`bedrock_adapter.review` with a counter nonce factory, a stepping `Clock`, and
+a `Recorder` for `warn` events and sink prompts; it passes the fake as `client=`,
+or, with `client_factory=`, exercises the per-call client sizing that
+production uses (`client_factory=make_client`). `FakeConverse`
+does not run botocore, so `tests/unit/test_bedrock_hostile.py` (S-210 QA) adds
+two wire-level checks: a real `bedrock-runtime` client behind
+`botocore.stub.Stubber` validates the adapter's requests and the fixture's
+responses against the Converse service model, and a real client made by
+`make_client` with `botocore.httpsession.URLLib3Session.send` patched (scripted
+HTTP answers, a virtual clock advanced by read timeouts and by the patched
+`time.sleep` of botocore's backoff) measures botocore's own retry attempts and
+the wall time against the run deadline. Credentials are dummy environment
+values and config files point at an empty `tmp_path`; no socket is opened.
+The validation and verdict tests (S-211) need no fake: `validate.validate` is pure, so they pass a `changed_ranges` mapping and `context.verifier.Candidate` tuples directly, and `validate_result` takes any object with `findings` and `context.shown_candidates`/`dropped_candidates` (a `SimpleNamespace` in tests) plus a real `DiffContext`. The comment renderer tests (S-212) build `Validation`, `ContextData`, `DiffContext` and `VerifierContext` directly with `tests/helpers/render_inputs.py` (`finding()`, `status()`, `context_data()`, and the `blocking_fixture()`/`clear_fixture()` snapshot inputs). Snapshots are plain files in `tests/unit/__snapshots__/` compared byte for byte (no snapshot library); after an intended layout change, regenerate them with `UPDATE_SNAPSHOTS=1` and review the diff, which is part of the PR review. `test_neutralize_hostile_body_renders_as_inert_markdown` parses a hostile body with `markdown-it-py`, a transitive dev dependency (through `pip-audit`), and is skipped with `pytest.importorskip` if it is absent. `tests/unit/test_render_hostile.py` (qa-engineer, S-212 gate) attacks the comment guarantees against GitHub's renderer rather than CommonMark: a line-start allowlist proves no content begins a line, and a `markdown-it-py` token walk applies GitHub's mention, issue-reference and autolink filters to text nodes only. Every wall-clock bound in the `code-review` linear-time tests goes through `tests/helpers/perf.py::perf_bound`, which multiplies it by `PERF_BOUND_SCALE` (default 5 when `CI` is set, 1 locally); the inputs are sized so a quadratic implementation misses the scaled bound by orders of magnitude. Its tactics use seeds 414002–414004 (`tactic_seed(414, 2..4)`). The renderer defects QA pinned there (QA-212-D1–D3) are fixed and their `xfail(strict=True)` markers removed; 0 xfails remain. The pipeline tests (S-213: `tests/unit/test_outcomes.py`, `tests/unit/test_deadline.py`, `tests/integration/test_pipeline_e2e.py`, `test_pipeline_prompt_capture.py`, `test_pipeline_edges.py`, plus `test_cross_story_joins.py` and `tests/unit/test_scrub_invisible.py` from the Wave A PRD-level gate) drive `main.invoke` end to end with `tests/helpers/pipeline_run.py::Harness`: a `ReporterSink` replacing only the vendored reporter's HTTP layer, the recorded `StubTransport` shared by every `GitHubClient` the pipeline builds, `FakeConverse` behind a recording client factory (the production `client_factory` path), a `ManualClock`, a list as the prompt sink, and a heartbeat spy, all injected through a monkeypatched `main.pipeline_deps`. `set_pull`, `set_files`, `set_content` and `set_issue` add routes rather than editing the fixture files. The error-code property uses seed 415001 (`tactic_seed(415, 1)`). Two deliberate exceptions: the cases that test the real-time deadline bound (`bounded`, a stuck phase, heartbeat chunks) use short real sleeps (at most 1 s), the only exception to the no-sleep rule that follows; and `test_sigterm_during_post_is_recorded_by_the_backstop` sends a real SIGTERM to the pytest process with the real backstop installed and `signal.raise_signal` patched to raise instead of exiting, restoring the previous handler afterwards. `tests/integration/test_pipeline_hostile.py` (qa-engineer, S-213 gate) attacks the pipeline guarantees on the same harness: an exception (no `.code`, secret-bearing `str`/`repr`, unprintable, `KeyboardInterrupt`, `SystemExit`) injected at every step and sub-call, inside the failure path and after the review `POST`; the deadline at every step including mid-`POST`; workers abandoned at the deadline (proved by recording, inside the worker, what had been written when it unblocked, since `asyncio.run` joins the executor); heartbeats in each long phase; and a real SIGTERM at every step under the same patched backstop. Its invariants (one terminal write, a §13 code, every §5.3 key, at most one review comment and one failure comment, no edit, refs pinned to the captured head or merge base, no secret in any output) run on every case and in a seeded fault property, seed 415002 (`tactic_seed(415, 2)`). Its real sleeps are at most 0.4 s. Pipeline defects are pinned there with `pytest.mark.xfail(strict=True)` and a reproducer (QA-213-01 to QA-213-07), under the same rule as QA-212. All seven are fixed and 0 xfails remain; the post-phase timeouts (QA residual 2) are pinned in `tests/unit/test_deadline.py`. Retry waits and clocks are injected, so no test sleeps. Property tactics use
+the seeded `tests/helpers/prng.py` (`Tactic.from_env(<issue> x 1000 + k, n)`,
+replayable with `PRNG_SEED`/`PRNG_ITER`). `credentials.boto3`/`requests`/`jwt`
+are patched at the module boundary as in the siblings. Because `StubTransport`
+sees the URL the client hands over, not the one `requests` sends, the guard's
+wire-level checks (`tests/unit/test_github_client_guard_hardening.py`) drive the
+client through a real `requests.Session` with a capturing adapter mounted for
+`http://`/`https://` and `trust_env = False`, and assert on the
+`PreparedRequest`; no socket is opened. A known defect pinned by a test is
+marked `xfail(strict=True)` with the defect in `reason`, so the fix turns it red
+and the marker is removed in the same change.
+Hostile-input suites for repository-controlled text (S-208:
+`tests/unit/test_verifier_hostile.py`, `tests/unit/test_repo_conventions_hostile.py`;
+S-209: `tests/unit/test_prompt.py::test_hostile_content_builds_quickly` and
+`tests/unit/test_prompt_hostile.py::test_megabyte_hostile_inputs_build_in_linear_time`)
+are the one sanctioned Layer 1 use of `time.perf_counter`: a regex-cost or
+quadratic-scan test may assert an elapsed bound on a 100k+ line input. The bound
+must hold with at least 3x margin under `make test-cov` (coverage tracing), and
+the input must be large enough that a quadratic implementation misses the bound
+by an order of magnitude, so the test cannot flake either way.
+The S-209 completion-gate suites `tests/unit/test_budget_hostile.py` (budget
+invariant at and around `I + D`, the 20,000 minimum at every reader's contract
+maximum, multi-byte/CR/CRLF/empty text, `include_full_files=False`; property
+tactic `tactic_seed(411, 3)`) and `tests/unit/test_prompt_hostile.py` (the real
+nonce forged through every `ContextInputs` field, near-miss markers, hostile
+paths under `str.splitlines`, the retry loop, failure paths and the sink,
+`rubric.md` from a copied package dir run with `python -I`, schema key order;
+property tactic `tactic_seed(411, 4)`) build on the same helpers.
 
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real
@@ -294,3 +368,5 @@ suite. RLS is asserted deny-all for the anon role in
 4. **`panel` — 0/11 planned E2E scenarios for the S-142–S-148 batch were delivered** against `workstream/test-plan-prd-agent-fleet-panel-v3-ui-depth.md` §3 (see Coverage § above). Routed to `product-engineer`/`developer`, not fixed here.
 5. **`panel` — no aggregate `panel`-wide numeric coverage baseline has been recorded in this file.** Per-story figures exist in individual fidelity reports; a consolidated number has never been pulled and committed here.
 6. **`agentcore-cdk-app` is not reached by the repo-root aggregate `test`/`validate` targets.** Tested via its own `pnpm test`; low priority (single synth smoke test, IaC-only).
+7. **Story PRs into an integration branch get no CI (`code-review`, any planner run).** `.github/workflows/ci.yml` triggers on `push` to `main` and `pull_request` to `main` only, so story PRs that target `integration/<feature>` (for example S-204–S-213 into `integration/code-review-agent`) never run the `python-quality` job; their gates are local runs only, and CI first sees the code on the consolidated PR to `main`. Expected state: `pull_request` also matches `integration/**` (or the planner records that CI is deferred to the consolidated PR). Found at the code-review Wave A PRD-level gate (2026-10-23).
+8. **The root Python aggregate is fail-fast in `AGENT_DIRS` order.** `make test-py`/`validate-py` stop at the first failing package, and `code-review` is last, so a sibling failure (the pre-existing `security-analyst` audit CVE, S-204 D8) or a missing sibling venv means root `make validate` never reaches `code-review`. CI is not affected (one matrix job per agent, `fail-fast: false`). Expected state: the loop runs every package and fails at the end, or the report records which packages were not reached.

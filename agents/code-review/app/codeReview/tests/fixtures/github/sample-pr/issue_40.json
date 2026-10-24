@@ -1,0 +1,11 @@
+{
+  "number": 40,
+  "title": "chore: an earlier PR",
+  "state": "closed",
+  "body": null,
+  "labels": [],
+  "pull_request": {
+    "url": "https://api.github.com/repos/acme/widgets/pulls/40",
+    "merged_at": null
+  }
+}

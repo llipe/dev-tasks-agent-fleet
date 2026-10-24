@@ -1,0 +1,98 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "code-review"
+version = "0.1.0"
+description = "Code review agent for AgentCore — one Bedrock Converse call over an expanded PR diff, one PR comment"
+requires-python = ">=3.13"
+# Pinned at the security-analyst sibling's versions (D-20). No strands-agents:
+# the review is a single Converse call with no tool loop (D-07). No scanner
+# toolchains (semgrep, checkov): this agent does not scan.
+dependencies = [
+    "bedrock-agentcore==1.22.0",
+    "boto3==1.43.81",
+    "requests==2.34.2",
+    "PyJWT==2.15.1",
+    "cryptography==50.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",
+    "pytest-mock==3.14.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.4",
+    "mypy==2.3.1",
+    "pip-audit==2.10.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: unit tests (no I/O, no network)",
+    "integration: integration tests (recorded fixtures, fakes, reporter sink; no network)",
+]
+
+# ---------------------------------------------------------------------------
+# Quality toolchain
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+# Exclude vendored / generated / non-source paths from lint + format.
+extend-exclude = [
+    ".venv",
+    "tests/fixtures",
+    "agent_reporter.py",  # vendored SDK — copied byte-identical from the sibling
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort (import ordering)
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may use assert-heavy patterns and long lines in fixtures/mocks.
+"tests/**" = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+ignore_missing_imports = true
+# Vendored SDK is not type-checked (copied verbatim from the sibling).
+exclude = ["agent_reporter\\.py", "tests/fixtures/", "\\.venv/"]
+
+# Same suppression as the sibling: the vendored SDK's `__exit__ -> bool`
+# methods trip `exit-return` even though the module is excluded above, and the
+# file MUST stay byte-identical to the sibling copy.
+[[tool.mypy.overrides]]
+module = "agent_reporter"
+disable_error_code = ["exit-return"]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+omit = [
+    "tests/*",
+    "agent_reporter.py",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# Sibling threshold (TESTING.md). Unlike the sibling, `main.py` is NOT omitted:
+# the skeleton invoke is driven end to end by tests/integration/.
+fail_under = 90
