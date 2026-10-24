@@ -1,0 +1,11 @@
+{
+  "name": "js-missing-typecheck",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "echo test ok",
+    "lint": "echo lint ok",
+    "format:check": "echo format ok",
+    "audit": "echo audit ok"
+  }
+}

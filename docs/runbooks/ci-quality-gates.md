@@ -14,6 +14,10 @@ Python version) and the panel quality gate on every push and pull request to
 `integration/<feature>` branch and only the consolidated PR reaches `main`, so
 the `integration/**` triggers give each story PR the same gates as `main`.
 CI only reads the repository; it holds no secrets and deploys nothing.
+The `bug-fix` legs also install pnpm 10.11.0 (`pnpm/action-setup`), because
+its checkout tests run the real `pnpm install --frozen-lockfile` and skip
+without pnpm. If that leg reports a skipped `test_real_pnpm_frozen_install`,
+check that step first.
 
 ## Preconditions
 

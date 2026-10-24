@@ -195,7 +195,11 @@ class TestReplyInputsAreClosedSets:
 
     @pytest.mark.parametrize("item", REPO_GATE_ITEMS)
     def test_every_repo_gate_item_renders(self, item):
-        assert f"`{item}`" in build_reply(RUN, Refusal("repo_gate", detail=item), 42)
+        """Each item renders its fixed phrase (DF-189-05)."""
+        from refusal import REPO_GATE_PHRASES
+
+        reply = build_reply(RUN, Refusal("repo_gate", detail=item), 42)
+        assert REPO_GATE_PHRASES[item] in reply
 
     @pytest.mark.parametrize("pr", [None, 0, -1, True, "17", 1.5])
     def test_linked_pr_needs_a_positive_int(self, pr):

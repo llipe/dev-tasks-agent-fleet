@@ -32,8 +32,8 @@ definition of an open claim (DF-33) that the post-claim race check in
 ``claim.py`` shares; the status half is :func:`active_claim_runs`, which the
 race check calls too.
 
-``repo_gate`` is decided after the clone (S-189), which calls
-:func:`build_reply` and :meth:`IssuesClient.post_comment` the same way. A
+``repo_gate`` is decided after the clone (S-189): ``checkout.py`` posts it
+through :func:`post_refusal`, the same reply path the checks here use. A
 ``GET /issues/{n}`` 404 (no such number, or a transferred issue) is refusal
 ``invalid_params`` with no write, as DF-34 recommends.
 
@@ -98,13 +98,16 @@ REPLY_TEXT: Mapping[str, str] = {
         "another bug-fix run is already working on #{issue}. "
         "Wait for it to finish, then comment `/bug-fix` again if it's still needed."
     ),
-    "repo_gate": (
-        "this repository is missing `{detail}`, which bug-fix needs before it can work here."
-    ),
+    # ``{detail}`` is the item's fixed phrase from REPO_GATE_PHRASES (DF-189-05).
+    "repo_gate": "this repository is {detail}, which bug-fix needs before it can work here.",
     "invalid_params": "the run parameter `{detail}` is missing or invalid.",
 }
 # The closed sets a reply's variable parts come from (RT-15 oracle (2)).
 INVALID_PARAMS_KEYS: tuple[str, ...] = (*SCHEMA_KEYS, "params")
+# S-189 adds the items ``toolchain.MISS_ITEMS`` can name: no manifest at all,
+# no lockfile for a frozen install (D-63), Python's ``install`` target
+# (D-112), and (fix round, QA-189-04) a manager other than pnpm or npm. A unit
+# test pins MISS_ITEMS ⊆ REPO_GATE_ITEMS.
 REPO_GATE_ITEMS: tuple[str, ...] = (
     ".claude/agents/developer.md",
     "package.json",
@@ -114,7 +117,35 @@ REPO_GATE_ITEMS: tuple[str, ...] = (
     "format:check",
     "format-check",
     "typecheck",
+    "package.json or Makefile",
+    "lockfile",
+    "install",
+    "supported package manager (pnpm or npm)",
 )
+# The fixed phrase each item renders as (DF-189-05): it says what kind of
+# thing is missing. ``install`` keeps D-112's wording, "missing install
+# target". Item names shared by both stacks (test, lint, typecheck) name both
+# kinds, because the reply gets the item only. No phrase holds user text.
+_GATE = "missing the `{0}` gate (a `package.json` script or a Makefile target)"
+REPO_GATE_PHRASES: Mapping[str, str] = {
+    ".claude/agents/developer.md": "missing `.claude/agents/developer.md`",
+    "package.json": "missing `package.json`",
+    "Makefile": "missing `Makefile`",
+    "test": _GATE.format("test"),
+    "lint": _GATE.format("lint"),
+    "format:check": "missing the `package.json` script `format:check`",
+    "format-check": "missing the Makefile target `format-check`",
+    "typecheck": _GATE.format("typecheck"),
+    "package.json or Makefile": "missing a root `package.json` or Makefile",
+    "lockfile": (
+        "missing the lockfile its package manager needs "
+        "(`pnpm-lock.yaml` for pnpm, `package-lock.json` for npm)"
+    ),
+    "install": "missing install target (the Makefile target `install`)",
+    "supported package manager (pnpm or npm)": (
+        "missing a supported package manager (pnpm or npm; yarn and bun are not supported)"
+    ),
+}
 _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {
     "repo_gate": REPO_GATE_ITEMS,
     "invalid_params": INVALID_PARAMS_KEYS,
@@ -213,9 +244,10 @@ def reply_line(refusal: Refusal, issue_number: int | None) -> str:
         raise ValueError("the issue number must be a positive integer")
     if issue_number is not None and not _positive(issue_number):
         raise ValueError("the issue number must be a positive integer")
-    return REPLY_PREFIX + REPLY_TEXT[code].format(
-        issue=issue_number, pr=pr_ref, detail=refusal.detail
-    )
+    detail = refusal.detail
+    if code == "repo_gate" and detail is not None:  # in the closed set (checked above)
+        detail = REPO_GATE_PHRASES[detail]
+    return REPLY_PREFIX + REPLY_TEXT[code].format(issue=issue_number, pr=pr_ref, detail=detail)
 
 
 def build_reply(
@@ -467,6 +499,52 @@ def _usable_issue(raw: object) -> int | None:
         return None
 
 
+def post_refusal(
+    client: IssuesClient,
+    run_id: str,
+    refusal: Refusal,
+    issue: int | None,
+    *,
+    reply: bool = True,
+    run: Any = None,
+    run_link: str | None = None,
+    secrets: SecretsLike | None = None,
+    token: TokenContext | None = None,
+    summary: str | None = None,
+) -> CheckOutcome:
+    """End the run with ``refusal``: post the marked reply, report, return.
+
+    The reply is the one GitHub write (D-104) and is best effort: a failure is
+    a ``run_event`` and the outcome stays ``not_applicable``. ``summary``
+    overrides ``result.summary`` (``checkout.py`` names every missing
+    ``repo_gate`` item there); the reply itself always uses the fixed sentence.
+    """
+    secrets = [] if secrets is None else secrets
+    line = reply_line(refusal, issue)
+    state = "none"
+    if reply and issue is not None:
+        try:
+            client.post_comment(issue, build_reply(run_id, refusal, issue, run_link))
+            state = "posted"
+        except Exception as exc:  # noqa: BLE001 — the reply is best effort (spec §8.2)
+            state = "failed"
+            _event(
+                run,
+                "warn",
+                f"refusal reply for {refusal.reason} failed: {scrub_exception(exc, secrets)}",
+                secrets,
+            )
+    _event(run, "info", f"refused: {refusal.reason} (reply {state})", secrets)
+    return CheckOutcome(
+        status="succeeded",
+        summary=scrub_all(summary, secrets) if summary is not None else line,
+        outcome="not_applicable",
+        reason=refusal.reason,
+        reply=state,
+        token=token,
+    )
+
+
 def run_refusal_checks(
     *,
     run_id: str,
@@ -514,27 +592,15 @@ def run_refusal_checks(
     client = IssuesClient(owner, repo, token.token, session=session, sleep=sleep)
 
     def refuse(refusal: Refusal, issue: int | None, *, reply: bool) -> CheckOutcome:
-        summary = reply_line(refusal, issue)
-        state = "none"
-        if reply and issue is not None:
-            try:
-                client.post_comment(issue, build_reply(rid, refusal, issue, run_link))
-                state = "posted"
-            except Exception as exc:  # noqa: BLE001 — the reply is best effort (spec §8.2)
-                state = "failed"
-                _event(
-                    run,
-                    "warn",
-                    f"refusal reply for {refusal.reason} failed: {scrub_exception(exc, secrets)}",
-                    secrets,
-                )
-        _event(run, "info", f"refused: {refusal.reason} (reply {state})", secrets)
-        return CheckOutcome(
-            status="succeeded",
-            summary=summary,
-            outcome="not_applicable",
-            reason=refusal.reason,
-            reply=state,
+        return post_refusal(
+            client,
+            rid,
+            refusal,
+            issue,
+            reply=reply,
+            run=run,
+            run_link=run_link,
+            secrets=secrets,
             token=token,
         )
 

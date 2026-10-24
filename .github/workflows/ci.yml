@@ -49,6 +49,15 @@ jobs:
           cache: pip
           cache-dependency-path: ${{ matrix.package-dir }}/pyproject.toml
 
+      # bug-fix's checkout tests run the real `pnpm install --frozen-lockfile`
+      # and skip when pnpm is absent (DF-189-09). Same pin as the panel job
+      # and the image.
+      - name: Install pnpm (bug-fix)
+        if: matrix.agent == 'bug-fix'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
       - name: Install package with dev dependencies
         run: pip install -e '.[dev]'
 
