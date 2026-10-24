@@ -391,3 +391,50 @@ class TestResolveGithubCredentials:
         mock_mint.assert_called_once_with(10, 20, "-----BEGIN RSA PRIVATE KEY-----\n...")
         assert ctx.token == "ghs_resolved"
         assert ctx.installation_id == 20
+
+
+# ---------------------------------------------------------------------------
+# fetch_secret_string (S-182): the Anthropic key and the Projects token
+# ---------------------------------------------------------------------------
+
+
+class TestFetchSecretString:
+    def test_returns_value(self, monkeypatch):
+        import credentials as c
+
+        class SM:
+            def get_secret_value(self, SecretId):
+                assert SecretId == "agent-fleet/prod/ANTHROPIC_API_KEY"
+                return {"SecretString": "sk-ant-api03-value"}
+
+        monkeypatch.setattr(c.boto3, "client", lambda name: SM())
+        assert c.fetch_secret_string("agent-fleet/prod/ANTHROPIC_API_KEY") == "sk-ant-api03-value"
+
+    def test_client_error_is_typed_and_names_no_value(self, monkeypatch):
+        from botocore.exceptions import ClientError
+
+        import credentials as c
+
+        class SM:
+            def get_secret_value(self, SecretId):
+                raise ClientError({"Error": {"Code": "AccessDeniedException"}}, "GetSecretValue")
+
+        monkeypatch.setattr(c.boto3, "client", lambda name: SM())
+        with pytest.raises(c.CredentialError) as exc:
+            c.fetch_secret_string(
+                "agent-fleet/prod/GITHUB_PROJECTS_TOKEN", "PROJECTS_TOKEN_UNAVAILABLE"
+            )
+        assert exc.value.code == "PROJECTS_TOKEN_UNAVAILABLE"
+        assert "AccessDeniedException" in str(exc.value)
+        assert exc.value.__cause__ is None
+
+    def test_empty_secret_string(self, monkeypatch):
+        import credentials as c
+
+        class SM:
+            def get_secret_value(self, SecretId):
+                return {}
+
+        monkeypatch.setattr(c.boto3, "client", lambda name: SM())
+        with pytest.raises(c.CredentialError):
+            c.fetch_secret_string("x")
