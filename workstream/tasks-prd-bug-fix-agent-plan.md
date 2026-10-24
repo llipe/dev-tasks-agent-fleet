@@ -150,6 +150,11 @@
     - with no PAT the board is disabled and the run ends normally.
     
     Cleanup deletes the card (`deleteProjectV2Item`) and closes the probe issue. If the first three checks fail, set `BOARD_UPDATES_ENABLED=0` and route to drift; Wave B is not blocked. Record the result in the spike report
+  - [ ] 3.16 `[T]`/`[I]` [agents/bug-fix] Do this before 3.3 (DF-180-03, D-109).
+    - Dockerfile: install `sudo` with exactly one sudoers line, `wrapper ALL=(fixer) NOPASSWD: ALL`, plus `Defaults env_reset` and a fixed `secure_path` (`/etc/sudoers.d/bug-fix`, mode 0440).
+    - `sandbox.py`: spawn through `sudo -u fixer --` with the allow-listed env passed explicitly.
+    - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
+    - IC (3.7): as `fixer`, `/proc/<wrapper pid>/environ` is unreadable.
   - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
   - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`
