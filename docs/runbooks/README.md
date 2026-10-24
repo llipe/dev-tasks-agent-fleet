@@ -11,4 +11,5 @@ Copy `runbook-template.md` to start a new one, and add a row here.
 
 | Runbook | Trigger | Owner | Last verified |
 | ------- | ------- | ----- | ------------- |
+| [bug-fix-agent](bug-fix-agent.md) | Deploying or redeploying the bug-fix runtime, rotating its Anthropic key or Projects token, or checking its permissions | operator | 2026-10-24 (S-181) |
 | [webhook-deployment](webhook-deployment.md) | Enabling webhook triggers live, adding a GitHub endpoint, or rotating its secret | operator | never (local stack only, S-166) |
