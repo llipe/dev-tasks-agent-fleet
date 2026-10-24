@@ -184,9 +184,9 @@
     - `validateParams` accepts `{issue_number: 7}` and rejects `{}`, `{issue_number: 0}` and `{select_labels: [...]}`;
     - `resolveRoute` with the runbook mapping (`issue.number`, `comment.id`) yields valid params (D-88, D-93).
   - [x] 5.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_params.py`: valid params; missing `issue_number`; each bound's edges and a wrong type; defaults applied for budgets, caps and status names; unknown keys ignored (D-82)
-  - [ ] 5.3 `[I]` [supabase] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql`: an upsert with `params_schema` from spec §5.2 v2.0, and `default_params` holding only budgets, caps and status names
-  - [ ] 5.4 [supabase] Document the rollback in the migration header: `delete from agents where slug = 'bug-fix'`
-  - [ ] 5.5 [supabase] Mirror the row in `supabase/seed.sql`
+  - [x] 5.3 `[I]` [supabase] Migration `supabase/migrations/<ts>_seed_bug_fix_agent.sql`: an upsert with `params_schema` from spec §5.2 v2.0, and `default_params` holding only budgets, caps and status names
+  - [x] 5.4 [supabase] Document the rollback in the migration header: `delete from agents where slug = 'bug-fix'`
+  - [x] 5.5 [supabase] Mirror the row in `supabase/seed.sql`
   - [ ] 5.6 **Confirmation gate:** ask the user before applying the migration to any shared or cloud project
   - [ ] 5.7 [supabase] Apply after confirmation, then verify: `select slug, params_schema->'required' from agents where slug='bug-fix'`
   - [ ] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
