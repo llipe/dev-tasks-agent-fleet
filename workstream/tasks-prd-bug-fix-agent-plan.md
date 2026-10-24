@@ -15,7 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
-| 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. | planner |
+| 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. 3.11–3.13 checked (552 passed, coverage_gate PASS 97.5%, verifier Medium/Major); 3.16 marked superseded; 3.13 base corrected (DF-182-08). | planner |
 | 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, stories v2.0; D-88–D-106). 4.0 and 8.0 removed. 5.0, 6.0 (refusal checks and reply), 7.0, 9.0 and 11.0 rewritten. 1.0, 2.0 (Projects PAT), 3.0 (board probe 3.15) and 10.0 (`repo_gate` refusal) updated. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
@@ -156,7 +156,7 @@
     - with no PAT the board is disabled and the run ends normally.
     
     Cleanup deletes the card (`deleteProjectV2Item`) and closes the probe issue. If the first three checks fail, set `BOARD_UPDATES_ENABLED=0` and route to drift; Wave B is not blocked. Record the result in the spike report
-  - [x] 3.16 `[T]`/`[I]` [agents/bug-fix] Do this before 3.3 (DF-180-03, D-109).
+  - [x] 3.16 `[T]`/`[I]` [agents/bug-fix] **Superseded by 3.17 (D-110)**: done, then replaced after probe run 1 (`no_new_privs` blocks `sudo`). Do this before 3.3 (DF-180-03, D-109).
     - Dockerfile: install `sudo` with exactly one sudoers line, `wrapper ALL=(fixer) NOPASSWD: ALL`, plus `Defaults env_reset` and a fixed `secure_path` (`/etc/sudoers.d/bug-fix`, mode 0440).
     - `sandbox.py`: spawn through `sudo -u fixer --` with the allow-listed env passed explicitly.
     - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
@@ -168,9 +168,9 @@
     - [x] 3.17.4 Probe: the uid and `sudo` checks change to `setpriv` and no-escalation checks; add a user-namespace check for `bwrap`/`srt` under `no_new_privs`.
     - [x] 3.17.5 Local evidence with `--security-opt no-new-privileges` (default and permissive profiles) in the spike report; README and runbook (root wrapper, probe procedure) updated.
     - [x] 3.17.6 [infra] Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b–2d; 2d: 39/39 PASS).
-  - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
-  - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`
+  - [x] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
+  - [x] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+  - [x] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`. On FAIL, route to `product-engineer`
   - [x] 3.14 `[T]` [agents/bug-fix] Do this before 3.11. L1 `tests/unit/test_probe.py`: `__probe` is read only from the **top-level** payload, never from `params`; `params.__probe` is ignored; both forms are refused without `ALLOW_PROBE=1` (DF-14, D-70)
 
 - [ ] ~~4.0 Implement Story S-183 (#365)~~ — **removed in v2.0** (D-95); #365 closed as not planned.
