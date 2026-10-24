@@ -52,3 +52,16 @@ supabase db query --linked "update agents set runtime_arn = 'arn:aws:bedrock-age
 OFFER_TOKEN="$(aws bedrock list-foundation-model-agreement-offers --region us-east-1 --model-id openai.gpt-6.1-sol --query 'offers[0].offerToken' --output text)"
 aws bedrock create-foundation-model-agreement --region us-east-1 --model-id openai.gpt-6.1-sol --offer-token "$OFFER_TOKEN"
 aws bedrock get-foundation-model-availability --region us-east-1 --model-id openai.gpt-6.1-sol   # PENDING -> AVAILABLE in ~40 s
+
+# Step 11: positive panel invoke (operator): run 40e7d207-d5a2-4311-ad18-e319ef3d892e -> failed BEDROCK_ACCESS_DENIED
+# Diagnosis (read-only + one 8-token Converse as the account principal, not the runtime role):
+aws bedrock get-foundation-model-availability --region {us-east-1,us-east-2,us-west-2} --model-id openai.gpt-6.1-sol   # AVAILABLE in all three
+aws bedrock-runtime converse --region us-east-1 --model-id us.openai.gpt-6.1-sol \
+  --messages '[{"role":"user","content":[{"text":"Reply with the word ok."}]}]' --inference-config maxTokens=16
+#   -> AccessDeniedException: openai.gpt-6.1-sol is not available for this account ... contact AWS Sales
+
+# Step 11a: model probe (approved by @llipe): one forced-tool Converse per candidate, as the account principal
+#   toolConfig: one tool submit_review {verdict: clear|blocking}, toolChoice {tool: submit_review}
+aws bedrock-runtime converse --region us-east-1 --model-id deepseek.v3.2 ...            # maxTokens 64 -> max_tokens; 1024 -> tool_use {"verdict":"clear"}
+aws bedrock-runtime converse --region us-east-1 --model-id us.moonshotai.kimi-k3 ...    # maxTokens 64 -> max_tokens; 1024 -> tool_use {"verdict":"clear"}
+aws bedrock-runtime converse --region us-east-1 --model-id mistral.devstral-2-123b ...  # maxTokens 64 -> tool_use {"verdict":"clear"}

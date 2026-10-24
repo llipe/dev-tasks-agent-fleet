@@ -126,3 +126,29 @@
 - **Revert:** close the PR, revert commits.
 
 Order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → (10) → 11 → 12.
+
+## Amendment 1 (2026-10-24): model switch after step 11
+
+Step 11 failed: GPT-6.1 Sol is gated per account ("not available for this account … contact AWS Sales"), even with the agreement AVAILABLE and IAM allowing the call. @llipe ruled out OpenAI and Anthropic models and asked for a recommendation; the step 11a probe (approved) passed for DeepSeek V3.2, Kimi K3 and Devstral 2, and @llipe chose "probe 3, prefer DeepSeek". DeepSeek is already approved for every managed repo (D-18). Recorded as D-59.
+
+### Step 11b: switch the model to DeepSeek V3.2 (repo)
+- **Kind:** pipeline change · **Tool:** git · **Touches state:** no
+- **Forward:** `MODEL_ID=deepseek.v3.2` in `agentcore.json`; `role-policy.json` `InvokeGpt61Sol` → `InvokeDeepSeekV32` on exactly `arn:aws:bedrock:us-east-1::foundation-model/deepseek.v3.2`; CDK tests updated first; D-59 in the decisions log.
+- **Verify:** CDK tests pass. **Revert:** `git revert`.
+
+### Step 11c: update the role policy
+- **Kind:** attach IAM policy · **Tool:** aws · **Touches state:** yes
+- **Backup:** `backup/role-policy.step5.json` (the GPT-6.1 Sol version).
+- **Forward:** `PutRolePolicy code-review-runtime` with the new file.
+- **Verify:** live policy equals the file; simulation: allow on `deepseek.v3.2`, deny on `openai.gpt-6.1-sol`, Kimi K3, and Sonnet.
+- **Revert:** `PutRolePolicy` with the backup.
+
+### Step 11d: redeploy the runtime (env var change)
+- **Kind:** deploy app · **Tool:** agentcore · **Touches state:** yes (runtime version 1 → 2)
+- **Backup:** runtime version 1, image `sha256:e4396fc6…`, `MODEL_ID=us.openai.gpt-6.1-sol`.
+- **Forward:** `cd agents/code-review && agentcore deploy -y`
+- **Verify:** READY, version 2, `MODEL_ID=deepseek.v3.2`, same role.
+- **Revert:** `git revert` 11b and redeploy (back to version-1 config).
+
+### Step 11e: positive panel invoke (AC-8), as step 11
+- Same as step 11, on `llipe/security-analyst-fixture#5`.
