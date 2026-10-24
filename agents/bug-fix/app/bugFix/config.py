@@ -15,12 +15,19 @@ Anthropic model id, and a cloud inference-profile id is rejected.
 The Projects board is best effort (FR-34, D-99, DF-36): a missing
 ``PROJECTS_TOKEN_SECRET_ID`` disables the board with a reason; it never fails
 the run.
+
+``PANEL_BASE_URL`` is the panel's ``https`` origin. :meth:`Config.run_link`
+builds ``<origin>/runs/<run_id>``, the run link in the claim comment and every
+other agent comment (S-188). It is optional: without it a comment names the
+run id instead, so a missing link never fails the run. A value that isn't a
+bare ``https`` origin is a :class:`ConfigError`.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -60,6 +67,13 @@ REQUIRED_VARS: tuple[str, ...] = (
 # ``global.anthropic....``). A plain Anthropic API id (``claude-...``) has none.
 _PROVIDER_MODEL_ID = re.compile(r"^arn:|/|(?:^|\.)anthropic\.", re.IGNORECASE)
 
+# A bare https origin: a DNS host and an optional port. No user info, path,
+# query or fragment, so the run link can't point anywhere but the panel.
+_PANEL_ORIGIN = re.compile(
+    r"https://[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*"
+    r"(?::[0-9]{1,5})?"
+)
+
 
 class ConfigError(ValueError):
     """A required runtime variable is missing or invalid.
@@ -86,6 +100,18 @@ class Config:
     board_updates_enabled: bool
     # None when the board is enabled; otherwise "flag_off" or "no_token_secret_id".
     board_disabled_reason: str | None
+    # The panel's https origin (no trailing slash), or None when unset.
+    panel_base_url: str | None = None
+
+    def run_link(self, run_id: str) -> str | None:
+        """``<panel>/runs/<run_id>``, or ``None`` without a panel origin or a UUID."""
+        if self.panel_base_url is None:
+            return None
+        try:
+            rid = str(uuid.UUID(run_id))
+        except (TypeError, ValueError, AttributeError):
+            return None
+        return f"{self.panel_base_url}/runs/{rid}"
 
 
 def _get(env: Mapping[str, str], name: str) -> str | None:
@@ -126,6 +152,12 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
     elif projects_id is None:
         reason = "no_token_secret_id"
 
+    panel = _get(source, "PANEL_BASE_URL")
+    if panel is not None:
+        panel = panel.removesuffix("/")
+        if not _PANEL_ORIGIN.fullmatch(panel):
+            raise ConfigError("PANEL_BASE_URL", "must be an https origin with no path") from None
+
     return Config(
         supabase_url=values["SUPABASE_URL"],
         supabase_key_secret_id=values["SUPABASE_KEY_SECRET_ID"],
@@ -134,4 +166,5 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         projects_token_secret_id=projects_id,
         board_updates_enabled=reason is None,
         board_disabled_reason=reason,
+        panel_base_url=panel,
     )
