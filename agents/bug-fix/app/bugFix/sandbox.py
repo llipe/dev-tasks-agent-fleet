@@ -30,9 +30,19 @@ uid ``fixer``, never in the wrapper's own process or with its env (spec §7, §1
      through srt's filtering proxy).
    - :attr:`Mode.CLI` — only the pinned ``claude`` binary, which enforces its
      own Bash sandbox from ``/etc/claude-code/managed-settings.json``. Nesting
-     ``claude`` inside ``srt`` would cut it off from the Anthropic API.
+     ``claude`` inside ``srt`` would cut it off from the Anthropic API. Every
+     headless run (``-p``/``--print``) also gets
+     ``--disallowedTools=WebFetch,WebSearch``, on top of the managed deny.
 
    A bare exec (setpriv straight to an arbitrary command) is never built.
+
+   Both runtimes point their proxy variables at ``localhost`` (hard-coded),
+   and the sandbox's network namespace has no DNS, so ``localhost`` must come
+   from ``/etc/hosts``. The image's ``/etc/hosts`` is empty and AgentCore
+   doesn't write one (S-182 re-probe 2b: ``getaddrinfo EAI_AGAIN
+   localhost``), so before every run the wrapper adds ``127.0.0.1
+   localhost`` if no loopback entry exists (:func:`ensure_loopback_hosts`),
+   and refuses to start the run if it can't.
 4. **Wall-clock timeout.** SIGTERM at the deadline (``setpriv`` and
    ``fixer_exec.py`` exec, so the child pid is the runtime itself). If it is
    still alive after :data:`KILL_GRACE_SECONDS` (15 s), every ``fixer``
@@ -52,6 +62,7 @@ from __future__ import annotations
 
 import contextlib
 import enum
+import ipaddress
 import os
 import signal
 import subprocess
@@ -81,6 +92,18 @@ SETPRIV_FLAGS: tuple[str, ...] = (
     "--inh-caps=-all",
     "--no-new-privs",
 )
+
+# Defence in depth on top of the managed deny (S-182 fix round 2): every
+# headless run of the CLI gets these tools removed by flag as well. One token,
+# because the option is variadic and would swallow a following positional.
+CLI_DISALLOWED_TOOLS: tuple[str, ...] = ("WebFetch", "WebSearch")
+CLI_DISALLOWED_FLAG = f"--disallowedTools={','.join(CLI_DISALLOWED_TOOLS)}"
+_CLI_PRINT_FLAGS = frozenset({"-p", "--print"})
+
+# srt and the CLI's own Bash sandbox point every proxy variable at
+# ``localhost`` (hard-coded in both), and the sandbox's network namespace has
+# no DNS, so ``localhost`` must come from /etc/hosts (S-182 re-probe 2b).
+LOOPBACK_HOSTS_LINE = "127.0.0.1\tlocalhost\n"
 
 KILL_GRACE_SECONDS = 15.0
 POLL_INTERVAL_SECONDS = 0.2
@@ -147,9 +170,60 @@ class SandboxPaths(NamedTuple):
     claude: str = "/usr/bin/claude"
     kill: str = "/usr/bin/kill"
     pkill: str = "/usr/bin/pkill"
+    hosts: str = "/etc/hosts"
 
 
 DEFAULT_PATHS = SandboxPaths()
+
+
+def _maps_localhost_to_loopback(text: str) -> bool:
+    for line in text.splitlines():
+        fields = line.split("#", 1)[0].split()
+        if len(fields) < 2 or "localhost" not in fields[1:]:
+            continue
+        try:
+            if ipaddress.ip_address(fields[0]).is_loopback:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def ensure_loopback_hosts(path: str = "/etc/hosts") -> str:
+    """Make ``localhost`` resolve to loopback from ``path``; ``"present"`` or ``"added"``.
+
+    Why (S-182 re-probe 2b): srt and the CLI's Bash sandbox set every proxy
+    variable to ``http://…@localhost:<port>``, and inside the sandbox's network
+    namespace there is no DNS. The image's own ``/etc/hosts`` is empty
+    (BuildKit bind-mounts it during the build, so the Dockerfile can't fill
+    it); Docker writes one at run time, AgentCore does not. Without the entry
+    every registry fails with ``getaddrinfo EAI_AGAIN localhost``.
+
+    Appends one line, in place (``/etc/hosts`` may be a bind mount, so no
+    rename). Raises :class:`SandboxUnavailable` if the entry is missing and
+    can't be added: running anyway would only produce confusing network errors.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except FileNotFoundError:
+        text = ""
+    except OSError as exc:
+        raise SandboxUnavailable(
+            f"sandbox cannot resolve localhost: {path}: {exc.strerror}"
+        ) from None
+    if _maps_localhost_to_loopback(text):
+        return "present"
+    prefix = "\n" if text and not text.endswith("\n") else ""
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(prefix + LOOPBACK_HOSTS_LINE)
+    except OSError as exc:
+        raise SandboxUnavailable(
+            f"sandbox cannot resolve localhost: {path} has no loopback entry "
+            f"and is not writable ({exc.strerror})"
+        ) from None
+    return "added"
 
 
 @dataclass(frozen=True)
@@ -233,6 +307,17 @@ class Sandbox:
         self._kill = kill
         self._sweeper = sweeper or self.sweep
         self._reaper = reaper or reap_zombies
+        self.hosts_status = "unchecked"
+
+    # ------------------------------------------------------------ host setup
+
+    def ensure_hosts(self) -> str:
+        """:func:`ensure_loopback_hosts` on ``paths.hosts``. ``hosts_status`` keeps
+        ``"added"`` once the wrapper had to add the entry, so the probe can say so."""
+        status = ensure_loopback_hosts(self.paths.hosts)
+        if self.hosts_status != "added":
+            self.hosts_status = status
+        return status
 
     # ------------------------------------------------------------ availability
 
@@ -265,7 +350,10 @@ class Sandbox:
             return [*prefix, self.paths.srt, "--settings", self.paths.srt_settings, "--", *argv]
         if argv[0] != self.paths.claude:
             raise ValueError("CLI mode runs only the pinned claude binary")
-        return [*prefix, *argv]
+        rest = list(argv[1:])
+        if _CLI_PRINT_FLAGS.intersection(rest) and CLI_DISALLOWED_FLAG not in rest:
+            rest.insert(0, CLI_DISALLOWED_FLAG)
+        return [*prefix, argv[0], *rest]
 
     # ------------------------------------------------------------ running
 
@@ -285,6 +373,7 @@ class Sandbox:
         if timeout <= 0:
             raise ValueError("timeout must be positive")
         self.check_available(mode)
+        self.ensure_hosts()
         env = build_env(anthropic_api_key)
         cmd = self.build_command(mode, argv)
 

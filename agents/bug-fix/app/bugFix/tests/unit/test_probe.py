@@ -332,6 +332,49 @@ class TestNetChecks:
         assert _verdicts(probe.net_checks(inner))["net.blocked.example.com"] == "PASS"
 
 
+class TestLocalhostCheck:
+    """Re-probe 2b: srt's proxy is ``localhost``; it must resolve inside the sandbox."""
+
+    def _inner(self, resolve: Any) -> FakeInner:
+        return FakeInner(
+            {
+                ("resolve", "sandbox"): resolve,
+                ("net", "sandbox"): {"http": "blocked", "tcp": "blocked"},
+                ("tool", "sandbox"): {"rc": 0, "out": ""},
+            }
+        )
+
+    def test_loopback_passes_and_reports_the_hosts_state(self):
+        inner = self._inner({"addrs": ["127.0.0.1"], "hosts": ["127.0.0.1\tlocalhost"]})
+        (r,) = [x for x in probe.net_checks(inner, hosts_status=lambda: "added") if
+                x.check == "net.localhost"]  # fmt: skip
+        assert r.verdict is Verdict.PASS
+        assert "etc_hosts=added" in r.detail
+        assert "127.0.0.1" in r.detail
+        assert ("resolve", ("localhost",), "sandbox") in inner.calls
+
+    def test_it_runs_first(self):
+        inner = self._inner({"addrs": ["::1", "127.0.0.1"], "hosts": []})
+        assert probe.net_checks(inner)[0].check == "net.localhost"
+
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            {"addrs": [], "error": "gaierror: [Errno -3] Temporary failure in name resolution"},
+            {"addrs": ["10.0.0.5"]},
+            {"addrs": ["127.0.0.1", "10.0.0.5"]},
+        ],
+    )
+    def test_unresolved_or_non_loopback_fails(self, answer):
+        r = probe.net_checks(self._inner(answer))[0]
+        assert r.check == "net.localhost"
+        assert r.verdict is Verdict.FAIL
+
+    def test_default_hosts_status_is_unchecked(self):
+        r = probe.net_checks(self._inner({"addrs": ["127.0.0.1"]}))[0]
+        assert "etc_hosts=unchecked" in r.detail
+
+
 class TestProcAndEnvChecks:
     def test_unreadable_environ_and_mem_pass(self):
         inner = FakeInner(
@@ -522,6 +565,7 @@ class FakeSandbox:
         self.stdout = stdout
         self.outcome = outcome
         self.calls: list[dict[str, Any]] = []
+        self.hosts_status = "added"
 
     def run(self, argv, **kw):
         self.calls.append({"argv": list(argv), **kw})
@@ -545,6 +589,23 @@ def _cli_json(denials: list[dict]) -> str:
             "permission_denials": denials,
         }
     )
+
+
+DEFAULT_TOOLS = ["Bash", "Edit", "Glob", "Grep", "Read", "Write"]
+
+
+def _cli_stream(denials: list[dict], tools: list[str] | None = None) -> str:
+    """``--output-format stream-json --verbose``: the init event, then the result."""
+    lines = []
+    if tools is not None:
+        lines.append(
+            json.dumps(
+                {"type": "system", "subtype": "init", "tools": tools, "permissionMode": "default"}
+            )
+        )
+    lines.append(json.dumps({"type": "assistant", "message": {"content": []}}))
+    lines.append(_cli_json(denials))
+    return "\n".join(lines) + "\n"
 
 
 DROPPED = {
@@ -795,7 +856,9 @@ class TestCliChecks:
         call = sb.calls[0]
         assert call["argv"][0] == paths.claude
         assert call["anthropic_api_key"] == ANTHROPIC_KEY
-        assert "--output-format" in call["argv"] and "json" in call["argv"]
+        argv = call["argv"]
+        assert argv[argv.index("--output-format") + 1] == "stream-json"
+        assert "--verbose" in argv
         assert ANTHROPIC_KEY not in " ".join(call["argv"])
         assert "--dangerously-skip-permissions" not in call["argv"]
 
@@ -820,6 +883,51 @@ class TestCliChecks:
         )
         assert v["cli.deny.git_push"] == "FAIL"
         assert v["cli.deny.webfetch"] == "FAIL"
+
+    def test_tools_removed_from_the_model_pass_without_a_denial(self):
+        """Re-probe 2b: a tool-wide deny removes the tool from the init tool list,
+        so the model never calls it and there is no permission_denials entry.
+        That is the deny working, not failing open."""
+        sb = FakeSandbox(
+            _cli_stream(
+                [{"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD:main"}}],
+                tools=DEFAULT_TOOLS,
+            )
+        )
+        r = probe.cli_checks(sb, self._inner(), probe.default_paths(), ANTHROPIC_KEY, "m")
+        v = _verdicts(r)
+        assert v["cli.deny.webfetch"] == "PASS"
+        assert v["cli.deny.websearch"] == "PASS"
+        detail = {x.check: x.detail for x in r}["cli.deny.webfetch"]
+        assert "offered=False" in detail
+
+    def test_tool_offered_and_not_denied_fails(self):
+        sb = FakeSandbox(_cli_stream([], tools=[*DEFAULT_TOOLS, "WebFetch", "WebSearch"]))
+        v = _verdicts(
+            probe.cli_checks(sb, self._inner(), probe.default_paths(), ANTHROPIC_KEY, "m")
+        )
+        assert v["cli.deny.webfetch"] == "FAIL"
+        assert v["cli.deny.websearch"] == "FAIL"
+
+    def test_tool_offered_but_denied_passes(self):
+        sb = FakeSandbox(
+            _cli_stream(
+                [{"tool_name": "WebFetch", "tool_input": {}}],
+                tools=[*DEFAULT_TOOLS, "WebFetch"],
+            )
+        )
+        v = _verdicts(
+            probe.cli_checks(sb, self._inner(), probe.default_paths(), ANTHROPIC_KEY, "m")
+        )
+        assert v["cli.deny.webfetch"] == "PASS"
+
+    def test_no_init_event_and_no_denial_fails(self):
+        sb = FakeSandbox(_cli_stream([], tools=None))
+        v = _verdicts(
+            probe.cli_checks(sb, self._inner(), probe.default_paths(), ANTHROPIC_KEY, "m")
+        )
+        assert v["cli.deny.webfetch"] == "FAIL"
+        assert v["cli.deny.websearch"] == "FAIL"
 
     def test_unparseable_output_fails_both(self):
         sb = FakeSandbox("not json", outcome=Outcome.FAILED)
@@ -1246,6 +1354,7 @@ def _all_ok_inner() -> FakeInner:
     return FakeInner(
         {
             ("net", "sandbox"): {"http": "blocked", "tcp": "blocked"},
+            ("resolve", "sandbox"): {"addrs": ["127.0.0.1"], "hosts": ["127.0.0.1 localhost"]},
             ("tool", "sandbox"): {"rc": 0, "out": "ok"},
             ("proc", "sandbox"): {"environ": "unreadable:ENOENT", "mem": "unreadable:ENOENT"},
             ("proc", "uid"): {"environ": "unreadable:EACCES", "mem": "unreadable:EACCES"},

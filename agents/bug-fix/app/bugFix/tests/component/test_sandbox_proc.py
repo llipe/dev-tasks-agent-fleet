@@ -82,7 +82,10 @@ def chain(tmp_path: Path, marker: str):
     fake_srt = str(fake_srt_path)
     settings = tmp_path / "srt-settings.json"
     settings.write_text("{}")
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1\tlocalhost\n")
     paths = SandboxPaths(
+        hosts=str(hosts),
         setpriv=fake_setpriv,
         python=sys.executable,
         fixer_exec=str(PKG / "fixer_exec.py"),
@@ -266,4 +269,5 @@ class TestModes:
         res = Sandbox(paths, sweeper=sweep).run(
             [claude, "-p", "hi"], mode=Mode.CLI, cwd=str(tmp_path), timeout=20
         )
-        assert res.stdout.strip() == "claude-args:-p hi"
+        # S-182 fix round 2: every headless run gets the tool deny by flag too.
+        assert res.stdout.strip() == "claude-args:--disallowedTools=WebFetch,WebSearch -p hi"

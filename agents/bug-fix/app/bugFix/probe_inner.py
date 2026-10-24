@@ -342,7 +342,29 @@ def cmd_tool(*argv: str) -> dict[str, Any]:
     return {"rc": done.returncode, "out": (done.stdout + done.stderr)[-500:]}
 
 
+def cmd_resolve(host: str, hosts_path: str = "/etc/hosts") -> dict[str, Any]:
+    """How ``host`` resolves here, plus the ``hosts_path`` lines naming it.
+
+    Re-probe 2b: srt's proxy variables say ``localhost``, and the sandbox's
+    network namespace has no DNS, so ``localhost`` must come from /etc/hosts.
+    """
+    out: dict[str, Any] = {"addrs": []}
+    try:
+        infos = socket.getaddrinfo(host, None)
+        out["addrs"] = list(dict.fromkeys(str(i[4][0]) for i in infos))
+    except OSError as exc:
+        out["error"] = f"{type(exc).__name__}: {exc}"[:200]
+    try:
+        with open(hosts_path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        lines = []
+    out["hosts"] = [ln for ln in lines if host in ln.split("#", 1)[0].split()[1:]][:5]
+    return out
+
+
 COMMANDS: dict[str, Callable[..., dict[str, Any]]] = {
+    "resolve": cmd_resolve,
     "net": cmd_net,
     "proc": cmd_proc,
     "env": cmd_env,

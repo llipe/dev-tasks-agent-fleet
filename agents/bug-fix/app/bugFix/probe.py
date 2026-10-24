@@ -25,7 +25,10 @@ through the scrubber; no token or key is ever put in a detail or in argv.
 - ``net.*`` (SC-IC-01/02) - from inside the sandbox as ``fixer``: the container
   credential and metadata endpoints and non-registry hosts are unreachable
   (HTTP through the sandbox proxy and a raw TCP connect); ``npm view`` and
-  ``pip download`` reach the registries.
+  ``pip download`` reach the registries. ``net.localhost`` runs first: srt's
+  proxy variables name ``localhost``, so it must resolve to loopback inside the
+  sandbox; the detail says whether the wrapper had to add the ``/etc/hosts``
+  entry (``etc_hosts=added``) and quotes the lines (re-probe 2b).
 - ``proc.*``, ``env.*``, ``noescalate.*`` (SC-IC-03, D-110) - as ``fixer``, both
   inside the sandbox and with the ``setpriv`` drop alone: the root wrapper's
   ``/proc/<pid>/environ`` and ``/mem`` are unreadable, no ``AWS_*`` /
@@ -39,7 +42,15 @@ through the scrubber; no token or key is ever put in a detail or in argv.
 - ``cli.*`` (SC-IC-04) - ``claude -p`` as ``fixer`` in a throwaway repo whose
   ``.claude/settings.json`` allows ``git push``, ``gh``, ``curl`` and
   ``WebFetch``, disables the sandbox and asks for bypass mode: the managed
-  deny wins for ``git push`` (and the bare remote gets no ref) and ``WebFetch``.
+  deny wins for ``git push`` (and the bare remote gets no ref), ``WebFetch``
+  and ``WebSearch``. The run uses ``stream-json``: a tool-wide deny removes the
+  tool from the list offered to the model (the init event), so the model never
+  calls it and no denial is recorded. ``cli.deny.webfetch``/``websearch`` pass
+  when the tool is not offered, or is offered and denied (re-probe 2b read the
+  missing denial as a fail-open). ``sandbox.py`` adds
+  ``--disallowedTools=WebFetch,WebSearch`` to the run, so these two checks
+  measure the policy and the flag together; the policy alone was verified
+  locally (spike report, re-probe 2b).
 - ``board.*`` (D-105) - with ``GITHUB_PROJECTS_TOKEN`` on the linked board #5 of
   ``llipe/dev-tasks``: detection, idempotent add, the three statuses set and
   read back, the PAT absent from every ``fixer`` env and readable file, and the
@@ -53,6 +64,7 @@ from __future__ import annotations
 import contextlib
 import enum
 import hashlib
+import ipaddress
 import json
 import os
 import shutil
@@ -334,7 +346,24 @@ _REGISTRY_TOOLS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )  # fmt: skip
 
 
-def net_checks(inner: Any) -> list[CheckResult]:
+def _loopback(addrs: Sequence[str]) -> bool:
+    try:
+        return bool(addrs) and all(ipaddress.ip_address(a).is_loopback for a in addrs)
+    except ValueError:
+        return False
+
+
+def net_checks(
+    inner: Any, hosts_status: Callable[[], str] = lambda: "unchecked"
+) -> list[CheckResult]:
+    def _localhost_check() -> CheckResult:
+        d = inner.call("resolve", "localhost")
+        addrs = [str(a) for a in d.get("addrs") or []]
+        detail = (
+            f"etc_hosts={hosts_status()} addrs={addrs} hosts={d.get('hosts')} {d.get('error', '')}"
+        ).strip()
+        return CheckResult("net.localhost", _pf(_loopback(addrs)), detail)
+
     def _blocked_check(name: str, url: str, host: str, port: int) -> CheckResult:
         d = inner.call("net", url, host, str(port))
         detail = f"http={d.get('http')} tcp={d.get('tcp')} {d.get('detail', '')}".strip()
@@ -345,7 +374,8 @@ def net_checks(inner: Any) -> list[CheckResult]:
         detail = f"rc={d.get('rc')} {str(d.get('out', ''))[-200:]}".strip()
         return CheckResult(f"net.reachable.{name}", _pf(d.get("rc") == 0), detail)
 
-    results = [
+    results = [_check("net.localhost", _localhost_check)]
+    results += [
         _check(f"net.blocked.{n}", partial(_blocked_check, n, u, h, p))
         for n, u, h, p in NET_BLOCKED
     ]
@@ -666,10 +696,37 @@ def _denials(stdout: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return [d for d in denials if isinstance(d, dict)], data
 
 
+def _init_tools(stdout: str) -> list[str] | None:
+    """The tool list the CLI offered the model (``stream-json`` init event)."""
+    for line in stdout.splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if (
+            isinstance(value, dict)
+            and value.get("type") == "system"
+            and value.get("subtype") == "init"
+        ):
+            tools = value.get("tools")
+            return [str(t) for t in tools] if isinstance(tools, list) else None
+    return None
+
+
+# Tool-wide denies checked by the probe. A tool-wide deny (managed policy or
+# --disallowedTools) removes the tool from the list offered to the model, so
+# the model can't call it and no permission_denials entry appears (re-probe 2b
+# misread that as a fail-open). PASS = not offered, or offered and denied.
+CLI_DENIED_TOOLS: tuple[tuple[str, str], ...] = (
+    ("cli.deny.webfetch", "WebFetch"),
+    ("cli.deny.websearch", "WebSearch"),
+)
+
+
 def cli_checks(
     sb: Any, inner: Any, paths: SandboxPaths, anthropic_key: str | None, model_id: str
 ) -> list[CheckResult]:
-    names = ("cli.deny.git_push", "cli.deny.webfetch")
+    names = ("cli.deny.git_push", *(n for n, _ in CLI_DENIED_TOOLS))
     if not anthropic_key:
         return [
             CheckResult(n, Verdict.FAIL, "ANTHROPIC_API_KEY not available to the probe")
@@ -683,7 +740,8 @@ def cli_checks(
         "-p",
         CLI_PROMPT,
         "--output-format",
-        "json",
+        "stream-json",
+        "--verbose",
         "--model",
         model_id,
         "--max-turns",
@@ -714,20 +772,31 @@ def cli_checks(
         and "git push" in str((d.get("tool_input") or {}).get("command", ""))
         for d in denials
     )
-    webfetch_denied = any(d.get("tool_name") == "WebFetch" for d in denials)
+    tools = _init_tools(res.stdout)
     refs = inner.call("refs", f"{repo_dir}/.probe-remote.git").get("refs")
     shape = (
         f"subtype={data.get('subtype')} turns={data.get('num_turns')} "
         f"denials={[d.get('tool_name') for d in denials]}"
     )
-    return [
+    results = [
         CheckResult(
             "cli.deny.git_push",
             _pf(push_denied and refs == 0),
             f"denied={push_denied} remote_refs={refs} {shape}",
-        ),
-        CheckResult("cli.deny.webfetch", _pf(webfetch_denied), f"denied={webfetch_denied} {shape}"),
+        )
     ]
+    for name, tool in CLI_DENIED_TOOLS:
+        denied = any(d.get("tool_name") == tool for d in denials)
+        offered = None if tools is None else tool in tools
+        ok = denied or offered is False
+        results.append(
+            CheckResult(
+                name,
+                _pf(ok),
+                f"offered={offered} denied={denied} tools={len(tools or [])} {shape}",
+            )
+        )
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -1065,7 +1134,7 @@ def build_checks(
         ("setpriv", lambda: setpriv_checks(inner)),
         ("sandbox", lambda: sandbox_checks(sb)),
         ("userns", lambda: userns_checks(inner, paths=paths)),
-        ("net", lambda: net_checks(inner)),
+        ("net", lambda: net_checks(inner, hosts_status=lambda: sb.hosts_status)),
         ("proc", lambda: proc_checks(inner, pid)),
         ("env", lambda: env_checks(inner)),
         ("noescalate", lambda: noescalate_checks(inner)),

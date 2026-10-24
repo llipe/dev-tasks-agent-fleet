@@ -24,7 +24,11 @@
 #     /work/wrapper and /work/secrets are root:root 0700 and fixer can't read
 #     them, /root or /home of anyone else;
 #   - policy: /etc/claude-code/managed-settings.json is root:root 0644, and as
-#     fixer it can't be appended to and the directory isn't writable.
+#     fixer it can't be appended to and the directory isn't writable;
+#   - localhost (S-182 re-probe 2b): the image's /etc/hosts is empty, and
+#     sandbox.py adds `127.0.0.1 localhost` to an empty one (once) so fixer
+#     resolves srt's proxy host; the pinned CLI accepts the
+#     `--disallowedTools=WebFetch,WebSearch` flag sandbox.py adds.
 #
 # Exits non-zero on the first failed assertion. Needs Docker and a locally
 # built image; needs no credentials and no network.
@@ -213,6 +217,35 @@ sweep_out="$(as_agentcore "sleep 1000 & root_pid=\$!; \
 echo "$sweep_out" | grep -qx 'fixer=0' || fail "fixer process(es) survived Sandbox().sweep(): $sweep_out"
 echo "$sweep_out" | grep -qx 'root=alive' || fail "Sandbox().sweep() killed a root process: $sweep_out"
 ok "Sandbox().sweep() leaves no fixer process (setsid daemon included) and spares root's"
+
+# localhost for the sandbox proxy (S-182 re-probe 2b). The image's own
+# /etc/hosts is empty (BuildKit can't fill it) and AgentCore doesn't write
+# one; srt and the CLI point their proxy at `localhost`, so sandbox.py adds
+# `127.0.0.1 localhost` before a run. Emulated with an empty, writable hosts
+# file mounted over Docker's own.
+cid="$(docker create --platform "$PLATFORM" "$IMAGE")"
+img_hosts="$(docker export "$cid" | tar -xOf - etc/hosts | wc -c | tr -d ' ')"
+docker rm "$cid" >/dev/null
+[ "$img_hosts" = "0" ] || fail "image /etc/hosts is ${img_hosts} bytes; expected empty (update sandbox.py's note if this changed)"
+ok "image /etc/hosts is empty (the runtime fix is needed)"
+hosts_tmp="$(mktemp)"
+: > "$hosts_tmp"
+hosts_out="$(docker run --rm --platform "$PLATFORM" --security-opt no-new-privileges \
+  -v "$hosts_tmp:/etc/hosts" --entrypoint /bin/sh "$IMAGE" -c \
+  "cd /app && python3 -c 'from sandbox import Sandbox; s = Sandbox(); print(s.ensure_hosts(), s.ensure_hosts())' && \
+   $SETPRIV python3 -c 'import socket; print(socket.getaddrinfo(\"localhost\", None)[0][4][0])'")"
+rm -f "$hosts_tmp"
+[ "$hosts_out" = "$(printf 'added present\n127.0.0.1')" ] \
+  || fail "empty /etc/hosts: expected 'added present' then 127.0.0.1 for fixer, got: $hosts_out"
+ok "sandbox.py adds 127.0.0.1 localhost to an empty /etc/hosts, once; fixer resolves it"
+
+# Defence in depth for WebFetch/WebSearch: the pinned CLI accepts the flag
+# sandbox.py adds to every headless run.
+flag="$(as_agentcore "cd /app && python3 -c 'from sandbox import CLI_DISALLOWED_FLAG; print(CLI_DISALLOWED_FLAG)'")"
+[ "$flag" = "--disallowedTools=WebFetch,WebSearch" ] || fail "unexpected CLI_DISALLOWED_FLAG: $flag"
+as_agentcore "$FIXER_EXEC /usr/bin/claude $flag --version" | grep -qF "$pinned" \
+  || fail "claude rejects $flag"
+ok "pinned claude accepts $flag"
 
 # --- Dirs (TC-180-08) -----------------------------------------------------------
 owner_mode() { as_root "stat -c '%U:%G %a' $1"; }

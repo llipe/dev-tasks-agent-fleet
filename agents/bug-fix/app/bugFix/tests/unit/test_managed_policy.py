@@ -113,6 +113,15 @@ class TestDenyRules:
             for path in DENY_PATHS:
                 assert f"{tool}({path})" not in _deny()
 
+    @pytest.mark.parametrize("tool", ["WebFetch", "WebSearch"])
+    def test_web_tools_denied_tool_wide(self, tool):
+        """S-182 re-probe 2b: the bare name is a tool-wide deny, which the pinned
+        CLI (2.1.309) enforces by removing the tool from the list offered to the
+        model (verified locally: 22 tools with the policy, 24 without). A scoped
+        rule such as ``WebFetch(domain:...)`` would leave the tool offered."""
+        assert tool in _deny()
+        assert not [r for r in _deny() if r.startswith(f"{tool}(")]
+
     def test_managed_policy_allows_nothing_extra(self):
         # A managed allow rule would widen every repo's settings.
         assert not _policy()["permissions"].get("allow")

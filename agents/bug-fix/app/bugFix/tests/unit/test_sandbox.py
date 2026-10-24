@@ -70,7 +70,10 @@ def paths(tmp_path: Path) -> SandboxPaths:
         p.chmod(0o755)
         return str(p)
 
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1\tlocalhost\n")
     return SandboxPaths(
+        hosts=str(hosts),
         setpriv=_exe("setpriv"),
         python=_exe("python3"),
         fixer_exec=_exe("fixer_exec.py"),
@@ -688,3 +691,153 @@ class TestSweepAndReap:
         with pytest.raises(RuntimeError):
             sb.run(["true"], cwd="/w", timeout=5)
         assert events[-2:] == ["sweep", "reap"]
+
+
+# ---------------------------------------------------------------------------
+# S-182 fix round 2: srt's proxy host must resolve inside the sandbox
+# ---------------------------------------------------------------------------
+
+
+class TestLoopbackHosts:
+    """Re-probe 2b: inside srt's network namespace there is no DNS, and srt (and
+    the CLI's own Bash sandbox) point every proxy variable at ``localhost``. The
+    image ships a 0-byte ``/etc/hosts`` (BuildKit bind-mounts it, so the
+    Dockerfile can't fill it), so on a runtime that doesn't write one,
+    ``localhost`` fails with EAI_AGAIN and every registry is unreachable. The
+    wrapper (root) adds the loopback entry before any sandboxed run."""
+
+    def test_empty_file_gets_the_ipv4_loopback_entry(self, tmp_path):
+        hosts = tmp_path / "hosts"
+        hosts.write_text("")
+        assert sandbox.ensure_loopback_hosts(str(hosts)) == "added"
+        assert hosts.read_text() == "127.0.0.1\tlocalhost\n"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "127.0.0.1\tlocalhost\n",
+            "127.0.0.1 localhost localhost.localdomain\n",
+            "::1 localhost ip6-localhost\n",
+            "# comment\n10.0.0.5 box\n127.0.0.1   localhost # trailing\n",
+        ],
+    )
+    def test_existing_loopback_entry_is_left_alone(self, tmp_path, text):
+        hosts = tmp_path / "hosts"
+        hosts.write_text(text)
+        assert sandbox.ensure_loopback_hosts(str(hosts)) == "present"
+        assert hosts.read_text() == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "# 127.0.0.1 localhost\n",
+            "127.0.0.1 localhost.localdomain\n",
+            "10.0.0.5 localhost\n",
+            "169.254.1.1 box",
+        ],
+    )
+    def test_no_loopback_mapping_appends_one_line(self, tmp_path, text):
+        hosts = tmp_path / "hosts"
+        hosts.write_text(text)
+        assert sandbox.ensure_loopback_hosts(str(hosts)) == "added"
+        body = hosts.read_text()
+        assert body.startswith(text)
+        assert body.splitlines()[-1] == "127.0.0.1\tlocalhost"
+        assert body.count("127.0.0.1\tlocalhost") == 1
+
+    def test_idempotent(self, tmp_path):
+        hosts = tmp_path / "hosts"
+        hosts.write_text("")
+        sandbox.ensure_loopback_hosts(str(hosts))
+        assert sandbox.ensure_loopback_hosts(str(hosts)) == "present"
+        assert hosts.read_text() == "127.0.0.1\tlocalhost\n"
+
+    def test_missing_file_is_created(self, tmp_path):
+        hosts = tmp_path / "hosts"
+        assert sandbox.ensure_loopback_hosts(str(hosts)) == "added"
+        assert hosts.read_text() == "127.0.0.1\tlocalhost\n"
+
+    def test_unwritable_without_entry_is_unavailable(self, tmp_path):
+        hosts = tmp_path / "nodir" / "hosts"
+        with pytest.raises(SandboxUnavailable) as exc:
+            sandbox.ensure_loopback_hosts(str(hosts))
+        assert "localhost" in str(exc.value)
+
+    @pytest.mark.parametrize("mode", list(Mode))
+    def test_run_fixes_hosts_before_spawning(self, paths, mode):
+        Path(paths.hosts).write_text("")
+        clock = FakeClock()
+        seen: dict[str, str] = {}
+
+        def _popen(cmd, **kw):
+            seen["hosts"] = Path(paths.hosts).read_text()
+            return FakeProc(clock, exits_at=0.0)
+
+        sb = Sandbox(
+            paths,
+            popen=_popen,
+            clock=clock,
+            sleep=clock.sleep,
+            sweeper=lambda: None,
+            reaper=lambda: None,
+        )
+        argv = [paths.claude, "-p", "x"] if mode is Mode.CLI else ["true"]
+        sb.run(argv, mode=mode, cwd="/w", timeout=5)
+        assert seen["hosts"] == "127.0.0.1\tlocalhost\n"
+        assert sb.hosts_status == "added"
+
+    def test_run_refuses_to_spawn_when_hosts_cannot_be_fixed(self, paths, tmp_path):
+        broken = paths._replace(hosts=str(tmp_path / "nodir" / "hosts"))
+        calls: list[Any] = []
+        sb = Sandbox(broken, popen=lambda *a, **k: calls.append(a), sweeper=lambda: None)
+        with pytest.raises(SandboxUnavailable):
+            sb.run(["true"], cwd="/w", timeout=5)
+        assert calls == []
+
+    def test_hosts_status_starts_unchecked_and_reports_present(self, paths):
+        sb = Sandbox(paths)
+        assert sb.hosts_status == "unchecked"
+        assert sb.ensure_hosts() == "present"
+        assert sb.hosts_status == "present"
+
+    def test_added_is_sticky(self, paths):
+        Path(paths.hosts).write_text("")
+        sb = Sandbox(paths)
+        sb.ensure_hosts()
+        sb.ensure_hosts()
+        assert sb.hosts_status == "added"
+
+
+class TestCliDisallowedTools:
+    """S-182 fix round 2 (defence in depth): every headless ``claude -p`` run gets
+    ``--disallowedTools=WebFetch,WebSearch`` on top of the managed deny, as one
+    token (the option is variadic) placed straight after the binary."""
+
+    FLAG = "--disallowedTools=WebFetch,WebSearch"
+
+    def test_flag_constant(self):
+        assert sandbox.CLI_DISALLOWED_TOOLS == ("WebFetch", "WebSearch")
+        assert sandbox.CLI_DISALLOWED_FLAG == self.FLAG
+
+    @pytest.mark.parametrize("print_flag", ["-p", "--print"])
+    def test_print_runs_get_the_flag_right_after_the_binary(self, paths, print_flag):
+        cmd = Sandbox(paths).build_command(
+            Mode.CLI, [paths.claude, print_flag, "do it", "--output-format", "json"]
+        )
+        i = cmd.index(paths.claude)
+        assert cmd[i + 1] == self.FLAG
+        assert cmd[i + 2 :] == [print_flag, "do it", "--output-format", "json"]
+        assert cmd.count(self.FLAG) == 1
+
+    def test_version_run_is_unchanged(self, paths):
+        cmd = Sandbox(paths).build_command(Mode.CLI, [paths.claude, "--version"])
+        assert cmd[-2:] == [paths.claude, "--version"]
+        assert self.FLAG not in cmd
+
+    def test_not_duplicated_when_caller_already_passes_it(self, paths):
+        cmd = Sandbox(paths).build_command(Mode.CLI, [paths.claude, self.FLAG, "-p", "x"])
+        assert cmd.count(self.FLAG) == 1
+
+    def test_script_mode_never_gets_it(self, paths):
+        cmd = Sandbox(paths).build_command(Mode.SCRIPT, ["npm", "-p", "x"])
+        assert self.FLAG not in cmd

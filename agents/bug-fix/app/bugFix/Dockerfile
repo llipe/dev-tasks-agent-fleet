@@ -20,6 +20,12 @@
 #     scripts. No sudo and no sudo rule.
 #   - /etc/claude-code/managed-settings.json, root-owned 0644: the managed
 #     policy, which takes precedence over a target repo's own .claude/ (D-51).
+#   - /etc/hosts is NOT set here: BuildKit bind-mounts it during the build, so
+#     a COPY or RUN can't fill it and the image ships it empty. srt and the
+#     CLI's Bash sandbox point their proxy at `localhost`, which must resolve
+#     from /etc/hosts inside the sandbox's network namespace; sandbox.py adds
+#     `127.0.0.1 localhost` at run time when the runtime (AgentCore) didn't
+#     (S-182 re-probe 2b).
 #
 # No secret is baked in. The runtime env carries secret IDs only.
 #
