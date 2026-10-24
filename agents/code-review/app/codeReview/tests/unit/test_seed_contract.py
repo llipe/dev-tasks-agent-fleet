@@ -308,6 +308,41 @@ def test_max_runtime_matches_agentcore_max_lifetime_when_present(row):
 
 
 # ---------------------------------------------------------------------------
+# TC-214-05 — agentcore.json agrees with config.py (S-214)
+# ---------------------------------------------------------------------------
+
+
+def _code_review_runtime() -> dict:
+    spec = json.loads(AGENTCORE_JSON.read_text())
+    runtimes = [rt for rt in spec.get("runtimes", []) if rt.get("name") == "code_review"]
+    assert len(runtimes) == 1, "agentcore.json must define exactly one code_review runtime"
+    return runtimes[0]
+
+
+def test_agentcore_lifecycle_matches_config_clocks():
+    lifecycle = _code_review_runtime()["lifecycleConfiguration"]
+    assert lifecycle["idleRuntimeSessionTimeout"] == config.IDLE_SESSION_TIMEOUT == 900
+    assert lifecycle["maxLifetime"] == config.MAX_LIFETIME == 1800
+    # The worst-case run fits the idle window (spec §8.9, D-32).
+    assert lifecycle["idleRuntimeSessionTimeout"] >= config.RUN_TIMEOUT_MAX_SECONDS
+
+
+def test_agentcore_env_sets_every_required_setting_and_the_clocks():
+    env = {e["name"]: e["value"] for e in _code_review_runtime().get("envVars", [])}
+    for var in config._REQUIRED_VARS:
+        assert env.get(var, "").strip(), f"agentcore.json does not set {var}"
+    assert "AWS_REGION" in env
+    # The clock env vars, when set, must agree with the lifecycle above.
+    assert int(env.get("IDLE_SESSION_TIMEOUT", "900")) == config.IDLE_SESSION_TIMEOUT
+    assert int(env.get("MAX_LIFETIME", "1800")) == config.MAX_LIFETIME
+    assert int(env.get("HEARTBEAT_INTERVAL", "120")) == config.HEARTBEAT_INTERVAL
+    # Spec §9 / S-210 DR-8: a model or system-defined profile ID, never an ARN.
+    assert not env["MODEL_ID"].startswith("arn:")
+    assert env["SUPABASE_KEY_SECRET_ID"] == config.SUPABASE_KEY_SECRET_ID
+    assert config.load_settings(env).model_id == env["MODEL_ID"]
+
+
+# ---------------------------------------------------------------------------
 # CT-02 — defaults parity: seed default_params = schema defaults = apply_defaults
 # ---------------------------------------------------------------------------
 
