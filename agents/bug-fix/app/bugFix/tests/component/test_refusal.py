@@ -663,12 +663,30 @@ class TestGitHubFaults:
         assert _check(gh, sb).status == "proceed"
         assert len([c for c in gh.calls if _route(c) == route]) == 2
 
-    def test_graphql_errors_are_rejected_not_read_as_unlinked(self):
+    @pytest.mark.parametrize("error_type", ["FORBIDDEN", "NOT_FOUND"])
+    def test_permanent_graphql_errors_are_rejected_not_read_as_unlinked(self, error_type):
+        """DF-185-05: a non-transient errors[] fails at once, never "no linked PR"."""
         gh, sb = _gh_for("proceed")
-        gh.faults["graphql"] = [FakeResponse(200, {"errors": [{"type": "FORBIDDEN"}]})]
+        gh.faults["graphql"] = [FakeResponse(200, {"data": None, "errors": [{"type": error_type}]})]
         out = _check(gh, sb)
         assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
+        assert len(gh.graphql_calls()) == 1
         assert gh.writes() == []
+
+    @pytest.mark.parametrize("error", [{"type": "INTERNAL"}, {"message": "Something went wrong"}])
+    def test_transient_graphql_errors_retry_then_are_unavailable(self, error):
+        """EC-14 / CT-33: errors[] with data: null retries, then GITHUB_UNAVAILABLE."""
+        gh, sb = _gh_for("proceed")
+        gh.faults["graphql"] = [FakeResponse(200, {"data": None, "errors": [error]})] * 3
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert len(gh.graphql_calls()) == 3
+        assert out.reason is None and gh.writes() == []
+
+    def test_a_transient_graphql_error_then_data_recovers(self):
+        gh, sb = _gh_for("linked_pr")
+        gh.faults["graphql"] = [FakeResponse(200, {"data": None, "errors": [{"type": "INTERNAL"}]})]
+        assert _check(gh, sb).reason == "linked_pr"
 
     def test_a_missing_issue_in_graphql_is_rejected(self):
         gh, sb = _gh_for("proceed")

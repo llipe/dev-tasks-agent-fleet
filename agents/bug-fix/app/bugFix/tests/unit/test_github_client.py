@@ -772,8 +772,10 @@ class TestWaitBudget:
             _timed(session, clock).get_paged(
                 f"{API}/x", label="GET /x", params=None, allow_next=lambda _u: None, max_pages=5
             )
-        assert clock.waits == [60.0, 60.0]
-        assert clock.now - 1_000.0 <= DEFAULT_BUDGET_SECONDS
+        # Page 1 waits 60 s; page 2's 60 s would reach the 120 s deadline.
+        assert clock.waits == [60.0]
+        assert len(session.calls) == 3
+        assert clock.now - 1_000.0 < DEFAULT_BUDGET_SECONDS
 
     def test_slow_requests_use_up_the_budget_too(self):
         clock = FakeClock()
@@ -797,3 +799,80 @@ class TestWaitBudget:
         with pytest.raises(GitHubUnavailable):
             _timed(session, clock, budget=100).request("POST", f"{API}/x", label="x")
         assert clock.waits == [60.0]
+
+
+# ---------------------------------------------------------------------------
+# DF-185-05: GraphQL errors[] are classified, and neither class is "no data"
+# ---------------------------------------------------------------------------
+
+
+def _gql_errors(*errors: dict) -> requests.Response:
+    return real_response(200, {"data": None, "errors": list(errors)})
+
+
+TRANSIENT_ERRORS = [
+    {"type": "RATE_LIMITED", "message": "x"},
+    {"type": "INTERNAL", "message": "x"},
+    {"type": "SERVER_ERROR", "message": "x"},
+    {"type": "TIMEOUT", "message": "x"},
+    {"type": "SERVICE_UNAVAILABLE", "message": "x"},
+    {
+        "message": "Something went wrong while executing your query. This may be the result of a timeout"
+    },
+    {"message": "502 Bad Gateway"},
+    {"message": "Internal server error"},
+]
+PERMANENT_ERRORS = [
+    {"type": "NOT_FOUND", "message": "Could not resolve"},
+    {"type": "FORBIDDEN", "message": "x"},
+    {"type": "UNPROCESSABLE", "message": "x"},
+    {"type": "SOMETHING_NEW", "message": "x"},
+    {"message": "Field 'x' doesn't exist on type 'Query'"},
+    {"type": "INTERNAL_ish", "message": "x"},
+]
+
+
+class TestGraphQLErrorClasses:
+    @pytest.mark.parametrize("error", TRANSIENT_ERRORS, ids=str)
+    def test_a_transient_error_is_retried_then_unavailable(self, error):
+        clock = FakeClock()
+        session = Scripted(_gql_errors(error))
+        with pytest.raises(GitHubUnavailable) as exc:
+            _timed(session, clock).graphql("query { x }", {}, label="q")
+        assert exc.value.code == "GITHUB_UNAVAILABLE"
+        # A RATE_LIMITED wait is 60 s, so the budget allows one retry, not two.
+        assert 2 <= len(session.calls) <= MAX_ATTEMPTS
+        assert sum(clock.waits) < DEFAULT_BUDGET_SECONDS
+
+    @pytest.mark.parametrize("error", TRANSIENT_ERRORS, ids=str)
+    def test_a_transient_error_then_data_recovers(self, error):
+        session = Scripted(_gql_errors(error), real_response(200, {"data": {"ok": 1}}))
+        assert _client(session).graphql("query { x }", {}, label="q") == {"ok": 1}
+        assert len(session.calls) == 2
+
+    def test_a_non_rate_limit_transient_error_backs_off(self):
+        clock = FakeClock()
+        session = Scripted(_gql_errors({"type": "INTERNAL"}))
+        with pytest.raises(GitHubUnavailable):
+            _timed(session, clock).graphql("query { x }", {}, label="q")
+        assert clock.waits == [1.0, 2.0]
+
+    @pytest.mark.parametrize("error", PERMANENT_ERRORS, ids=str)
+    def test_a_permanent_error_is_rejected_at_once(self, error):
+        session = Scripted(_gql_errors(error))
+        with pytest.raises(GitHubRequestRejected) as exc:
+            _client(session).graphql("query { x }", {}, label="q")
+        assert exc.value.code == "GITHUB_REQUEST_REJECTED"
+        assert len(session.calls) == 1
+
+    def test_a_permanent_error_next_to_a_transient_one_is_rejected(self):
+        session = Scripted(_gql_errors({"type": "RATE_LIMITED"}, {"type": "NOT_FOUND"}))
+        with pytest.raises(GitHubRequestRejected):
+            _client(session).graphql("query { x }", {}, label="q")
+        assert len(session.calls) == 1
+
+    def test_no_error_message_reaches_the_exception(self):
+        session = Scripted(_gql_errors({"message": f"502 upstream for {TOKEN}"}))
+        with pytest.raises(GitHubUnavailable) as exc:
+            _client(session).graphql("query { x }", {}, label="q")
+        assert TOKEN not in str(exc.value) and "upstream" not in str(exc.value)

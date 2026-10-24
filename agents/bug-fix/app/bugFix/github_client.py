@@ -36,6 +36,10 @@ Errors:
 
 - transport errors, 5xx and rate limits that outlast the attempts →
   :class:`GitHubUnavailable` (``GITHUB_UNAVAILABLE``);
+- a GraphQL ``errors[]`` of transient types (rate limit, internal/server
+  error, timeout, or untyped with a 5xx-like message) is retried like a 5xx,
+  then :class:`GitHubUnavailable`; any other ``errors[]`` is
+  :class:`GitHubRequestRejected` (DF-185-05). Neither is read as empty data;
 - any 3xx, any other 4xx, a URL off the API host, or a malformed body →
   :class:`GitHubRequestRejected` (``GITHUB_REQUEST_REJECTED``). A 3xx is not
   retried: GitHub sends one for a renamed or transferred resource, which a
@@ -86,6 +90,16 @@ _LINK_TARGET = re.compile(r"[ \t]*<([^<>]*)>")
 # An RFC 9110 token: a Link parameter name or an unquoted value.
 _TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 _MUTATION = re.compile(r"^\s*mutation\b", re.IGNORECASE)
+# GraphQL error types worth a retry (DF-185-05).
+TRANSIENT_GRAPHQL_TYPES = frozenset(
+    {"RATE_LIMITED", "INTERNAL", "SERVER_ERROR", "TIMEOUT", "SERVICE_UNAVAILABLE"}
+)
+# An untyped GraphQL error whose message reads like a 5xx or a timeout.
+_TRANSIENT_MESSAGE = re.compile(
+    r"\b5\d\d\b|internal server error|bad gateway|service unavailable|gateway time-?out"
+    r"|timed out|timeout|something went wrong",
+    re.IGNORECASE,
+)
 
 
 def _sleep(seconds: float) -> None:
@@ -330,6 +344,37 @@ def rate_limit_wait(resp: Any) -> float | None:
     return SECONDARY_LIMIT_WAIT_SECONDS
 
 
+def classify_graphql_errors(errors: object) -> tuple[str, list[str]]:
+    """``("transient" | "permanent", sorted types)`` for a GraphQL ``errors`` value.
+
+    Transient (DF-185-05): every error is a :data:`TRANSIENT_GRAPHQL_TYPES` type
+    (rate limit, internal/server error, timeout), or has no type and a
+    5xx-like or timeout message. Anything else (``NOT_FOUND``, ``FORBIDDEN``,
+    an unknown type, a malformed list) is permanent; one permanent error makes
+    the whole response permanent. Error messages are read, never returned.
+    """
+    if not isinstance(errors, list) or not errors:
+        return "permanent", ["unknown"]
+    types: set[str] = set()
+    transient = True
+    for e in errors:
+        if not isinstance(e, Mapping):
+            transient = False
+            types.add("unknown")
+            continue
+        kind = e.get("type")
+        if isinstance(kind, str):
+            types.add(kind)
+            transient = transient and kind in TRANSIENT_GRAPHQL_TYPES
+            continue
+        types.add("untyped")
+        message = e.get("message")
+        transient = (
+            transient and isinstance(message, str) and bool(_TRANSIENT_MESSAGE.search(message))
+        )
+    return ("transient" if transient else "permanent"), sorted(types)
+
+
 def _backoff(attempt: int) -> float:
     return BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
 
@@ -399,8 +444,9 @@ class GitHubClient:
         return self._deadline - self._now()
 
     def _wait(self, seconds: float, what: str, status: int | None = None) -> None:
-        """Sleep ``seconds`` before a retry, or give up if that passes the deadline."""
-        if seconds > self._remaining():
+        """Sleep ``seconds`` before a retry, or give up at once if no time would be
+        left for the retry itself (the wait would reach the deadline)."""
+        if seconds >= self._remaining():
             raise GitHubUnavailable(
                 f"{what}; a {seconds:.0f}s retry wait would pass the operation's time budget",
                 status=status,
@@ -523,11 +569,13 @@ class GitHubClient:
     ) -> dict[str, Any]:
         """Run a GraphQL **query** and return its ``data``.
 
-        A ``RATE_LIMITED`` error is retried like a rate-limited response, inside
-        the same deadline as the HTTP retries. Any other GraphQL error is
-        :class:`GitHubRequestRejected`, naming only the error types, never their
-        messages. A mutation is refused: writes go through REST with their own
-        policy.
+        ``errors[]`` are classified by :func:`classify_graphql_errors`
+        (DF-185-05). Transient ones are retried, within the same attempts and
+        deadline as the HTTP retries (``RATE_LIMITED`` waits like a rate-limited
+        response, the rest back off), then end :class:`GitHubUnavailable`. Any
+        other is :class:`GitHubRequestRejected` at once. Neither is ever read as
+        empty data. Messages name only the error types, never the error text. A
+        mutation is refused: writes go through REST with their own policy.
         """
         if _MUTATION.match(query):
             raise ValueError("graphql() runs queries only")
@@ -558,23 +606,15 @@ class GitHubClient:
                 raise GitHubRequestRejected(f"{name} returned no object")
             errors = payload.get("errors")
             if errors:
-                types = sorted(
-                    {
-                        str(e.get("type"))
-                        for e in errors
-                        if isinstance(e, Mapping) and isinstance(e.get("type"), str)
-                    }
-                    if isinstance(errors, list)
-                    else set()
-                )
-                if "RATE_LIMITED" in types:
-                    wait = rate_limit_wait(resp)
-                    what = f"{name} was rate limited"
-                    if attempt == MAX_ATTEMPTS - 1 or wait is None:
-                        raise GitHubUnavailable(what)
-                    self._wait(wait, what)
-                    continue
-                raise GitHubRequestRejected(f"{name} returned errors {types or ['unknown']}")
+                kind, types = classify_graphql_errors(errors)
+                if kind == "permanent":
+                    raise GitHubRequestRejected(f"{name} returned errors {types}")
+                what = f"{name} returned transient errors {types}"
+                wait = rate_limit_wait(resp) if "RATE_LIMITED" in types else _backoff(attempt)
+                if attempt == MAX_ATTEMPTS - 1 or wait is None:
+                    raise GitHubUnavailable(what)
+                self._wait(wait, what)
+                continue
             data = payload.get("data")
             if not isinstance(data, Mapping):
                 raise GitHubRequestRejected(f"{name} returned no data")
