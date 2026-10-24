@@ -22,3 +22,13 @@ aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::755641879575:
 # Step 4: deploy the runtime (2026-10-24T15:55Z; app code == main@5a056b8)
 # local, gitignored agents/code-review/agentcore/aws-targets.json: target default -> 755641879575/us-east-1
 (cd agents/code-review && agentcore deploy -y --json)
+
+# Step 5: narrow kms:Decrypt to the ECR repository's key (backup: backup/role-policy.step2.json)
+aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime \
+  --policy-document file://infra/changes/20261024-code-review-runtime/role-policy.json
+
+# Step 6: panel invoke policy 6 -> 8 resources (backup: backup/panel-invoke-policy.before.json)
+aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime \
+  > infra/changes/20261024-code-review-runtime/backup/panel-invoke-policy.before.json
+aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime \
+  --policy-document file://infra/agentcore-invoke-policy.json

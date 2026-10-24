@@ -54,7 +54,7 @@
       "Sid": "EcrImageDecrypt",
       "Effect": "Allow",
       "Action": "kms:Decrypt",
-      "Resource": "arn:aws:kms:us-east-1:755641879575:key/*",
+      "Resource": "arn:aws:kms:us-east-1:755641879575:key/883d383e-570e-4bdc-bc37-43c3ed50bf9b",
       "Condition": {
         "StringEquals": { "kms:ViaService": "ecr.us-east-1.amazonaws.com" }
       }
