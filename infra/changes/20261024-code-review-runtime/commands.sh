@@ -32,3 +32,14 @@ aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-
   > infra/changes/20261024-code-review-runtime/backup/panel-invoke-policy.before.json
 aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime \
   --policy-document file://infra/agentcore-invoke-policy.json
+
+# Step 7: apply the code-review seed migration to prod (explicit confirmation by @llipe, 2026-10-24)
+supabase link --project-ref hegxeycmbmjfgzqpdiik
+supabase migration list --linked            # pending: exactly 20261022120000
+supabase db query --linked --output json "select * from agents where slug = 'code-review'" \
+  > infra/changes/20261024-code-review-runtime/backup/agents-code-review.before.json   # rows: []
+supabase db push --linked --dry-run         # would push: 20261022120000_seed_code_review_agent.sql only
+supabase db push --linked --yes
+
+# Step 8: set runtime_arn and enable the row in one update (D-39)
+supabase db query --linked "update agents set runtime_arn = 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/codereview_code_review-g73KtjA3MT', is_enabled = true where slug = 'code-review' and runtime_arn = 'pending-deploy:code-review' returning slug, is_enabled, runtime_arn"
