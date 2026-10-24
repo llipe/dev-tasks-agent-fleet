@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.3 | 2026-10-24 | S-184 (developer): 5.1–5.5, 5.8, 5.9 and 5.11 checked; migration `20261024130000_seed_bug_fix_agent.sql` verified on the local stack only. 5.6/5.7 (cloud apply gate), 5.10 (manual UI), 5.12 (`coverage_gate`, cloud part) and 5.13 (verifier) left to the planner. Relevant Files updated. | developer |
 | 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. 3.11–3.13 checked (552 passed, coverage_gate PASS 97.5%, verifier Medium/Major); 3.16 marked superseded; 3.13 base corrected (DF-182-08). | planner |
 | 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, stories v2.0; D-88–D-106). 4.0 and 8.0 removed. 5.0, 6.0 (refusal checks and reply), 7.0, 9.0 and 11.0 rewritten. 1.0, 2.0 (Projects PAT), 3.0 (board probe 3.15) and 10.0 (`repo_gate` refusal) updated. | product-engineer |
@@ -195,8 +196,9 @@
   - [x] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
   - [x] 5.9 Edge cases: a `project` that fails the pattern; a 100-character status name; `trigger_comment_id` as a string
   - [ ] 5.10 Manual UI: `/agents/bug-fix/invoke` shows `issue_number` as required
-  - [ ] 5.11 Verify AC (v2.0): AC1–AC3 and AC5 by 5.1; AC4 by 5.2
+  - [x] 5.11 Verify AC (v2.0): AC1–AC3 and AC5 by 5.1; AC4 by 5.2
   - [ ] 5.12 Run tests: `supabase db reset`, `pnpm --filter panel run test:integration`, `make test`; gates; `make validate`; record `coverage_gate`
+    > Local run done (2026-10-24, developer): `supabase db reset --local`, `test:integration` 42 files / 328 tests with `REQUIRE_LOCAL_DB=1`, agent `make validate` green. Panel `audit` fails on a pre-existing advisory outside this story (`zod` via `agents/dependency-update/agentcore/cdk`). Open: `coverage_gate` (planner's `qa-engineer`) and the post-apply cloud check.
   - [ ] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent`
 
 - [ ] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply

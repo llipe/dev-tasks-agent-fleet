@@ -12,7 +12,7 @@ PRD: [`docs/requirements/prd-bug-fix-agent.md`](../../docs/requirements/prd-bug-
 | ----- | ----- |
 | Runtime, role, secrets, panel invoke policy | S-181 (`infra-engineer`) |
 | Sandbox spike; pins the managed-settings key names | S-182 |
-| `agents` seed row and params | S-184 |
+| `agents` seed row and typed params (`params.py`, not yet wired into `main.py`) | S-184 |
 | Refusal checks, markers, claim, checkout, orchestration | S-185, S-186, S-188, S-189, S-190 |
 | Fix runner, validation, red-to-green, Draft PR, confinement | Wave B (S-191–S-195) |
 
@@ -34,6 +34,7 @@ agents/bug-fix/
     ├── pyproject.toml
     ├── main.py                    # AgentCore entrypoint (stub + probe-mode hook)
     ├── config.py                  # typed env config (ConfigError)
+    ├── params.py                  # typed run params: schema bounds, seed-equal defaults (S-184)
     ├── sandbox.py                 # starts fixer processes: setpriv drop, env, sandbox, timeout
     ├── fixer_exec.py              # runs as fixer after setpriv; rebuilds the env, refuses root
     ├── probe.py                   # S-182 spike checks (probe mode)
@@ -44,7 +45,7 @@ agents/bug-fix/
     ├── scrubber.py                # copied + extended: secret redaction
     ├── credentials.py             # copied + extended: Supabase key, App token, fetch_secret_string
     ├── scripts/image-smoke.sh     # image assertions
-    └── tests/{unit,component}/
+    └── tests/{unit,component,fixtures/contract}/   # contract: params_schema.json (spec §5.2), payloads
 ```
 
 Copied modules follow the sibling convention (copy, don't share; D-03). Each starts with a header naming its source path in `agents/security-analyst/app/securityAnalyst/` and the source commit.
@@ -64,7 +65,25 @@ Set in `agentcore/agentcore.json`. Only secret **IDs** are configured; the wrapp
 
 `config.load_config()` raises `ConfigError(variable, reason)` for a missing, blank or invalid required variable. The message names the variable, never its value. The entrypoint maps it to `failed` / `CONFIG_INVALID`.
 
-Lifecycle: `maxLifetime` 3600 s, `idleRuntimeSessionTimeout` 900 s. `config.MAX_LIFETIME` and `config.IDLE_SESSION_TIMEOUT` must match, and the seed's `max_runtime_seconds` (S-184) must equal `maxLifetime`. Unit tests pin the first two.
+Lifecycle: `maxLifetime` 3600 s, `idleRuntimeSessionTimeout` 900 s. `config.MAX_LIFETIME` and `config.IDLE_SESSION_TIMEOUT` must match, and the seed's `max_runtime_seconds` (S-184) must equal `maxLifetime`. Unit tests pin all three (`test_agentcore_config.py` reads the seed migration and `supabase/seed.sql`).
+
+## Params (S-184, spec §5.2 v2.0)
+
+The `agents` row is seeded by `supabase/migrations/20261024130000_seed_bug_fix_agent.sql` and mirrored in `supabase/seed.sql`. Its `params_schema` has `additionalProperties: false`, and `issue_number` is the only required key (D-93). The webhook rule maps `issue.number` → `issue_number` and `comment.id` → `trigger_comment_id` (D-88).
+
+| Key | Type and bounds | Default |
+| --- | --------------- | ------- |
+| `issue_number` | integer ≥ 1, **required** | none |
+| `trigger_comment_id` | integer ≥ 1 | none |
+| `project` | `owner/number`, `^[A-Za-z0-9-]{1,39}/[1-9][0-9]{0,6}$` | none (board auto-detect, D-102) |
+| `status_in_progress` / `status_in_review` / `status_ready` | string, 1–100 characters | `In progress` / `In review` / `Ready` |
+| `max_turns` | integer 5–100 | 40 |
+| `cli_timeout_minutes` | integer 5–45 | 30 |
+| `run_budget_minutes` | integer 10–55 | 55 |
+| `max_code_files` | integer 1–50 | 10 |
+| `max_code_lines` | integer 10–2000 | 400 |
+
+`params.parse_params()` enforces the same types and bounds, because a direct invoke bypasses the panel's Ajv (D-82). It applies the defaults itself, because the panel validates with `useDefaults: false`, so a webhook fire sends only `issue_number` and `trigger_comment_id`. A missing `issue_number` raises `MissingRequiredParam`; a type or bounds violation raises `InvalidParam`. Both name the key and never the value. Unknown keys are ignored. `tests/fixtures/contract/params_schema.json` is the spec copy: the panel's L2.5 test proves the seed equals it, and this package's tests prove `params.DEFAULTS` and the bounds equal it.
 
 ## Image
 
