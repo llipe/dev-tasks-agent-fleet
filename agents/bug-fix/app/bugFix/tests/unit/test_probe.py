@@ -393,38 +393,6 @@ class TestProcAndEnvChecks:
         assert r["env.fixer.sandbox"].verdict is Verdict.FAIL
         assert bad in r["env.fixer.sandbox"].detail
 
-    def test_sudo_checks(self):
-        inner = FakeInner({("sudo", "uid"): {"rc": 1}, ("sudo", "sandbox"): {"rc": 1}})
-
-        class R:
-            returncode = 1
-
-        v = _verdicts(probe.sudo_checks(inner, run=lambda *a, **k: R()))
-        assert v == {
-            "sudo.fixer.uid": "PASS",
-            "sudo.fixer.sandbox": "PASS",
-            "sudo.wrapper.root": "PASS",
-        }
-
-    def test_sudo_success_fails(self):
-        inner = FakeInner({("sudo", "uid"): {"rc": 0}, ("sudo", "sandbox"): {"rc": 1}})
-
-        class R:
-            returncode = 0
-
-        v = _verdicts(probe.sudo_checks(inner, run=lambda *a, **k: R()))
-        assert v["sudo.fixer.uid"] == "FAIL"
-        assert v["sudo.wrapper.root"] == "FAIL"
-
-    def test_sudo_wrapper_missing_binary_passes(self):
-        inner = FakeInner({("sudo", "uid"): {"rc": 1}, ("sudo", "sandbox"): {"rc": 1}})
-
-        def _missing(*a, **k):
-            raise FileNotFoundError("sudo")
-
-        v = _verdicts(probe.sudo_checks(inner, run=_missing))
-        assert v["sudo.wrapper.root"] == "FAIL"
-
     def test_policy_and_secret_checks(self):
         inner = FakeInner(
             {
@@ -579,6 +547,227 @@ def _cli_json(denials: list[dict]) -> str:
     )
 
 
+DROPPED = {
+    "uid": [10002, 10002, 10002, 10002],
+    "gid": [10002, 10002, 10002, 10002],
+    "groups": [],
+    "cap_inh": "0000000000000000",
+    "cap_prm": "0000000000000000",
+    "cap_eff": "0000000000000000",
+    "cap_amb": "0000000000000000",
+    "cap_bnd": "000001ffffffffff",
+    "no_new_privs": 1,
+}
+ROOT_IDS = {
+    "uid": [0, 0, 0, 0],
+    "gid": [0, 0, 0, 0],
+    "groups": [0],
+    "cap_eff": "00000000a80425fb",  # Docker's default set: includes SETUID/SETGID
+    "no_new_privs": 1,
+}
+REFUSED = {
+    "setuid0": "EPERM",
+    "setgid0": "EPERM",
+    "su": {"rc": 1, "err": "su: Authentication failure"},
+    "setpriv_root": {"rc": 1, "err": "setpriv: setresuid failed: Operation not permitted"},
+    "no_new_privs": 1,
+    "sudo_on_path": False,
+}
+
+
+class TestSetprivChecks:
+    """D-110: the root wrapper drops to fixer with setpriv (replaces sudo.*)."""
+
+    def _inner(self, uid=DROPPED, sandbox=DROPPED) -> FakeInner:
+        return FakeInner({("ids", "uid"): uid, ("ids", "sandbox"): sandbox})
+
+    def test_all_pass(self):
+        v = _verdicts(probe.setpriv_checks(self._inner(), self_ids=lambda: ROOT_IDS))
+        assert v == {
+            "setpriv.wrapper.root": "PASS",
+            "setpriv.drop.uid": "PASS",
+            "setpriv.drop.sandbox": "PASS",
+        }
+
+    def test_uid_form_checked_first(self):
+        inner = self._inner()
+        probe.setpriv_checks(inner, self_ids=lambda: ROOT_IDS)
+        assert [(c[0], c[2]) for c in inner.calls] == [("ids", "uid"), ("ids", "sandbox")]
+
+    def test_wrapper_not_root_fails(self):
+        ids = {**ROOT_IDS, "uid": [10001, 10001, 10001, 10001]}
+        r = {x.check: x for x in probe.setpriv_checks(self._inner(), self_ids=lambda: ids)}
+        assert r["setpriv.wrapper.root"].verdict is Verdict.FAIL
+        assert "10001" in r["setpriv.wrapper.root"].detail
+
+    def test_wrapper_without_setuid_cap_fails(self):
+        ids = {**ROOT_IDS, "cap_eff": "0000000000000000"}
+        r = {x.check: x for x in probe.setpriv_checks(self._inner(), self_ids=lambda: ids)}
+        assert r["setpriv.wrapper.root"].verdict is Verdict.FAIL
+        assert "CAP_SETUID" in r["setpriv.wrapper.root"].detail
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("uid", [10002, 0, 10002, 10002]),
+            ("gid", [10002, 10002, 0, 10002]),
+            ("groups", [0]),
+            ("cap_eff", "0000000000000040"),
+            ("cap_prm", "0000000000000080"),
+            ("cap_inh", "0000000000000001"),
+            ("cap_amb", "0000000000000001"),
+            ("no_new_privs", 0),
+            ("uid", None),
+        ],
+    )
+    def test_any_privilege_left_fails(self, field, value):
+        bad = {**DROPPED, field: value}
+        v = _verdicts(probe.setpriv_checks(self._inner(uid=bad), self_ids=lambda: ROOT_IDS))
+        assert v["setpriv.drop.uid"] == "FAIL"
+        assert v["setpriv.drop.sandbox"] == "PASS"
+
+    def test_detail_names_uid_caps_and_nnp(self):
+        r = {x.check: x for x in probe.setpriv_checks(self._inner(), self_ids=lambda: ROOT_IDS)}
+        detail = r["setpriv.drop.uid"].detail
+        assert "uid=10002" in detail and "CapEff=0000000000000000" in detail
+        assert "NoNewPrivs=1" in detail
+
+    def test_error_from_inner_is_a_fail_of_that_check_only(self):
+        inner = FakeInner(
+            {("ids", "uid"): DROPPED, ("ids", "sandbox"): probe.ProbeError("bwrap: denied")}
+        )
+        v = _verdicts(probe.setpriv_checks(inner, self_ids=lambda: ROOT_IDS))
+        assert v["setpriv.drop.uid"] == "PASS"
+        assert v["setpriv.drop.sandbox"] == "FAIL"
+
+    def test_default_self_ids_reads_own_status(self, monkeypatch):
+        seen: list[str] = []
+
+        def _ids(path="/proc/self/status"):
+            seen.append(path)
+            return ROOT_IDS
+
+        monkeypatch.setattr(probe.probe_inner, "cmd_ids", _ids)
+        probe.setpriv_checks(self._inner())
+        assert seen == ["/proc/self/status"]
+
+
+class TestNoEscalateChecks:
+    def _inner(self, uid=REFUSED, sandbox=REFUSED) -> FakeInner:
+        return FakeInner({("escalate", "uid"): uid, ("escalate", "sandbox"): sandbox})
+
+    def test_all_pass(self):
+        v = _verdicts(
+            probe.noescalate_checks(self._inner(), which=lambda n: None, exists=lambda p: False)
+        )
+        assert v == {
+            "noescalate.fixer.uid": "PASS",
+            "noescalate.fixer.sandbox": "PASS",
+            "noescalate.no_sudo": "PASS",
+        }
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("setuid0", "ok"),
+            ("setgid0", "ok"),
+            ("su", {"rc": 0, "err": ""}),
+            ("setpriv_root", {"rc": 0, "err": ""}),
+            ("no_new_privs", 0),
+            ("sudo_on_path", True),
+        ],
+    )
+    def test_any_way_back_fails(self, field, value):
+        bad = {**REFUSED, field: value}
+        v = _verdicts(
+            probe.noescalate_checks(
+                self._inner(uid=bad), which=lambda n: None, exists=lambda p: False
+            )
+        )
+        assert v["noescalate.fixer.uid"] == "FAIL"
+        assert v["noescalate.fixer.sandbox"] == "PASS"
+
+    def test_sudo_binary_present_fails(self):
+        r = {
+            x.check: x
+            for x in probe.noescalate_checks(
+                self._inner(), which=lambda n: "/usr/bin/sudo", exists=lambda p: False
+            )
+        }
+        assert r["noescalate.no_sudo"].verdict is Verdict.FAIL
+        assert "/usr/bin/sudo" in r["noescalate.no_sudo"].detail
+
+    def test_sudoers_file_present_fails(self):
+        v = _verdicts(
+            probe.noescalate_checks(
+                self._inner(),
+                which=lambda n: None,
+                exists=lambda p: p == "/etc/sudoers.d/bug-fix",
+            )
+        )
+        assert v["noescalate.no_sudo"] == "FAIL"
+
+
+USERNS_OK = {
+    "bwrap": {"rc": 0, "err": ""},
+    "unshare": {"rc": 0, "err": ""},
+    "sysctl": {"max_user_namespaces": "15000", "unprivileged_userns_clone": None},
+}
+USERNS_DENIED = {
+    "bwrap": {"rc": 1, "err": "bwrap: No permissions to create a new namespace"},
+    "unshare": {"rc": 1, "err": "unshare: unshare failed: Operation not permitted"},
+    "sysctl": {"max_user_namespaces": "0", "unprivileged_userns_clone": None},
+}
+
+
+class TestUsernsCheck:
+    """``userns.available``: reported on its own, so the run says precisely
+    whether AgentCore allows the namespaces bwrap/srt need (D-110)."""
+
+    def test_pass_when_bwrap_creates_them(self):
+        inner = FakeInner({("userns", "uid"): USERNS_OK})
+        (r,) = probe.userns_checks(inner, root_userns=lambda: USERNS_OK)
+        assert r.check == "userns.available"
+        assert r.verdict is Verdict.PASS
+        assert inner.calls == [("userns", (), "uid")]
+
+    def test_fail_when_bwrap_is_refused(self):
+        inner = FakeInner({("userns", "uid"): USERNS_DENIED})
+        (r,) = probe.userns_checks(inner, root_userns=lambda: USERNS_DENIED)
+        assert r.verdict is Verdict.FAIL
+        assert "No permissions" in r.detail
+        assert "max_user_namespaces=0" in r.detail
+
+    def test_root_result_is_in_the_detail_only(self):
+        inner = FakeInner({("userns", "uid"): USERNS_DENIED})
+        (r,) = probe.userns_checks(inner, root_userns=lambda: USERNS_OK)
+        assert r.verdict is Verdict.FAIL
+        assert "root: bwrap rc=0" in r.detail
+
+    def test_root_measure_error_does_not_hide_the_fixer_result(self):
+        def _boom():
+            raise OSError("python missing")
+
+        inner = FakeInner({("userns", "uid"): USERNS_OK})
+        (r,) = probe.userns_checks(inner, root_userns=_boom)
+        assert r.verdict is Verdict.PASS
+        assert "OSError" in r.detail
+
+    def test_default_root_measure_runs_probe_inner_as_the_wrapper(self):
+        seen: dict[str, Any] = {}
+
+        def _run(cmd, **kw):
+            seen["cmd"] = cmd
+            seen["env"] = kw["env"]
+            return _Done(json.dumps(USERNS_OK))
+
+        inner = FakeInner({("userns", "uid"): USERNS_OK})
+        probe.userns_checks(inner, run=_run, paths=probe.default_paths())
+        p = probe.default_paths()
+        assert seen["cmd"] == [p.python, "-I", probe.INNER_SCRIPT, "userns"]
+        assert set(seen["env"]) == {"PATH", "HOME", "LANG", "CI"}
+
+
 class TestCliChecks:
     def _inner(self, refs: int = 0) -> FakeInner:
         return FakeInner(
@@ -648,8 +837,60 @@ class TestCliChecks:
         sb = FakeSandbox("2.1.309 (Claude Code)\n")
         (r,) = probe.cli_version_check(sb, probe.default_paths(), "2.1.309")
         assert r.verdict is Verdict.PASS
+        assert "rc=0" in r.detail
         (r2,) = probe.cli_version_check(sb, probe.default_paths(), "9.9.9")
         assert r2.verdict is Verdict.FAIL
+
+    def test_version_failure_reports_exit_code_and_stderr(self):
+        # Probe run 1 showed only `claude --version=''`: the cause is in stderr.
+        class SB(FakeSandbox):
+            def run(self, argv, **kw):
+                self.calls.append({"argv": list(argv), **kw})
+                return SandboxResult(
+                    outcome=Outcome.FAILED,
+                    exit_code=1,
+                    timed_out=False,
+                    stdout="",
+                    stderr='sudo: The "no new privileges" flag is set',
+                    duration_s=0.1,
+                )
+
+        (r,) = probe.cli_version_check(SB(""), probe.default_paths(), "2.1.309")
+        assert r.verdict is Verdict.FAIL
+        assert "rc=1" in r.detail
+        assert "outcome=failed" in r.detail
+        assert "no new privileges" in r.detail
+
+    def test_version_on_stderr_counts(self):
+        class SB(FakeSandbox):
+            def run(self, argv, **kw):
+                return SandboxResult(Outcome.OK, 0, False, "", "2.1.309 (Claude Code)\n", 0.1)
+
+        (r,) = probe.cli_version_check(SB(""), probe.default_paths(), "2.1.309")
+        assert r.verdict is Verdict.PASS
+
+    def test_version_nonzero_exit_fails_even_with_version_text(self):
+        class SB(FakeSandbox):
+            def run(self, argv, **kw):
+                return SandboxResult(Outcome.FAILED, 2, False, "2.1.309", "boom", 0.1)
+
+        (r,) = probe.cli_version_check(SB(""), probe.default_paths(), "2.1.309")
+        assert r.verdict is Verdict.FAIL
+
+    def test_version_sandbox_error_is_reported(self):
+        from sandbox import SandboxUnavailable
+
+        class SB(FakeSandbox):
+            def run(self, argv, **kw):
+                raise SandboxUnavailable("sandbox setpriv is missing: /usr/bin/setpriv")
+
+        (r,) = probe.cli_version_check(SB(""), probe.default_paths(), "2.1.309")
+        assert r.verdict is Verdict.FAIL
+        assert "setpriv is missing" in r.detail
+
+    def test_version_without_pin_fails(self):
+        (r,) = probe.cli_version_check(FakeSandbox("2.1.309"), probe.default_paths(), None)
+        assert r.verdict is Verdict.FAIL
 
 
 # ---------------------------------------------------------------------------
@@ -920,7 +1161,7 @@ class TestInner:
         with pytest.raises(probe.ProbeError):
             probe.Inner(sb).call("env")  # type: ignore[arg-type]
 
-    def test_uid_form_switches_user_without_srt_and_sweeps(self):
+    def test_uid_form_drops_with_setpriv_without_srt_and_sweeps(self):
         sb = _SweepSandbox("")
         seen: dict[str, Any] = {}
 
@@ -929,19 +1170,26 @@ class TestInner:
             seen["env"] = kw["env"]
             return _Done('{"rc": 1}')
 
-        d = probe.Inner(sb, run=_run).call("sudo", where="uid")  # type: ignore[arg-type]
+        d = probe.Inner(sb, run=_run).call("escalate", where="uid")  # type: ignore[arg-type]
         assert d == {"rc": 1}
         cmd = seen["cmd"]
-        assert cmd[:4] == [sb.paths.sudo, "-n", "-u", "fixer"]
+        assert cmd[0] == sb.paths.setpriv
+        assert cmd[1:6] == [
+            "--reuid=10002",
+            "--regid=10002",
+            "--clear-groups",
+            "--inh-caps=-all",
+            "--no-new-privs",
+        ]
         assert sb.paths.srt not in cmd
-        assert cmd[-4:] == [sb.paths.python, "-I", probe.INNER_SCRIPT, "sudo"]
+        assert cmd[-4:] == [sb.paths.python, "-I", probe.INNER_SCRIPT, "escalate"]
         assert set(seen["env"]) == {"PATH", "HOME", "LANG", "CI"}
         assert sb.swept == 1
 
     def test_uid_form_without_output_raises(self):
         sb = _SweepSandbox("")
         with pytest.raises(probe.ProbeError):
-            probe.Inner(sb, run=lambda *a, **k: _Done("", 1, "sudo: a password is required")).call(  # type: ignore[arg-type]
+            probe.Inner(sb, run=lambda *a, **k: _Done("", 1, "setpriv: setresuid failed")).call(  # type: ignore[arg-type]
                 "env", where="uid"
             )
 
@@ -1003,8 +1251,11 @@ def _all_ok_inner() -> FakeInner:
             ("proc", "uid"): {"environ": "unreadable:EACCES", "mem": "unreadable:EACCES"},
             ("env", "sandbox"): {"names": ["CI"]},
             ("env", "uid"): {"names": ["CI"]},
-            ("sudo", "sandbox"): {"rc": 1},
-            ("sudo", "uid"): {"rc": 1},
+            ("ids", "sandbox"): DROPPED,
+            ("ids", "uid"): DROPPED,
+            ("escalate", "sandbox"): REFUSED,
+            ("escalate", "uid"): REFUSED,
+            ("userns", "uid"): USERNS_OK,
             ("write", "sandbox"): {"written": False},
             ("read", "sandbox"): {"readable": False},
             ("read", "uid"): {"readable": False},
@@ -1056,11 +1307,13 @@ class TestBuildChecks:
         )
         names = [g[0] for g in groups]
         assert names == [
+            "setpriv",
             "sandbox",
+            "userns",
             "net",
             "proc",
             "env",
-            "sudo",
+            "noescalate",
             "policy",
             "cli.version",
             "cli",
@@ -1172,27 +1425,26 @@ class TestIsolatedChecks:
         err = ProbeError("sandbox failed (exit 1): bwrap: No permissions to create a new namespace")
         answers: dict[tuple[str, str], Any] = {
             (sub, "sandbox"): err
-            for sub in ("net", "tool", "proc", "env", "sudo", "write", "read", "scan")
+            for sub in ("net", "tool", "proc", "env", "ids", "escalate", "write", "read", "scan")
         }
         answers.update(
             {
                 ("proc", "uid"): {"environ": "unreadable:EACCES", "mem": "unreadable:EACCES"},
                 ("env", "uid"): {"names": ["CI", "HOME", "LANG", "PATH"]},
-                ("sudo", "uid"): {"rc": 1},
+                ("ids", "uid"): DROPPED,
+                ("escalate", "uid"): REFUSED,
                 ("read", "uid"): {"readable": False, "error": "EACCES"},
                 ("scan", "uid"): {"matches": 0, "files": 9},
             }
         )
         inner = FakeInner(answers)
 
-        class R:
-            returncode = 1
-
         results = (
             probe.net_checks(inner)
             + probe.proc_checks(inner, 7)
             + probe.env_checks(inner)
-            + probe.sudo_checks(inner, run=lambda *a, **k: R())
+            + probe.setpriv_checks(inner, self_ids=lambda: ROOT_IDS)
+            + probe.noescalate_checks(inner, which=lambda n: None, exists=lambda p: False)
             + probe.policy_checks(inner, _canary)
             + probe.pat_absent_checks(inner, PAT)
         )
@@ -1200,8 +1452,10 @@ class TestIsolatedChecks:
         for name in (
             "proc.wrapper.uid",
             "env.fixer.uid",
-            "sudo.fixer.uid",
-            "sudo.wrapper.root",
+            "setpriv.wrapper.root",
+            "setpriv.drop.uid",
+            "noescalate.fixer.uid",
+            "noescalate.no_sudo",
             "secrets.dir.uid",
             "board.pat_absent.uid",
         ):
@@ -1211,6 +1465,8 @@ class TestIsolatedChecks:
             "net.reachable.pypi.org",
             "proc.wrapper.sandbox",
             "env.fixer.sandbox",
+            "setpriv.drop.sandbox",
+            "noescalate.fixer.sandbox",
             "policy.tamper",
             "board.pat_absent.sandbox",
         ):

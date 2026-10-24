@@ -1,13 +1,15 @@
-"""L1 tests for ``sandbox.py`` and ``fixer_exec.py`` (S-182 task 3.1; TC-182-01..05; D-51, D-109).
+"""L1 tests for ``sandbox.py`` and ``fixer_exec.py`` (S-182 tasks 3.1, 3.17; TC-182-01..05; D-51, D-110).
 
-``sandbox.py`` starts every ``fixer`` process through
-``sudo -n -u fixer --preserve-env=<allow-listed names> -- python3 -I
-fixer_exec.py <runtime> ...``:
+The wrapper runs as root (D-110: AgentCore sets ``no_new_privs``, so setuid
+``sudo`` can't run). ``sandbox.py`` starts every ``fixer`` process through
+``setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all
+--no-new-privs -- python3 -I fixer_exec.py <runtime> ...``:
 
 - the env handed to the spawn is built from an **allow-list** and never from
-  ``os.environ``;
-- ``fixer_exec.py`` rebuilds the final environment from the same allow-list,
-  dropping whatever ``sudo`` adds (``SUDO_*``, ``USER``, ``MAIL``...);
+  ``os.environ``; ``setpriv`` passes it through unchanged, so it is the only
+  env source;
+- ``fixer_exec.py`` rebuilds the final environment from the same allow-list
+  (defence in depth) and refuses to exec while still root;
 - the runtime is the sandbox: ``srt`` (the sandbox runtime) for scripts, or the
   Claude Code CLI, which enforces its own sandbox from the managed policy;
 - a wall-clock timeout sends SIGTERM, then after 15 s sweeps every ``fixer``
@@ -69,13 +71,14 @@ def paths(tmp_path: Path) -> SandboxPaths:
         return str(p)
 
     return SandboxPaths(
-        sudo=_exe("sudo"),
+        setpriv=_exe("setpriv"),
         python=_exe("python3"),
         fixer_exec=_exe("fixer_exec.py"),
         srt=_exe("srt"),
         srt_settings=_exe("srt-settings.json"),
         claude=_exe("claude"),
         kill=_exe("kill"),
+        pkill=_exe("pkill"),
     )
 
 
@@ -222,33 +225,28 @@ class TestAllowListEnv:
         cmd = rec.calls[0][0]
         assert KEY not in " ".join(cmd)
 
-    def test_sudo_preserves_only_allow_listed_names(self, paths):
+    def test_no_name_based_env_passing_in_argv(self, paths):
+        # setpriv has no env options: the Popen env is the only source.
         clock = FakeClock()
         sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
         sb.run(["true"], cwd="/work/repo", timeout=60, anthropic_api_key=KEY)
         cmd = rec.calls[0][0]
-        pres = [a for a in cmd if a.startswith("--preserve-env=")]
-        assert len(pres) == 1
-        names = set(pres[0].split("=", 1)[1].split(","))
-        assert names <= EXPECTED_NAMES
-        assert names == {"ANTHROPIC_API_KEY", "LANG", "CI"}
-        assert "-E" not in cmd and "--preserve-env" not in cmd
+        assert not [a for a in cmd if a.startswith("--preserve-env")]
+        assert "-E" not in cmd
+        assert not [a for a in cmd if a.endswith("sudo")]
 
-    def test_preserve_list_omits_key_when_none(self, paths):
+    def test_key_absent_when_none(self, paths):
         clock = FakeClock()
         sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
         sb.run(["true"], cwd="/work/repo", timeout=60)
-        cmd = rec.calls[0][0]
-        pres = next(a for a in cmd if a.startswith("--preserve-env="))
-        assert "ANTHROPIC_API_KEY" not in pres
         assert "ANTHROPIC_API_KEY" not in rec.calls[0][1]["env"]
 
 
 class TestFixerExecEnv:
-    """``fixer_exec.py`` runs as fixer after sudo and rebuilds the env."""
+    """``fixer_exec.py`` runs as fixer after setpriv and rebuilds the env."""
 
-    def test_rebuilds_from_allow_list_dropping_sudo_additions(self):
-        after_sudo = {
+    def test_rebuilds_from_allow_list_dropping_anything_else(self):
+        incoming = {
             "ANTHROPIC_API_KEY": KEY,
             "LANG": "C.UTF-8",
             "CI": "1",
@@ -266,7 +264,7 @@ class TestFixerExecEnv:
             "TERM": "xterm",
             **POLLUTION,
         }
-        env = fixer_exec.build_env(after_sudo)
+        env = fixer_exec.build_env(incoming)
         assert set(env) == EXPECTED_NAMES
         assert env["PATH"] == fixer_exec.FIXER_PATH == sandbox.FIXER_PATH
         assert env["HOME"] == "/home/fixer"
@@ -278,6 +276,8 @@ class TestFixerExecEnv:
 
     def test_main_execs_with_rebuilt_env(self, monkeypatch):
         seen: dict[str, Any] = {}
+        monkeypatch.setattr(fixer_exec.os, "getuid", lambda: 10002)
+        monkeypatch.setattr(fixer_exec.os, "geteuid", lambda: 10002)
 
         def _exec(path, args, env):
             seen.update(path=path, args=args, env=env)
@@ -294,6 +294,18 @@ class TestFixerExecEnv:
             fixer_exec.main(["fixer_exec.py"])
         assert exc.value.code == 2
 
+    @pytest.mark.parametrize(("uid", "euid"), [(0, 0), (10002, 0), (0, 10002)])
+    def test_refuses_to_exec_as_root(self, monkeypatch, uid, euid):
+        # If the setpriv drop did not happen, nothing runs as root (D-110).
+        execs: list[Any] = []
+        monkeypatch.setattr(fixer_exec.os, "getuid", lambda: uid)
+        monkeypatch.setattr(fixer_exec.os, "geteuid", lambda: euid)
+        monkeypatch.setattr(fixer_exec.os, "execvpe", lambda *a: execs.append(a))
+        with pytest.raises(SystemExit) as exc:
+            fixer_exec.main(["fixer_exec.py", "/usr/bin/true"])
+        assert exc.value.code == fixer_exec.EXIT_STILL_ROOT
+        assert execs == []
+
     def test_allow_lists_agree(self):
         assert set(fixer_exec.ALLOWED) == EXPECTED_NAMES == set(sandbox.ALLOWED_ENV)
 
@@ -304,37 +316,57 @@ class TestFixerExecEnv:
 
 
 class TestCommandShape:
-    def test_script_mode_switches_to_fixer_and_wraps_in_srt(self, paths):
-        cmd = Sandbox(paths).build_command(Mode.SCRIPT, ["npm", "test"], ["CI", "LANG"])
-        assert cmd[:4] == [paths.sudo, "-n", "-u", "fixer"]
-        dd = cmd.index("--")
-        assert cmd[dd + 1 : dd + 4] == [paths.python, "-I", paths.fixer_exec]
-        rest = cmd[dd + 4 :]
+    SETPRIV_FLAGS = [
+        "--reuid=10002",
+        "--regid=10002",
+        "--clear-groups",
+        "--inh-caps=-all",
+        "--no-new-privs",
+    ]
+
+    def test_setpriv_flags_are_exactly_d110(self):
+        assert list(sandbox.SETPRIV_FLAGS) == self.SETPRIV_FLAGS
+        assert sandbox.FIXER_UID == 10002
+
+    def test_script_mode_drops_to_fixer_and_wraps_in_srt(self, paths):
+        cmd = Sandbox(paths).build_command(Mode.SCRIPT, ["npm", "test"])
+        assert cmd[:7] == [paths.setpriv, *self.SETPRIV_FLAGS, "--"]
+        assert cmd[7:10] == [paths.python, "-I", paths.fixer_exec]
+        rest = cmd[10:]
         assert rest[:3] == [paths.srt, "--settings", paths.srt_settings]
         assert rest[3] == "--"
         assert rest[4:] == ["npm", "test"]
 
     def test_cli_mode_runs_only_the_claude_binary(self, paths):
-        cmd = Sandbox(paths).build_command(Mode.CLI, [paths.claude, "-p"], ["CI"])
-        assert cmd[:4] == [paths.sudo, "-n", "-u", "fixer"]
-        dd = cmd.index("--")
-        assert cmd[dd + 1 : dd + 5] == [paths.python, "-I", paths.fixer_exec, paths.claude]
+        cmd = Sandbox(paths).build_command(Mode.CLI, [paths.claude, "-p"])
+        assert cmd[:7] == [paths.setpriv, *self.SETPRIV_FLAGS, "--"]
+        assert cmd[7:11] == [paths.python, "-I", paths.fixer_exec, paths.claude]
+
+    def test_fixer_prefix(self, paths):
+        assert sandbox.fixer_prefix(paths) == [
+            paths.setpriv,
+            *self.SETPRIV_FLAGS,
+            "--",
+            paths.python,
+            "-I",
+            paths.fixer_exec,
+        ]
 
     @pytest.mark.parametrize("argv0", ["bash", "/bin/sh", "claude-but-not", "/tmp/claude"])
     def test_cli_mode_refuses_any_other_binary(self, paths, argv0):
         with pytest.raises(ValueError):
-            Sandbox(paths).build_command(Mode.CLI, [argv0, "-c", "id"], ["CI"])
+            Sandbox(paths).build_command(Mode.CLI, [argv0, "-c", "id"])
 
     def test_empty_argv_refused(self, paths):
         with pytest.raises(ValueError):
-            Sandbox(paths).build_command(Mode.SCRIPT, [], ["CI"])
+            Sandbox(paths).build_command(Mode.SCRIPT, [])
 
     @pytest.mark.parametrize("mode", list(Mode))
     def test_no_bare_exec_is_ever_built(self, paths, mode):
         argv = [paths.claude, "-p"] if mode is Mode.CLI else ["true"]
-        cmd = Sandbox(paths).build_command(mode, argv, ["CI"])
-        assert cmd[0] == paths.sudo
-        assert "-u" in cmd and cmd[cmd.index("-u") + 1] == "fixer"
+        cmd = Sandbox(paths).build_command(mode, argv)
+        assert cmd[0] == paths.setpriv
+        assert "--reuid=10002" in cmd and "--no-new-privs" in cmd
         runtime = cmd[cmd.index("--") + 4]
         assert runtime in (paths.srt, paths.claude)
 
@@ -391,7 +423,8 @@ class TestTimeout:
         assert sigs == [signal.SIGTERM, signal.SIGKILL]
         term_at, kill_at = (t for t, _ in proc.signals)
         assert 15.0 <= kill_at - term_at < 16.0
-        # sudo does not relay SIGKILL: the fixer sweep runs before it.
+        # The fixer sweep runs before the SIGKILL, so a grandchild that left the
+        # child's session is stopped too.
         assert events == [
             f"signal:{int(signal.SIGTERM)}",
             "sweep",
@@ -498,7 +531,7 @@ class TestExitCodeTable:
 
 
 class TestUnavailable:
-    @pytest.mark.parametrize("field", ["sudo", "python", "fixer_exec", "srt", "srt_settings"])
+    @pytest.mark.parametrize("field", ["setpriv", "python", "fixer_exec", "srt", "srt_settings"])
     def test_missing_script_dependency(self, paths, field, tmp_path):
         broken = paths._replace(**{field: str(tmp_path / "missing" / field)})
         with pytest.raises(SandboxUnavailable) as exc:
@@ -510,6 +543,13 @@ class TestUnavailable:
         broken = paths._replace(claude=str(tmp_path / "nope" / "claude"))
         with pytest.raises(SandboxUnavailable):
             Sandbox(broken).run([broken.claude, "-p"], mode=Mode.CLI, cwd="/w", timeout=5)
+
+    @pytest.mark.parametrize("mode", list(Mode))
+    def test_missing_setpriv_names_it(self, paths, tmp_path, mode):
+        broken = paths._replace(setpriv=str(tmp_path / "nope" / "setpriv"))
+        with pytest.raises(SandboxUnavailable) as exc:
+            Sandbox(broken).check_available(mode)
+        assert "setpriv" in str(exc.value)
 
     def test_cli_mode_does_not_need_srt(self, paths, tmp_path):
         no_srt = paths._replace(srt=str(tmp_path / "nope" / "srt"))
@@ -539,24 +579,49 @@ class TestUnavailable:
 
 
 class TestSweepAndReap:
-    def test_default_sweeper_kills_every_fixer_process_as_fixer(self, paths):
+    def test_default_sweeper_kills_every_fixer_process(self, paths):
         calls: list[list[str]] = []
+        envs: list[dict[str, str]] = []
 
         def _run(cmd, **kw):
             calls.append(cmd)
+            envs.append(kw["env"])
 
             class R:
                 returncode = 0
 
             return R()
 
-        sb = Sandbox(paths, run=_run)
-        sb.sweep()
-        assert calls == [[paths.sudo, "-n", "-u", "fixer", "--", paths.kill, "-9", "--", "-1"]]
+        Sandbox(paths, run=_run).sweep()
+        # Pass 1, as fixer: kill(-1) signals every fixer process in one kernel
+        # pass (no fork race). Pass 2, as root: pkill by uid catches anything
+        # pass 1 could not reach.
+        assert calls == [
+            [paths.setpriv, *TestCommandShape.SETPRIV_FLAGS, "--", paths.kill, "-9", "--", "-1"],
+            [paths.pkill, "-KILL", "-u", "10002"],
+        ]
+        for env in envs:
+            assert set(env) == {"PATH", "HOME", "LANG", "CI"}
+
+    def test_second_sweep_pass_runs_when_the_first_fails(self, paths):
+        calls: list[list[str]] = []
+
+        def _run(cmd, **kw):
+            calls.append(cmd)
+            if cmd[0] == paths.setpriv:
+                raise OSError("setpriv gone")
+
+            class R:
+                returncode = 1
+
+            return R()
+
+        Sandbox(paths, run=_run).sweep()
+        assert [c[0] for c in calls] == [paths.setpriv, paths.pkill]
 
     def test_sweep_failure_is_swallowed(self, paths):
         def _run(cmd, **kw):
-            raise OSError("sudo gone")
+            raise OSError("setpriv gone")
 
         Sandbox(paths, run=_run).sweep()  # no raise
 

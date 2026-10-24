@@ -1,20 +1,24 @@
 """
-fixer_exec — rebuild the environment from the allow-list, then exec (S-182, D-51, D-109).
+fixer_exec — rebuild the environment from the allow-list, then exec (S-182, D-51, D-110).
 
-``sandbox.py`` starts every ``fixer`` process as::
+``sandbox.py`` (the wrapper, running as root) starts every ``fixer`` process as::
 
-    sudo -n -u fixer --preserve-env=<names> -- python3 -I fixer_exec.py <cmd> [args...]
+    setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all \\
+        --no-new-privs -- python3 -I fixer_exec.py <cmd> [args...]
 
-``sudo`` (``env_reset``) already starts from a clean environment, but it adds
-its own variables (``SUDO_USER``, ``SUDO_COMMAND``, ``USER``, ``MAIL``...).
-This shim runs as ``fixer`` and execs ``<cmd>`` with exactly the allow-listed
-names, so the command sees ``ANTHROPIC_API_KEY`` (when the wrapper passed it),
-``PATH``, ``HOME=/home/fixer``, ``LANG`` and ``CI=1``, and nothing else.
+``setpriv`` passes the spawn env through unchanged, and the wrapper already
+builds that env from the allow-list. This shim runs as ``fixer`` and rebuilds
+it once more (defence in depth: whatever else arrives is dropped), so the
+command sees ``ANTHROPIC_API_KEY`` (when the wrapper passed it), ``PATH``,
+``HOME=/home/fixer``, ``LANG`` and ``CI=1``, and nothing else.
+
+It also refuses to exec while its real or effective uid is still 0: if the
+drop did not happen, nothing runs as root (exit :data:`EXIT_STILL_ROOT`).
 
 Values never travel in argv (``/proc/<pid>/cmdline`` is world-readable): the
-key arrives in this process's environment through ``--preserve-env`` and
-leaves it through ``execvpe``'s environment. Standard library only; run with
-``python3 -I`` so no ``PYTHON*`` variable or user site can change it.
+key arrives in this process's environment and leaves it through ``execvpe``'s
+environment. Standard library only; run with ``python3 -I`` so no
+``PYTHON*`` variable or user site can change it.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ FIXER_PATH = "/usr/local/bin:/usr/bin:/bin"
 FIXER_HOME = "/home/fixer"
 # Copied from the incoming env when present; PATH and HOME are always fixed.
 _PASSED_THROUGH: tuple[str, ...] = ("ANTHROPIC_API_KEY", "LANG", "CI")
+EXIT_STILL_ROOT = 3
 
 
 def build_env(environ: Mapping[str, str]) -> dict[str, str]:
@@ -45,6 +50,9 @@ def main(argv: Sequence[str]) -> None:
     if len(argv) < 2:
         sys.stderr.write("usage: fixer_exec.py <command> [args...]\n")
         raise SystemExit(2)
+    if os.getuid() == 0 or os.geteuid() == 0:
+        sys.stderr.write("fixer_exec.py: refusing to run a command as root\n")
+        raise SystemExit(EXIT_STILL_ROOT)
     cmd = list(argv[1:])
     os.execvpe(cmd[0], cmd, build_env(os.environ))
 

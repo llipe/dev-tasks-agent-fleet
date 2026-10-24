@@ -1,24 +1,30 @@
 #!/usr/bin/env bash
-# Image smoke test for the bug-fix agent (S-180: TC-180-06..09).
+# Image smoke test for the bug-fix agent (S-180: TC-180-06..09; S-182 3.17: D-110).
 #
 # Usage: scripts/image-smoke.sh [image]     (default: bug-fix:local)
 #
 # Runs throwaway containers from the image and asserts:
 #   - toolchain: Python 3.13.x, Node v26.x, pnpm, git, bwrap, socat, and
-#     `claude --version` equal to the version pinned in the Dockerfile;
-#   - users: `wrapper` and `fixer` have different, non-zero uids, fixer is in
-#     none of wrapper's groups, the default user is wrapper;
-#   - uid switch (S-182 task 3.16, D-109): /etc/sudoers.d/bug-fix is root:root
-#     0440 and valid; as wrapper, `sudo -n -u fixer id -u` is 10002 with a
-#     clean environment; wrapper can't become root or pick a group; fixer
-#     can't sudo at all; `sudo -u fixer kill -9 -- -1` leaves no fixer process;
+#     `claude --version` (run as fixer through setpriv + fixer_exec.py, under
+#     no-new-privileges) equal to the version pinned in the Dockerfile;
+#   - users: the default user is root (the wrapper, D-110); `fixer` is uid
+#     10002 in no other group; there is no `wrapper` user;
+#   - root -> fixer drop (D-110), under `--security-opt no-new-privileges` to
+#     emulate AgentCore (which sets no_new_privs; probe run 1): no sudo binary
+#     or sudoers file; setpriv present; the drop gives uid/gid 10002 (real,
+#     effective, saved, fs), no supplementary groups, no capabilities and
+#     NoNewPrivs 1 (also without the container flag); fixer can't get back to
+#     root (setuid(0), su, setpriv --reuid=0); fixer can't read a root
+#     process's /proc/<pid>/environ or mem; fixer_exec.py rebuilds the env
+#     and refuses to run as root; sandbox.py's own paths and prefix work;
+#     Sandbox().sweep() leaves no fixer process and spares root's;
 #   - sandbox runtime: `srt --version` equals the pinned version, `rg` works,
 #     /etc/bug-fix/srt-settings.json is root:root 0644;
 #   - dirs: /work/repo and /work/out owned by fixer, /home/fixer exists,
-#     /work/wrapper and /work/secrets are wrapper-only (0700);
+#     /work/wrapper and /work/secrets are root:root 0700 and fixer can't read
+#     them, /root or /home of anyone else;
 #   - policy: /etc/claude-code/managed-settings.json is root:root 0644, and as
-#     fixer it can't be appended to and the directory isn't writable;
-#   - isolation: as fixer, /home/wrapper and /work/secrets can't be read.
+#     fixer it can't be appended to and the directory isn't writable.
 #
 # Exits non-zero on the first failed assertion. Needs Docker and a locally
 # built image; needs no credentials and no network.
@@ -30,6 +36,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKERFILE="${SCRIPT_DIR}/../Dockerfile"
 PLATFORM="linux/arm64"
 
+# The exact drop sandbox.py uses (D-110), and the production exec shim.
+SETPRIV="setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs --"
+FIXER_EXEC="$SETPRIV /usr/local/bin/python3 -I /app/fixer_exec.py"
+
 pass=0
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok: $*"; pass=$((pass + 1)); }
@@ -40,6 +50,11 @@ as_user() {
   docker run --rm --platform "$PLATFORM" --user "$user" --entrypoint /bin/sh "$IMAGE" -c "$*"
 }
 as_root() { as_user root "$@"; }
+# As AgentCore runs the wrapper: the image's default user, no_new_privs set.
+as_agentcore() {
+  docker run --rm --platform "$PLATFORM" --security-opt no-new-privileges \
+    --entrypoint /bin/sh "$IMAGE" -c "$*"
+}
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 || fail "image $IMAGE not found (run \`make image\` first)"
 
@@ -77,81 +92,129 @@ ok "srt $srt_v (pinned $srt_pinned)"
 
 pinned="$(sed -n 's/^ARG CLAUDE_CODE_VERSION=//p' "$DOCKERFILE")"
 [ -n "$pinned" ] || fail "no ARG CLAUDE_CODE_VERSION in the Dockerfile"
-claude_v="$(as_user fixer 'claude --version')"
+# As AgentCore runs it: root wrapper, no_new_privs, setpriv + fixer_exec.py.
+claude_v="$(as_agentcore "$FIXER_EXEC claude --version")"
 echo "$claude_v" | grep -qF "$pinned" || fail "claude --version is '$claude_v', expected $pinned"
 ok "claude $claude_v (pinned $pinned)"
 
-# --- Users and dirs (TC-180-07, TC-180-08) -----------------------------------
-wrapper_uid="$(as_root 'id -u wrapper')"
-fixer_uid="$(as_root 'id -u fixer')"
-[ "$wrapper_uid" != "$fixer_uid" ] || fail "wrapper and fixer share uid $wrapper_uid"
-[ "$wrapper_uid" != 0 ] && [ "$fixer_uid" != 0 ] || fail "a runtime user is uid 0"
-ok "uids differ: wrapper=$wrapper_uid fixer=$fixer_uid"
-
+# --- Users (TC-180-07) --------------------------------------------------------
 default_user="$(docker run --rm --platform "$PLATFORM" --entrypoint /bin/sh "$IMAGE" -c 'id -un')"
-[ "$default_user" = "wrapper" ] || fail "default user is $default_user, expected wrapper"
-ok "default user is wrapper"
+[ "$default_user" = "root" ] || fail "default user is $default_user, expected root (D-110)"
+ok "default user is root (the wrapper, D-110)"
 
-wrapper_groups="$(as_root 'id -Gn wrapper')"
+fixer_uid="$(as_root 'id -u fixer')"
+[ "$fixer_uid" = "10002" ] || fail "fixer uid is $fixer_uid, expected 10002"
 fixer_groups="$(as_root 'id -Gn fixer')"
-for g in $wrapper_groups; do
-  for f in $fixer_groups; do
-    [ "$g" != "$f" ] || fail "fixer shares group $g with wrapper"
+[ "$fixer_groups" = "fixer" ] || fail "fixer groups are '$fixer_groups', expected 'fixer' only"
+ok "fixer uid $fixer_uid, groups: $fixer_groups"
+if as_root 'id wrapper' >/dev/null 2>&1; then
+  fail "a wrapper user still exists (the wrapper is root, D-110)"
+fi
+ok "no wrapper user"
+
+# --- Root -> fixer drop under no_new_privs (S-182 3.17, D-110) ------------------
+nnp_root="$(as_agentcore "awk '/^NoNewPrivs:/ {print \$2}' /proc/self/status")"
+[ "$nnp_root" = "1" ] || fail "--security-opt no-new-privileges not in effect (NoNewPrivs=$nnp_root)"
+ok "AgentCore emulation: root wrapper runs with NoNewPrivs 1"
+
+if as_agentcore 'command -v sudo' >/dev/null 2>&1; then
+  fail "a sudo binary is present"
+fi
+as_agentcore 'test ! -e /etc/sudoers.d/bug-fix && test ! -e /etc/sudoers' || fail "a sudoers file is present"
+ok "no sudo binary and no sudoers file (/etc/sudoers.d/bug-fix gone)"
+as_agentcore 'test -x /usr/bin/setpriv' || fail "/usr/bin/setpriv missing"
+ok "$(as_agentcore 'setpriv --version')"
+
+# Identity after the drop, from /proc/self/status.
+check_status() {
+  local label="$1" status="$2"
+  field() { echo "$status" | awk -v k="$1:" '$1 == k { $1 = ""; sub(/^ +/, ""); print }'; }
+  [ "$(field Uid)" = "10002 10002 10002 10002" ] || fail "$label: Uid is '$(field Uid)'"
+  [ "$(field Gid)" = "10002 10002 10002 10002" ] || fail "$label: Gid is '$(field Gid)'"
+  [ -z "$(field Groups)" ] || fail "$label: supplementary Groups '$(field Groups)'"
+  for cap in CapInh CapPrm CapEff CapAmb; do
+    [ "$(field "$cap")" = "0000000000000000" ] || fail "$label: $cap is '$(field "$cap")'"
   done
+  [ "$(field NoNewPrivs)" = "1" ] || fail "$label: NoNewPrivs is '$(field NoNewPrivs)'"
+  ok "$label: Uid/Gid 10002 x4, no Groups, CapInh/CapPrm/CapEff/CapAmb 0, NoNewPrivs 1 (CapBnd $(field CapBnd))"
+}
+check_status "setpriv drop under no-new-privileges" "$(as_agentcore "$SETPRIV cat /proc/self/status")"
+# The flag itself sets no_new_privs, not only the container.
+check_status "setpriv drop without the container flag" "$(as_root "$SETPRIV cat /proc/self/status")"
+
+# No way back to root. Run without the container flag too, so it is
+# setpriv's own --no-new-privs that neutralises the setuid binaries.
+for runner in as_agentcore as_root; do
+  if $runner "$SETPRIV python3 -c 'import os; os.setuid(0)'" >/dev/null 2>&1; then
+    fail "$runner: fixer can os.setuid(0)"
+  fi
+  if $runner "$SETPRIV python3 -c 'import os; os.setgid(0)'" >/dev/null 2>&1; then
+    fail "$runner: fixer can os.setgid(0)"
+  fi
+  if $runner "$SETPRIV su root -c true </dev/null" >/dev/null 2>&1; then
+    fail "$runner: fixer can su root"
+  fi
+  if $runner "$SETPRIV setpriv --reuid=0 --regid=0 -- true" >/dev/null 2>&1; then
+    fail "$runner: fixer can setpriv --reuid=0"
+  fi
+  # A setuid-root binary must not raise fixer's euid (no_new_privs).
+  suid_euid="$($runner "cp /usr/bin/id /tmp/id-suid && chmod 4755 /tmp/id-suid && $SETPRIV /tmp/id-suid -u")"
+  [ "$suid_euid" = "10002" ] || fail "$runner: a setuid-root binary ran as euid $suid_euid"
+  ok "$runner: fixer can't regain root (os.setuid(0), os.setgid(0), su root, setpriv --reuid=0, setuid-root binary)"
 done
-echo " $fixer_groups " | grep -qE ' (sudo|wheel|root|adm) ' && fail "fixer is in a privileged group: $fixer_groups"
-ok "fixer groups ($fixer_groups) disjoint from wrapper's ($wrapper_groups)"
+# Control: the same setuid-root binary without --no-new-privs (and without the
+# container flag) does run as root, so the check above is not vacuous.
+control="$(as_root 'cp /usr/bin/id /tmp/id-suid && chmod 4755 /tmp/id-suid && setpriv --reuid=10002 --regid=10002 --clear-groups -- /tmp/id-suid -u')"
+[ "$control" = "0" ] || fail "control: setuid-root id without no_new_privs gave euid $control, expected 0"
+ok "control: without no_new_privs the setuid-root binary runs as euid 0, so --no-new-privs is what stops it"
 
-# --- uid switch: the narrow sudo rule (S-182 task 3.16, D-109) ---------------
-sudoers=/etc/sudoers.d/bug-fix
-om="$(as_root "stat -c '%U:%G %a' $sudoers")"
-[ "$om" = "root:root 440" ] || fail "$sudoers is $om, expected root:root 440"
-ok "$sudoers $om"
-as_root "visudo -cf $sudoers" >/dev/null || fail "visudo -cf $sudoers failed"
-ok "$sudoers passes visudo -cf"
-extra="$(as_root 'ls -A /etc/sudoers.d | grep -v -x -e README -e bug-fix || true')"
-[ -z "$extra" ] || fail "unexpected files in /etc/sudoers.d: $extra"
-ok "/etc/sudoers.d holds only bug-fix"
+# /proc isolation from the root wrapper (SC-IC-03).
+proc_out="$(as_agentcore "env SECRET_SENTINEL=leak-7f3a sleep 30 & pid=\$!; sleep 0.3; \
+  $SETPRIV cat /proc/\$pid/environ 2>/dev/null || echo environ:denied; \
+  $SETPRIV python3 -c \"import sys; open('/proc/' + sys.argv[1] + '/mem', 'rb').read(1)\" \$pid 2>/dev/null || echo mem:denied; \
+  $SETPRIV cat /proc/1/environ 2>/dev/null || echo init:denied; \
+  kill \$pid")"
+echo "$proc_out" | grep -q 'leak-7f3a' && fail "fixer read the root wrapper's /proc/<pid>/environ"
+for want in environ:denied mem:denied init:denied; do
+  echo "$proc_out" | grep -qx "$want" || fail "expected $want, got: $proc_out"
+done
+ok "fixer can't read a root process's /proc/<pid>/environ or /proc/<pid>/mem, nor /proc/1/environ"
 
-switched="$(as_user wrapper 'sudo -n -u fixer id -u')"
-[ "$switched" = "10002" ] || fail "as wrapper, sudo -n -u fixer id -u gave '$switched', expected 10002"
-ok "wrapper -> fixer: sudo -n -u fixer id -u = $switched"
-
-if as_user fixer 'sudo -n true' >/dev/null 2>&1; then
-  fail "fixer can run sudo -n true"
-fi
-ok "fixer can't sudo"
-if as_user wrapper 'sudo -n -u root true' >/dev/null 2>&1; then
-  fail "wrapper can become root"
-fi
-if as_user wrapper 'sudo -n true' >/dev/null 2>&1; then
-  fail "wrapper can run sudo -n true (root by default)"
-fi
-ok "wrapper can't become root"
-if as_user wrapper 'sudo -n -u fixer -g root true' >/dev/null 2>&1; then
-  fail "wrapper can pick group root"
-fi
-ok "wrapper can't pick a group"
-
-leaked="$(as_user wrapper 'env AWS_ACCESS_KEY_ID=leak-7f3a SUPABASE_URL=leak-7f3a sudo -n -u fixer env' | grep -c 'leak-7f3a' || true)"
-[ "$leaked" = "0" ] || fail "sudo -u fixer inherited $leaked caller variable(s)"
-ok "sudo -u fixer starts from a clean environment (env_reset)"
-
-# The post-run sweep sandbox.py uses: every fixer process, daemons included.
-# Zombies are not counted: the throwaway container's pid 1 is a plain shell
-# that doesn't reap orphans (in the runtime, the wrapper reaps them).
-fixer_procs="$(as_user wrapper "sudo -n -u fixer sh -c 'setsid sleep 1000 >/dev/null 2>&1 < /dev/null &'; sleep 0.3; \
-  sudo -n -u fixer /usr/bin/kill -9 -- -1; sleep 0.3; \
-  ps -u 10002 -o stat= | grep -vc '^Z' || true")"
-[ "$fixer_procs" = "0" ] || fail "$fixer_procs fixer process(es) survived the kill sweep"
-ok "kill sweep as fixer leaves no fixer process (setsid daemon included)"
-
-as_root 'test -x /usr/local/bin/python3' || fail "/usr/local/bin/python3 missing (fixer_exec.py interpreter)"
-envout="$(as_user wrapper 'env AWS_ACCESS_KEY_ID=leak-7f3a CI=1 LANG=C.UTF-8 sudo -n -u fixer --preserve-env=CI,LANG -- /usr/local/bin/python3 -I /app/fixer_exec.py /usr/bin/env')"
+# fixer_exec.py: the env is rebuilt from the allow-list; it refuses root.
+as_agentcore 'test -x /usr/local/bin/python3' || fail "/usr/local/bin/python3 missing (fixer_exec.py interpreter)"
+envout="$(as_agentcore "env AWS_ACCESS_KEY_ID=leak-7f3a CI=1 LANG=C.UTF-8 $FIXER_EXEC /usr/bin/env")"
 names="$(echo "$envout" | cut -d= -f1 | sort | tr '\n' ' ')"
 [ "$names" = "CI HOME LANG PATH " ] || fail "fixer_exec.py env is '$names', expected 'CI HOME LANG PATH '"
 ok "fixer_exec.py rebuilds the env from the allow-list ($names)"
+set +e
+as_agentcore '/usr/local/bin/python3 -I /app/fixer_exec.py /usr/bin/true' >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" = "3" ] || fail "fixer_exec.py as root exited $rc, expected 3 (refuses root)"
+ok "fixer_exec.py refuses to exec as root (exit 3)"
 
+# sandbox.py's own paths and prefix, as the wrapper uses them.
+as_agentcore "cd /app && python3 -c 'from sandbox import Sandbox, Mode; s = Sandbox(); s.check_available(Mode.SCRIPT); s.check_available(Mode.CLI)'" \
+  || fail "sandbox.py DEFAULT_PATHS don't match the image"
+ok "sandbox.py DEFAULT_PATHS exist in the image (setpriv, python, fixer_exec, srt, settings, claude)"
+switched="$(as_agentcore "cd /app && python3 -c 'import subprocess; from sandbox import DEFAULT_PATHS, build_env, fixer_prefix; \
+print(subprocess.run([*fixer_prefix(DEFAULT_PATHS), \"/usr/bin/id\", \"-u\"], env=build_env(None), capture_output=True, text=True).stdout.strip())'")"
+[ "$switched" = "10002" ] || fail "sandbox.fixer_prefix ran 'id -u' as '$switched', expected 10002"
+ok "sandbox.fixer_prefix runs as 10002 under no_new_privs"
+
+# The production sweep: every fixer process (daemon included), no root process.
+# Zombies are not counted: the throwaway container's pid 1 is a plain shell
+# that doesn't reap orphans (in the runtime, the wrapper reaps them).
+sweep_out="$(as_agentcore "sleep 1000 & root_pid=\$!; \
+  $SETPRIV sh -c 'setsid sleep 1000 >/dev/null 2>&1 </dev/null &'; sleep 0.3; \
+  cd /app && python3 -c 'from sandbox import Sandbox; Sandbox().sweep()'; sleep 0.3; \
+  echo fixer=\$(ps -u 10002 -o stat= | grep -vc '^Z'); \
+  kill -0 \$root_pid && echo root=alive; kill \$root_pid")"
+echo "$sweep_out" | grep -qx 'fixer=0' || fail "fixer process(es) survived Sandbox().sweep(): $sweep_out"
+echo "$sweep_out" | grep -qx 'root=alive' || fail "Sandbox().sweep() killed a root process: $sweep_out"
+ok "Sandbox().sweep() leaves no fixer process (setsid daemon included) and spares root's"
+
+# --- Dirs (TC-180-08) -----------------------------------------------------------
 owner_mode() { as_root "stat -c '%U:%G %a' $1"; }
 for d in /work/repo /work/out; do
   om="$(owner_mode "$d")"
@@ -162,24 +225,17 @@ as_root 'test -d /home/fixer' || fail "/home/fixer missing"
 ok "/home/fixer exists"
 for d in /work/wrapper /work/secrets; do
   om="$(owner_mode "$d")"
-  [ "$om" = "wrapper:wrapper 700" ] || fail "$d is $om, expected wrapper:wrapper 700"
+  [ "$om" = "root:root 700" ] || fail "$d is $om, expected root:root 700"
   ok "$d $om"
 done
+for d in /work/wrapper /work/secrets /root; do
+  if as_agentcore "$SETPRIV ls $d" >/dev/null 2>&1; then
+    fail "fixer can list $d"
+  fi
+  ok "fixer can't list $d"
+done
 
-if as_user fixer 'ls /home/wrapper' >/dev/null 2>&1; then
-  fail "fixer can list /home/wrapper"
-fi
-ok "fixer can't list /home/wrapper"
-if as_user fixer 'ls /work/secrets' >/dev/null 2>&1; then
-  fail "fixer can list /work/secrets"
-fi
-ok "fixer can't read /work/secrets"
-if as_user fixer 'ls /work/wrapper' >/dev/null 2>&1; then
-  fail "fixer can list /work/wrapper"
-fi
-ok "fixer can't read /work/wrapper"
-
-# --- Managed policy (TC-180-09) ----------------------------------------------
+# --- Managed policy (TC-180-09) -------------------------------------------------
 policy=/etc/claude-code/managed-settings.json
 om="$(owner_mode "$policy")"
 [ "$om" = "root:root 644" ] || fail "$policy is $om, expected root:root 644"
@@ -188,24 +244,22 @@ om="$(owner_mode /etc/claude-code)"
 [ "$om" = "root:root 755" ] || fail "/etc/claude-code is $om, expected root:root 755"
 ok "/etc/claude-code $om"
 
-for user in fixer wrapper; do
-  if as_user "$user" "echo '{}' >> $policy" >/dev/null 2>&1; then
-    fail "$user can append to $policy"
-  fi
-  if as_user "$user" "touch /etc/claude-code/x" >/dev/null 2>&1; then
-    fail "$user can write to /etc/claude-code"
-  fi
-  ok "$user can't modify the policy or its directory"
-done
+if as_agentcore "$SETPRIV sh -c \"echo '{}' >> $policy\"" >/dev/null 2>&1; then
+  fail "fixer can append to $policy"
+fi
+if as_agentcore "$SETPRIV touch /etc/claude-code/x" >/dev/null 2>&1; then
+  fail "fixer can write to /etc/claude-code"
+fi
+ok "fixer can't modify the policy or its directory"
 
-as_user fixer "python -c 'import json,sys; json.load(open(\"$policy\"))'" || fail "$policy is not valid JSON"
+as_agentcore "$SETPRIV python3 -c 'import json; json.load(open(\"$policy\"))'" || fail "$policy is not valid JSON for fixer"
 ok "policy is readable JSON for fixer"
 
 srt_policy=/etc/bug-fix/srt-settings.json
 om="$(owner_mode "$srt_policy")"
 [ "$om" = "root:root 644" ] || fail "$srt_policy is $om, expected root:root 644"
 ok "$srt_policy $om"
-if as_user fixer "echo '{}' >> $srt_policy" >/dev/null 2>&1; then
+if as_agentcore "$SETPRIV sh -c \"echo '{}' >> $srt_policy\"" >/dev/null 2>&1; then
   fail "fixer can append to $srt_policy"
 fi
 ok "fixer can't modify $srt_policy"

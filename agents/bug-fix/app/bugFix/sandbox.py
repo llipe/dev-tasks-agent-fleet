@@ -1,19 +1,25 @@
 """
-sandbox — start ``fixer`` subprocesses (S-182; D-51, D-62, D-109).
+sandbox — start ``fixer`` subprocesses (S-182; D-51, D-62, D-110).
 
-uid switch, minimal env, sandbox runtime, wall-clock timeout, no survivors.
+uid drop, minimal env, sandbox runtime, wall-clock timeout, no survivors.
 
 Every process that runs model output or repo-controlled code starts here, as
 uid ``fixer``, never in the wrapper's own process or with its env (spec §7, §12):
 
-1. **uid switch (D-109).** ``sudo -n -u fixer`` through the one sudoers rule
-   ``wrapper ALL=(fixer) NOPASSWD: ALL`` (``env_reset``, fixed ``secure_path``).
+1. **uid drop (D-110).** The wrapper runs as root. AgentCore starts the
+   container with ``no_new_privs`` set, so setuid ``sudo`` can't run (probe
+   run 1, which retired D-109). Dropping privileges as root still works:
+   every fixer process starts as ``setpriv --reuid=10002 --regid=10002
+   --clear-groups --inh-caps=-all --no-new-privs -- ...``. The child has
+   uid/gid 10002 (real, effective, saved), no supplementary groups, no
+   capabilities and ``no_new_privs`` set, so no setuid binary can take it back
+   to root. Nothing but wrapper code runs as root.
 2. **Minimal env (D-51 layer 1).** The spawn gets an env built from an
    allow-list, never from ``os.environ``: ``ANTHROPIC_API_KEY`` (only when the
-   caller passes it), ``PATH``, ``HOME=/home/fixer``, ``LANG``, ``CI=1``. Only
-   those names cross ``sudo`` (``--preserve-env=<names>``), and
-   ``fixer_exec.py`` rebuilds the final env from the same allow-list, dropping
-   what ``sudo`` adds. No secret is ever put in argv.
+   caller passes it), ``PATH``, ``HOME=/home/fixer``, ``LANG``, ``CI=1``.
+   ``setpriv`` passes it through unchanged, and ``fixer_exec.py`` rebuilds the
+   final env from the same allow-list (and refuses to exec while still root).
+   No secret is ever put in argv.
 3. **Sandbox (D-51 layers 2-3).** Two modes, and no third:
 
    - :attr:`Mode.SCRIPT` — install, gates, changed tests and probe helpers run
@@ -26,15 +32,17 @@ uid ``fixer``, never in the wrapper's own process or with its env (spec §7, §1
      own Bash sandbox from ``/etc/claude-code/managed-settings.json``. Nesting
      ``claude`` inside ``srt`` would cut it off from the Anthropic API.
 
-   A bare exec (sudo straight to an arbitrary command) is never built.
-4. **Wall-clock timeout.** SIGTERM at the deadline (``sudo`` relays it). If the
-   child is still alive after :data:`KILL_GRACE_SECONDS` (15 s), every
-   ``fixer`` process is swept and the child gets SIGKILL (``sudo`` does not
-   relay SIGKILL).
+   A bare exec (setpriv straight to an arbitrary command) is never built.
+4. **Wall-clock timeout.** SIGTERM at the deadline (``setpriv`` and
+   ``fixer_exec.py`` exec, so the child pid is the runtime itself). If it is
+   still alive after :data:`KILL_GRACE_SECONDS` (15 s), every ``fixer``
+   process is swept and the child gets SIGKILL.
 5. **No survivors (D-62).** After the child exits, for any reason, the wrapper
-   sweeps every ``fixer`` process (``sudo -u fixer kill -9 -- -1``), so a
-   daemon left behind can't touch ``/work/repo`` while the wrapper reads it,
-   then reaps zombies (the wrapper may be pid 1 in the container).
+   sweeps every ``fixer`` process, so a daemon left behind can't touch
+   ``/work/repo`` while the wrapper reads it, then reaps zombies (the wrapper
+   may be pid 1 in the container). The sweep is two passes: ``kill -9 -- -1``
+   as ``fixer`` (one kernel pass over every process fixer may signal, which a
+   fork loop can't outrun), then ``pkill -KILL -u 10002`` as root.
 
 Sandbox runs are serialized by a module lock: the zombie reaper waits for any
 child, which is only safe while no other ``Popen`` of this process is live.
@@ -55,14 +63,24 @@ from dataclasses import dataclass
 from typing import IO, Any, NamedTuple
 
 FIXER_USER = "fixer"
+FIXER_UID = 10002
+FIXER_GID = 10002
 FIXER_HOME = "/home/fixer"
 FIXER_PATH = "/usr/local/bin:/usr/bin:/bin"
 DEFAULT_LANG = "C.UTF-8"
 
 # The child's env, by name (D-51). fixer_exec.ALLOWED must be equal.
 ALLOWED_ENV: tuple[str, ...] = ("ANTHROPIC_API_KEY", "PATH", "HOME", "LANG", "CI")
-# The names that cross sudo. PATH and HOME are fixed again by fixer_exec.py.
-_PRESERVED: tuple[str, ...] = ("ANTHROPIC_API_KEY", "LANG", "CI")
+
+# The drop from root to fixer (D-110). Works under no_new_privs; needs only
+# CAP_SETUID and CAP_SETGID in the wrapper.
+SETPRIV_FLAGS: tuple[str, ...] = (
+    f"--reuid={FIXER_UID}",
+    f"--regid={FIXER_GID}",
+    "--clear-groups",
+    "--inh-caps=-all",
+    "--no-new-privs",
+)
 
 KILL_GRACE_SECONDS = 15.0
 POLL_INTERVAL_SECONDS = 0.2
@@ -121,13 +139,14 @@ def map_exit(code: int | None, timed_out: bool) -> Outcome:
 
 
 class SandboxPaths(NamedTuple):
-    sudo: str = "/usr/bin/sudo"
+    setpriv: str = "/usr/bin/setpriv"
     python: str = "/usr/local/bin/python3"
     fixer_exec: str = "/app/fixer_exec.py"
     srt: str = "/usr/bin/srt"
     srt_settings: str = "/etc/bug-fix/srt-settings.json"
     claude: str = "/usr/bin/claude"
     kill: str = "/usr/bin/kill"
+    pkill: str = "/usr/bin/pkill"
 
 
 DEFAULT_PATHS = SandboxPaths()
@@ -159,23 +178,14 @@ def build_env(anthropic_api_key: str | None = None, lang: str = DEFAULT_LANG) ->
     return env
 
 
-def fixer_prefix(paths: SandboxPaths, preserve: Sequence[str]) -> list[str]:
-    """``sudo -n -u fixer --preserve-env=<names> -- python3 -I fixer_exec.py``.
+def as_fixer(paths: SandboxPaths) -> list[str]:
+    """``setpriv <D-110 flags> --``: what follows runs as fixer, unprivileged."""
+    return [paths.setpriv, *SETPRIV_FLAGS, "--"]
 
-    ``preserve`` is filtered to the allow-list, so no caller can widen it.
-    """
-    names = [n for n in _PRESERVED if n in preserve]
-    return [
-        paths.sudo,
-        "-n",
-        "-u",
-        FIXER_USER,
-        f"--preserve-env={','.join(names)}",
-        "--",
-        paths.python,
-        "-I",
-        paths.fixer_exec,
-    ]
+
+def fixer_prefix(paths: SandboxPaths) -> list[str]:
+    """``setpriv <D-110 flags> -- python3 -I fixer_exec.py``."""
+    return [*as_fixer(paths), paths.python, "-I", paths.fixer_exec]
 
 
 def reap_zombies() -> list[int]:
@@ -230,7 +240,7 @@ class Sandbox:
         """(role, path, must be executable) for ``mode``."""
         p = self.paths
         common = [
-            ("sudo", p.sudo, True),
+            ("setpriv", p.setpriv, True),
             ("python", p.python, True),
             ("fixer_exec", p.fixer_exec, False),
         ]
@@ -247,10 +257,10 @@ class Sandbox:
 
     # ------------------------------------------------------------ command shape
 
-    def build_command(self, mode: Mode, argv: Sequence[str], preserve: Sequence[str]) -> list[str]:
+    def build_command(self, mode: Mode, argv: Sequence[str]) -> list[str]:
         if not argv:
             raise ValueError("empty command")
-        prefix = fixer_prefix(self.paths, preserve)
+        prefix = fixer_prefix(self.paths)
         if mode is Mode.SCRIPT:
             return [*prefix, self.paths.srt, "--settings", self.paths.srt_settings, "--", *argv]
         if argv[0] != self.paths.claude:
@@ -276,7 +286,7 @@ class Sandbox:
             raise ValueError("timeout must be positive")
         self.check_available(mode)
         env = build_env(anthropic_api_key)
-        cmd = self.build_command(mode, argv, list(env))
+        cmd = self.build_command(mode, argv)
 
         with (
             _RUN_LOCK,
@@ -341,20 +351,27 @@ class Sandbox:
             self._kill(proc.pid, sig)
 
     def sweep(self) -> None:
-        """Kill every ``fixer`` process: ``kill -9 -- -1`` run as ``fixer``.
+        """Kill every ``fixer`` process. Best effort; two passes.
 
-        ``kill(-1)`` signals every process the caller may signal except itself,
-        so as ``fixer`` it reaches every ``fixer`` process, daemons and srt's
-        pid-namespaced children included, and nothing else. Best effort.
+        1. ``kill -9 -- -1`` run as ``fixer``: ``kill(-1)`` signals every
+           process the caller may signal except itself, in one kernel pass, so
+           it reaches every ``fixer`` process (daemons and srt's pid-namespaced
+           children included), nothing else, and can't be outrun by a fork loop.
+        2. ``pkill -KILL -u 10002`` as root: anything with effective uid fixer
+           that pass 1 missed (for example, if ``setpriv`` itself failed).
         """
-        cmd = [self.paths.sudo, "-n", "-u", FIXER_USER, "--", self.paths.kill, "-9", "--", "-1"]
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            self._run(
-                cmd,
-                env=build_env(None),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=SWEEP_TIMEOUT_SECONDS,
-                check=False,
-            )
+        commands = [
+            [*as_fixer(self.paths), self.paths.kill, "-9", "--", "-1"],
+            [self.paths.pkill, "-KILL", "-u", str(FIXER_UID)],
+        ]
+        for cmd in commands:
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                self._run(
+                    cmd,
+                    env=build_env(None),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=SWEEP_TIMEOUT_SECONDS,
+                    check=False,
+                )

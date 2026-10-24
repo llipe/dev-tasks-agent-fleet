@@ -153,20 +153,6 @@ class TestRepoAndRefs:
 
 
 class TestSubprocesses:
-    def test_sudo_rc(self, monkeypatch):
-        class R:
-            returncode = 1
-
-        monkeypatch.setattr(probe_inner.subprocess, "run", lambda *a, **k: R())
-        assert probe_inner.cmd_sudo() == {"rc": 1}
-
-    def test_sudo_missing(self, monkeypatch):
-        def _missing(*a, **k):
-            raise FileNotFoundError("sudo")
-
-        monkeypatch.setattr(probe_inner.subprocess, "run", _missing)
-        assert probe_inner.cmd_sudo()["rc"] == -1
-
     def test_tool(self):
         d = probe_inner.cmd_tool("/bin/sh", "-c", "echo hi; exit 3")
         assert d["rc"] == 3
@@ -174,6 +160,145 @@ class TestSubprocesses:
 
     def test_tool_missing(self):
         assert probe_inner.cmd_tool("/nonexistent/tool")["rc"] == -1
+
+
+STATUS_FIXER = """Name:\tpython3
+NoNewPrivs:\t1
+Uid:\t10002\t10002\t10002\t10002
+Gid:\t10002\t10002\t10002\t10002
+Groups:\t
+CapInh:\t0000000000000000
+CapPrm:\t0000000000000000
+CapEff:\t0000000000000000
+CapBnd:\t000001ffffffffff
+CapAmb:\t0000000000000000
+Seccomp:\t2
+"""
+
+
+class TestIds:
+    """``ids``: the identity the setpriv drop produced, from /proc/self/status (D-110)."""
+
+    def test_parses_status(self, tmp_path):
+        f = tmp_path / "status"
+        f.write_text(STATUS_FIXER)
+        d = probe_inner.cmd_ids(str(f))
+        assert d["uid"] == [10002, 10002, 10002, 10002]
+        assert d["gid"] == [10002, 10002, 10002, 10002]
+        assert d["groups"] == []
+        assert d["cap_eff"] == "0000000000000000"
+        assert d["cap_prm"] == "0000000000000000"
+        assert d["cap_inh"] == "0000000000000000"
+        assert d["cap_amb"] == "0000000000000000"
+        assert d["cap_bnd"] == "000001ffffffffff"
+        assert d["no_new_privs"] == 1
+        assert d["seccomp"] == "2"
+
+    def test_groups_listed(self, tmp_path):
+        f = tmp_path / "status"
+        f.write_text(STATUS_FIXER.replace("Groups:\t\n", "Groups:\t10002 27\n"))
+        assert probe_inner.cmd_ids(str(f))["groups"] == [10002, 27]
+
+    def test_missing_fields_are_none(self, tmp_path):
+        f = tmp_path / "status"
+        f.write_text("Name:\tx\n")
+        d = probe_inner.cmd_ids(str(f))
+        assert d["uid"] is None and d["no_new_privs"] is None and d["cap_eff"] is None
+
+    def test_unreadable_status(self, tmp_path):
+        d = probe_inner.cmd_ids(str(tmp_path / "missing"))
+        assert d["error"].startswith("unreadable:")
+
+
+class _R:
+    def __init__(self, rc: int, err: str = "") -> None:
+        self.returncode = rc
+        self.stdout = ""
+        self.stderr = err
+
+
+class TestEscalate:
+    """``escalate``: every way back to root must fail for fixer (D-110)."""
+
+    def _fake(self, monkeypatch, *, setuid_ok=False, rc=1, nnp="1"):
+        calls: list[list[str]] = []
+
+        def _setid(_v):
+            if not setuid_ok:
+                raise PermissionError(1, "Operation not permitted")
+
+        def _run(argv, **kw):
+            calls.append(list(argv))
+            return _R(rc, "su: Authentication failure")
+
+        monkeypatch.setattr(probe_inner.os, "setuid", _setid)
+        monkeypatch.setattr(probe_inner.os, "setgid", _setid)
+        monkeypatch.setattr(probe_inner.subprocess, "run", _run)
+        monkeypatch.setattr(
+            probe_inner, "_status_fields", lambda path="/proc/self/status": {"NoNewPrivs": nnp}
+        )
+        monkeypatch.setattr(probe_inner.shutil, "which", lambda name: None)
+        return calls
+
+    def test_all_refused(self, monkeypatch):
+        calls = self._fake(monkeypatch)
+        d = probe_inner.cmd_escalate()
+        assert d["setuid0"] == "EPERM"
+        assert d["setgid0"] == "EPERM"
+        assert d["su"]["rc"] == 1
+        assert d["setpriv_root"]["rc"] == 1
+        assert d["no_new_privs"] == 1
+        assert d["sudo_on_path"] is False
+        assert ["su", "root", "-c", "true"] in calls
+        assert ["setpriv", "--reuid=0", "--regid=0", "--", "true"] in calls
+
+    def test_setuid_success_is_reported(self, monkeypatch):
+        self._fake(monkeypatch, setuid_ok=True)
+        assert probe_inner.cmd_escalate()["setuid0"] == "ok"
+
+    def test_missing_binary(self, monkeypatch):
+        self._fake(monkeypatch)
+
+        def _missing(*a, **k):
+            raise FileNotFoundError("su")
+
+        monkeypatch.setattr(probe_inner.subprocess, "run", _missing)
+        d = probe_inner.cmd_escalate()
+        assert d["su"]["rc"] == -1
+        assert "FileNotFoundError" in d["su"]["err"]
+
+
+class TestUserns:
+    """``userns``: can bwrap create user+pid+net namespaces here? (D-110)"""
+
+    def test_reports_bwrap_and_unshare(self, monkeypatch, tmp_path):
+        calls: list[list[str]] = []
+
+        def _run(argv, **kw):
+            calls.append(list(argv))
+            if argv[0] == "bwrap":
+                return _R(1, "bwrap: No permissions to create a new namespace")
+            return _R(0)
+
+        monkeypatch.setattr(probe_inner.subprocess, "run", _run)
+        knob = tmp_path / "max_user_namespaces"
+        knob.write_text("15000\n")
+        monkeypatch.setattr(
+            probe_inner,
+            "USERNS_SYSCTLS",
+            {"max_user_namespaces": str(knob), "unprivileged_userns_clone": str(tmp_path / "x")},
+        )
+        d = probe_inner.cmd_userns()
+        assert d["bwrap"]["rc"] == 1
+        assert "No permissions" in d["bwrap"]["err"]
+        assert d["unshare"]["rc"] == 0
+        assert d["sysctl"] == {"max_user_namespaces": "15000", "unprivileged_userns_clone": None}
+        bwrap = next(c for c in calls if c[0] == "bwrap")
+        for flag in ("--unshare-user", "--unshare-pid", "--unshare-net"):
+            assert flag in bwrap
+        unshare = next(c for c in calls if c[0] == "unshare")
+        for flag in ("--user", "--pid", "--net", "--fork"):
+            assert flag in unshare
 
 
 class TestMain:

@@ -1,17 +1,20 @@
-"""L2 tests for ``sandbox.py`` with real processes (S-182 task 3.1; TC-182-03, TC-182-05).
+"""L2 tests for ``sandbox.py`` with real processes (S-182 tasks 3.1, 3.17; TC-182-03, TC-182-05).
 
-The real command chain runs: ``<sudo> -n -u fixer --preserve-env=... --
+The real command chain runs: ``<setpriv> --reuid=10002 ... --no-new-privs --
 <python> -I fixer_exec.py <srt> --settings <file> -- <command>``. Only the two
 privileged pieces are replaced by exec-through shims, because a developer
-machine or CI runner has no ``fixer`` user and no ``bwrap`` sandbox:
+machine or CI runner is not root, has no ``fixer`` user and no ``bwrap``
+sandbox:
 
-- ``fake-sudo`` drops its options up to ``--`` and execs the rest;
+- ``fake-setpriv`` drops its options up to ``--`` and execs the rest (the
+  real ``setpriv`` passes the env through unchanged, like the shim);
 - ``fake-srt`` checks ``--settings <file> --`` and execs the rest (absolute
   path, no shell).
 
 ``fixer_exec.py`` is the real script, so the env the command sees is the real
-rebuilt allow-list. The production sweep (``sudo -u fixer kill -9 -- -1``)
-would kill every process of the current user here, so the test injects a
+rebuilt allow-list. The production sweep (``kill -9 -- -1`` as fixer, then
+``pkill -KILL -u 10002`` as root) would kill every process of the current
+user here, so the test injects a
 sweeper scoped to a per-test marker; the production sweep itself is asserted
 against the built image by ``scripts/image-smoke.sh``.
 """
@@ -53,8 +56,8 @@ def marker() -> str:
 
 @pytest.fixture
 def chain(tmp_path: Path, marker: str):
-    fake_sudo = _shim(
-        tmp_path / "fake-sudo",
+    fake_setpriv = _shim(
+        tmp_path / "fake-setpriv",
         """\
         while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
         shift
@@ -80,13 +83,14 @@ def chain(tmp_path: Path, marker: str):
     settings = tmp_path / "srt-settings.json"
     settings.write_text("{}")
     paths = SandboxPaths(
-        sudo=fake_sudo,
+        setpriv=fake_setpriv,
         python=sys.executable,
         fixer_exec=str(PKG / "fixer_exec.py"),
         srt=fake_srt,
         srt_settings=str(settings),
         claude=str(tmp_path / "claude"),
         kill="/bin/kill",
+        pkill=shutil.which("pkill") or "/usr/bin/pkill",
     )
 
     def _sweep() -> None:
@@ -118,8 +122,8 @@ class TestRealChain:
         )
         assert res.outcome is Outcome.OK, res.stderr
         env = json.loads(res.stdout.strip().splitlines()[-1])
-        # The fake sudo does no env_reset, so this proves fixer_exec.py itself
-        # rebuilds the env from the allow-list.
+        # The polluted names never reach the command: the spawn env is the
+        # allow-list, and fixer_exec.py rebuilds it again before the exec.
         # macOS injects __CF_USER_TEXT_ENCODING into every process it starts.
         env.pop("__CF_USER_TEXT_ENCODING", None)
         assert set(env) == {

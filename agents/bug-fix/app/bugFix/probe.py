@@ -1,5 +1,5 @@
 """
-probe — the S-182 spike checks, run on the deployed runtime (D-51, D-70, D-105, D-109).
+probe — the S-182 spike checks, run on the deployed runtime (D-51, D-70, D-105, D-110).
 
 **Gate (D-70).** Probe mode needs both a top-level payload key ``__probe``
 whose value is the JSON boolean ``true`` (outside ``params``, which the panel
@@ -13,17 +13,29 @@ flag is set only for the spike, by ``infra-engineer`` (tasks 3.5 / 3.10).
 ``not_applicable`` with a JSON summary. Every message and detail passes
 through the scrubber; no token or key is ever put in a detail or in argv.
 
+- ``setpriv.*`` (D-110) - the wrapper is root with ``CAP_SETUID``/``CAP_SETGID``
+  (the precondition of the drop), and a process dropped with ``setpriv`` (alone
+  and inside the sandbox) has uid/gid 10002, no supplementary groups, no
+  capabilities and ``NoNewPrivs: 1``.
 - ``sandbox.*`` - the sandbox runtime starts (``srt``/``bwrap`` on ARM64).
+- ``userns.available`` (D-110) - reported on its own: can ``fixer`` create the
+  user, pid and net namespaces that ``bwrap``/``srt`` need, under AgentCore's
+  ``no_new_privs``? The detail adds ``unshare``, the sysctls and the same
+  measurement as root, so a FAIL says why.
 - ``net.*`` (SC-IC-01/02) - from inside the sandbox as ``fixer``: the container
   credential and metadata endpoints and non-registry hosts are unreachable
   (HTTP through the sandbox proxy and a raw TCP connect); ``npm view`` and
   ``pip download`` reach the registries.
-- ``proc.*``, ``env.*``, ``sudo.*`` (SC-IC-03, D-109) - as ``fixer``, both inside
-  the sandbox and with the uid switch alone: ``/proc/<wrapper pid>/environ``
-  and ``/mem`` are unreadable, no ``AWS_*`` / ``SUPABASE_*`` / GitHub / secret-id
-  variable is present, ``sudo -n true`` fails; ``wrapper`` can't become root.
+- ``proc.*``, ``env.*``, ``noescalate.*`` (SC-IC-03, D-110) - as ``fixer``, both
+  inside the sandbox and with the ``setpriv`` drop alone: the root wrapper's
+  ``/proc/<pid>/environ`` and ``/mem`` are unreadable, no ``AWS_*`` /
+  ``SUPABASE_*`` / GitHub / secret-id variable is present, and ``setuid(0)``,
+  ``setgid(0)``, ``su`` and ``setpriv --reuid=0`` all fail; no ``sudo`` binary
+  or sudoers file is in the image.
 - ``policy.*``, ``secrets.*`` (part of SC-IC-05) - the managed policy can't be
   written, ``/work/secrets`` can't be read.
+- ``cli.version`` - the pinned CLI answers; the detail carries the exit code,
+  outcome and stderr tail (probe run 1 showed only an empty version).
 - ``cli.*`` (SC-IC-04) - ``claude -p`` as ``fixer`` in a throwaway repo whose
   ``.claude/settings.json`` allows ``git push``, ``gh``, ``curl`` and
   ``WebFetch``, disables the sandbox and asks for bypass mode: the managed
@@ -43,6 +55,7 @@ import enum
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -52,9 +65,12 @@ from typing import Any
 
 import requests
 
+import probe_inner
 from config import ConfigError, load_config
 from sandbox import (
     DEFAULT_PATHS,
+    FIXER_GID,
+    FIXER_UID,
     Mode,
     Sandbox,
     SandboxError,
@@ -215,8 +231,9 @@ class Inner:
     """Runs ``probe_inner.py <sub> [args]`` as ``fixer``.
 
     ``where="sandbox"``: through :class:`sandbox.Sandbox` (srt, as for repo
-    scripts). ``where="uid"``: the uid switch alone (sudo + fixer_exec.py, no
-    srt), which is what the CLI process itself and its non-Bash tools get.
+    scripts). ``where="uid"``: the ``setpriv`` drop alone (setpriv +
+    fixer_exec.py, no srt), which is what the CLI process itself and its
+    non-Bash tools get.
     This second form exists only here, behind ``ALLOW_PROBE=1``.
     """
 
@@ -247,7 +264,7 @@ class Inner:
         if where == "uid":
             env = build_env(None)
             done = self._run(
-                [*fixer_prefix(p, list(env)), *argv],
+                [*fixer_prefix(p), *argv],
                 env=env,
                 cwd=self.cwd,
                 stdin=subprocess.DEVNULL,
@@ -373,35 +390,154 @@ def env_checks(inner: Any) -> list[CheckResult]:
     return [_check(f"env.fixer.{w}", partial(_one, w)) for w in ("sandbox", "uid")]
 
 
-def sudo_checks(
-    inner: Any, *, run: Callable[..., Any] = subprocess.run, paths: SandboxPaths = DEFAULT_PATHS
-) -> list[CheckResult]:
-    def _fixer(where: str) -> CheckResult:
-        rc = inner.call("sudo", where=where).get("rc")
-        return CheckResult(f"sudo.fixer.{where}", _pf(rc != 0), f"fixer `sudo -n true` rc={rc}")
+_CAP_SETGID = 1 << 6
+_CAP_SETUID = 1 << 7
+_ZERO_CAPS = "0000000000000000"
+_NO_SUDO_FILES: tuple[str, ...] = ("/usr/bin/sudo", "/etc/sudoers", "/etc/sudoers.d/bug-fix")
 
-    def _wrapper_root() -> CheckResult:
+
+def _ids_text(d: Mapping[str, Any]) -> str:
+    def _join(v: Any) -> str:
+        return "/".join(str(x) for x in v) if isinstance(v, list) else str(v)
+
+    return (
+        f"uid={_join(d.get('uid'))} gid={_join(d.get('gid'))} groups={_join(d.get('groups'))} "
+        f"CapInh={d.get('cap_inh')} CapPrm={d.get('cap_prm')} CapEff={d.get('cap_eff')} "
+        f"CapAmb={d.get('cap_amb')} CapBnd={d.get('cap_bnd')} "
+        f"NoNewPrivs={d.get('no_new_privs')} Seccomp={d.get('seccomp')}"
+    )
+
+
+def _dropped(d: Mapping[str, Any]) -> bool:
+    """uid/gid 10002 everywhere, no groups, no capabilities, no_new_privs set."""
+    return (
+        d.get("uid") == [FIXER_UID] * 4
+        and d.get("gid") == [FIXER_GID] * 4
+        and d.get("groups") == []
+        and all(d.get(k) == _ZERO_CAPS for k in ("cap_inh", "cap_prm", "cap_eff", "cap_amb"))
+        and d.get("no_new_privs") == 1
+    )
+
+
+def setpriv_checks(
+    inner: Any, *, self_ids: Callable[[], Mapping[str, Any]] | None = None
+) -> list[CheckResult]:
+    """D-110: the wrapper can drop, and a dropped process keeps nothing."""
+    read_self = self_ids or (lambda: probe_inner.cmd_ids("/proc/self/status"))
+
+    def _wrapper() -> CheckResult:
+        d = read_self()
+        uid = d.get("uid") or []
         try:
-            rc = run(
-                [paths.sudo, "-n", "-u", "root", "true"],
-                env=build_env(None),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=15,
-                check=False,
-            ).returncode
-        except (OSError, subprocess.SubprocessError) as exc:
-            return CheckResult(
-                "sudo.wrapper.root", Verdict.FAIL, f"sudo not runnable: {type(exc).__name__}"
-            )
+            caps = int(str(d.get("cap_eff")), 16)
+        except ValueError:
+            caps = 0
+        is_root = len(uid) > 1 and uid[1] == 0
+        can_drop = caps & (_CAP_SETUID | _CAP_SETGID) == (_CAP_SETUID | _CAP_SETGID)
+        why = "" if can_drop else " (missing CAP_SETUID/CAP_SETGID)"
         return CheckResult(
-            "sudo.wrapper.root", _pf(rc != 0), f"wrapper `sudo -n -u root true` rc={rc}"
+            "setpriv.wrapper.root", _pf(is_root and can_drop), f"wrapper {_ids_text(d)}{why}"
         )
 
-    results = [_check(f"sudo.fixer.{w}", partial(_fixer, w)) for w in ("uid", "sandbox")]
-    results.append(_check("sudo.wrapper.root", _wrapper_root))
-    return results
+    def _drop(where: str) -> CheckResult:
+        d = inner.call("ids", where=where)
+        detail = f"error={d['error']}" if "error" in d else _ids_text(d)
+        return CheckResult(f"setpriv.drop.{where}", _pf(_dropped(d)), detail)
+
+    return [
+        _check("setpriv.wrapper.root", _wrapper),
+        *(_check(f"setpriv.drop.{w}", partial(_drop, w)) for w in ("uid", "sandbox")),
+    ]
+
+
+def noescalate_checks(
+    inner: Any,
+    *,
+    which: Callable[[str], str | None] = shutil.which,
+    exists: Callable[[str], bool] = os.path.exists,
+) -> list[CheckResult]:
+    """D-110: fixer has no way back to root, and sudo is gone from the image."""
+
+    def _fixer(where: str) -> CheckResult:
+        d = inner.call("escalate", where=where)
+        su = d.get("su") or {}
+        sp = d.get("setpriv_root") or {}
+        refused = (
+            d.get("setuid0") != "ok"
+            and d.get("setgid0") != "ok"
+            and su.get("rc") != 0
+            and sp.get("rc") != 0
+            and d.get("no_new_privs") == 1
+            and d.get("sudo_on_path") is False
+        )
+        detail = (
+            f"setuid(0)={d.get('setuid0')} setgid(0)={d.get('setgid0')} "
+            f"su rc={su.get('rc')} setpriv --reuid=0 rc={sp.get('rc')} "
+            f"NoNewPrivs={d.get('no_new_privs')} sudo_on_path={d.get('sudo_on_path')}"
+        )
+        return CheckResult(f"noescalate.fixer.{where}", _pf(refused), detail)
+
+    def _no_sudo() -> CheckResult:
+        found = which("sudo")
+        files = [p for p in _NO_SUDO_FILES if exists(p)]
+        return CheckResult(
+            "noescalate.no_sudo",
+            _pf(found is None and not files),
+            f"sudo on PATH={found or 'absent'} files={files}",
+        )
+
+    return [
+        *(_check(f"noescalate.fixer.{w}", partial(_fixer, w)) for w in ("uid", "sandbox")),
+        _check("noescalate.no_sudo", _no_sudo),
+    ]
+
+
+def _userns_text(d: Mapping[str, Any]) -> str:
+    bw = d.get("bwrap") or {}
+    un = d.get("unshare") or {}
+    ctl = d.get("sysctl") or {}
+    return (
+        f"bwrap rc={bw.get('rc')} {str(bw.get('err', '')).strip()[-200:]!r}; "
+        f"unshare rc={un.get('rc')} {str(un.get('err', '')).strip()[-120:]!r}; "
+        + " ".join(f"{k}={v}" for k, v in sorted(ctl.items()))
+    )
+
+
+def userns_checks(
+    inner: Any,
+    *,
+    root_userns: Callable[[], Mapping[str, Any]] | None = None,
+    run: Callable[..., Any] = subprocess.run,
+    paths: SandboxPaths = DEFAULT_PATHS,
+) -> list[CheckResult]:
+    """``userns.available``: can fixer create the user+pid+net namespaces
+    bwrap/srt need, under AgentCore's no_new_privs? The root measurement is in
+    the detail only, to tell "blocked for everyone" from "blocked for fixer"."""
+
+    def _as_root() -> Mapping[str, Any]:
+        done = run(
+            [paths.python, "-I", INNER_SCRIPT, "userns"],
+            env=build_env(None),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        return _last_json(done.stdout or "")
+
+    def _one() -> CheckResult:
+        d = inner.call("userns", where="uid")
+        bw = d.get("bwrap") or {}
+        try:
+            root = f"root: {_userns_text((root_userns or _as_root)())}"
+        except Exception as exc:  # noqa: BLE001 - informational only
+            root = f"root: not measured ({type(exc).__name__}: {exc})"
+        return CheckResult(
+            "userns.available", _pf(bw.get("rc") == 0), f"fixer: {_userns_text(d)} | {root}"
+        )
+
+    return [_check("userns.available", _one)]
 
 
 SECRETS_DIR = "/work/secrets"
@@ -508,10 +644,20 @@ def board_disabled_without_pat(env: Mapping[str, str] | None = None) -> list[Che
 
 
 def cli_version_check(sb: Any, paths: SandboxPaths, expected: str | None) -> list[CheckResult]:
-    res = sb.run([paths.claude, "--version"], mode=Mode.CLI, cwd=PROBE_ROOT, timeout=120)
-    version = res.stdout.strip()
-    ok = bool(expected) and str(expected) in version
-    return [CheckResult("cli.version", _pf(ok), f"claude --version={version!r} pinned={expected}")]
+    """The pinned CLI answers ``--version`` as fixer. The detail always carries
+    the exit code, outcome and stderr tail, so an empty answer says why."""
+    try:
+        res = sb.run([paths.claude, "--version"], mode=Mode.CLI, cwd=PROBE_ROOT, timeout=120)
+    except SandboxError as exc:
+        return [CheckResult("cli.version", Verdict.FAIL, f"{exc} pinned={expected}")]
+    out = (res.stdout or "").strip()
+    err = (res.stderr or "").strip()
+    ok = bool(expected) and res.ok and str(expected) in f"{out}\n{err}"
+    detail = (
+        f"claude --version rc={res.exit_code} outcome={res.outcome.value} "
+        f"stdout={out[-200:]!r} stderr={err[-300:]!r} pinned={expected}"
+    )
+    return [CheckResult("cli.version", _pf(ok), detail)]
 
 
 def _denials(stdout: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -916,11 +1062,13 @@ def build_checks(
     pinned = os.environ.get("CLAUDE_CODE_VERSION")
 
     return [
+        ("setpriv", lambda: setpriv_checks(inner)),
         ("sandbox", lambda: sandbox_checks(sb)),
+        ("userns", lambda: userns_checks(inner, paths=paths)),
         ("net", lambda: net_checks(inner)),
         ("proc", lambda: proc_checks(inner, pid)),
         ("env", lambda: env_checks(inner)),
-        ("sudo", lambda: sudo_checks(inner, paths=paths)),
+        ("noescalate", lambda: noescalate_checks(inner)),
         ("policy", lambda: policy_checks(inner)),
         ("cli.version", lambda: cli_version_check(sb, paths, pinned)),
         ("cli", lambda: cli_checks(sb, inner, paths, anthropic_key, cfg.model_id)),

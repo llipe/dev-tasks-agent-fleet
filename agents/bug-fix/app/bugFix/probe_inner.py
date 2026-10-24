@@ -1,10 +1,11 @@
 """
-probe_inner — the probe's checks as seen from inside, run as ``fixer`` (S-182; D-51, D-70, D-105).
+probe_inner — the probe checks from inside, run as ``fixer`` (S-182; D-51, D-70, D-105, D-110).
 
 ``probe.py`` (the wrapper side) runs this script through ``sandbox.py`` as
 ``python3 -I /app/probe_inner.py <subcommand> [args...]``, either inside the
-sandbox (``srt``) or with the uid switch alone. Each subcommand prints one JSON
-object on stdout and exits 0; the wrapper turns it into a verdict.
+sandbox (``srt``) or with the ``setpriv`` drop alone. Each subcommand prints
+one JSON object on stdout and exits 0; the wrapper turns it into a verdict.
+The wrapper also runs ``userns`` as itself (root), for comparison only.
 
 It never receives a secret: the PAT check gets a SHA-256 digest and counts
 matches. Standard library only (``python3 -I``).
@@ -17,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -84,19 +86,129 @@ def cmd_env() -> dict[str, Any]:
     return {"names": sorted(os.environ)}
 
 
-def cmd_sudo() -> dict[str, Any]:
+def _status_fields(path: str = "/proc/self/status") -> dict[str, str]:
+    """``/proc/<pid>/status`` as ``{field: value}``; raises ``OSError``."""
+    fields: dict[str, str] = {}
+    with open(path) as f:
+        for line in f:
+            key, sep, value = line.partition(":")
+            if sep:
+                fields[key.strip()] = value.strip()
+    return fields
+
+
+def _ints(value: str | None) -> list[int] | None:
+    return None if value is None else [int(v) for v in value.split()]
+
+
+def cmd_ids(path: str = "/proc/self/status") -> dict[str, Any]:
+    """The identity setpriv left this process with (D-110): uids, gids, groups,
+    capability sets and ``no_new_privs``."""
     try:
-        rc = subprocess.run(
-            ["sudo", "-n", "true"],
+        f = _status_fields(path)
+    except OSError as exc:
+        return {"error": f"unreadable:{_err(exc)}"}
+    nnp = f.get("NoNewPrivs")
+    return {
+        "uid": _ints(f.get("Uid")),
+        "gid": _ints(f.get("Gid")),
+        "groups": _ints(f.get("Groups")),
+        "cap_inh": f.get("CapInh"),
+        "cap_prm": f.get("CapPrm"),
+        "cap_eff": f.get("CapEff"),
+        "cap_bnd": f.get("CapBnd"),
+        "cap_amb": f.get("CapAmb"),
+        "no_new_privs": None if nnp is None else int(nnp),
+        "seccomp": f.get("Seccomp"),
+    }
+
+
+def _rc(argv: Sequence[str], timeout: float = 15) -> dict[str, Any]:
+    """Run ``argv`` with no stdin; the exit code and the stderr tail."""
+    try:
+        done = subprocess.run(
+            list(argv),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             check=False,
-        ).returncode
+        )
     except (OSError, subprocess.SubprocessError) as exc:
-        return {"rc": -1, "detail": type(exc).__name__}
-    return {"rc": rc}
+        return {"rc": -1, "err": f"{type(exc).__name__}: {exc}"[:200]}
+    return {"rc": done.returncode, "err": (done.stderr or "")[-300:]}
+
+
+def _try_id(fn: Callable[[int], None]) -> str:
+    try:
+        fn(0)
+    except OSError as exc:
+        return _err(exc)
+    return "ok"
+
+
+def cmd_escalate() -> dict[str, Any]:
+    """Every way back to root, tried as fixer; each must fail (D-110).
+
+    ``setuid(0)``/``setgid(0)`` need a capability fixer doesn't have; ``su`` is
+    setuid root, which ``no_new_privs`` neutralises (and it has no password to
+    give); ``setpriv --reuid=0`` needs ``CAP_SETUID``.
+    """
+    try:
+        nnp: int | None = int(_status_fields().get("NoNewPrivs", ""))
+    except (OSError, ValueError):
+        nnp = None
+    return {
+        "setuid0": _try_id(os.setuid),
+        "setgid0": _try_id(os.setgid),
+        "su": _rc(["su", "root", "-c", "true"]),
+        "setpriv_root": _rc(["setpriv", "--reuid=0", "--regid=0", "--", "true"]),
+        "no_new_privs": nnp,
+        "sudo_on_path": shutil.which("sudo") is not None,
+    }
+
+
+USERNS_SYSCTLS: dict[str, str] = {
+    "max_user_namespaces": "/proc/sys/user/max_user_namespaces",
+    "unprivileged_userns_clone": "/proc/sys/kernel/unprivileged_userns_clone",
+}
+
+
+def _sysctl(path: str) -> str | None:
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def cmd_userns() -> dict[str, Any]:
+    """Can this process create the user, pid and net namespaces bwrap/srt need?
+
+    ``bwrap`` is the verdict (it is what srt and the CLI's sandbox run);
+    ``unshare`` and the sysctls say why when it can't.
+    """
+    return {
+        "bwrap": _rc(
+            [
+                "bwrap",
+                "--unshare-user",
+                "--unshare-pid",
+                "--unshare-net",
+                "--ro-bind",
+                "/",
+                "/",
+                "--proc",
+                "/proc",
+                "--dev",
+                "/dev",
+                "--",
+                "/bin/true",
+            ]  # fmt: skip
+        ),
+        "unshare": _rc(["unshare", "--user", "--pid", "--net", "--fork", "--", "/bin/true"]),
+        "sysctl": {name: _sysctl(path) for name, path in USERNS_SYSCTLS.items()},
+    }
 
 
 def cmd_write(path: str) -> dict[str, Any]:
@@ -234,7 +346,9 @@ COMMANDS: dict[str, Callable[..., dict[str, Any]]] = {
     "net": cmd_net,
     "proc": cmd_proc,
     "env": cmd_env,
-    "sudo": cmd_sudo,
+    "ids": cmd_ids,
+    "escalate": cmd_escalate,
+    "userns": cmd_userns,
     "write": cmd_write,
     "read": cmd_read,
     "scan": cmd_scan,
