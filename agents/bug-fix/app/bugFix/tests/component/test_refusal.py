@@ -309,6 +309,17 @@ class TestCredentials:
         assert gh.calls == []
         assert SB_KEY not in out.summary
 
+    def test_a_permission_loss_on_refresh_is_permission_missing(self):
+        from credentials import PermissionMissing
+
+        def lost():
+            raise PermissionMissing("the refreshed installation token lacks issues: write")
+
+        gh = FakeGitHub()
+        out = _check(gh, token=lost)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_PERMISSION_MISSING")
+        assert gh.calls == []
+
     def test_a_context_without_an_app_id_cannot_trust_markers(self):
         gh = FakeGitHub()
         out = _check(gh, token=_token(app_id=None))

@@ -418,7 +418,9 @@ def run_refusal_checks(
     try:
         token = resolve_token()
     except CredentialError as exc:
-        return _failed("CREDENTIALS_UNAVAILABLE", exc, secrets, run)
+        # CREDENTIALS_UNAVAILABLE, or GITHUB_PERMISSION_MISSING for a token
+        # that lost issues: write on a refresh (QA 6).
+        return _failed(exc.error_code, exc, secrets, run)
     if token.app_id is None:
         return _failed(
             "CREDENTIALS_UNAVAILABLE",
