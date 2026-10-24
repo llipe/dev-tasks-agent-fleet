@@ -9,6 +9,7 @@
 
 | Version | Date       | Summary                                                  | Author           |
 | ------- | ---------- | -------------------------------------------------------- | ---------------- |
+| 2.2 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. DF-186-01: S-186-AC4 and S-194-AC3 now state `(ref <reference as written>)`, with `#N` → `(ref #N)` unchanged (D-65 amendment). DF-186-02: S-185, S-188 and S-199 L2 tests name the in-repo GitHub double instead of `responses`; S-185 adds a parser-level `Link`-header unit test. | product-engineer |
 | 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108): new S-200 (trigger guardrail scope and blocked 👎 reaction) in Wave C. | product-engineer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, D-88–D-106). Removed: S-183, S-187, S-196. Rewritten: S-184, S-185 (refusal checks and reply), S-186, S-188, S-190, S-197, S-198. Small updates: S-180, S-181, S-182 (board probe), S-189, S-194. New: S-199 (Projects v2 board updates). Wave B is unchanged except S-194. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). Stories S-180–S-198 replace the superseded S-180–S-203 (issues #326–#349, closed). | product-engineer |
@@ -342,8 +343,8 @@ This story covers D-92 and D-104, spec §8.2, and PRD FR-5. It replaces the labe
 
 #### Testing Requirements
 
-- **Unit Tests:** refusal decision table; fixed text per code (snapshot); a refusal marker never counts as a claim.
-- **Integration Tests:** L2 with `responses`: each code posts one marked reply and makes zero claim or board calls; the happy path proceeds; a reply-post failure is logged and the outcome is unchanged.
+- **Unit Tests:** refusal decision table; fixed text per code (snapshot); a refusal marker never counts as a claim; `github_client.py` parses a real `Link` header (pagination), which the L2 double does not exercise (DF-186-02).
+- **Integration Tests:** L2 with the in-repo GitHub double (`tests/component/fake_github.py`, DF-186-02): each code posts one marked reply and makes zero claim or board calls; the happy path proceeds; a reply-post failure is logged and the outcome is unchanged.
 - **Manual/UI Testing:** `/bug-fix` on a PR, on a closed issue, and twice in quick succession on a fixture repo.
 - **Edge-Case Matrix:** an issue that is both closed and a PR (the first code wins); a linked PR from a fork; an `active_run` marker from an untrusted author (ignored); a terminal claim (proceeds).
 - **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/unit/test_refusal.py`, `tests/component/test_refusal.py`.
@@ -388,7 +389,7 @@ This story covers D-53, D-80, D-93, D-104, D-65 and D-85, and spec §8.3 and §8
 - [ ] `markers.py` builds and parses `claim`, `disposition`, `refusal` (with `reason=`) and `pr` markers, reading the **leading marker block** from line 1 (D-80, D-104).
 - [ ] A marker is trusted only if `performed_via_github_app.id` equals the fleet App ID and `user.type == "Bot"`.
 - [ ] `issues.py` adds reactions (`eyes`, `rocket`, `confused`) to a comment id. A missing `trigger_comment_id` skips the reaction silently (D-93).
-- [ ] `neutralize.py` implements D-65 (closing keyword + reference → `(ref #N)`, `@` → `@` + U+200B).
+- [ ] `neutralize.py` implements D-65 as amended by DF-186-01 (closing keyword + reference → `(ref <reference as written>)`, so `#N` → `(ref #N)` and `o/r#1` → `(ref o/r#1)`; `@` → `@` + U+200B).
 - [ ] `disposition.py` posts the diagnosis comment (what was tried, why it stopped, the diffstat when a cap was hit) with a `disposition` marker and model text neutralized (D-85), and adds 😕. It changes **no** labels or assignee. It is a no-op when a trusted disposition for this `run_id` exists.
 - [ ] `signal_backstop.py` calls the disposition with a 10-second budget before `fail()`, but only when the claim's ownership is confirmed (D-81).
 
@@ -468,7 +469,7 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 #### Testing Requirements
 
 - **Unit Tests:** race verdicts (an earlier terminal claim is ignored; an earlier active claim means this run lost).
-- **Integration Tests:** L2: a happy claim; a lost race withdraws only its own comment; a crash after the comment leaves the issue retryable once the run is terminal; a post-check failure applies no disposition.
+- **Integration Tests:** L2 with the in-repo GitHub double (DF-186-02): a happy claim; a lost race withdraws only its own comment; a crash after the comment leaves the issue retryable once the run is terminal; a post-check failure applies no disposition.
 - **Edge-Case Matrix:** two comments in the same second (comment-id order decides); the other run already terminal; a reaction 422 (logged, not fatal).
 - **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/component/test_claim.py`.
 - **Execution Commands:** `make test`.
@@ -833,7 +834,7 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
 
 - [ ] Branch `issue/<N>-<slug>` with a Conventional Commit, using `report.json.commit_message` when it validates (`fix(...)` format) and a fallback otherwise.
 - [ ] The wrapper pushes **from its own clone** to the explicit URL `https://github.com/<o>/<r>.git`, using a credential helper scoped as `credential.https://github.com.helper`. The sibling any-host helper is not copied. Then it runs `gh pr create --draft --body-file` against the default branch. A planted `url.*.insteadOf`, extra `credential.helper` or `pre-push` hook has no effect (TC-194-13) (D-62, DF-02).
-- [ ] All model-written text (rationale, summary, commit message) passes the neutralizer first: closing keyword + reference → `(ref #N)`, and `@` → `@` + U+200B. Only the wrapper writes `Fixes #N` (D-65).
+- [ ] All model-written text (rationale, summary, commit message) passes the neutralizer first: closing keyword + reference → `(ref <reference as written>)` (`#N` → `(ref #N)`), and `@` → `@` + U+200B. Only the wrapper writes `Fixes #N` (D-65, amended by DF-186-01).
 - [ ] The body includes:
   - `Fixes #N`;
   - the per-file rationale;
@@ -1056,7 +1057,7 @@ This story covers D-97 to D-103 and D-105, and spec §8.10. Board work is best e
 #### Testing Requirements
 
 - **Unit Tests:** option resolution (case-insensitive, missing option); the `project` param parse.
-- **Integration Tests:** L2 with the Projects GraphQL mocked: one board, none, several, a missing field or option, a 401 on the PAT, a timeout. Each asserts the transitions and an unchanged outcome.
+- **Integration Tests:** L2 with the Projects GraphQL served by the in-repo GitHub double, extended for GraphQL (DF-186-02): one board, none, several, a missing field or option, a 401 on the PAT, a timeout. Each asserts the transitions and an unchanged outcome.
 - **Manual/UI Testing:** in S-198, the live card moves on board #5.
 - **Edge-Case Matrix:** an issue already on the board in another status; an org-owned `project` override; a board with a renamed `Status` field.
 - **Acceptance-Criteria Mapping:** AC1–AC6 → `tests/unit/test_projects.py`, `tests/component/test_projects.py`; PRD AC-21, AC-22, AC-23.
