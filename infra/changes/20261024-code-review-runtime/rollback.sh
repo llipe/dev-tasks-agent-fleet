@@ -7,6 +7,10 @@ FROM=1
 [[ "${1:-}" == "--from" ]] && FROM="${2:?--from needs a step number}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
+revert_step_10() {
+  aws bedrock delete-foundation-model-agreement --region us-east-1 --model-id openai.gpt-6.1-sol
+}
+
 revert_step_8() {
   supabase db query --linked "update agents set is_enabled = false, runtime_arn = 'pending-deploy:code-review' where slug = 'code-review'"
 }
@@ -43,6 +47,6 @@ revert_step_1() {
   git -C "$REPO_ROOT" revert --no-edit 676799b
 }
 
-for n in 8 7 6 5 4 2 1; do
+for n in 10 8 7 6 5 4 2 1; do
   (( n <= FROM )) && "revert_step_${n}"
 done

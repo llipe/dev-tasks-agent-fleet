@@ -43,3 +43,12 @@ supabase db push --linked --yes
 
 # Step 8: set runtime_arn and enable the row in one update (D-39)
 supabase db query --linked "update agents set runtime_arn = 'arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/codereview_code_review-g73KtjA3MT', is_enabled = true where slug = 'code-review' and runtime_arn = 'pending-deploy:code-review' returning slug, is_enabled, runtime_arn"
+
+# Step 9: negative panel invoke (operator, panel UI): code-review on llipe/security-analyst-fixture PR #5
+#   scratch PR: https://github.com/llipe/security-analyst-fixture/pull/5 (draft, do not merge)
+#   run: https://dt-agent-fleet-panel.fly.dev/runs/bf95f3c6-3ba4-495e-b0c7-a8ff46b7929b
+
+# Step 10: accept the Bedrock Marketplace offer for GPT-6.1 Sol (backup: backup/model-availability.before.json)
+OFFER_TOKEN="$(aws bedrock list-foundation-model-agreement-offers --region us-east-1 --model-id openai.gpt-6.1-sol --query 'offers[0].offerToken' --output text)"
+aws bedrock create-foundation-model-agreement --region us-east-1 --model-id openai.gpt-6.1-sol --offer-token "$OFFER_TOKEN"
+aws bedrock get-foundation-model-availability --region us-east-1 --model-id openai.gpt-6.1-sol   # PENDING -> AVAILABLE in ~40 s
