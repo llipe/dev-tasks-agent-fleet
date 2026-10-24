@@ -1,0 +1,6 @@
+import sys
+SIZES = ("s", "m", "l")
+
+
+def main():
+    return 0

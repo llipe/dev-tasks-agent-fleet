@@ -1,0 +1,16 @@
+{
+  "number": 330,
+  "state": "open",
+  "merged": false,
+  "draft": false,
+  "title": "feat(panel): pure webhook routing engine with bot guard (S-170)",
+  "body": "## What\r\n\r\nPure routing engine for webhook deliveries.\r\n\r\n## Why\r\n\r\nCloses #315\r\n\r\nSee also llipe/other-repo#12 (not this repository).\r\n",
+  "head": {
+    "sha": "4b8e2d6f0a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b",
+    "ref": "story/S-170-webhook-routing"
+  },
+  "base": {
+    "sha": "1c3e5a7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c",
+    "ref": "integration/webhook-triggers-wave-c"
+  }
+}

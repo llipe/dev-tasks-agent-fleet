@@ -5,6 +5,7 @@
 
 AGENT_DIRS := agents/dependency-update/app/dependencyUpdate \
 	agents/security-analyst/app/securityAnalyst \
+	agents/code-review/app/codeReview \
 	agents/bug-fix/app/bugFix
 
 .PHONY: install lint format format-check typecheck test test-cov audit validate \

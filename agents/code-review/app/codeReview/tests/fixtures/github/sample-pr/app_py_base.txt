@@ -1,0 +1,4 @@
+import sys
+SIZES = ()
+def main():
+    return 0
