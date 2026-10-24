@@ -81,7 +81,7 @@ class Env:
 
     def __init__(self, tmp_path: Path, fixture: str | None = "js-pnpm-ok", **remote_kw) -> None:
         self.tmp = tmp_path
-        self.remote = make_remote(tmp_path, fixture, **remote_kw) if fixture or remote_kw else None
+        self.remote = make_remote(tmp_path, fixture, **remote_kw)
         wrapper = tmp_path / "work" / "wrapper"
         repo = tmp_path / "work" / "repo"
         wrapper.mkdir(parents=True, mode=0o700)
@@ -135,7 +135,9 @@ class TestClone:
         assert out.status == "proceed", out.summary
         assert out.base_sha == env.remote.head
         assert (env.clone / ".git" / "shallow").is_file()
-        count = helper_git("--git-dir", str(env.clone / ".git"), "rev-list", "--count", "HEAD", cwd=tmp_path)
+        count = helper_git(
+            "--git-dir", str(env.clone / ".git"), "rev-list", "--count", "HEAD", cwd=tmp_path
+        )
         assert count == "1"
         assert any(env.remote.head[:12] in m for m in env.run.messages())
 
@@ -177,7 +179,15 @@ class TestClone:
         assert not (env.work / ".git").exists()
 
     def test_executable_bit_is_kept(self, tmp_path):
-        env = Env(tmp_path, files={".claude/agents/developer.md": "d", "Makefile": MAKEFILE_OK, "run.sh": "#!/bin/sh\n"}, fixture=None)
+        env = Env(
+            tmp_path,
+            files={
+                ".claude/agents/developer.md": "d",
+                "Makefile": MAKEFILE_OK,
+                "run.sh": "#!/bin/sh\n",
+            },
+            fixture=None,
+        )
         os.chmod(env.remote.src / "run.sh", 0o755)
         helper_git("add", "-A", cwd=env.remote.src)
         helper_git("commit", "-q", "-m", "x", cwd=env.remote.src)
@@ -192,7 +202,9 @@ class TestClone:
                 github_url(owner, repo)
 
 
-MAKEFILE_OK = (Path(__file__).resolve().parents[1] / "fixtures" / "repos" / "py-make-ok" / "Makefile").read_text()
+MAKEFILE_OK = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "repos" / "py-make-ok" / "Makefile"
+).read_text()
 
 
 def tree_files_of_src(src: Path) -> dict[str, bytes]:
@@ -314,7 +326,11 @@ class TestRepoGate:
         ("fixture", "item", "described"),
         [
             ("js-missing-typecheck", "typecheck", "missing script typecheck"),
-            ("py-no-developer-md", ".claude/agents/developer.md", "missing .claude/agents/developer.md"),
+            (
+                "py-no-developer-md",
+                ".claude/agents/developer.md",
+                "missing .claude/agents/developer.md",
+            ),
             ("py-format-underscore", "format-check", "missing target format-check"),
             ("js-format-dash", "format:check", "missing script format:check"),
             ("js-no-scripts", "test", "missing script test"),
@@ -322,7 +338,9 @@ class TestRepoGate:
             ("none", "package.json or Makefile", "missing package.json or Makefile"),
         ],
     )
-    def test_a_missing_item_is_refusal_repo_gate_naming_it(self, tmp_path, fixture, item, described):
+    def test_a_missing_item_is_refusal_repo_gate_naming_it(
+        self, tmp_path, fixture, item, described
+    ):
         env = Env(tmp_path, fixture)
         sb = StubSandbox()
         out = env.checkout(sb)
@@ -418,7 +436,9 @@ class TestInstall:
         from sandbox import SandboxUnavailable
 
         env = Env(tmp_path, "py-make-ok")
-        sb = StubSandbox(answers={("make", "install"): SandboxUnavailable("srt is missing: /usr/bin/srt")})
+        sb = StubSandbox(
+            answers={("make", "install"): SandboxUnavailable("srt is missing: /usr/bin/srt")}
+        )
         out = env.checkout(sb)
         assert out.error_code == "INSTALL_FAILED"
         assert "srt is missing" in out.summary
@@ -491,7 +511,9 @@ class TestRestoreBase:
         sb = StubSandbox(answers={("npm", "run", "lint"): _autofix})
         out = env.checkout(sb)
         assert out.status == "proceed", out.summary
-        assert (env.work / "src" / "add.js").read_text() == (env.remote.src / "src" / "add.js").read_text()
+        assert (env.work / "src" / "add.js").read_text() == (
+            env.remote.src / "src" / "add.js"
+        ).read_text()
         assert not (env.work / "untracked.txt").exists()
         # Ignored by info/exclude: left as it is.
         assert (env.work / "node_modules" / "x" / "keep.txt").read_text() == "keep\n"
@@ -517,7 +539,9 @@ class TestRestoreBase:
 
         out = env.checkout(StubSandbox(answers={("make", "lint"): delete}))
         assert out.status == "proceed"
-        assert (env.work / "src" / "app.py").read_text() == (env.remote.src / "src" / "app.py").read_text()
+        assert (env.work / "src" / "app.py").read_text() == (
+            env.remote.src / "src" / "app.py"
+        ).read_text()
         assert out.restored == 1
 
     def test_a_file_replaced_by_a_symlink_is_restored(self, tmp_path):

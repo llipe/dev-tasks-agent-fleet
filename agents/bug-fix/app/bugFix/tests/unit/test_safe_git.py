@@ -33,7 +33,9 @@ PKG = Path(__file__).resolve().parents[2]
 # - probe_inner.py: runs as fixer *inside* the sandbox (S-182 probe helper),
 #   on a scratch repository of its own; it is never wrapper git.
 GIT_ALLOWED = {"safe_git.py", "probe_inner.py"}
-_GIT_SPAWN = re.compile(r"""["'](?:/usr/bin/|/bin/)?git["']""")
+# An argv element or call argument ("git", / "git"] / "git")), or any absolute
+# git path. A dict key such as {"git": ...} is not a spawn.
+_GIT_SPAWN = re.compile(r"""["']git["']\s*[,\])]|["'](?:/usr/local/bin/|/usr/bin/|/bin/)git["']""")
 
 
 @pytest.mark.parametrize(
@@ -45,6 +47,14 @@ def test_no_git_subprocess_outside_safe_git(path: Path) -> None:
     text = path.read_text()
     assert not _GIT_SPAWN.search(text), f"{path.name} names the git binary; use safe_git.py"
     assert "GIT_DIR" not in text, f"{path.name} sets GIT_DIR; use safe_git.py"
+
+
+@pytest.mark.parametrize(
+    "line",
+    ['subprocess.run(["git", "status"])', "cmd = ['git']", 'which("git")', 'GIT = "/usr/bin/git"'],
+)
+def test_the_pattern_catches_spawn_shapes(line: str) -> None:
+    assert _GIT_SPAWN.search(line)
 
 
 def test_the_scan_finds_the_module_set() -> None:
@@ -98,8 +108,32 @@ class TestBranch:
 
     @pytest.mark.parametrize(
         "name",
-        ["", "-x", "--upload-pack=x", "a..b", "a b", "a\nb", "a~1", "a^", "a:b", "a?", "a*", "a[", "a\\b",
-         "/a", "a/", "a//b", "a.lock", "a/.b", ".a", "a@{1}", "@", "x" * 300, 7, None],
+        [
+            "",
+            "-x",
+            "--upload-pack=x",
+            "a..b",
+            "a b",
+            "a\nb",
+            "a~1",
+            "a^",
+            "a:b",
+            "a?",
+            "a*",
+            "a[",
+            "a\\b",
+            "/a",
+            "a/",
+            "a//b",
+            "a.lock",
+            "a/.b",
+            ".a",
+            "a@{1}",
+            "@",
+            "x" * 300,
+            7,
+            None,
+        ],
     )
     def test_hostile_or_invalid_names_raise(self, name):
         with pytest.raises(GitError):

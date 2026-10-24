@@ -59,7 +59,13 @@ def plant(work: Path, canary_dir: Path) -> list[Path]:
     helper_git("init", "-q", cwd=work)
     git_dir = work / ".git"
     canaries: list[Path] = []
-    for hook in ("post-checkout", "pre-commit", "pre-auto-gc", "post-index-change", "reference-transaction"):
+    for hook in (
+        "post-checkout",
+        "pre-commit",
+        "pre-auto-gc",
+        "post-index-change",
+        "reference-transaction",
+    ):
         c = canary_dir / f"hook-{hook}"
         p = git_dir / "hooks" / hook
         p.write_text(_hook(c, hook))
@@ -100,7 +106,11 @@ class World:
 
     def git(self) -> SafeGit:
         return clone(
-            self.remote.url, "main", str(self.clone_dir), tools=self.spy.tools(), secrets=self.secrets
+            self.remote.url,
+            "main",
+            str(self.clone_dir),
+            tools=self.spy.tools(),
+            secrets=self.secrets,
         )
 
     def checkout(self, sandbox):
@@ -173,8 +183,18 @@ class TestHardened:
         assert out.restored == 2
         _assert_hardened(world)
         # The calls cover the whole path: clone, archive source, capture, diff.
-        names = {next(a for a in s.argv[1 + len(HARDENED_ARGS) :] if not a.startswith("--")) for s in world.spy.git_spawns()}
-        assert {"clone", "add", "write-tree", "diff-tree", "read-tree", "cat-file", "ls-tree"} <= names
+        known = {
+            "clone",
+            "add",
+            "write-tree",
+            "diff-tree",
+            "read-tree",
+            "cat-file",
+            "ls-tree",
+            "rev-parse",
+        }
+        names = {a for s in world.spy.git_spawns() for a in s.argv if a in known}
+        assert known <= names
 
     def test_attributes_are_never_read_from_the_work_tree(self, tmp_path):
         world = World(tmp_path)
@@ -261,7 +281,9 @@ class TestMaterialize:
         assert "-x" in tars[0].argv
         assert str(world.work) in tars[0].argv
         assert tree_files(world.work) == {
-            k: v for k, v in tree_files(world.remote.src).items() if not k.startswith(".git" + os.sep)
+            k: v
+            for k, v in tree_files(world.remote.src).items()
+            if not k.startswith(".git" + os.sep)
         }
         assert not (world.work / ".git").exists()
 
@@ -289,7 +311,11 @@ class TestMaterialize:
         world = World(
             tmp_path,
             "py-make-ok",
-            files={".gitattributes": "hidden.txt export-ignore\nsubst.txt export-subst\n", "hidden.txt": "h\n", "subst.txt": "$Format:%H$\n"},
+            files={
+                ".gitattributes": "hidden.txt export-ignore\nsubst.txt export-subst\n",
+                "hidden.txt": "h\n",
+                "subst.txt": "$Format:%H$\n",
+            },
         )
         git = world.git()
         git.materialize(git.base_sha, str(world.work))
@@ -315,6 +341,8 @@ class TestMaterialize:
         assert git.capture(str(world.work)) == git.tree_of(git.base_sha)
 
     def test_crlf_and_text_attributes_do_not_change_the_capture(self, tmp_path):
+        """Blobs go out raw (no smudge, no eol conversion) and come back raw
+        (no clean, no eol conversion): the untouched tree captures as base."""
         world = World(
             tmp_path,
             "py-make-ok",
@@ -322,8 +350,13 @@ class TestMaterialize:
         )
         git = world.git()
         git.materialize(git.base_sha, str(world.work))
-        assert (world.work / "dos.txt").read_bytes() == b"a\r\nb\r\n"
+        blob = git.blob(git.ls_tree(git.base_sha)["dos.txt"][1])
+        assert (world.work / "dos.txt").read_bytes() == blob
         assert git.capture(str(world.work)) == git.tree_of(git.base_sha)
+        # A CRLF edit is captured byte for byte, not normalized by the attribute.
+        (world.work / "dos.txt").write_bytes(b"x\r\ny\r\n")
+        tree = git.capture(str(world.work))
+        assert git.blob(git.ls_tree(tree)["dos.txt"][1]) == b"x\r\ny\r\n"
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +403,10 @@ class TestCapture:
         tree = git.capture(str(world.work))
         paths = {c.path for c in git.changes(git.base_sha, tree)}
         assert paths == {"dist/out.js"}  # dist/ is no longer excluded (D-83)
-        assert tuple((world.clone_dir / ".git" / "info" / "exclude").read_text().splitlines()) == EXCLUDE_LINES
+        assert (
+            tuple((world.clone_dir / ".git" / "info" / "exclude").read_text().splitlines())
+            == EXCLUDE_LINES
+        )
 
     def test_capture_leaves_the_wrapper_head_at_base(self, tmp_path):
         world = World(tmp_path)
@@ -378,7 +414,9 @@ class TestCapture:
         git.materialize(git.base_sha, str(world.work))
         (world.work / "n.txt").write_text("n\n")
         git.capture(str(world.work))
-        head = helper_git("--git-dir", str(world.clone_dir / ".git"), "rev-parse", "HEAD", cwd=tmp_path)
+        head = helper_git(
+            "--git-dir", str(world.clone_dir / ".git"), "rev-parse", "HEAD", cwd=tmp_path
+        )
         assert head == git.base_sha
 
     def test_nested_repository_is_a_gitlink(self, tmp_path):

@@ -238,7 +238,9 @@ class TestBaseResults:
 
     def test_final_phase_label(self):
         run = FakeRun()
-        run_gates(StubSandbox(), toolchain_for(py()), WORK, secrets=secrets(), run=run, phase="final")
+        run_gates(
+            StubSandbox(), toolchain_for(py()), WORK, secrets=secrets(), run=run, phase="final"
+        )
         assert any("final gate test: pass" in e[1] for e in run.events)
 
 

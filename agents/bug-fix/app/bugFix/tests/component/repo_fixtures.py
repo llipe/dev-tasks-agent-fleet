@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -161,9 +162,12 @@ class LocalSandbox(StubSandbox):
 
     def run(self, argv, *, cwd, timeout, mode=Mode.SCRIPT, anthropic_api_key=None, **_: Any):
         self.calls.append(SandboxCall(tuple(argv), cwd, timeout, mode, anthropic_api_key))
+        # HOME outside the work tree, as /home/fixer is in the image: npm and
+        # pnpm write caches and logs there.
+        home = tempfile.mkdtemp(prefix="fixer-home-")
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "HOME": cwd,
+            "HOME": home,
             "CI": "1",
             "LANG": "C.UTF-8",
             "npm_config_offline": "true",
@@ -251,7 +255,7 @@ class SpawnSpy:
 def tree_files(root: Path) -> dict[str, bytes]:
     """``{relative path: bytes}`` of every regular file under ``root``."""
     out: dict[str, bytes] = {}
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root):
         for name in filenames:
             p = Path(dirpath) / name
             if p.is_symlink():
