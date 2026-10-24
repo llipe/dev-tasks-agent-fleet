@@ -265,7 +265,14 @@ class IssuesClient(GitHubClient):
     # -- linked pull requests (S-185, D-55) ------------------------------------------
 
     def closing_prs(self, issue_number: int) -> list[int]:
-        """Open PRs whose closing reference names the issue, in GitHub's order."""
+        """Open PRs whose closing reference names the issue, in GitHub's order.
+
+        Pages until one is found or the connection ends. Reaching
+        ``_MAX_GRAPHQL_PAGES`` with none found and pages still left is
+        :class:`GitHubUnavailable`, and ``hasNextPage`` without a cursor is
+        :class:`GitHubRequestRejected`: neither is read as "no linked PR" (D-67).
+        """
+        label = "POST /graphql (closedByPullRequestsReferences)"
         found: list[int] = []
         after: str | None = None
         for _ in range(_MAX_GRAPHQL_PAGES):
@@ -280,10 +287,15 @@ class IssuesClient(GitHubClient):
                 if number is not None and node.get("state") == "OPEN":
                     found.append(number)
             page = conn["pageInfo"]
-            after = page.get("endCursor") if page.get("hasNextPage") else None
-            if found or not isinstance(after, str):
-                break
-        return found
+            if page.get("hasNextPage") is not True:
+                return found
+            cursor = page.get("endCursor")
+            if not isinstance(cursor, str) or not cursor:
+                raise GitHubRequestRejected(f"{label} returned a next page with no cursor")
+            if found:
+                return found
+            after = cursor
+        raise GitHubUnavailable(f"{label} has more than {_MAX_GRAPHQL_PAGES} pages")
 
     def open_pulls(self) -> list[dict]:
         """Every open PR of the repository, fetched once per client and paged."""

@@ -462,14 +462,14 @@ class GitHubClient:
     ) -> list[Any]:
         """Every item of a paged list. ``allow_next`` raises to refuse a ``next`` link.
 
-        A non-list page is :class:`GitHubRequestRejected`. More than
-        ``max_pages`` pages stop silently at the cap, as a guard.
+        A non-list page is :class:`GitHubRequestRejected`. Reaching
+        ``max_pages`` with a ``next`` page still left is
+        :class:`GitHubUnavailable`: a truncated list would read as "no match"
+        (a missed claim marker or linked PR), which D-67 forbids.
         """
         out: list[Any] = []
-        nxt: str | None = url
+        nxt = url
         for _ in range(max_pages):
-            if nxt is None:
-                break
             resp = self.request("GET", nxt, label=label, params=params, timeout=timeout)
             assert resp is not None  # not_found_ok is False
             try:
@@ -479,8 +479,10 @@ class GitHubClient:
             if not isinstance(page, list):
                 raise GitHubRequestRejected(f"GET {label} returned no list")
             out.extend(page)
-            nxt = next_link(resp)
-            if nxt is not None:
-                allow_next(nxt)
+            following = next_link(resp)
+            if following is None:
+                return out
+            allow_next(following)
+            nxt = following
             params = None  # the next link carries its own query
-        return out
+        raise GitHubUnavailable(f"GET {label} has more than {max_pages} pages")

@@ -585,3 +585,32 @@ def test_a_page_that_is_not_a_list_is_rejected_not_read_as_empty(page):
     resp = real_response(200, page) if page is not None else real_response(200)
     with pytest.raises(GitHubRequestRejected):
         IssuesClient("o", "r", TOKEN, session=Scripted(resp)).list_comments(7)
+
+
+# ---------------------------------------------------------------------------
+# QA 1: a page cap is a fault, never a silent "no match"
+# ---------------------------------------------------------------------------
+
+
+def _page(n: int, *, more: bool) -> requests.Response:
+    headers = {"Link": f'<{API}/x?page={n + 1}>; rel="next"'} if more else {}
+    return real_response(200, [n], headers=headers)
+
+
+class TestPageCap:
+    def test_more_pages_than_the_cap_is_unavailable(self):
+        session = Scripted(_page(1, more=True), _page(2, more=True), _page(3, more=False))
+        with pytest.raises(GitHubUnavailable) as exc:
+            _client(session).get_paged(
+                f"{API}/x", label="GET /x", params=None, allow_next=lambda _u: None, max_pages=2
+            )
+        assert exc.value.code == "GITHUB_UNAVAILABLE"
+        assert "2 pages" in str(exc.value)
+        assert len(session.calls) == 2
+
+    def test_exactly_the_cap_with_no_next_page_returns_every_item(self):
+        session = Scripted(_page(1, more=True), _page(2, more=False))
+        got = _client(session).get_paged(
+            f"{API}/x", label="GET /x", params=None, allow_next=lambda _u: None, max_pages=2
+        )
+        assert got == [1, 2]

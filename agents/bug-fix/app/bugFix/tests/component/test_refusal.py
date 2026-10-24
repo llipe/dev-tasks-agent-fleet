@@ -1007,3 +1007,54 @@ class TestReadFaultsAreNeverNoMatch:
         out = _check(gh, sb)
         assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
         assert gh.writes() == []
+
+
+class TestPageCapsAreFaults:
+    """QA 1 (D-67): a page cap with more pages left fails closed, never "no match"."""
+
+    def test_more_comment_pages_than_the_cap_is_unavailable(self):
+        import issues
+
+        gh = FakeGitHub(per_page_cap=1)
+        gh.add_issue(ISSUE)
+        for _ in range(issues._MAX_PAGES):
+            gh.add_comment(ISSUE, "chatter")
+        gh.add_comment(ISSUE, build("claim", OTHER))  # page 101: past the cap
+        sb = FakeSupabase({OTHER: "running"})
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert out.reason is None and gh.writes() == []
+
+    def test_more_open_pull_pages_than_the_cap_is_unavailable(self):
+        import issues
+
+        gh = FakeGitHub(per_page_cap=1)
+        gh.add_issue(ISSUE)
+        for n in range(1, issues._MAX_PAGES + 1):
+            gh.pulls.append(pull_payload(n, f"other/{n}"))
+        gh.pulls.append(pull_payload(999, "issue/12-late"))  # page 101
+        out = _check(gh)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert gh.writes() == []
+
+    def test_more_closing_reference_pages_than_the_cap_is_unavailable(self):
+        import issues
+
+        gh = FakeGitHub(graphql_page_size=1)
+        gh.add_issue(ISSUE)
+        for n in range(1, issues._MAX_GRAPHQL_PAGES + 1):
+            gh.add_closing_ref(ISSUE, n, state="MERGED")
+        gh.add_closing_ref(ISSUE, 500)  # open, but on page 21
+        out = _check(gh)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert len(gh.graphql_calls()) == issues._MAX_GRAPHQL_PAGES
+        assert gh.writes() == []
+
+    def test_has_next_page_without_a_cursor_is_rejected_not_read_as_the_end(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        conn = {"nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": None}}
+        payload = {"data": {"repository": {"issue": {"closedByPullRequestsReferences": conn}}}}
+        gh.faults["graphql"] = [FakeResponse(200, payload)]
+        out = _check(gh)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
