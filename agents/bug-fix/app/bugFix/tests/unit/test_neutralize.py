@@ -78,6 +78,11 @@ class TestClosingKeywords:
     def test_non_closing_text_unchanged(self, text):
         assert neutralize(text) == text
 
+    def test_keyword_exposed_by_a_previous_replacement(self):
+        # Found by RT-12: "#1close" is not a closing keyword, but once the
+        # first reference becomes "(ref #1)" it would be.
+        assert neutralize("close #1close #1") == "(ref #1)(ref #1)"
+
     def test_keyword_glued_to_underscore_is_still_neutralized(self):
         # Over-neutralizing is harmless; under-neutralizing closes an issue.
         assert neutralize("_fixes #1") == "_(ref #1)"
