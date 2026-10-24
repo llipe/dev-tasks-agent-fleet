@@ -229,7 +229,7 @@
     - a round-trip for `claim`, `disposition`, `refusal` (`reason=`) and `pr`;
     - the leading marker block;
     - forged markers (human author, wrong App id, `user.type == "User"`) untrusted (D-53, D-80, D-104).
-  - [ ] 7.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_neutralize.py`: closing keywords, `owner/repo#N`, issue URLs and `@mentions`, plus `hypothesis` property tests (D-65)
+  - [x] 7.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_neutralize.py`: closing keywords, `owner/repo#N`, issue URLs and `@mentions`, plus `hypothesis` property tests (D-65)
   - [ ] 7.3 `[T]` [agents/bug-fix] L2 `tests/component/test_disposition.py`:
     - diagnosis comment plus 😕;
     - no label or assignee calls;
