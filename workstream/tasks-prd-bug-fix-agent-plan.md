@@ -44,15 +44,19 @@
 ## Relevant Files
 
 - `agents/bug-fix/agentcore/agentcore.json` - Runtime config: env, `maxLifetime` 3600, `FIX_LOOP_ENABLED`, `PANEL_BASE_URL`
-- `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, pinned Claude Code
+- `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, sudo, pinned Claude Code and sandbox runtime
 - `agents/bug-fix/app/bugFix/managed-settings.json` - Managed Claude Code policy, installed at `/etc/claude-code/`
 - `agents/bug-fix/app/bugFix/{Makefile,pyproject.toml}` - Agent quality gates
 - `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended)
 - `agents/bug-fix/app/bugFix/config.py` - Typed env config
 - `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration
 - `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9)
-- `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner (minimal env, sandbox, timeouts)
-- `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode
+- `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner: `sudo -u fixer`, allow-list env, `srt`/CLI sandbox, timeout, post-run sweep (S-182)
+- `agents/bug-fix/app/bugFix/fixer_exec.py` - Runs as `fixer` after `sudo`; rebuilds the env from the allow-list (S-182, D-109)
+- `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105)
+- `agents/bug-fix/app/bugFix/probe_inner.py` - The probe's `fixer`-side helper, stdlib only (S-182)
+- `agents/bug-fix/app/bugFix/sudoers-bug-fix` - `/etc/sudoers.d/bug-fix`: the one `wrapper` -> `fixer` rule (S-182, D-109)
+- `agents/bug-fix/app/bugFix/srt-settings.json` - `/etc/bug-fix/srt-settings.json`: sandbox-runtime policy for `fixer` scripts (S-182)
 - `agents/bug-fix/app/bugFix/params.py` - Typed params and cross-field label rules
 - `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL)
 - `agents/bug-fix/app/bugFix/markers.py` - Claim and disposition markers
@@ -65,7 +69,7 @@
 - `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_sudoers}.py`, `component/test_sandbox_proc.py`)
 - `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
@@ -126,16 +130,16 @@
 
   > Note: **gates all of Wave B.** If any check fails, record FAIL, keep #373–#377 blocked, and hand off to `product-engineer` drift reconciliation (D-51, spec §12). Resolves spec OQ-2.
 
-  - [ ] 3.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_sandbox.py`:
+  - [x] 3.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_sandbox.py`:
     - the env is built from an allow-list (`ANTHROPIC_API_KEY`, `PATH`, `HOME`, `LANG`, `CI=1`), never a deny-list;
     - no `AWS_*` or `AWS_CONTAINER_*` variable passes through;
     - timeout → SIGTERM, then SIGKILL after 15 s;
     - exit-code mapping;
     - a missing sandbox binary raises a typed error;
     - zombie children are reaped (D-51).
-  - [ ] 3.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_probe.py`: probe mode is refused unless `ALLOW_PROBE=1`, even when `__probe: true` is sent
-  - [ ] 3.3 `[I]` [agents/bug-fix] `sandbox.py`: run as `fixer` with the minimal env, under the sandbox runtime with the registry-only network policy and a wall-clock timeout (D-51)
-  - [ ] 3.4 `[I]` [agents/bug-fix] `probe.py` and its `main.py` hook, reporting each check as a `run_event`
+  - [x] 3.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_probe.py`: probe mode is refused unless `ALLOW_PROBE=1`, even when `__probe: true` is sent
+  - [x] 3.3 `[I]` [agents/bug-fix] `sandbox.py`: run as `fixer` with the minimal env, under the sandbox runtime with the registry-only network policy and a wall-clock timeout (D-51)
+  - [x] 3.4 `[I]` [agents/bug-fix] `probe.py` and its `main.py` hook, reporting each check as a `run_event`
   - [ ] 3.5 [infra] Redeploy with `ALLOW_PROBE=1` through `/infra-engineer`
   - [ ] 3.6 IC: inside the sandbox, `169.254.170.2`, `169.254.169.254` and `example.com` are unreachable, while `registry.npmjs.org` and `pypi.org` are reachable (D-51)
   - [ ] 3.7 IC: as `fixer`, `/proc/<wrapper pid>/environ` and `/proc/<wrapper pid>/mem` can't be read, and no `AWS_*` variable is present
@@ -150,7 +154,7 @@
     - with no PAT the board is disabled and the run ends normally.
     
     Cleanup deletes the card (`deleteProjectV2Item`) and closes the probe issue. If the first three checks fail, set `BOARD_UPDATES_ENABLED=0` and route to drift; Wave B is not blocked. Record the result in the spike report
-  - [ ] 3.16 `[T]`/`[I]` [agents/bug-fix] Do this before 3.3 (DF-180-03, D-109).
+  - [x] 3.16 `[T]`/`[I]` [agents/bug-fix] Do this before 3.3 (DF-180-03, D-109).
     - Dockerfile: install `sudo` with exactly one sudoers line, `wrapper ALL=(fixer) NOPASSWD: ALL`, plus `Defaults env_reset` and a fixed `secure_path` (`/etc/sudoers.d/bug-fix`, mode 0440).
     - `sandbox.py`: spawn through `sudo -u fixer --` with the allow-listed env passed explicitly.
     - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
@@ -158,7 +162,7 @@
   - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
   - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`
-  - [ ] 3.14 `[T]` [agents/bug-fix] Do this before 3.11. L1 `tests/unit/test_probe.py`: `__probe` is read only from the **top-level** payload, never from `params`; `params.__probe` is ignored; both forms are refused without `ALLOW_PROBE=1` (DF-14, D-70)
+  - [x] 3.14 `[T]` [agents/bug-fix] Do this before 3.11. L1 `tests/unit/test_probe.py`: `__probe` is read only from the **top-level** payload, never from `params`; `params.__probe` is ignored; both forms are refused without `ALLOW_PROBE=1` (DF-14, D-70)
 
 - [ ] ~~4.0 Implement Story S-183 (#365)~~ — **removed in v2.0** (D-95); #365 closed as not planned.
 
