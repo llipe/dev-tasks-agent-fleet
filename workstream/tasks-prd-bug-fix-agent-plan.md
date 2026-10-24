@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. | planner |
 | 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, stories v2.0; D-88–D-106). 4.0 and 8.0 removed. 5.0, 6.0 (refusal checks and reply), 7.0, 9.0 and 11.0 rewritten. 1.0, 2.0 (Projects PAT), 3.0 (board probe 3.15) and 10.0 (`repo_gate` refusal) updated. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
@@ -141,13 +142,13 @@
   - [x] 3.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_probe.py`: probe mode is refused unless `ALLOW_PROBE=1`, even when `__probe: true` is sent
   - [x] 3.3 `[I]` [agents/bug-fix] `sandbox.py`: run as `fixer` with the minimal env, under the sandbox runtime with the registry-only network policy and a wall-clock timeout (D-51)
   - [x] 3.4 `[I]` [agents/bug-fix] `probe.py` and its `main.py` hook, reporting each check as a `run_event`
-  - [ ] 3.5 [infra] Redeploy with `ALLOW_PROBE=1` through `/infra-engineer`
-  - [ ] 3.6 IC: inside the sandbox, `169.254.170.2`, `169.254.169.254` and `example.com` are unreachable, while `registry.npmjs.org` and `pypi.org` are reachable (D-51)
-  - [ ] 3.7 IC: as `fixer`, `/proc/<wrapper pid>/environ` and `/proc/<wrapper pid>/mem` can't be read, and no `AWS_*` variable is present
-  - [ ] 3.8 IC: through `claude -p` (as `fixer`, in the sandbox), a repo `.claude/settings.json` that allows `Bash(git push:*)` loses to the managed deny rule, and `WebFetch` is denied (D-05, D-51)
-  - [ ] 3.9 [agents/bug-fix] Write `workstream/spike-bug-fix-sandbox.md`: CLI version, the sandbox runtime chosen (`bwrap` or the CLI's own), the verified managed-settings keys, and a PASS/FAIL verdict per check. Update `managed-settings.json` to match (OQ-2)
-  - [ ] 3.10 [infra] Unset `ALLOW_PROBE` and redeploy
-  - [ ] 3.15 IC board probe (D-105), run with `GITHUB_PROJECTS_TOKEN` against linked board #5:
+  - [x] 3.5 [infra] Redeploy with `ALLOW_PROBE=1` through `/infra-engineer`
+  - [x] 3.6 IC: inside the sandbox, `169.254.170.2`, `169.254.169.254` and `example.com` are unreachable, while `registry.npmjs.org` and `pypi.org` are reachable (D-51)
+  - [x] 3.7 IC: as `fixer`, `/proc/<wrapper pid>/environ` and `/proc/<wrapper pid>/mem` can't be read, and no `AWS_*` variable is present
+  - [x] 3.8 IC: through `claude -p` (as `fixer`, in the sandbox), a repo `.claude/settings.json` that allows `Bash(git push:*)` loses to the managed deny rule, and `WebFetch` is denied (D-05, D-51)
+  - [x] 3.9 [agents/bug-fix] Write `workstream/spike-bug-fix-sandbox.md`: CLI version, the sandbox runtime chosen (`bwrap` or the CLI's own), the verified managed-settings keys, and a PASS/FAIL verdict per check. Update `managed-settings.json` to match (OQ-2)
+  - [x] 3.10 [infra] Unset `ALLOW_PROBE` and redeploy
+  - [x] 3.15 IC board probe (D-105), run with `GITHUB_PROJECTS_TOKEN` against linked board #5:
     - `repository.projectsV2` on `llipe/dev-tasks` returns #5;
     - on probe issue `[probe] bug-fix board probe` in `llipe/dev-tasks`, `addProjectV2ItemById` is idempotent;
     - each of the three statuses is set and read back;
@@ -160,13 +161,13 @@
     - `sandbox.py`: spawn through `sudo -u fixer --` with the allow-listed env passed explicitly.
     - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
     - IC (3.7): as `fixer`, `/proc/<wrapper pid>/environ` is unreadable.
-  - [ ] 3.17 `[T]`/`[I]` [agents/bug-fix] (D-110, replaces D-109 after probe run 1 found `no_new_privs` on AgentCore)
+  - [x] 3.17 `[T]`/`[I]` [agents/bug-fix] (D-110, replaces D-109 after probe run 1 found `no_new_privs` on AgentCore)
     - [x] 3.17.1 Dockerfile: the wrapper runs as root; remove `sudo` and `/etc/sudoers.d/bug-fix`.
     - [x] 3.17.2 `sandbox.py`/`fixer_exec.py`: launch through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, with the allow-listed env passed explicitly.
     - [x] 3.17.3 `image-smoke.sh`: `setpriv` drop gives uid 10002 with no capabilities; `fixer` can't regain root; `fixer` can't read the root wrapper's `/proc/<pid>/environ` or `mem`; no `sudo` binary.
     - [x] 3.17.4 Probe: the uid and `sudo` checks change to `setpriv` and no-escalation checks; add a user-namespace check for `bwrap`/`srt` under `no_new_privs`.
     - [x] 3.17.5 Local evidence with `--security-opt no-new-privileges` (default and permissive profiles) in the spike report; README and runbook (root wrapper, probe procedure) updated.
-    - [ ] 3.17.6 [infra] Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b and 2b).
+    - [x] 3.17.6 [infra] Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b–2d; 2d: 39/39 PASS).
   - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
   - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
   - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`

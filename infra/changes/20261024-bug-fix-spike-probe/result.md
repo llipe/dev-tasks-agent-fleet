@@ -12,4 +12,6 @@
 | 2d — re-probe on v5 | verified, **verdict PASS: 39 PASS / 0 FAIL** | n/a | n/a | 2026-10-24T15:40:53Z | `backup/probe-run-4.sse` (leak scan 0). `net.localhost`: `via=nss addrs=['127.0.0.1', '::1'] hosts=[] nsswitch='files myhostname dns'`, so AgentCore keeps the image's nsswitch and gai.conf (D-111). All sandbox, network (IMDS/ECS metadata and non-registry hosts blocked, npm and pypi reachable), /proc, env, no-escalation, policy-tamper, secrets, CLI-deny (git push, WebFetch, WebSearch) and board checks pass; board cleanup confirmed. |
 | 3 — remove `ALLOW_PROBE`, redeploy | verified | v5 = `ALLOW_PROBE=1`, image `…5b24b169…` (row 1d) | `rollback.sh --from 1` reverts it (redeploy without the flag); to restore probing, re-add the envVar and redeploy | 2026-10-24T15:53:10Z | runtime **v6 READY**, same image `…5b24b169…`, roleArn unchanged, env = 6 vars without `ALLOW_PROBE`; a probe payload returns `failed` / `PROBE_REFUSED` (`backup/probe-refused-v6.sse`, leak scan 0); pytest 544 passed, and the never-committed test is no longer an xfail |
 
-status: in-progress (steps 1–3 done; step 4 writes the spike verdict)
+| 4 — records, spike verdict | verified | n/a | n/a | 2026-10-24T16:00Z | `workstream/spike-bug-fix-sandbox.md` v0.5: **verdict PASS** (§6); tasks 3.5–3.10, 3.15, 3.17.6 checked |
+
+status: verified (runtime v6, image `…5b24b169…`, no `ALLOW_PROBE`; spike verdict PASS)
