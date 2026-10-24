@@ -10,6 +10,11 @@ The step orchestration and the spec §8.9 outcome mapping land in S-190.
 Payload (spec §6, D-60): ``{run_id, repository_org, repository_name,
 base_branch, params}``, optionally wrapped as ``{"prompt": "<json>"}``.
 
+Probe mode (S-182, D-70): a top-level ``__probe: true`` (the JSON boolean,
+outside ``params``) runs the spike checks in ``probe.py``, but only when
+``ALLOW_PROBE=1`` is set on the runtime; otherwise the run is refused with
+``PROBE_REFUSED`` and no check runs. ``params.__probe`` is ignored.
+
 Secrets (spec §12): every resolved secret is held in a :class:`SecretSet` in
 this process's memory. Nothing is exported to ``os.environ``, so no child
 process can inherit a secret, and every message leaving the process is
@@ -29,6 +34,8 @@ from agent_reporter import RunReporter
 from config import ConfigError, load_config
 from credentials import CredentialError, fetch_supabase_key
 from heartbeat import terminal_chunk
+from probe import execute as execute_probe
+from probe import is_probe_request, probe_allowed
 from scrubber import SecretSet, scrub_all, scrub_exception
 from signal_backstop import install_termination_backstop
 
@@ -37,6 +44,7 @@ log = logging.getLogger("bug_fix")
 app = BedrockAgentCoreApp()
 
 NOT_IMPLEMENTED = "not yet implemented"
+PROBE_REFUSED = "probe mode refused: ALLOW_PROBE is not set to 1 on the runtime"
 
 
 class InvalidPayloadError(ValueError):
@@ -112,10 +120,25 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
         run_id=request["run_id"],
         params=request,
     )
+    probe_summary: dict | None = None
     with run:  # start(): status running (the "started" report)
         install_termination_backstop(lambda: run, secrets.values)
         try:
-            _run_steps(run)
+            if is_probe_request(request):
+                if not probe_allowed():
+                    # D-70: no check runs; the run ends with the reason.
+                    log.warning("%s", PROBE_REFUSED)
+                    run.fail("PROBE_REFUSED", PROBE_REFUSED, outcome="not_applicable")
+                    yield terminal_chunk(
+                        json.dumps(
+                            _result("failed", "not_applicable", PROBE_REFUSED, "PROBE_REFUSED")
+                        )
+                    )
+                    return
+                probe_summary = execute_probe(run, cfg, secrets, supabase_key)
+                run.succeed("not_applicable", result=probe_summary)
+            else:
+                _run_steps(run)
         except Exception as exc:  # noqa: BLE001 — reported, scrubbed, never re-raised
             message = scrub_exception(exc, secrets)
             log.error("Unhandled error: %s", message)
@@ -127,6 +150,11 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
             )
             return
 
+    if probe_summary is not None:
+        out = _result("succeeded", "not_applicable", str(probe_summary.get("summary", "probe")))
+        out["probe"] = probe_summary
+        yield terminal_chunk(json.dumps(out))
+        return
     yield terminal_chunk(json.dumps(_result("succeeded", "not_applicable", NOT_IMPLEMENTED)))
 
 

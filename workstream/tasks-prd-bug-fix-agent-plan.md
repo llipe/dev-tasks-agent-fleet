@@ -15,6 +15,8 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.2 | 2026-10-24 | S-182 IC done: 3.5–3.10, 3.15, 3.17.6 checked (re-probe 2d 39/39 PASS on runtime v5; `ALLOW_PROBE` removed on v6). Spike verdict PASS. 3.11–3.13 checked (552 passed, coverage_gate PASS 97.5%, verifier Medium/Major); 3.16 marked superseded; 3.13 base corrected (DF-182-08). | planner |
+| 2.0.1 | 2026-10-24 | 3.17 (D-110) split into checkable sub-items 3.17.1–3.17.6; 3.17.1–3.17.5 done (root wrapper + `setpriv`, probe `setpriv.*`/`noescalate.*`/`userns.available`, local evidence). 3.17.6 (re-probe) stays with `infra-engineer`. Relevant Files updated (`sudoers-bug-fix` and `test_image_sudoers.py` removed). | developer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, stories v2.0; D-88–D-106). 4.0 and 8.0 removed. 5.0, 6.0 (refusal checks and reply), 7.0, 9.0 and 11.0 rewritten. 1.0, 2.0 (Projects PAT), 3.0 (board probe 3.15) and 10.0 (`repo_gate` refusal) updated. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
 | 1.4     | 2026-10-20 | Drift reconciliation of verifier DF-20 to DF-28 (D-79–D-86). New sub-tasks: 5.16, 6.12, 7.11 and 11.12. 9.9 and 10.13 reworded. The Verify-AC steps 5.11, 6.7, 8.7 and 10.9 are renumbered to the v1.4 story ACs, and the header versions are updated (DF-24). | product-engineer |
@@ -44,15 +46,18 @@
 ## Relevant Files
 
 - `agents/bug-fix/agentcore/agentcore.json` - Runtime config: env, `maxLifetime` 3600, `FIX_LOOP_ENABLED`, `PANEL_BASE_URL`
-- `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, pinned Claude Code
+- `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, util-linux (`setpriv`), libnss-myhostname + `/etc/gai.conf` (`localhost` without `/etc/hosts`, D-111), pinned Claude Code and sandbox runtime; the wrapper runs as root, no `sudo` (D-110)
 - `agents/bug-fix/app/bugFix/managed-settings.json` - Managed Claude Code policy, installed at `/etc/claude-code/`
 - `agents/bug-fix/app/bugFix/{Makefile,pyproject.toml}` - Agent quality gates
 - `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended)
 - `agents/bug-fix/app/bugFix/config.py` - Typed env config
 - `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration
 - `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9)
-- `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner (minimal env, sandbox, timeouts)
-- `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode
+- `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner: `setpriv` drop from the root wrapper, allow-list env, `srt`/CLI sandbox, read-only `localhost` preflight (D-111), timeout, two-pass post-run sweep (S-182, D-110)
+- `agents/bug-fix/app/bugFix/fixer_exec.py` - Runs as `fixer` after `setpriv`; rebuilds the env from the allow-list and refuses to run as root (S-182, D-110)
+- `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105, D-110: `setpriv.*`, `noescalate.*`, `userns.available`)
+- `agents/bug-fix/app/bugFix/probe_inner.py` - The probe's `fixer`-side helper, stdlib only (S-182)
+- `agents/bug-fix/app/bugFix/srt-settings.json` - `/etc/bug-fix/srt-settings.json`: sandbox-runtime policy for `fixer` scripts (S-182)
 - `agents/bug-fix/app/bugFix/params.py` - Typed params and cross-field label rules
 - `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL)
 - `agents/bug-fix/app/bugFix/markers.py` - Claim and disposition markers
@@ -65,7 +70,7 @@
 - `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17)
 - `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
@@ -75,7 +80,8 @@
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema and webhook-resolve check
 - `supabase/migrations/<ts>_seed_bug_fix_agent.sql`, `supabase/seed.sql` - `agents` row
 - `infra/changes/<date>-bug-fix-runtime/` - Infra change record
-- `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C)
+- `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C); root wrapper + `setpriv` fact and the probe-invocation procedure (3.17)
+- `docs/runbooks/README.md` - Runbook index row (3.17: probe in the trigger)
 - `workstream/spike-bug-fix-sandbox.md` - Spike report
 - `workstream/decisions-bug-fix-agent.md` - Append for OQ-1
 
@@ -126,23 +132,23 @@
 
   > Note: **gates all of Wave B.** If any check fails, record FAIL, keep #373–#377 blocked, and hand off to `product-engineer` drift reconciliation (D-51, spec §12). Resolves spec OQ-2.
 
-  - [ ] 3.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_sandbox.py`:
+  - [x] 3.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_sandbox.py`:
     - the env is built from an allow-list (`ANTHROPIC_API_KEY`, `PATH`, `HOME`, `LANG`, `CI=1`), never a deny-list;
     - no `AWS_*` or `AWS_CONTAINER_*` variable passes through;
     - timeout → SIGTERM, then SIGKILL after 15 s;
     - exit-code mapping;
     - a missing sandbox binary raises a typed error;
     - zombie children are reaped (D-51).
-  - [ ] 3.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_probe.py`: probe mode is refused unless `ALLOW_PROBE=1`, even when `__probe: true` is sent
-  - [ ] 3.3 `[I]` [agents/bug-fix] `sandbox.py`: run as `fixer` with the minimal env, under the sandbox runtime with the registry-only network policy and a wall-clock timeout (D-51)
-  - [ ] 3.4 `[I]` [agents/bug-fix] `probe.py` and its `main.py` hook, reporting each check as a `run_event`
-  - [ ] 3.5 [infra] Redeploy with `ALLOW_PROBE=1` through `/infra-engineer`
-  - [ ] 3.6 IC: inside the sandbox, `169.254.170.2`, `169.254.169.254` and `example.com` are unreachable, while `registry.npmjs.org` and `pypi.org` are reachable (D-51)
-  - [ ] 3.7 IC: as `fixer`, `/proc/<wrapper pid>/environ` and `/proc/<wrapper pid>/mem` can't be read, and no `AWS_*` variable is present
-  - [ ] 3.8 IC: through `claude -p` (as `fixer`, in the sandbox), a repo `.claude/settings.json` that allows `Bash(git push:*)` loses to the managed deny rule, and `WebFetch` is denied (D-05, D-51)
-  - [ ] 3.9 [agents/bug-fix] Write `workstream/spike-bug-fix-sandbox.md`: CLI version, the sandbox runtime chosen (`bwrap` or the CLI's own), the verified managed-settings keys, and a PASS/FAIL verdict per check. Update `managed-settings.json` to match (OQ-2)
-  - [ ] 3.10 [infra] Unset `ALLOW_PROBE` and redeploy
-  - [ ] 3.15 IC board probe (D-105), run with `GITHUB_PROJECTS_TOKEN` against linked board #5:
+  - [x] 3.2 `[T]` [agents/bug-fix] L1 `tests/unit/test_probe.py`: probe mode is refused unless `ALLOW_PROBE=1`, even when `__probe: true` is sent
+  - [x] 3.3 `[I]` [agents/bug-fix] `sandbox.py`: run as `fixer` with the minimal env, under the sandbox runtime with the registry-only network policy and a wall-clock timeout (D-51)
+  - [x] 3.4 `[I]` [agents/bug-fix] `probe.py` and its `main.py` hook, reporting each check as a `run_event`
+  - [x] 3.5 [infra] Redeploy with `ALLOW_PROBE=1` through `/infra-engineer`
+  - [x] 3.6 IC: inside the sandbox, `169.254.170.2`, `169.254.169.254` and `example.com` are unreachable, while `registry.npmjs.org` and `pypi.org` are reachable (D-51)
+  - [x] 3.7 IC: as `fixer`, `/proc/<wrapper pid>/environ` and `/proc/<wrapper pid>/mem` can't be read, and no `AWS_*` variable is present
+  - [x] 3.8 IC: through `claude -p` (as `fixer`, in the sandbox), a repo `.claude/settings.json` that allows `Bash(git push:*)` loses to the managed deny rule, and `WebFetch` is denied (D-05, D-51)
+  - [x] 3.9 [agents/bug-fix] Write `workstream/spike-bug-fix-sandbox.md`: CLI version, the sandbox runtime chosen (`bwrap` or the CLI's own), the verified managed-settings keys, and a PASS/FAIL verdict per check. Update `managed-settings.json` to match (OQ-2)
+  - [x] 3.10 [infra] Unset `ALLOW_PROBE` and redeploy
+  - [x] 3.15 IC board probe (D-105), run with `GITHUB_PROJECTS_TOKEN` against linked board #5:
     - `repository.projectsV2` on `llipe/dev-tasks` returns #5;
     - on probe issue `[probe] bug-fix board probe` in `llipe/dev-tasks`, `addProjectV2ItemById` is idempotent;
     - each of the three statuses is set and read back;
@@ -150,15 +156,22 @@
     - with no PAT the board is disabled and the run ends normally.
     
     Cleanup deletes the card (`deleteProjectV2Item`) and closes the probe issue. If the first three checks fail, set `BOARD_UPDATES_ENABLED=0` and route to drift; Wave B is not blocked. Record the result in the spike report
-  - [ ] 3.16 `[T]`/`[I]` [agents/bug-fix] Do this before 3.3 (DF-180-03, D-109).
+  - [x] 3.16 `[T]`/`[I]` [agents/bug-fix] **Superseded by 3.17 (D-110)**: done, then replaced after probe run 1 (`no_new_privs` blocks `sudo`). Do this before 3.3 (DF-180-03, D-109).
     - Dockerfile: install `sudo` with exactly one sudoers line, `wrapper ALL=(fixer) NOPASSWD: ALL`, plus `Defaults env_reset` and a fixed `secure_path` (`/etc/sudoers.d/bug-fix`, mode 0440).
     - `sandbox.py`: spawn through `sudo -u fixer --` with the allow-listed env passed explicitly.
     - `image-smoke.sh` asserts: `sudo -u fixer id -u` = 10002; `sudo -u fixer sudo -n true` fails; `sudo -n -u root true` as `wrapper` fails; the sudoers file is root-owned 0440.
     - IC (3.7): as `fixer`, `/proc/<wrapper pid>/environ` is unreadable.
-  - [ ] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
-  - [ ] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent`. On FAIL, route to `product-engineer`
-  - [ ] 3.14 `[T]` [agents/bug-fix] Do this before 3.11. L1 `tests/unit/test_probe.py`: `__probe` is read only from the **top-level** payload, never from `params`; `params.__probe` is ignored; both forms are refused without `ALLOW_PROBE=1` (DF-14, D-70)
+  - [x] 3.17 `[T]`/`[I]` [agents/bug-fix] (D-110, replaces D-109 after probe run 1 found `no_new_privs` on AgentCore)
+    - [x] 3.17.1 Dockerfile: the wrapper runs as root; remove `sudo` and `/etc/sudoers.d/bug-fix`.
+    - [x] 3.17.2 `sandbox.py`/`fixer_exec.py`: launch through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, with the allow-listed env passed explicitly.
+    - [x] 3.17.3 `image-smoke.sh`: `setpriv` drop gives uid 10002 with no capabilities; `fixer` can't regain root; `fixer` can't read the root wrapper's `/proc/<pid>/environ` or `mem`; no `sudo` binary.
+    - [x] 3.17.4 Probe: the uid and `sudo` checks change to `setpriv` and no-escalation checks; add a user-namespace check for `bwrap`/`srt` under `no_new_privs`.
+    - [x] 3.17.5 Local evidence with `--security-opt no-new-privileges` (default and permissive profiles) in the spike report; README and runbook (root wrapper, probe procedure) updated.
+    - [x] 3.17.6 [infra] Re-probe on the deployed runtime (change record `20261024-bug-fix-spike-probe`, steps 1b–2d; 2d: 39/39 PASS).
+  - [x] 3.11 Verify AC: AC1–AC2 by 3.1 and 3.2; AC3–AC5 by the IC events in 3.6–3.8; AC6–AC7 by the spike report
+  - [x] 3.12 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+  - [x] 3.13 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`. On FAIL, route to `product-engineer`
+  - [x] 3.14 `[T]` [agents/bug-fix] Do this before 3.11. L1 `tests/unit/test_probe.py`: `__probe` is read only from the **top-level** payload, never from `params`; `params.__probe` is ignored; both forms are refused without `ALLOW_PROBE=1` (DF-14, D-70)
 
 - [ ] ~~4.0 Implement Story S-183 (#365)~~ — **removed in v2.0** (D-95); #365 closed as not planned.
 

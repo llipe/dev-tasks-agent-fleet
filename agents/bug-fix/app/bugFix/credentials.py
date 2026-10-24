@@ -1,7 +1,8 @@
 # Copied from agents/security-analyst/app/securityAnalyst/credentials.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
-# Unchanged below this header. Spec §8.1 extends it in later stories: token
-# permissions (D-58), and fetching the Anthropic key and Projects token (D-50, D-99).
+# Extended (S-182): `fetch_secret_string`, a generic Secrets Manager read used for
+# the Anthropic key and the Projects token (D-50, D-99). Spec §8.1 extends it
+# further in later stories: token permissions (D-58).
 """
 Credential resolution — Supabase service role key from Secrets Manager
 and GitHub App installation token minting.
@@ -73,6 +74,25 @@ def fetch_supabase_key(secret_id: str | None = None) -> str:
             f"role key (secret '{sid}')",
         )
     return key
+
+
+def fetch_secret_string(secret_id: str, code: str = "SECRET_UNAVAILABLE") -> str:
+    """Read one SecretString from Secrets Manager (S-182).
+
+    Used for the Anthropic API key and the Projects token. The error names the
+    secret id and the AWS error code, never a value; the caller registers the
+    returned value in its ``SecretSet`` before using it.
+    """
+    sm = boto3.client("secretsmanager")
+    try:
+        response = sm.get_secret_value(SecretId=secret_id)
+    except ClientError as exc:
+        aws_code = exc.response.get("Error", {}).get("Code", "ClientError")
+        raise CredentialError(code, f"Could not read secret '{secret_id}' ({aws_code})") from None
+    value = response.get("SecretString")
+    if not value:
+        raise CredentialError(code, f"Secrets Manager returned no SecretString for '{secret_id}'")
+    return value
 
 
 # ---------------------------------------------------------------------------

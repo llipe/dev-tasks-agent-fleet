@@ -1,0 +1,2 @@
+data: {"event": {"contentBlockDelta": {"delta": {"text": "{\"status\": \"failed\", \"outcome\": \"not_applicable\", \"summary\": \"probe mode refused: ALLOW_PROBE is not set to 1 on the runtime\", \"error_code\": \"PROBE_REFUSED\"}"}}}}
+

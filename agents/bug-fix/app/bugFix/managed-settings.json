@@ -1,4 +1,7 @@
 {
+  "allowManagedPermissionRulesOnly": true,
+  "allowManagedHooksOnly": true,
+  "allowManagedMcpServersOnly": true,
   "permissions": {
     "disableBypassPermissionsMode": "disable",
     "deny": [
@@ -18,6 +21,7 @@
   },
   "sandbox": {
     "enabled": true,
+    "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
     "network": {
       "allowedDomains": [
@@ -26,6 +30,7 @@
         "pypi.org",
         "files.pythonhosted.org"
       ],
+      "allowManagedDomainsOnly": true,
       "allowLocalBinding": false
     }
   }
