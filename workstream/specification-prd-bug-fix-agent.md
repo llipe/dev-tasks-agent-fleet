@@ -4,6 +4,7 @@
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 2.5 | 2026-10-24 | D-112 / OQ-1 and drift reconciliation of DF-38 (race-loss part) and S-188 audit findings DF-188-01/02/05 ([`fidelity-report-S-188.md`](fidelity-report-S-188.md)), confirmed by @llipe 2026-10-24. D-112 / OQ-1: a Python repo must provide a `make install` target, which the wrapper runs in the sandbox; without it, the run ends `not_applicable` through the `repo_gate` refusal "missing install target", before any issue change (FR-5); JS is unchanged. DF-38 (race-loss part): a non-404 `DELETE` fault on the loser's withdrawal ends `failed` with its D-67 code, with no disposition and no board call; a 404 is "already gone" and the run ends `not_applicable`/`active_run`; the stranded comment stops counting once the loser is terminal and can never outrank the winner. DF-188-01: the open-claim rule has two shared halves, `markers.open_claims()` (markers) and `refusal.active_claim_runs()` (`v_runs` status). DF-188-02: the single-id race-loss `DELETE` is retried on a 5xx or a transport error; every other write still isn't. DF-188-05 is a test-plan change only. Sections §8.1, §8.2, §8.3, §8.6, §8.7, §8.9, §9, §16, §17 and §18 changed; D-112 is new, and D-54 and D-67 carry dated amendments. | product-engineer |
 | 2.4 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07 ([`fidelity-report-S-185.md`](fidelity-report-S-185.md)), confirmed by @llipe 2026-10-24. DF-33: one definition of an open claim (a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`; no row counts as finished with a warning; an unknown status fails closed as `SUPABASE_UNAVAILABLE`), implemented once in `markers.open_claims()` and used by refusal (d) and the race post-check. DF-185-01/02/03/05/06/07: the GitHub client's error semantics: reads retry 5xx and transport errors, writes retry only rate limits; 3 attempts in total; a 120 s monotonic budget per logical operation, `Retry-After` honoured up to 60 s, 60 s for a secondary limit with no header; redirects never followed; a page cap with pages left is `GITHUB_UNAVAILABLE`; GraphQL `errors[]` split into transient and permanent; mint and refresh failures typed; a cross-repo linked PR is named `owner/repo#M`. Sections §8.1, §8.2, §8.3, §8.6, §8.9, §9 and §18 changed; D-55, D-67 and D-81 carry dated amendments in the decision log. | product-engineer |
 | 2.3 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. DF-186-01: §8.7's neutralizer keeps the reference as written, `(ref <reference as written>)`, with `#N` → `(ref #N)` unchanged; it also recognizes `GH-N`, colon-without-space and markdown-wrapped references (D-65 amendment). DF-186-02: §14's L2 GitHub harness is the in-repo `requests.Session` double (`fake_github.py`), not `responses`, for S-185, S-188 and S-199 too; real `Link`-header parsing gets a parser-level unit test with S-185. Sections §8.7 and §14 changed. | product-engineer |
 | 2.2 | 2026-10-24 | Drift reconciliation of S-182 audit findings DF-182-01, -02, -03, -06 and -10 ([`fidelity-report-S-182.md`](fidelity-report-S-182.md)), confirmed by @llipe 2026-10-24. The non-root `wrapper` user is gone: the wrapper runs as root and drops every `fixer` process with `setpriv` (D-110, superseding D-109), with the root-wrapper mitigations. `localhost` resolves through the image's NSS (D-111). Confinement has two enforcement paths with one registry allow-list: the CLI's own Bash sandbox (`managed-settings.json`) and `srt` for wrapper-run scripts (`srt-settings.json`). New modules `fixer_exec.py`, `probe.py`, `probe_inner.py`; `--disallowedTools=WebFetch,WebSearch` on every `-p` run. Spike result and evidence limits recorded; OQ-2 answered. Sections §1, §2, §4, §7, §8.1, §8.7, §12, §16, §17 and §18 changed. | product-engineer |
@@ -207,9 +208,9 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 | `credentials.py` | Copied; extended | Returns token `permissions` (D-58); fetches the Anthropic key and the Projects PAT |
 | `github_client.py` | New | Shared REST/GraphQL client: retry policy, `GITHUB_UNAVAILABLE` / `GITHUB_REQUEST_REJECTED` (D-67) |
 | `params.py` | New | Typed params, bounds, defaults equal to the seed (D-82) |
-| `refusal.py` | New | Refusal checks (a)–(e) and `invalid_params`; the marked reply with fixed text per code (D-92, D-104) |
+| `refusal.py` | New | Refusal checks (a)–(e) and `invalid_params`; the marked reply with fixed text per code (D-92, D-104); `active_claim_runs()`, the `v_runs` status half of the open-claim definition, shared with the race check (§8.2, DF-188-01) |
 | `issues.py` | New | Issue facts, comments, reactions, linked-PR detection |
-| `markers.py` | New | Build, parse and trust-check claim, disposition and refusal markers, including the leading marker block (D-53, D-80, D-104); `open_claims()`, the single open-claim definition (§8.2, DF-33) |
+| `markers.py` | New | Build, parse and trust-check claim, disposition and refusal markers, including the leading marker block (D-53, D-80, D-104); `open_claims()`, the marker half of the open-claim definition (§8.2, DF-33, DF-188-01) |
 | `claim.py` | New | Claim (👀 plus a marker comment) and the post-claim race check (D-54, D-93) |
 | `projects.py` | New | Board look-up, add card, set status; best effort, 10-second timeout, no retries; `BOARD_UPDATES_ENABLED` flag (D-103, D-105) |
 | `toolchain.py` | Copied from `dependency-update`, extended | pnpm/npm detection, Python Makefile targets, the repo gate (FR-6, D-19) |
@@ -253,7 +254,11 @@ Two edge cases of the status read:
 - A claimed R with **no `v_runs` row** counts as finished, and the run logs a `run_event` warning. A deleted run must not block the issue for ever (CT-34, DF-185-03).
 - An `effective_status` outside both sets **fails closed**: `failed`/`SUPABASE_UNAVAILABLE`, with a `run_event` warning. It is never read as "no open claim".
 
-`markers.open_claims()` is the single implementation of this definition, and both callers use it. S-185 shipped the `refusal` rule and the status resolution layered in `refusal.py`; S-188 (#370) moves them into `markers.open_claims()` and corrects its docstring.
+The definition is implemented once, in two halves, and both callers share both (DF-188-01, v2.5):
+- **Marker half:** `markers.open_claims()` returns the trusted claims not closed by a trusted `pr`, `disposition` or `refusal` marker for the same run. It does no I/O.
+- **Status half:** `refusal.active_claim_runs()` resolves those runs against `v_runs.effective_status`, applying the two edge cases above. Refusal (d) calls it, and so does the race post-check (§8.6), with `before` set to this run's claim comment id.
+
+No other module restates either half.
 
 **Reply** (D-104). A comment whose first line is `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->`, followed by one fixed line per code and the run link. It contains no model text and adds no reaction. The run ends `succeeded`/`not_applicable` with `result.reason = <code>`. Refusals never touch the board. A failure to post the reply is logged, and the outcome stays `not_applicable`.
 
@@ -274,7 +279,7 @@ Bug-fix didn't start: …
 
 - The parser reads the leading block of consecutive marker lines from line 1. The kinds are `claim`, `disposition`, `refusal` and `pr` (the success comment).
 - A marker is **trusted** only when `performed_via_github_app.id` equals the fleet App ID and `user.type == "Bot"`.
-- Only `claim` markers open a claim. A trusted `pr`, `disposition` or `refusal` marker for the same `run_id` closes it. A `refusal` marker never opens a claim. The full open-claim rule, including the `v_runs` status check, is in §8.2 (DF-33); `markers.open_claims()` implements it.
+- Only `claim` markers open a claim. A trusted `pr`, `disposition` or `refusal` marker for the same `run_id` closes it. A `refusal` marker never opens a claim. The full open-claim rule, including the `v_runs` status check, is in §8.2 (DF-33); `markers.open_claims()` implements its marker half, and `refusal.active_claim_runs()` its status half (DF-188-01).
 
 ### 8.4 *(Removed in v2.0: stale-claim sweep, D-94.)*
 
@@ -298,21 +303,24 @@ stateDiagram-v2
 ```
 
 1. **Claim.** Post the claim marker comment, then add the 👀 reaction when `trigger_comment_id` is present. No labels and no assignee change (D-93).
-2. **Post-check.** Read the open claims with `markers.open_claims()`, the §8.2 definition (DF-33). If an open claim with a lower comment id belongs to another run, delete this run's comment and end `not_applicable`, reason `active_run`. The 👀 stays, because it's on the shared trigger comment or belongs to the winner.
+2. **Post-check.** Read the open claims with `refusal.active_claim_runs()` over `markers.open_claims()`, the §8.2 definition (DF-33, DF-188-01). If an open claim with a lower comment id belongs to another run, delete this run's comment and end `not_applicable`, reason `active_run`. The 👀 stays, because it's on the shared trigger comment or belongs to the winner.
+   - **Withdrawal faults** (DF-38 race-loss part, decided by @llipe 2026-10-24; D-54 amendment). The `DELETE` targets only this run's own comment id, and is retried on a 5xx or a transport error (§9, DF-188-02). A **404** means the comment is already gone: the run logs a warning and still ends `not_applicable`/`active_run`. Any **other fault** ends `failed` with its D-67 code (`GITHUB_UNAVAILABLE` or `GITHUB_REQUEST_REJECTED`), with no disposition and no board call. The stranded comment does no harm: it stops counting once the losing run is terminal, which a `failed` run is, and it can never outrank the winner, whose claim has the lower comment id.
 3. **Ownership gate (D-81).** The `finally`/backstop disposition and every board update apply only after the post-check has **confirmed** ownership. If the post-check fails (`SUPABASE_UNAVAILABLE`, including an unknown `effective_status`), the run keeps its comment, applies nothing else and ends `failed`. Once that run is terminal, refusal (d) no longer applies to it.
 
 ### 8.7 Checkout, fix, validate, red-to-green
 
-*Unchanged from v1.5 except the repo-gate outcome, which is now a refusal reply.*
+*Unchanged from v1.5 except the repo-gate outcome, which is now a refusal reply, and the Python install contract (D-112, v2.5).*
 
 **`checkout`** (D-62).
 - Shallow-clone `base_branch` into the wrapper clone `/work/wrapper/repo` (under root-owned `/work/wrapper`, mode 0700; D-110) with `safe_git.py`, and record the base SHA. The clone's `info/exclude` lists only dependency directories (`node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/`); build outputs are governed by the repo's own `.gitignore` (D-83).
 - Materialize the base tree into `/work/repo` as plain files: `git archive <base>` from the wrapper clone, piped into `tar -x` **running as `fixer`** into a fresh directory. `fixer` may `git init` its own repository there for the model's use. The wrapper never reads it.
 - Run the repo gate (FR-6) through `toolchain.py`:
   - **JS/TS:** `.claude/agents/developer.md`, plus `package.json` scripts `test`, `lint`, `format:check`, `typecheck`.
-  - **Python:** the same file, plus `Makefile` targets `test`, `lint`, `format-check`, `typecheck`.
-  - If anything is missing, end with refusal `repo_gate` (§8.2): a reply naming the item, `not_applicable`, before the claim (D-92).
-- Install dependencies in the sandbox. JS: `pnpm install --frozen-lockfile` or `npm ci`, chosen by the detected manager; a lockfile mismatch fails the install and is never rewritten. Python: see §17 OQ-1 (D-63).
+  - **Python:** the same file, plus `Makefile` targets `test`, `lint`, `format-check`, `typecheck`, and `install` (D-112).
+  - If anything is missing, end with refusal `repo_gate` (§8.2): a reply naming the item, `not_applicable`, before the claim (D-92). A Python repo with no `install` target is named "missing install target", and the run ends before any issue change other than that reply (FR-5).
+- Install dependencies in the sandbox:
+  - **JS/TS** (D-63): `pnpm install --frozen-lockfile` or `npm ci`, chosen by the detected manager. A lockfile mismatch gives `failed`/`INSTALL_FAILED`, and the lockfile is never rewritten.
+  - **Python** (D-112, resolves OQ-1, confirmed by @llipe 2026-10-24): the wrapper runs the repo's own `make install` target in the sandbox. The wrapper never guesses among pip, uv and poetry; the repo owner decides how dependencies are pinned, and one `make` contract covers both install and the gates (D-19).
 - Run the four gates and `audit` on the **base** tree, and record the results (D-14). Base results are only evidence; they gate nothing.
 - **Restore the base** (D-63). The wrapper captures `/work/repo`, and any tracked path that install or the base runs changed is restored as `fixer` (`git archive` piped to `tar -x`, plus `rm` for files they added), with a `run_event`. The CLI therefore always starts from an exact base tree, and the captured change contains only the CLI's edits.
 
@@ -376,14 +384,14 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 | Path | Status / outcome | `error_code` | Breaker |
 | ---- | ---------------- | ------------ | ------- |
 | Draft PR opened | `succeeded` / `fixed` | — | no |
-| Refusal (a)–(e), `invalid_params`, lost race | `succeeded` / `not_applicable` | — | no |
+| Refusal (a)–(e), `invalid_params`, lost race (own comment deleted, or already gone: a 404) | `succeeded` / `not_applicable` | — | no |
 | Give-up, cap, forbidden path, entry type, no test, missing rationale, secret in change, red gate, red-to-green fail, invalid report, any budget ceiling | `succeeded` / `needs_review` | — | no |
 | Board look-up or update failure (any) | *(no effect; `run_event` + `metrics.board`)* | — | no |
 | Missing `issues: write` (at preflight, or on a refreshed token) | `failed` | `GITHUB_PERMISSION_MISSING` | yes |
 | Secrets / token mint | `failed` | `CREDENTIALS_UNAVAILABLE` | yes |
 | Clone / install infra failure | `failed` | `CLONE_FAILED` / `INSTALL_FAILED` | yes |
 | CLI crash or unparseable output | `failed` | `CLI_CRASHED` | yes |
-| GitHub unavailable: read retries exhausted (5xx, transport error, rate limit); a write that got a 5xx or a transport error (never retried); a rate-limit wait over its cap or past the operation budget; transient GraphQL `errors[]` exhausted; a page cap reached with pages left | `failed` | `GITHUB_UNAVAILABLE` | yes |
+| GitHub unavailable: read retries exhausted (5xx, transport error, rate limit); a write that got a 5xx or a transport error (never retried, except the race-loss `DELETE`, whose retries are exhausted; §9); a rate-limit wait over its cap or past the operation budget; transient GraphQL `errors[]` exhausted; a page cap reached with pages left | `failed` | `GITHUB_UNAVAILABLE` | yes |
 | GitHub refused the request: an unexpected 4xx on a read or a write; any 3xx (never followed); a non-transient GraphQL `errors[]`; a malformed response body; a URL or `next` link off the expected resource | `failed` | `GITHUB_REQUEST_REJECTED` | yes |
 | Supabase failure in refusal (d) or the post-check: a transport error, a non-2xx (a 3xx included), a malformed row, or an unknown `effective_status` | `failed` | `SUPABASE_UNAVAILABLE` | yes |
 | Push / PR API failure | `failed` (after disposition) | `PR_CREATE_FAILED` | yes |
@@ -399,6 +407,7 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 - **GraphQL `errors[]`** is split two ways. Transient types (`RATE_LIMITED`, `INTERNAL`, `SERVER_ERROR`, `TIMEOUT`, `SERVICE_UNAVAILABLE`, or an untyped error with a 5xx-like or timeout message) are retried within the budget, then `GITHUB_UNAVAILABLE`. Anything else, including one permanent error among transient ones, is `GITHUB_REQUEST_REJECTED` at once.
 - **Credentials.** A token mint failure is `CREDENTIALS_UNAVAILABLE`. A refreshed token without `issues: write` is `GITHUB_PERMISSION_MISSING`.
 - **`v_runs` status.** A claim whose run has no `v_runs` row counts as finished, with a `run_event` warning. An unknown `effective_status` is `SUPABASE_UNAVAILABLE` (§8.2).
+- **Race-loss withdrawal** (DF-38 race-loss part, decided by @llipe 2026-10-24; D-54 amendment). A 404 on the loser's `DELETE` of its own claim comment is "already gone", and the run still ends `succeeded`/`not_applicable`, reason `active_run`. Any other fault on that `DELETE` ends `failed` with its D-67 code: `GITHUB_UNAVAILABLE` (5xx or transport retries exhausted, rate limit over its cap or budget) or `GITHUB_REQUEST_REJECTED` (another 4xx, a 3xx). Either way the run applies no disposition and makes no board call, because it never confirmed ownership (§8.6). The stranded comment stops counting once the run is terminal and can never outrank the winner.
 - **Messages** name the method, the call's label and the status only: never the token, a request body, a response body or a GraphQL error message.
 
 ### 8.10 Projects v2 board updates (FR-31–FR-34, D-97–D-103)
@@ -432,6 +441,7 @@ The bug-fix seed (S-184) sets `issue`. Other agents keep `repo`, so their behavi
   - **Attempts.** Each request is tried at most **3 times in total** (the first attempt plus up to 2 retries), with a 1 s then 2 s backoff for faults.
   - **Reads** (`GET`, and GraphQL queries, which are idempotent `POST`s) are retried on 5xx, on transport errors and on rate limits.
   - **Writes** (`POST`, `PATCH`, `PUT`, `DELETE`) are retried **only** on a rate limit, primary or secondary, which GitHub refuses before applying. A write is never retried on a 5xx or a transport error: GitHub may already have applied it, and a retry could double-post a comment.
+  - **One exception** (DF-188-02, D-67 amendment, confirmed by @llipe 2026-10-24): the single-id `DELETE` of this run's own claim comment (the race-loss withdrawal, §8.6) **is** retried on a 5xx or a transport error, like a read. It is idempotent: a retry after a delete that already landed gets a 404, which reads as "already gone". All other writes keep the rule above.
   - **Budget.** Each logical operation (one call, one paged list, one GraphQL query with its own retries) runs against one monotonic deadline, 120 s by default. No wait may pass it, no attempt starts after it, and each request's timeout is cut to what remains. A wait that would pass the deadline is not taken: the call ends `GITHUB_UNAVAILABLE` at once.
   - **Rate-limit waits.** `Retry-After` is honoured up to 60 s, within the budget; a longer one gives up at once (`GITHUB_UNAVAILABLE`). A primary limit (`x-ratelimit-remaining: 0`) waits until `x-ratelimit-reset`, also up to 60 s. A secondary limit with no usable header waits 60 s, as GitHub advises.
   - **Redirects** are never followed (§8.9).
@@ -572,7 +582,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | A loose webhook rule lets outsiders trigger runs | The runbook's recommended rule (D-91); the Anthropic spend cap |
 | GitHub sends PR comments as `issue_comment` | Refusal `pull_request` (D-88) |
 | The repo's `test` script doesn't pass paths through | Red-to-green "zero collected" leads to disposition; the runbook names the requirement |
-| Python install has no contract (OQ-1) | Resolved in S-189 task 10.1 |
+| A Python repo has no install contract the wrapper can rely on (OQ-1) | Resolved by D-112: the repo must provide `make install`; without it, the `repo_gate` refusal "missing install target" ends the run `not_applicable` before any issue change. The runbook names the target as a prerequisite (S-197). Implemented in S-189 (#371) |
 | The Anthropic key's spend | Dedicated key with a cap; per-run limits; cost recorded in `runs.metrics` |
 | Wrapper git reading `fixer`-controlled state | D-62 |
 | The wrapper runs as root (D-110) | Only wrapper code runs as root; `setpriv` drop with `no_new_privs` for every `fixer` process; allow-list env; no `sudo` in the image; one microVM per session (§7) |
@@ -583,7 +593,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 
 ## 17. Open Questions
 
-1. **OQ-1, Python dependency install:** resolved in S-189 (task 10.1).
+1. **OQ-1, Python dependency install:** **resolved (D-112)**, confirmed by @llipe 2026-10-24. A Python repo must provide a `make install` target, which the wrapper runs in the sandbox; without it, the run ends `not_applicable` through the `repo_gate` refusal "missing install target" (§8.7). JS is unchanged (D-63). Implemented in S-189 (#371).
 2. **OQ-2, managed-settings key names:** answered by the S-182 spike (CLI 2.1.309). Keys and their IC status: [`spike-bug-fix-sandbox.md`](spike-bug-fix-sandbox.md) §3. Keys not directly exercised on IC are followed up in #446.
 
 ## 18. Decisions (HOW phase)
@@ -595,7 +605,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-51 | Three-layer confinement; spike first. |
 | D-52 | Fixed first-match file classification. |
 | D-53 | Hidden markers trusted by App id. |
-| D-54 | Claim, post-claim race check; the loser withdraws its own comment. |
+| D-54 | Claim, post-claim race check; the loser withdraws its own comment. Amended 2026-10-24 (DF-38 race-loss part): a non-404 `DELETE` fault ends `failed` with its D-67 code, no disposition, no board call; a 404 is "already gone" (§8.6, §8.9). |
 | D-55 | Linked PR = closing reference or `issue/<N>-` branch. Amended 2026-10-24: a cross-repo PR is named `owner/repo#M` (§8.2). |
 | D-56 | Red-to-green on the changed test files. |
 | D-58 | One infra change in Wave A; run-start Issues-write check. |
@@ -606,7 +616,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-64 | A collection error on base counts as red when the final run passes. |
 | D-65 | Model-text neutralizer. |
 | D-66 | Invalid report → disposition. |
-| D-67 | `GITHUB_UNAVAILABLE`, `GITHUB_REQUEST_REJECTED`, `SUPABASE_UNAVAILABLE`. Amended 2026-10-24: read/write retry split, 3 attempts in total, 120 s operation budget, GraphQL error split (§8.9, §9). |
+| D-67 | `GITHUB_UNAVAILABLE`, `GITHUB_REQUEST_REJECTED`, `SUPABASE_UNAVAILABLE`. Amended 2026-10-24: read/write retry split, 3 attempts in total, 120 s operation budget, GraphQL error split (§8.9, §9). Amended again 2026-10-24 (DF-188-02): the single-id race-loss `DELETE` is retried on a 5xx or a transport error (§9). |
 | D-70 | `__probe` top-level, `ALLOW_PROBE` only. |
 | D-76 | Prompt on stdin. |
 | D-80 | Leading marker block. |
@@ -624,6 +634,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-109 | *(Superseded by D-110.)* Non-root `wrapper` user switching to `fixer` through a narrow sudo rule. |
 | D-110 | Root wrapper; `setpriv` drop to `fixer` for every process that runs model output or repo code (AgentCore sets `no_new_privs`); no sudo in the image. |
 | D-111 | `localhost` resolves through the image's NSS (`libnss-myhostname`, IPv4 first via `/etc/gai.conf`); `sandbox.py` only checks it. |
+| D-112 | Python repos must provide `make install`, run in the sandbox; without it, refusal `repo_gate` "missing install target" (resolves OQ-1, §8.7). |
 
 WHAT-phase decisions (D-01–D-46, D-88–D-102) are consumed through the PRD. D-47, D-48, D-57, D-59, D-68, D-69, D-71, D-75 and D-79 are superseded by v2.0. D-109 is superseded by D-110 (v2.2).
 
