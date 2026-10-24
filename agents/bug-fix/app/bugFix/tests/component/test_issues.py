@@ -292,3 +292,53 @@ class TestEdgesOfTheClient:
                 return FakeResponse(201, payload)
 
         assert _client(_NoJson()).post_comment(7, "body") == {}
+
+
+class TestDeleteComment:
+    """S-188: the race-loss withdrawal deletes only this run's own comment."""
+
+    def test_delete_removes_exactly_that_comment(self):
+        gh = FakeGitHub()
+        keep = gh.add_comment(7, "other")
+        mine = gh.add_comment(7, "mine")
+        assert _client(gh).delete_comment(mine["id"]) is True
+        call = gh.calls[-1]
+        assert (call.method, call.path) == ("DELETE", f"/repos/o/r/issues/comments/{mine['id']}")
+        assert call.headers["Authorization"] == f"Bearer {TOKEN}"
+        assert call.allow_redirects is False
+        assert gh.deleted == [mine["id"]]
+        assert gh.comments[7] == [keep]
+
+    def test_a_404_is_already_gone_not_a_fault(self):
+        gh = FakeGitHub()
+        assert _client(gh).delete_comment(12345) is False
+        assert gh.deleted == []
+
+    def test_a_5xx_is_retried_because_delete_is_idempotent(self):
+        gh = FakeGitHub()
+        mine = gh.add_comment(7, "mine")
+        gh.faults["comment_delete"] = [502]
+        assert _client(gh).delete_comment(mine["id"]) is True
+        assert len([c for c in gh.calls if c.method == "DELETE"]) == 2
+
+    def test_exhausted_5xx_is_unavailable(self):
+        gh = FakeGitHub()
+        gh.faults["comment_delete"] = [503, 503, 503]
+        with pytest.raises(GitHubUnavailable) as exc:
+            _client(gh).delete_comment(99)
+        assert TOKEN not in str(exc.value)
+
+    @pytest.mark.parametrize("status", [403, 422])
+    def test_another_4xx_is_rejected(self, status):
+        gh = FakeGitHub()
+        gh.faults["comment_delete"] = [status]
+        with pytest.raises(GitHubRequestRejected) as exc:
+            _client(gh).delete_comment(99)
+        assert exc.value.status == status
+
+    @pytest.mark.parametrize("cid", [0, -1, None, True, "5"])
+    def test_an_invalid_id_makes_no_call(self, cid):
+        gh = FakeGitHub()
+        with pytest.raises(ValueError):
+            _client(gh).delete_comment(cid)  # type: ignore[arg-type]
+        assert gh.calls == []

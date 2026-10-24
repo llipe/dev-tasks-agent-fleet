@@ -1,7 +1,7 @@
 """L1 tests for ``agentcore.json`` and secret hygiene (TC-180-03..05; S-180 AC3).
 
-Runtime ``bug_fix`` (Container, PUBLIC, maxLifetime 3600) with the six env
-vars, secret IDs only, and no reference to the cloud model provider anywhere
+Runtime ``bug_fix`` (Container, PUBLIC, maxLifetime 3600) with the seven env
+vars (``PANEL_BASE_URL`` added by S-188), secret IDs only, and no reference to the cloud model provider anywhere
 in the runtime config, ``config.py`` or the Dockerfile (D-50, D-99).
 """
 
@@ -81,12 +81,24 @@ class TestRuntime:
             "PROJECTS_TOKEN_SECRET_ID",
             "BOARD_UPDATES_ENABLED",
             "MODEL_ID",
+            "PANEL_BASE_URL",
         }
         assert env["SUPABASE_URL"].startswith("https://")
         assert env["SUPABASE_KEY_SECRET_ID"] == "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY"
         assert env["ANTHROPIC_KEY_SECRET_ID"] == "agent-fleet/prod/ANTHROPIC_API_KEY"
         assert env["PROJECTS_TOKEN_SECRET_ID"] == "agent-fleet/prod/GITHUB_PROJECTS_TOKEN"
         assert env["BOARD_UPDATES_ENABLED"] == "1"
+        # S-188 (task 9.3): the panel origin that builds the run link.
+        assert env["PANEL_BASE_URL"] == "https://dt-agent-fleet-panel.fly.dev"
+
+    def test_env_vars_keep_one_entry_per_line(self):
+        # The file is edited by hand and by the agentcore CLI: one env entry
+        # per line keeps a diff to the entry it changes.
+        lines = [ln.strip() for ln in AGENTCORE.read_text().splitlines()]
+        for name in _env():
+            matches = [ln for ln in lines if f'"name": "{name}"' in ln]
+            assert len(matches) == 1, name
+            assert matches[0].startswith("{ ") and matches[0].rstrip(",").endswith(" }"), name
 
     def test_model_id_is_an_anthropic_api_sonnet_id(self):
         model = _env()["MODEL_ID"]
@@ -97,6 +109,7 @@ class TestRuntime:
     def test_env_loads_through_config(self):
         cfg = config.load_config(_env())
         assert cfg.board_updates_enabled is True
+        assert cfg.panel_base_url == "https://dt-agent-fleet-panel.fly.dev"
 
     @pytest.mark.xfail(
         PROBE_WINDOW,

@@ -1,6 +1,6 @@
 """
 GitHub issue I/O: issue facts, linked pull requests, comments and reactions
-(spec §6; S-185, S-186; D-55, D-93).
+(spec §6; S-185, S-186, S-188; D-54, D-55, D-93).
 
 All calls use the **App installation token** (``credentials.py``), never the
 Projects PAT. The agent changes no labels and no assignees (D-93), so this
@@ -14,7 +14,9 @@ failures raise :class:`GitHubUnavailable`
 (``GITHUB_UNAVAILABLE``) or :class:`GitHubRequestRejected`
 (``GITHUB_REQUEST_REJECTED``). The exception here: a reaction 4xx (a deleted
 trigger comment returns 404, a bad id 422) is logged and returned as
-``failed``, never raised, because a reaction is cosmetic (DF-38).
+``failed``, never raised, because a reaction is cosmetic (DF-38). And a 404
+on :meth:`IssuesClient.delete_comment` (the race-loss withdrawal, S-188) means
+the comment is already gone: it returns ``False``.
 
 Linked pull requests (D-55): an **open** PR that closes the issue through a
 closing reference (GraphQL ``closedByPullRequestsReferences``), or any open PR
@@ -415,6 +417,26 @@ class IssuesClient(GitHubClient):
         except ValueError:
             return {}
         return created if isinstance(created, dict) else {}
+
+    def delete_comment(self, comment_id: int, *, timeout: float | None = None) -> bool:
+        """Delete one comment by id; ``False`` when it was already gone (404).
+
+        Only the race-loss withdrawal calls it, with this run's own claim
+        comment id (D-54). A ``DELETE`` of one id is idempotent, so a 5xx is
+        retried like a read; any other 4xx raises (D-67).
+        """
+        if not isinstance(comment_id, int) or isinstance(comment_id, bool) or comment_id < 1:
+            raise ValueError("comment_id must be a positive integer")
+        label = self._path(f"/issues/comments/{comment_id}")
+        resp = self.request(
+            "DELETE",
+            self.api_url + label,
+            label=label,
+            timeout=timeout,
+            idempotent=True,
+            not_found_ok=True,
+        )
+        return resp is not None
 
     # -- reactions ---------------------------------------------------------------
 

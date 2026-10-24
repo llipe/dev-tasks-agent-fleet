@@ -22,6 +22,7 @@ SENTINELS = {
     "PROJECTS_TOKEN_SECRET_ID": "sentinel/projects-secret-id",
     "BOARD_UPDATES_ENABLED": "1",
     "MODEL_ID": "claude-sonnet-4-6-sentinel",
+    "PANEL_BASE_URL": "https://sentinel-panel.example",
 }
 
 
@@ -117,6 +118,70 @@ class TestBoardFlag:
     def test_blank_projects_token_id_disables_board(self):
         cfg = load_config(_env(PROJECTS_TOKEN_SECRET_ID="   "))
         assert cfg.board_disabled_reason == "no_token_secret_id"
+
+
+class TestPanelBaseUrl:
+    """S-188 (task 9.3): the panel origin that builds the run link."""
+
+    RUN = "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b"
+
+    def test_reads_the_panel_origin(self):
+        assert load_config(_env()).panel_base_url == SENTINELS["PANEL_BASE_URL"]
+
+    @pytest.mark.parametrize(
+        ("raw", "base"),
+        [
+            ("https://dt-agent-fleet-panel.fly.dev", "https://dt-agent-fleet-panel.fly.dev"),
+            ("https://dt-agent-fleet-panel.fly.dev/", "https://dt-agent-fleet-panel.fly.dev"),
+            ("  https://panel.example:8443  ", "https://panel.example:8443"),
+        ],
+    )
+    def test_a_trailing_slash_and_spaces_are_dropped(self, raw, base):
+        assert load_config(_env(PANEL_BASE_URL=raw)).panel_base_url == base
+
+    def test_the_run_link_is_the_runs_page(self):
+        cfg = load_config(_env(PANEL_BASE_URL="https://dt-agent-fleet-panel.fly.dev"))
+        assert cfg.run_link(self.RUN) == f"https://dt-agent-fleet-panel.fly.dev/runs/{self.RUN}"
+
+    def test_the_run_link_uses_the_canonical_run_id(self):
+        cfg = load_config(_env())
+        assert cfg.run_link(self.RUN.upper()) == f"{SENTINELS['PANEL_BASE_URL']}/runs/{self.RUN}"
+
+    @pytest.mark.parametrize("run_id", ["", "not-a-uuid", "../admin"])
+    def test_a_bad_run_id_has_no_link(self, run_id):
+        assert load_config(_env()).run_link(run_id) is None
+
+    @pytest.mark.parametrize("raw", [None, "   "])
+    def test_missing_disables_the_link_not_the_run(self, raw):
+        # The link is cosmetic: a missing origin falls back to the run id in
+        # the comment, never a ConfigError.
+        cfg = load_config(_env(PANEL_BASE_URL=raw))
+        assert cfg.panel_base_url is None
+        assert cfg.run_link(self.RUN) is None
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "http://panel-sentinel-xyz.example",
+            "panel-sentinel-xyz.example",
+            "https://panel-sentinel-xyz.example/runs",
+            "https://panel-sentinel-xyz.example?x=1",
+            "https://panel-sentinel-xyz.example#frag",
+            "https://user@panel-sentinel-xyz.example",
+            "https://panel-sentinel-xyz example",
+            "https://",
+            "javascript:alert(1)//panel-sentinel-xyz",
+        ],
+    )
+    def test_anything_but_an_https_origin_is_a_typed_error(self, raw):
+        with pytest.raises(ConfigError) as info:
+            load_config(_env(PANEL_BASE_URL=raw))
+        assert info.value.variable == "PANEL_BASE_URL"
+        assert "panel-sentinel-xyz" not in str(info.value)
+        assert "panel-sentinel-xyz" not in repr(info.value)
+
+    def test_panel_base_url_is_not_required(self):
+        assert "PANEL_BASE_URL" not in REQUIRED_VARS
 
 
 class TestMissingRequired:
