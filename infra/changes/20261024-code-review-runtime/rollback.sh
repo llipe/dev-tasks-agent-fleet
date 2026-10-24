@@ -30,7 +30,16 @@ revert_step_8() {
 }
 
 revert_step_7() {
-  # Only while no runs reference the agent; otherwise disable it instead (step 8's revert).
+  # runs.agent_id is ON DELETE RESTRICT: once any run exists the row can't be
+  # deleted (and must not be: it would also cascade-delete webhook rules and
+  # schedules). Then keep it disabled (step 8's revert) and leave the migration
+  # recorded as applied.
+  local n
+  n="$(supabase db query --linked --output json "select count(*) as n from runs r join agents a on a.id = r.agent_id where a.slug = 'code-review'" | jq -r '.rows[0].n')"
+  if [[ "$n" != "0" ]]; then
+    echo "step 7: $n runs reference code-review; keeping the row disabled instead of deleting it"
+    return 0
+  fi
   supabase db query --linked "delete from agents where slug = 'code-review'"
   supabase db query --linked "delete from supabase_migrations.schema_migrations where version = '20261022120000'"
 }

@@ -9,7 +9,8 @@ history.
 
 Copy `runbook-template.md` to start a new one, and add a row here.
 
-| Runbook                                     | Trigger                                                                          | Owner    | Last verified                                   |
-| ------------------------------------------- | -------------------------------------------------------------------------------- | -------- | ----------------------------------------------- |
-| [webhook-deployment](webhook-deployment.md) | Enabling webhook triggers live, adding a GitHub endpoint, or rotating its secret | operator | never (local stack only, S-166)                 |
-| [ci-quality-gates](ci-quality-gates.md)     | CI red, or CI missing, on a PR or push to `main` or `integration/**`             | operator | never (trigger change, first run on its own PR) |
+| Runbook                                             | Trigger                                                                                                                                       | Owner    | Last verified                                    |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------ |
+| [webhook-deployment](webhook-deployment.md)         | Enabling webhook triggers live, adding a GitHub endpoint, or rotating its secret                                                              | operator | never (local stack only, S-166)                  |
+| [ci-quality-gates](ci-quality-gates.md)             | CI red, or CI missing, on a PR or push to `main` or `integration/**`                                                                          | operator | never (trigger change, first run on its own PR)  |
+| [code-review-deployment](code-review-deployment.md) | Deploying the code-review agent, changing its model, setting up the `/code-review` PR-comment trigger, or a review that fails or does nothing | operator | 2026-10-24 (live deploy; panel and webhook runs) |
