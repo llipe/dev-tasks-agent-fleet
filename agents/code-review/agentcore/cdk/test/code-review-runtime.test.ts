@@ -15,6 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { Template } from 'aws-cdk-lib/assertions';
 import { ConfigIO, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
 import { AgentCoreStack } from '../lib/cdk-stack';
@@ -288,5 +289,50 @@ describe('no secret material (TC-214-02)', () => {
     for (const [label, pattern] of SECRET_PATTERNS) {
       expect({ label, match: pattern.test(text) }).toEqual({ label, match: false });
     }
+  });
+});
+
+describe('override guard (DR-2)', () => {
+  // restrictRuntimeRole replaces the whole statement list, so a grant the construct
+  // (or later stack wiring: credentials, payments, connections) adds to the runtime
+  // role would otherwise vanish silently. Synth must fail instead.
+  function stackWithExtraStatement(statement: iam.PolicyStatement): cdk.Stack {
+    const cdkJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'cdk.json'), 'utf8'));
+    const app = new cdk.App({ context: cdkJson.context });
+    const stack = new AgentCoreStack(app, 'AgentCore-codereview-guard', {
+      spec,
+      env: { account: ACCOUNT, region: REGION },
+    });
+    for (const env of stack.application.environments.values()) {
+      env.runtime.role.addToPrincipalPolicy(statement);
+    }
+    return stack;
+  }
+
+  test('an unexpected grant on the runtime role fails synth', () => {
+    const stack = stackWithExtraStatement(
+      new iam.PolicyStatement({ actions: ['sts:AssumeRole'], resources: ['arn:aws:iam::123456789012:role/x'] })
+    );
+    expect(() => Template.fromStack(stack)).toThrow(/unexpected statement.*sts:AssumeRole/s);
+  });
+
+  test('a credential-provider grant added by the construct fails synth', () => {
+    const stack = stackWithExtraStatement(
+      new iam.PolicyStatement({
+        actions: ['bedrock-agentcore:GetResourceApiKey'],
+        resources: ['*'],
+      })
+    );
+    expect(() => Template.fromStack(stack)).toThrow(/bedrock-agentcore:GetResourceApiKey/);
+  });
+
+  test('the shipped configuration synthesizes without tripping the guard', () => {
+    const cdkJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'cdk.json'), 'utf8'));
+    const app = new cdk.App({ context: cdkJson.context });
+    const stack = new AgentCoreStack(app, 'AgentCore-codereview-clean', {
+      spec,
+      env: { account: ACCOUNT, region: REGION },
+    });
+    expect(() => Template.fromStack(stack)).not.toThrow();
   });
 });
