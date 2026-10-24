@@ -7,7 +7,6 @@ only as ``params.DEFAULTS``, which CT-21 checks against the seed.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -39,8 +38,11 @@ def test_no_owner_literal(path: Path) -> None:
 
 
 def test_params_has_no_project_or_label_default() -> None:
+    import params
+
+    assert "project" not in params.DEFAULTS, "params.py must not default `project`"
+    assert params.parse_params({"issue_number": 1}).project is None
     text = (PKG / "params.py").read_text()
-    assert not re.search(r'"project"\s*:', text), "params.py must not default `project`"
     assert "label" not in text.lower(), "params.py must not mention label params"
     assert "assignee" not in text.lower(), "params.py must not mention an assignee param"
 

@@ -189,7 +189,7 @@
   - [x] 5.5 [supabase] Mirror the row in `supabase/seed.sql`
   - [ ] 5.6 **Confirmation gate:** ask the user before applying the migration to any shared or cloud project
   - [ ] 5.7 [supabase] Apply after confirmation, then verify: `select slug, params_schema->'required' from agents where slug='bug-fix'`
-  - [ ] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
+  - [x] 5.8 `[I]` [agents/bug-fix] `params.py`: typed params, bounds and defaults (D-82)
   - [ ] 5.9 Edge cases: a `project` that fails the pattern; a 100-character status name; `trigger_comment_id` as a string
   - [ ] 5.10 Manual UI: `/agents/bug-fix/invoke` shows `issue_number` as required
   - [ ] 5.11 Verify AC (v2.0): AC1–AC3 and AC5 by 5.1; AC4 by 5.2
