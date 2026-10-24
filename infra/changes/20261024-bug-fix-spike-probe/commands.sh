@@ -21,3 +21,7 @@ aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --cli-read-timeout
 
 # Step 2b — re-probe on runtime v3 — 2026-10-24T14:43:38Z..14:45:28Z; run_id 99eb0cc5-3055-4d2d-8e93-39a426c88cc4
 #   session s182-probe2-20261024T144338-2bede17028fb4cd8; payload as step 2 with the new run_id; raw: backup/probe-run-2.sse (leak scan 0)
+
+# Step 1c — deploy fix-round-2 image (ALLOW_PROBE=1 kept) — applied 2026-10-24T15:09:17Z (runtime v3 -> v4); from story/S-182-sandbox-spike @ ac37b63; preview: image f3c16965 -> 150553e8 only
+(cd agents/bug-fix && agentcore deploy -y)
+# Step 2c — re-probe on v4 — 2026-10-24T15:09:30Z..15:09:56Z; run_id 9c65573e-7469-455f-909d-75df8151ab9e; session s182-probe3-20261024T150930-402f306bf88e43d6; raw backup/probe-run-3.sse (leak scan 0)
