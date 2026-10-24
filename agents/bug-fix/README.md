@@ -15,7 +15,8 @@ PRD: [`docs/requirements/prd-bug-fix-agent.md`](../../docs/requirements/prd-bug-
 | `agents` seed row and typed params (`params.py`, not yet wired into `main.py`) | S-184 |
 | Markers, neutralizer, comments and reactions, idempotent disposition, SIGTERM disposition hook (`markers.py`, `neutralize.py`, `issues.py`, `disposition.py`; not yet wired into `main.py`) | S-186 |
 | Shared GitHub client with the retry policy, token permissions, issue facts and linked PRs, refusal checks and the marked reply (`github_client.py`, `refusal.py`; not yet wired into `main.py`) | S-185 |
-| Claim, checkout, orchestration | S-188, S-189, S-190 |
+| Claim with the post-claim race check, `PANEL_BASE_URL` run link (`claim.py`; not yet wired into `main.py`) | S-188 |
+| Checkout, orchestration | S-189, S-190 |
 | Fix runner, validation, red-to-green, Draft PR, confinement | Wave B (S-191–S-195) |
 
 ## Layout
@@ -35,14 +36,15 @@ agents/bug-fix/
     ├── srt-settings.json          # sandbox-runtime policy for fixer scripts -> /etc/bug-fix/
     ├── pyproject.toml
     ├── main.py                    # AgentCore entrypoint (stub + probe-mode hook)
-    ├── config.py                  # typed env config (ConfigError)
+    ├── config.py                  # typed env config (ConfigError); run link from PANEL_BASE_URL
     ├── params.py                  # typed run params: schema bounds, seed-equal defaults (S-184)
-    ├── markers.py                 # build, parse, trust-check comment markers; open claims (S-186)
+    ├── markers.py                 # build, parse, trust-check comment markers; the one open-claim rule (S-186, DF-33)
     ├── neutralize.py              # model-text neutralizer: closing refs, @mentions (S-186)
     ├── github_client.py           # shared GitHub REST/GraphQL client: retries, typed errors, Link header (S-185)
     ├── issues.py                  # issue facts, linked PRs (S-185); comments and reactions (S-186); App token
     ├── refusal.py                 # preflight, refusal checks, marked refusal reply (S-185)
     ├── disposition.py             # diagnosis comment + 😕, once per run, after ownership (S-186)
+    ├── claim.py                   # claim comment + 👀, post-claim race check, ownership gate (S-188)
     ├── sandbox.py                 # starts fixer processes: setpriv drop, env, sandbox, timeout
     ├── fixer_exec.py              # runs as fixer after setpriv; rebuilds the env, refuses root
     ├── probe.py                   # S-182 spike checks (probe mode)
@@ -70,6 +72,7 @@ Set in `agentcore/agentcore.json`. Only secret **IDs** are configured; the wrapp
 | `MODEL_ID` | yes | An Anthropic API model id, default `claude-sonnet-5-5` (D-43). A cloud inference-profile id is rejected. |
 | `PROJECTS_TOKEN_SECRET_ID` | no | `agent-fleet/prod/GITHUB_PROJECTS_TOKEN` (D-99). Absent: the board is disabled (`no_token_secret_id`); the run continues. |
 | `BOARD_UPDATES_ENABLED` | no | `1` or `0`. Absent or `0`: the board is disabled (`flag_off`). Any other value is a config error. |
+| `PANEL_BASE_URL` | no | `https://dt-agent-fleet-panel.fly.dev`, a bare `https` origin. `Config.run_link(run_id)` returns `<origin>/runs/<run_id>`, the run link in agent comments. Absent: comments name the run id instead. Anything but an `https` origin with no path is a config error (S-188). |
 
 `config.load_config()` raises `ConfigError(variable, reason)` for a missing, blank or invalid required variable. The message names the variable, never its value. The entrypoint maps it to `failed` / `CONFIG_INVALID`.
 
@@ -99,11 +102,22 @@ Every comment the agent posts starts with a hidden marker block, one line per ru
 
 - `markers.parse_block()` reads only the leading block from line 1 (D-80). A line must match the grammar exactly: a lowercase UUID, a known kind and a known refusal reason. A CRLF line end is accepted.
 - `markers.is_trusted()` trusts a comment only when `performed_via_github_app.id` equals the fleet App id (`TokenContext.app_id`, from the `github_installations` row) and `user.type == "Bot"`. The login is never consulted (D-53).
-- `markers.open_claims()` lists trusted claims that no trusted `pr` or `disposition` marker for the same run has closed, ordered by integer comment id. A refusal never opens or closes a claim.
+- `markers.open_claims()` is the one definition of an open claim (DF-33): a trusted claim with no trusted `pr`, `disposition` or `refusal` marker for the same run, ordered by integer comment id. A refusal never opens a claim; it closes only its own run's. Refusal (d) and the post-claim race check both use it, then drop claims whose run is terminal in `v_runs.effective_status` (`refusal.active_claim_runs()`).
 - `neutralize.neutralize()` turns a closing keyword plus a reference into `(ref <reference>)` and puts U+200B after every `@` (D-65).
-- `issues.IssuesClient` posts and lists comments and adds the `eyes`, `rocket` and `confused` reactions with the App installation token. A missing `trigger_comment_id` skips the reaction with no call, and a reaction 4xx is logged, not raised. Bodies are cut to 65,536 UTF-16 units.
+- `issues.IssuesClient` posts, lists and deletes comments (`delete_comment()`: idempotent, a 404 means already gone) and adds the `eyes`, `rocket` and `confused` reactions with the App installation token. A missing `trigger_comment_id` skips the reaction with no call, and a reaction 4xx is logged, not raised. Bodies are cut to 65,536 UTF-16 units.
 - `disposition.Disposer` posts the diagnosis comment (why the run stopped, what was tried, the diffstat when a cap was hit), then 😕, then the board hook. It writes no label or assignee and never edits the issue (D-93). It does nothing before `confirm_ownership()` (D-81), and nothing when a trusted `disposition` marker for the run already exists or a disposition is already in flight in the process. The one exception is the SIGTERM backstop: a disposition the dying process can't finish (for example the `finally` path suspended under the signal handler) is taken over. An owner that hasn't started posting is preempted so it can't post as well, and a post that may have landed is re-checked against the trusted marker first. Model text is scrubbed, neutralized, and has `<!--` defused (D-85).
-- `signal_backstop.install_termination_backstop(..., get_disposition=disposer.backstop_action)` runs that disposition on SIGTERM with a 10-second budget before `fail()`, and the `fail()` detail says what it did (posted, already posted, skipped, failed or abandoned). Wiring it into `main.py` is S-188/S-190.
+- `signal_backstop.install_termination_backstop(..., get_disposition=disposer.backstop_action)` runs that disposition on SIGTERM with a 10-second budget before `fail()`, and the `fail()` detail says what it did (posted, already posted, skipped, failed or abandoned). Wiring it into `main.py` is S-190.
+
+## Claim and race check (S-188, spec §8.6)
+
+`claim.Claimer.claim()` (or `claim.claim_issue()`) is the `claim` step, run after the refusal checks pass. Wiring it into `main.py` is S-190.
+
+1. **Claim.** Post the claim comment (the `claim` marker, then `🔧 Bug-fix run <run link> is working on this issue.`), then 👀 on `trigger_comment_id` when present. A manual invoke has none, so no reaction is made. A reaction fault is a `run_event`, never fatal. No label or assignee is written (D-93).
+2. **Post-check** (D-54). List the comments; `claim.race_winner()` finds the earliest open claim (DF-33) with a lower comment id than this run's whose run is `queued` or `running`. The integer comment id decides, so same-second claims still have one winner. A missing `v_runs` row counts as finished and an unknown status fails closed, both reported as `run_event` warnings.
+3. **Lost race.** Delete only this run's own comment and end `succeeded`/`not_applicable`, `result.reason = active_run`, naming the winning run. No board call and no disposition. The loser's 👀 stays, as spec §8.6 is written (DF-32). A 404 on the `DELETE` is logged as already gone; any other `DELETE` fault ends `failed` with its D-67 code.
+4. **Ownership gate** (D-81). Only a won race calls `Disposer.confirm_ownership()`, then the `board_in_progress` hook (best effort). A post-check fault (`SUPABASE_UNAVAILABLE`, or a GitHub fault on the listing) keeps the claim comment, confirms nothing and ends `failed`, so neither the `finally` path nor the SIGTERM backstop disposes.
+
+A crashed run leaves its claim comment and 👀. Refusal (d) blocks a new `/bug-fix` only while that run is non-terminal; once the reaper marks it `timed_out`, a new run proceeds (AC-24, D-94).
 
 ## Refusal checks (S-185, spec §8.2)
 
@@ -200,7 +214,7 @@ make image-smoke    # build, then scripts/image-smoke.sh bug-fix:local
 
 The repo-root `make validate` includes this package.
 
-`tests/component/fake_github.py` is an in-memory GitHub REST and GraphQL double at the `requests.Session` boundary, used by `test_issues.py`, `test_disposition.py`, `test_refusal.py` and `test_label_invariance.py`. It serves comments, reactions, issue facts, open pulls and the closing-reference query (with each PR's repository, for cross-repo cases), with per-route fault injection, 3xx answers (`redirect()`), and a record of each request's `allow_redirects`. It hands the client pre-parsed `links`, so `tests/unit/test_github_client.py` covers the real `Link` header parsing. The marker grammar is pinned by golden bodies in `tests/fixtures/contract/markers/` (CT-32).
+`tests/component/fake_github.py` is an in-memory GitHub REST and GraphQL double at the `requests.Session` boundary, used by `test_issues.py`, `test_disposition.py`, `test_refusal.py`, `test_claim.py` and `test_label_invariance.py`. It serves comments (list, post, delete), reactions, issue facts, open pulls and the closing-reference query (with each PR's repository, for cross-repo cases), with per-route fault injection, 3xx answers (`redirect()`), and a record of each request's `allow_redirects`. It hands the client pre-parsed `links`, so `tests/unit/test_github_client.py` covers the real `Link` header parsing. The marker grammar is pinned by golden bodies in `tests/fixtures/contract/markers/` (CT-32).
 
 `tests/component/test_sandbox_proc.py` runs the real command chain with real processes. Only `setpriv` and `srt` are replaced by exec-through shims, and the sweep is scoped to a per-test marker (the production sweep would kill every process of the current user).
 
