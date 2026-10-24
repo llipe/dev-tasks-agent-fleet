@@ -72,6 +72,7 @@ describe('agentcore.json (AC-1)', () => {
       SUPABASE_KEY_SECRET_ID: 'agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY',
       MODEL_ID,
       PANEL_BASE_URL: 'https://dt-agent-fleet-panel.fly.dev',
+      AWS_REGION: 'us-east-1', // spec §9; AgentCore also injects it
     });
     expect(env.MODEL_ID).not.toMatch(/^arn:/);
   });
