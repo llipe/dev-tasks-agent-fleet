@@ -14,6 +14,7 @@ from botocore.exceptions import ClientError
 
 from credentials import (
     CredentialError,
+    MintedToken,
     TokenContext,
     _fetch_pem,
     _get_installation,
@@ -212,6 +213,7 @@ class TestGetInstallation:
             {"app_id": 123, "installation_id": 456, "private_key_secret_arn": "arn:aws:sm:..."}
         ]
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.status_code = 201
         mock_requests.get.return_value = mock_resp
 
         row = _get_installation("myorg", "https://proj.supabase.co", "sbp_key")
@@ -228,6 +230,7 @@ class TestGetInstallation:
         mock_resp = MagicMock()
         mock_resp.json.return_value = []
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.status_code = 201
         mock_requests.get.return_value = mock_resp
 
         with pytest.raises(CredentialError) as exc_info:
@@ -288,6 +291,7 @@ class TestMintInstallationToken:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"token": "ghs_installation_token"}
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.status_code = 201
         mock_requests.post.return_value = mock_resp
 
         token = mint_installation_token(app_id=100, installation_id=200, pem="-----BEGIN RSA...")
@@ -349,16 +353,16 @@ class TestMintInstallationToken:
 
 
 class TestRefreshIfStale:
-    @patch("credentials.mint_installation_token")
+    @patch("credentials.mint_installation")
     def test_does_not_refresh_when_fresh(self, mock_mint):
         ctx = TokenContext(token="old", issued_at=time.monotonic(), installation_id=1)
         result = refresh_if_stale(ctx, pem="pem", app_id=100)
         mock_mint.assert_not_called()
         assert result is ctx
 
-    @patch("credentials.mint_installation_token")
+    @patch("credentials.mint_installation")
     def test_refreshes_when_stale(self, mock_mint):
-        mock_mint.return_value = "new_token"
+        mock_mint.return_value = MintedToken("new_token", {"issues": "write"})
         ctx = TokenContext(token="old", issued_at=time.monotonic() - (46 * 60), installation_id=1)
         result = refresh_if_stale(ctx, pem="pem", app_id=100)
         mock_mint.assert_called_once_with(100, 1, "pem")
@@ -372,7 +376,9 @@ class TestRefreshIfStale:
 
 
 class TestResolveGithubCredentials:
-    @patch("credentials.mint_installation_token")
+    # S-185: resolution mints through ``mint_installation``, which also returns
+    # the token's ``permissions`` (D-58).
+    @patch("credentials.mint_installation")
     @patch("credentials._fetch_pem")
     @patch("credentials._get_installation")
     def test_happy_path(self, mock_get_inst, mock_fetch_pem, mock_mint):
@@ -382,7 +388,7 @@ class TestResolveGithubCredentials:
             "private_key_secret_arn": "arn:aws:sm:us-east-1:123:secret/key",
         }
         mock_fetch_pem.return_value = "-----BEGIN RSA PRIVATE KEY-----\n..."
-        mock_mint.return_value = "ghs_resolved"
+        mock_mint.return_value = MintedToken("ghs_resolved", {"issues": "write"})
 
         ctx = resolve_github_credentials("myorg", "https://sb.co", "key123")
 
@@ -393,9 +399,11 @@ class TestResolveGithubCredentials:
         assert ctx.installation_id == 20
         # S-186: the fleet App id that marker trust checks against (D-53).
         assert ctx.app_id == 10
+        # S-185: the minted token's permissions (D-58).
+        assert ctx.permissions == {"issues": "write"}
 
     @pytest.mark.parametrize("app_id", ["10", True, False, 10.0, None, 0, -3, [10], {"id": 10}])
-    @patch("credentials.mint_installation_token")
+    @patch("credentials.mint_installation")
     @patch("credentials._fetch_pem")
     @patch("credentials._get_installation")
     def test_a_non_int_app_id_is_a_typed_error(
@@ -423,9 +431,9 @@ class TestResolveGithubCredentials:
     def test_token_context_built_by_hand_may_omit_the_app_id(self):
         assert TokenContext(token="t", issued_at=0.0, installation_id=1).app_id is None
 
-    @patch("credentials.mint_installation_token")
+    @patch("credentials.mint_installation")
     def test_refresh_keeps_the_app_id(self, mock_mint):
-        mock_mint.return_value = "ghs_new"
+        mock_mint.return_value = MintedToken("ghs_new", {"issues": "write"})
         old = TokenContext(token="ghs_old", issued_at=0.0, installation_id=20, app_id=10)
         with patch("credentials.time.monotonic", return_value=10_000.0):
             new = refresh_if_stale(old, "pem", 10)

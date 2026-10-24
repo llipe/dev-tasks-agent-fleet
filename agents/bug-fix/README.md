@@ -14,7 +14,8 @@ PRD: [`docs/requirements/prd-bug-fix-agent.md`](../../docs/requirements/prd-bug-
 | Sandbox spike; pins the managed-settings key names | S-182 |
 | `agents` seed row and typed params (`params.py`, not yet wired into `main.py`) | S-184 |
 | Markers, neutralizer, comments and reactions, idempotent disposition, SIGTERM disposition hook (`markers.py`, `neutralize.py`, `issues.py`, `disposition.py`; not yet wired into `main.py`) | S-186 |
-| Refusal checks, claim, checkout, orchestration | S-185, S-188, S-189, S-190 |
+| Shared GitHub client with the retry policy, token permissions, issue facts and linked PRs, refusal checks and the marked reply (`github_client.py`, `refusal.py`; not yet wired into `main.py`) | S-185 |
+| Claim, checkout, orchestration | S-188, S-189, S-190 |
 | Fix runner, validation, red-to-green, Draft PR, confinement | Wave B (S-191–S-195) |
 
 ## Layout
@@ -38,7 +39,9 @@ agents/bug-fix/
     ├── params.py                  # typed run params: schema bounds, seed-equal defaults (S-184)
     ├── markers.py                 # build, parse, trust-check comment markers; open claims (S-186)
     ├── neutralize.py              # model-text neutralizer: closing refs, @mentions (S-186)
-    ├── issues.py                  # issue comments and reactions, App token (S-186)
+    ├── github_client.py           # shared GitHub REST/GraphQL client: retries, typed errors, Link header (S-185)
+    ├── issues.py                  # issue facts, linked PRs (S-185); comments and reactions (S-186); App token
+    ├── refusal.py                 # preflight, refusal checks, marked refusal reply (S-185)
     ├── disposition.py             # diagnosis comment + 😕, once per run, after ownership (S-186)
     ├── sandbox.py                 # starts fixer processes: setpriv drop, env, sandbox, timeout
     ├── fixer_exec.py              # runs as fixer after setpriv; rebuilds the env, refuses root
@@ -48,7 +51,7 @@ agents/bug-fix/
     ├── heartbeat.py               # copied: stream keep-alive
     ├── signal_backstop.py         # copied + extended: SIGTERM disposition (10 s budget), terminal report
     ├── scrubber.py                # copied + extended: secret redaction
-    ├── credentials.py             # copied + extended: Supabase key, App token + App id, fetch_secret_string
+    ├── credentials.py             # copied + extended: Supabase key, App token + App id + permissions, fetch_secret_string
     ├── scripts/image-smoke.sh     # image assertions
     └── tests/{unit,component,fixtures/contract}/   # contract: params_schema.json (spec §5.2), payloads, marker goldens
 ```
@@ -101,6 +104,18 @@ Every comment the agent posts starts with a hidden marker block, one line per ru
 - `issues.IssuesClient` posts and lists comments and adds the `eyes`, `rocket` and `confused` reactions with the App installation token. A missing `trigger_comment_id` skips the reaction with no call, and a reaction 4xx is logged, not raised. Bodies are cut to 65,536 UTF-16 units.
 - `disposition.Disposer` posts the diagnosis comment (why the run stopped, what was tried, the diffstat when a cap was hit), then 😕, then the board hook. It writes no label or assignee and never edits the issue (D-93). It does nothing before `confirm_ownership()` (D-81), and nothing when a trusted `disposition` marker for the run already exists or a disposition is already in flight in the process. The one exception is the SIGTERM backstop: a disposition the dying process can't finish (for example the `finally` path suspended under the signal handler) is taken over. An owner that hasn't started posting is preempted so it can't post as well, and a post that may have landed is re-checked against the trusted marker first. Model text is scrubbed, neutralized, and has `<!--` defused (D-85).
 - `signal_backstop.install_termination_backstop(..., get_disposition=disposer.backstop_action)` runs that disposition on SIGTERM with a 10-second budget before `fail()`, and the `fail()` detail says what it did (posted, already posted, skipped, failed or abandoned). Wiring it into `main.py` is S-188/S-190.
+
+## Refusal checks (S-185, spec §8.2)
+
+`refusal.run_refusal_checks()` is the `preflight` and `refuse` step. It makes no claim and no board call. Wiring it into `main.py` is S-190.
+
+1. **Preflight.** A credential failure ends `failed`/`CREDENTIALS_UNAVAILABLE`, a failed token mint included (a non-2xx is a typed `CredentialError`, never a raw `HTTPError`). `refresh_if_stale` re-mints with the new token's own `permissions` and raises `PermissionMissing` (`GITHUB_PERMISSION_MISSING`) if it lost `issues: write`. A token without `issues: write` in its minted `permissions` ends `failed`/`GITHUB_PERMISSION_MISSING` with no GitHub call (D-58). A `params.py` error is refusal `invalid_params`; when there is no usable `issue_number`, nothing is written (D-82).
+2. **Checks**, in order, first match wins, each later check run only if needed (D-92): `pull_request` (the `GET /issues/{n}` payload has `pull_request`), `closed`, `linked_pr` (an open PR from GraphQL `closedByPullRequestsReferences`, or an open PR whose head starts with `issue/<N>-`, forks included; D-55), and `active_run` (a trusted claim with no trusted `pr`, `disposition` or `refusal` marker for its run, whose run is `queued` or `running` in `v_runs.effective_status`). A claim whose run has no `v_runs` row counts as terminal, with a `run_event` warning; an `effective_status` outside the known active and terminal sets ends `SUPABASE_UNAVAILABLE`, also with a warning. A closing PR in another repository is named `owner/repo#M`; a same-repo PR is preferred, then the lowest `(owner/repo, number)`. A 404 on the issue is `invalid_params` with no write. Labels and the commenter are never read (D-90, D-91).
+3. **Reply** (D-104). One comment: the `refusal` marker, one fixed sentence per code, and `Run: <link>`. Its only variable parts (the issue number, `#M` or `owner/repo#M`, a `repo_gate` item, an `invalid_params` key) come from closed sets or GitHub's name grammar. No reaction. The run ends `succeeded`/`not_applicable` with `result.reason`. A failed reply post is a `run_event`; the outcome doesn't change.
+
+Faults are never read as "no match" (D-67): exhausted GitHub retries, a spent wait budget, or a page cap reached with pages left (100 REST pages, 20 GraphQL pages) end `GITHUB_UNAVAILABLE`; a 3xx, another 4xx or a permanent GraphQL error `GITHUB_REQUEST_REJECTED`; a `v_runs` read failure or unknown status `SUPABASE_UNAVAILABLE`. All with no write.
+
+`github_client.GitHubClient` is the shared transport. A request is tried at most 3 times. Reads (`GET`, GraphQL queries) retry transport errors, 5xx and rate limits with backoff (1 s, 2 s). Writes retry only rate limits, because GitHub may already have applied a write that answered 5xx. `Retry-After` and `x-ratelimit-reset` are honoured up to 60 s, so GitHub's common secondary-limit `Retry-After: 60` is retried; a longer wait gives up at once. A secondary limit with no usable header waits 60 s, as GitHub advises. Every logical operation (a call, a paged list, a GraphQL query with its own `RATE_LIMITED` retries) runs against one monotonic deadline, 120 s unless the caller sets one with `GitHubClient.deadline()`. A wait that would pass it is not taken, and the call ends `GITHUB_UNAVAILABLE`. A GraphQL `errors[]` of transient types (`RATE_LIMITED`, `INTERNAL`, `SERVER_ERROR`, `TIMEOUT`, `SERVICE_UNAVAILABLE`, or untyped with a 5xx-like message) is retried like a 5xx; any other ends `GITHUB_REQUEST_REJECTED` at once. Redirects are never followed (`allow_redirects=False` on every GitHub and Supabase request); a redirected write is never reported as posted. A 404 is data where the caller says so. `next_link()` parses the real `Link` header itself, matching `rel` only as a whole parameter name. `issues.IssuesClient` is built on it.
 
 ## Image
 
@@ -185,7 +200,7 @@ make image-smoke    # build, then scripts/image-smoke.sh bug-fix:local
 
 The repo-root `make validate` includes this package.
 
-`tests/component/fake_github.py` is an in-memory GitHub REST double at the `requests.Session` boundary, used by `test_issues.py` and `test_disposition.py`. The marker grammar is pinned by golden bodies in `tests/fixtures/contract/markers/` (CT-32).
+`tests/component/fake_github.py` is an in-memory GitHub REST and GraphQL double at the `requests.Session` boundary, used by `test_issues.py`, `test_disposition.py`, `test_refusal.py` and `test_label_invariance.py`. It serves comments, reactions, issue facts, open pulls and the closing-reference query (with each PR's repository, for cross-repo cases), with per-route fault injection, 3xx answers (`redirect()`), and a record of each request's `allow_redirects`. It hands the client pre-parsed `links`, so `tests/unit/test_github_client.py` covers the real `Link` header parsing. The marker grammar is pinned by golden bodies in `tests/fixtures/contract/markers/` (CT-32).
 
 `tests/component/test_sandbox_proc.py` runs the real command chain with real processes. Only `setpriv` and `srt` are replaced by exec-through shims, and the sweep is scoped to a per-test marker (the production sweep would kill every process of the current user).
 

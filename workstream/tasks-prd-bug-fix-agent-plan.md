@@ -15,6 +15,8 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.7 | 2026-10-24 | S-185 fix round (developer), from the QA gate and the S-185 fidelity report: page caps with pages left raise `GITHUB_UNAVAILABLE` (QA 1); an unknown `v_runs.effective_status` is `SUPABASE_UNAVAILABLE` with a `run_event` warning, and the missing-row warning is a `run_event` too (QA 2, DF-185-03); no request follows a redirect, a 3xx is `GITHUB_REQUEST_REJECTED` (QA 3); the `Link` parser matches `rel` as a whole parameter (QA 4); one 120 s wait budget per logical operation, `Retry-After` honoured up to 60 s (QA 5, DF-185-06); a failed mint is a `CredentialError`, and a refresh re-checks `issues: write` on the new token (QA 6); GraphQL `errors[]` split into transient (retry, then `GITHUB_UNAVAILABLE`) and permanent (`GITHUB_REQUEST_REJECTED`) (DF-185-05); a cross-repo linked PR is named `owner/repo#M` (DF-185-07, CT-33); agent-side CT-34 table (DF-185-08 partial; the L2.5 real-database read remains). No new public error code. DF-185-01/02/04 unchanged. | developer |
+| 2.0.6 | 2026-10-24 | S-185 (developer): 6.1–6.9 checked (test-first; agent gate green, 1858 passed, coverage 97.76%). 6.10 base corrected to `integration/bug-fix-agent-wave-a`; Draft PR #453 open, `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.5 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. 7.2 notes the D-65 amendment (references kept as written). 6.2 and 9.2 name the in-repo GitHub double (`fake_github.py`) instead of `responses`; 6.3 adds a parser-level `Link`-header unit test. S-199 is outside this Wave A list; its stories and test plan carry the same harness. | product-engineer |
 | 2.0.4 | 2026-10-24 | S-186 (developer): 7.1–7.10 checked (test-first; `make validate` green, 1136 passed, coverage 97.89%). 7.11 base corrected to `integration/bug-fix-agent-wave-a`; Draft PR #451 open, `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.3 | 2026-10-24 | S-184 (developer): 5.1–5.5, 5.8, 5.9 and 5.11 checked; migration `20261024130000_seed_bug_fix_agent.sql` verified on the local stack only. 5.6/5.7 (cloud apply gate), 5.10 (manual UI), 5.12 (`coverage_gate`, cloud part) and 5.13 (verifier) left to the planner. Relevant Files updated. | developer |
@@ -52,7 +54,7 @@
 - `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, util-linux (`setpriv`), libnss-myhostname + `/etc/gai.conf` (`localhost` without `/etc/hosts`, D-111), pinned Claude Code and sandbox runtime; the wrapper runs as root, no `sudo` (D-110)
 - `agents/bug-fix/app/bugFix/managed-settings.json` - Managed Claude Code policy, installed at `/etc/claude-code/`
 - `agents/bug-fix/app/bugFix/{Makefile,pyproject.toml}` - Agent quality gates
-- `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended; S-186: `signal_backstop.py` disposition hook with a 10 s budget, `TokenContext.app_id` in `credentials.py`)
+- `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended; S-186: `signal_backstop.py` disposition hook with a 10 s budget, `TokenContext.app_id` in `credentials.py`; S-185: `mint_installation`, `TokenContext.permissions` and `has_issues_write` in `credentials.py`)
 - `agents/bug-fix/app/bugFix/config.py` - Typed env config
 - `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration
 - `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9)
@@ -61,27 +63,27 @@
 - `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105, D-110: `setpriv.*`, `noescalate.*`, `userns.available`)
 - `agents/bug-fix/app/bugFix/probe_inner.py` - The probe's `fixer`-side helper, stdlib only (S-182)
 - `agents/bug-fix/app/bugFix/srt-settings.json` - `/etc/bug-fix/srt-settings.json`: sandbox-runtime policy for `fixer` scripts (S-182)
-- `agents/bug-fix/app/bugFix/params.py` - Typed params: spec §5.2 v2.0 bounds and seed-equal defaults (S-184, D-82, D-93)
-- `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL); S-186: comments, reactions, 65,536-unit truncation
+- `agents/bug-fix/app/bugFix/params.py` - Typed params: spec §5.2 v2.0 bounds and seed-equal defaults (S-184, D-82, D-93); `SCHEMA_KEYS` for the `invalid_params` closed set (S-185)
+- `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL); S-186: comments, reactions, 65,536-unit truncation; S-185: built on `github_client.py`, issue facts (`IssueFacts`), linked PRs (closing references plus `issue/<N>-` heads)
 - `agents/bug-fix/app/bugFix/markers.py` - Claim, disposition, refusal and `pr` markers; leading block, trust, open claims (S-186)
 - `agents/bug-fix/app/bugFix/disposition.py` - Idempotent, ownership-gated disposition (S-186)
-- `agents/bug-fix/app/bugFix/refusal.py` - Refusal checks and reply
-- `agents/bug-fix/app/bugFix/github_client.py` - Shared GitHub client and retry policy
+- `agents/bug-fix/app/bugFix/refusal.py` - Preflight, refusal checks and the marked reply; `v_runs` reader (S-185)
+- `agents/bug-fix/app/bugFix/github_client.py` - Shared GitHub client: retry policy, typed errors, GraphQL queries, `Link` header parsing (S-185)
 - `agents/bug-fix/app/bugFix/neutralize.py` - Model-text neutralizer (S-186)
 - `agents/bug-fix/app/bugFix/claim.py` - Claim and race check
 - `agents/bug-fix/app/bugFix/toolchain.py` - Stack detection and repo gate (copied from `dependency-update`, extended)
 - `agents/bug-fix/app/bugFix/checkout.py` - Clone and install
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner
 - `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`)
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`; S-185: `unit/test_{refusal,github_client,permissions}.py`, `component/test_{refusal,label_invariance}.py`, extended `fake_github.py`, `unit/test_{credentials,comment_bodies_property}.py` and `tests/conftest.py`)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/{params_schema,payload.webhook,payload.manual}.json` - Panel → agent contract fixtures; `params_schema.json` is the spec §5.2 v2.0 copy shared with the panel tests (S-184)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/markers/{*.md,expected.json,.gitattributes}` - CT-32 golden marker bodies, byte-exact (S-186)
-- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section)
+- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section; S-185: refusal checks section)
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
 - `Makefile` - Repo-root `AGENT_DIRS` includes `agents/bug-fix/app/bugFix` (S-180)
 - `.github/workflows/ci.yml` - `python-quality` matrix entry for `bug-fix` (S-180)
-- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186)
+- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186); GraphQL and fault injection in the double, `Link` header at L1, RT-13, no-sleep retry fixture (S-185)
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema, webhook-resolve check, and the webhook fire at the seeded runtime ARN (S-184)
 - `panel/tests/unit/bug-fix-params-schema.test.ts` - TC-184-07 boundary table through the panel's Ajv (S-184)
 - `panel/tests/fixtures/github/issue_comment.created.json` - `issue_comment.created` payload, modeled on GitHub's documented shape (not recorded) (S-184)
@@ -204,27 +206,28 @@
     > Local run done (2026-10-24, developer): `supabase db reset --local`, `test:integration` 42 files / 328 tests with `REQUIRE_LOCAL_DB=1`, agent `make validate` green. Panel `audit` fails on a pre-existing advisory outside this story (`zod` via `agents/dependency-update/agentcore/cdk`). Open: `coverage_gate` (planner's `qa-engineer`) and the post-apply cloud check.
   - [x] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
-- [ ] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply
+- [x] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply
 
   > Note: D-92, D-104. This replaces the label and assignee preflight; the linked-PR check moves here from the old 8.0.
 
-  - [ ] 6.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_refusal.py`:
+  - [x] 6.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_refusal.py`:
     - the decision table, first match wins: `pull_request`, `closed`, `linked_pr`, `active_run`, plus `invalid_params`;
     - fixed text per code (snapshot);
     - a refusal marker is never a claim (D-92, D-104).
-  - [ ] 6.2 `[T]` [agents/bug-fix] L2 `tests/component/test_refusal.py` with the in-repo GitHub double `tests/component/fake_github.py`, not `responses` (DF-186-02):
+  - [x] 6.2 `[T]` [agents/bug-fix] L2 `tests/component/test_refusal.py` with the in-repo GitHub double `tests/component/fake_github.py`, not `responses` (DF-186-02):
     - each code posts exactly one marked reply, with no reaction, claim or board call;
     - the happy path proceeds;
     - a reply-post failure is logged and the outcome is unchanged;
     - missing `issues: write` → `failed`/`GITHUB_PERMISSION_MISSING` (D-58).
-  - [ ] 6.3 `[T]`/`[I]` [agents/bug-fix] `github_client.py`: 5xx and secondary rate limits retried 3 times, then `GITHUB_UNAVAILABLE`; an unexpected 4xx on a write → `GITHUB_REQUEST_REJECTED` (D-67); an L1 parser-level test of real `Link`-header pagination parsing, which the L2 double does not exercise (DF-186-02)
-  - [ ] 6.4 `[I]` [agents/bug-fix] `credentials.py`: return the minted token's `permissions` (D-58)
-  - [ ] 6.5 `[I]` [agents/bug-fix] `issues.py`: issue facts (`state`, `pull_request`), and linked PRs through GraphQL `closedByPullRequestsReferences` plus open PRs with head `issue/<N>-` (D-55)
-  - [ ] 6.6 `[I]` [agents/bug-fix] `refusal.py`: checks in order; `active_run` reads trusted claim markers and `v_runs.effective_status` (a Supabase failure → `SUPABASE_UNAVAILABLE`); the reply with the `refusal` marker and fixed text (D-92, D-104)
-  - [ ] 6.7 Edge cases: an issue that is both closed and a PR; a linked PR from a fork; an untrusted claim marker (ignored); a terminal claim (proceeds)
-  - [ ] 6.8 Verify AC (v2.0): AC1–AC5 by 6.1–6.3
-  - [ ] 6.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 6.10 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [x] 6.3 `[T]`/`[I]` [agents/bug-fix] `github_client.py`: 5xx and secondary rate limits retried 3 times, then `GITHUB_UNAVAILABLE`; an unexpected 4xx on a write → `GITHUB_REQUEST_REJECTED` (D-67); an L1 parser-level test of real `Link`-header pagination parsing, which the L2 double does not exercise (DF-186-02)
+  - [x] 6.4 `[I]` [agents/bug-fix] `credentials.py`: return the minted token's `permissions` (D-58)
+  - [x] 6.5 `[I]` [agents/bug-fix] `issues.py`: issue facts (`state`, `pull_request`), and linked PRs through GraphQL `closedByPullRequestsReferences` plus open PRs with head `issue/<N>-` (D-55)
+  - [x] 6.6 `[I]` [agents/bug-fix] `refusal.py`: checks in order; `active_run` reads trusted claim markers and `v_runs.effective_status` (a Supabase failure → `SUPABASE_UNAVAILABLE`); the reply with the `refusal` marker and fixed text (D-92, D-104)
+  - [x] 6.7 Edge cases: an issue that is both closed and a PR; a linked PR from a fork; an untrusted claim marker (ignored); a terminal claim (proceeds)
+  - [x] 6.8 Verify AC (v2.0): AC1–AC5 by 6.1–6.3
+  - [x] 6.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+    > Local run done (2026-10-24, developer): agent gate green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 1858 passed, 3 xfailed, coverage 97.76%, `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
+  - [x] 6.10 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [x] 7.0 Implement Story S-186 (#368 - https://github.com/llipe/dev-tasks-agent-fleet/issues/368): Markers, reactions and the idempotent disposition
 

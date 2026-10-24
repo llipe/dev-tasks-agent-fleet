@@ -1,11 +1,19 @@
 # Copied from agents/security-analyst/app/securityAnalyst/credentials.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
 # Extended (S-182): `fetch_secret_string`, a generic Secrets Manager read used for
-# the Anthropic key and the Projects token (D-50, D-99). Spec §8.1 extends it
-# further in later stories: token permissions (D-58).
+# the Anthropic key and the Projects token (D-50, D-99).
 # Extended (S-186): `TokenContext.app_id`, the fleet App id from the
 # `github_installations` row, which marker trust checks against (D-53). A non-int
 # or bool `app_id` is a typed `INVALID_APP_ID` error.
+# Extended (S-185): the minted token's `permissions` (D-58). `mint_installation`
+# returns the token and its permissions, `TokenContext.permissions` carries them,
+# and `has_issues_write` is the preflight check. `mint_installation_token` keeps
+# the sibling's token-only signature.
+# Extended (S-185 fix round, QA 6): a non-2xx mint (3xx included; redirects are
+# never followed) or a body without a token is `CredentialError("TOKEN_MINT_FAILED")`,
+# never a raw `requests.HTTPError`. `refresh_if_stale` takes the new token's own
+# `permissions` and raises `PermissionMissing` if it lost `issues: write`.
+# `CredentialError.error_code` names the run's `error_code`.
 """
 Credential resolution — Supabase service role key from Secrets Manager
 and GitHub App installation token minting.
@@ -15,7 +23,10 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, NamedTuple
 
 import boto3
 import jwt
@@ -26,12 +37,32 @@ from config import SUPABASE_KEY_SECRET_ID, SUPABASE_URL, TOKEN_STALE_THRESHOLD_M
 
 
 class CredentialError(Exception):
-    """Raised when credential resolution fails."""
+    """Raised when credential resolution fails.
+
+    ``code`` is the internal reason (``PEM_UNAVAILABLE``, ``TOKEN_MINT_FAILED``,
+    ...). ``error_code`` is the run's ``error_code`` (spec §8.9):
+    ``CREDENTIALS_UNAVAILABLE``.
+    """
+
+    error_code = "CREDENTIALS_UNAVAILABLE"
 
     def __init__(self, code: str, message: str) -> None:
         self.code = code
         self.message = message
         super().__init__(f"{code}: {message}")
+
+
+class PermissionMissing(CredentialError):
+    """A (re-)minted installation token lacks ``issues: write`` (D-58).
+
+    The run ends ``failed``/``GITHUB_PERMISSION_MISSING`` (spec §8.9), the code
+    the preflight uses for the first token.
+    """
+
+    error_code = "GITHUB_PERMISSION_MISSING"
+
+    def __init__(self, message: str) -> None:
+        super().__init__("GITHUB_PERMISSION_MISSING", message)
 
 
 def _check_app_id(app_id: object) -> int:
@@ -59,6 +90,9 @@ class TokenContext:
     installation_id: int
     # The fleet App id (D-53). ``None`` only for a context built by hand.
     app_id: int | None = None
+    # The minted token's ``permissions`` object (D-58). ``None`` only for a
+    # context built by hand, which therefore fails the ``issues: write`` check.
+    permissions: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.app_id is not None:
@@ -143,7 +177,9 @@ def _get_installation(org: str, supabase_url: str, supabase_key: str) -> dict:
         "Accept": "application/json",
     }
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
+        # Never followed (QA 3): requests keeps the ``apikey`` header on a
+        # redirect to another host.
+        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
     except requests.RequestException as exc:
         # A transport failure (DNS/connection/timeout) reaching Supabase is a
         # credential-resolution failure — classify it so the entrypoint's
@@ -154,6 +190,11 @@ def _get_installation(org: str, supabase_url: str, supabase_key: str) -> dict:
             "SUPABASE_UNREACHABLE",
             f"Could not reach Supabase to resolve installation for org '{org}': {exc}",
         ) from exc
+    if 300 <= resp.status_code < 400:
+        raise CredentialError(
+            "SUPABASE_UNREACHABLE",
+            f"Supabase answered a redirect ({resp.status_code}) resolving org '{org}'",
+        )
     resp.raise_for_status()
 
     rows = resp.json()
@@ -198,11 +239,42 @@ def _fetch_pem(secret_arn: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+class MintedToken(NamedTuple):
+    """An installation token and the ``permissions`` GitHub granted it (D-58)."""
+
+    token: str
+    permissions: Mapping[str, str]
+
+
+def _permissions(value: Any) -> Mapping[str, str]:
+    """The ``permissions`` object as a read-only ``{name: level}`` map.
+
+    Anything malformed (absent, not an object, non-string entries) is dropped,
+    so it reads as "not granted" and fails closed.
+    """
+    if not isinstance(value, Mapping):
+        return MappingProxyType({})
+    return MappingProxyType(
+        {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
+    )
+
+
+def has_issues_write(permissions: object) -> bool:
+    """True iff the token was granted ``issues: write`` (D-58)."""
+    return isinstance(permissions, Mapping) and permissions.get("issues") == "write"
+
+
 def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
+    """The installation token only (the sibling's signature). See :func:`mint_installation`."""
+    return mint_installation(app_id, installation_id, pem).token
+
+
+def mint_installation(app_id: int, installation_id: int, pem: str) -> MintedToken:
     """
     Sign an RS256 JWT as the GitHub App and exchange it for an installation token.
 
     The JWT is valid for 9 minutes (iat - 60s for clock skew, exp + 540s).
+    Returns the token with the ``permissions`` GitHub granted it (D-58).
     """
     now = int(time.time())
     assertion = jwt.encode(
@@ -218,6 +290,8 @@ def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
                 "Accept": "application/vnd.github+json",
             },
             timeout=30,
+            # Never followed (QA 3): the JWT must not leave api.github.com.
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         # Classify a transport failure reaching GitHub as a credential error
@@ -226,8 +300,27 @@ def mint_installation_token(app_id: int, installation_id: int, pem: str) -> str:
             "GITHUB_UNREACHABLE",
             f"Could not reach GitHub to mint installation token: {exc}",
         ) from exc
-    resp.raise_for_status()
-    return resp.json()["token"]
+    status = resp.status_code
+    # QA 6: a non-2xx (a 3xx included) is a typed error, never a raw
+    # ``requests.HTTPError``. The message names the status only: never the
+    # JWT or the response body.
+    if not 200 <= status < 300:
+        raise CredentialError(
+            "TOKEN_MINT_FAILED",
+            f"GitHub answered {status} minting the installation token "
+            f"for installation {installation_id}",
+        )
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = None
+    token = payload.get("token") if isinstance(payload, dict) else None
+    if not isinstance(token, str) or not token:
+        raise CredentialError(
+            "TOKEN_MINT_FAILED",
+            f"GitHub returned no installation token for installation {installation_id}",
+        )
+    return MintedToken(token, _permissions(payload.get("permissions")))
 
 
 # ---------------------------------------------------------------------------
@@ -253,23 +346,32 @@ def resolve_github_credentials(
     row = _get_installation(org, url, key)
     app_id = _check_app_id(row.get("app_id"))
     pem = _fetch_pem(row["private_key_secret_arn"])
-    token = mint_installation_token(app_id, row["installation_id"], pem)
+    minted = mint_installation(app_id, row["installation_id"], pem)
     return TokenContext(
-        token=token,
+        token=minted.token,
         issued_at=time.monotonic(),
         installation_id=row["installation_id"],
         app_id=app_id,
+        permissions=minted.permissions,
     )
 
 
 def refresh_if_stale(token_ctx: TokenContext, pem: str, app_id: int) -> TokenContext:
-    """Re-mint token if >45 min elapsed (req 20)."""
-    if token_ctx.is_stale():
-        new_token = mint_installation_token(app_id, token_ctx.installation_id, pem)
-        return TokenContext(
-            token=new_token,
-            issued_at=time.monotonic(),
-            installation_id=token_ctx.installation_id,
-            app_id=token_ctx.app_id,
-        )
-    return token_ctx
+    """Re-mint the token if >45 min elapsed (req 20).
+
+    The new context carries the new token's **own** ``permissions`` (QA 6),
+    never the old ones, and must still hold ``issues: write``; otherwise
+    :class:`PermissionMissing` (``GITHUB_PERMISSION_MISSING``, D-58).
+    """
+    if not token_ctx.is_stale():
+        return token_ctx
+    minted = mint_installation(app_id, token_ctx.installation_id, pem)
+    if not has_issues_write(minted.permissions):
+        raise PermissionMissing("the refreshed installation token lacks issues: write")
+    return TokenContext(
+        token=minted.token,
+        issued_at=time.monotonic(),
+        installation_id=token_ctx.installation_id,
+        app_id=token_ctx.app_id,
+        permissions=minted.permissions,
+    )

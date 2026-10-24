@@ -54,6 +54,7 @@ class TestRealJwtSigning:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"token": "ghs_installation_token"}
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.status_code = 201
         mock_requests.post.return_value = mock_resp
 
         token = mint_installation_token(app_id=APP_ID, installation_id=INSTALLATION_ID, pem=pem)
@@ -91,6 +92,7 @@ class TestRealJwtSigning:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"token": "should_not_be_reached"}
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.status_code = 201
         mock_requests.post.return_value = mock_resp
 
         with pytest.raises((CredentialError, Exception)) as exc_info:
