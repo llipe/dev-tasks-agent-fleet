@@ -48,8 +48,10 @@ refusal adds **no** reaction, makes **no** claim and touches **no** board
 ``result.reason = <code>``. A failure to post the reply is logged as a
 ``run_event`` and the outcome is unchanged.
 
-A ``v_runs`` row that is missing for a claimed ``run_id`` counts as terminal
-(logged): a deleted run must not block the issue for ever.
+A ``v_runs`` row that is missing for a claimed ``run_id`` counts as terminal,
+reported as a ``run_event`` warning: a deleted run must not block the issue for
+ever (DF-185-03, CT-34). An ``effective_status`` outside the known active and
+terminal sets is ``SUPABASE_UNAVAILABLE``, also with a warning (QA 2).
 """
 
 from __future__ import annotations
@@ -303,19 +305,41 @@ def has_active_run(
     app_id: int,
     own_run_id: str,
     read_statuses: Callable[[Sequence[str]], Mapping[str, str]],
+    *,
+    warn: Callable[[str], None] | None = None,
 ) -> bool:
-    """Refusal (d): an open trusted claim whose run is ``queued`` or ``running``."""
+    """Refusal (d): an open trusted claim whose run is ``queued`` or ``running``.
+
+    Each claimed run resolves by its ``v_runs.effective_status`` (CT-34):
+
+    - :data:`NON_TERMINAL_STATUSES` → active;
+    - :data:`TERMINAL_STATUSES` → finished;
+    - no row → finished, with a warning (DF-185-03: a deleted run must not
+      block the issue for ever);
+    - any other value → :class:`SupabaseUnavailable`, with a warning (QA 2):
+      an unknown status is a fault, never read as "finished" (D-67). It fails
+      closed even next to an active claim, so the outcome doesn't depend on
+      claim order.
+
+    ``warn`` reports a warning as a ``run_event`` (the step passes one);
+    without it the warning goes to the log only.
+    """
     candidates = open_claim_runs(comments, app_id, own_run_id)
     if not candidates:
         return False
+    report = warn if warn is not None else (lambda m: log.warning("%s", m))
     statuses = read_statuses(candidates)
+    active = False
     for rid in candidates:
         status = statuses.get(rid)
         if status is None:
-            log.warning("claim for run %s has no v_runs row; treated as terminal", rid)
+            report(f"claim for run {rid} has no v_runs row; treated as terminal")
         elif status in NON_TERMINAL_STATUSES:
-            return True
-    return False
+            active = True
+        elif status not in TERMINAL_STATUSES:
+            report(f"claim for run {rid} has an unknown effective_status; failing closed")
+            raise SupabaseUnavailable(f"v_runs returned an unknown effective_status for run {rid}")
+    return active
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +502,13 @@ def run_refusal_checks(
         verdict = decide(
             facts,
             lambda: client.linked_pr(issue),
-            lambda: has_active_run(client.list_comments(issue), token.app_id or 0, rid, run_status),
+            lambda: has_active_run(
+                client.list_comments(issue),
+                token.app_id or 0,
+                rid,
+                run_status,
+                warn=lambda message: _event(run, "warn", message, secrets),
+            ),
         )
     except GitHubError as exc:
         return _failed(exc.code, exc, secrets, run)

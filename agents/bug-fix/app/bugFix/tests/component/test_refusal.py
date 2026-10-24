@@ -1151,3 +1151,80 @@ class TestRedirectsAreFaults:
         sb.fail = 302
         out = _check(gh, sb)
         assert (out.status, out.error_code) == ("failed", "SUPABASE_UNAVAILABLE")
+
+
+# ---------------------------------------------------------------------------
+# CT-34 (DF-185-08, agent side) and QA 2: claims resolved against
+# v_runs.effective_status, through the PostgREST double
+# ---------------------------------------------------------------------------
+
+CT34_ROWS = [
+    # (effective_status or None for "no row", expected status, reason/error)
+    ("queued", "succeeded", "active_run"),
+    ("running", "succeeded", "active_run"),
+    ("succeeded", "proceed", None),
+    ("failed", "proceed", None),
+    ("timed_out", "proceed", None),  # a reaper-materialized stale `running` row
+    ("canceled", "proceed", None),
+    ("failed_to_start", "proceed", None),
+    (None, "proceed", None),  # pinned: no row counts as terminal (DF-185-03)
+    ("paused", "failed", "SUPABASE_UNAVAILABLE"),
+    ("RUNNING", "failed", "SUPABASE_UNAVAILABLE"),
+    ("", "failed", "SUPABASE_UNAVAILABLE"),
+]
+
+
+class TestCT34ClaimsAgainstVRuns:
+    @pytest.mark.parametrize("effective,status,code", CT34_ROWS, ids=lambda v: repr(v))
+    def test_a_claim_resolves_by_its_runs_effective_status(self, effective, status, code):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb = FakeSupabase({} if effective is None else {OTHER: effective})
+        run = MagicMock()
+        out = _check(gh, sb, run=run)
+        assert out.status == status
+        if status == "failed":
+            assert out.error_code == code and gh.writes() == []
+        else:
+            assert out.reason == code
+        (call,) = sb.calls
+        assert call["params"] == {"select": "id,effective_status", "id": f"in.({OTHER})"}
+
+    def test_an_unknown_status_is_reported_as_a_run_event(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        run = MagicMock()
+        out = _check(gh, FakeSupabase({OTHER: "paused"}), run=run)
+        assert out.error_code == "SUPABASE_UNAVAILABLE"
+        warns = [c.args[0] for c in run.warn.call_args_list]
+        assert any("unknown effective_status" in w and OTHER in w for w in warns)
+        run.error.assert_called()
+
+    def test_a_missing_row_is_reported_as_a_run_event(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        run = MagicMock()
+        assert _check(gh, FakeSupabase(), run=run).status == "proceed"
+        assert any("no v_runs row" in c.args[0] for c in run.warn.call_args_list)
+
+    def test_an_unknown_status_fails_closed_even_beside_an_active_one(self):
+        third = "2d1c4f60-3e5f-4071-8c8d-9e0f1a2b3c4d"
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        gh.add_comment(ISSUE, build("claim", third))
+        out = _check(gh, FakeSupabase({OTHER: "running", third: "mystery"}))
+        assert (out.status, out.error_code) == ("failed", "SUPABASE_UNAVAILABLE")
+
+    def test_terminal_missing_and_active_claims_together_refuse(self):
+        third = "2d1c4f60-3e5f-4071-8c8d-9e0f1a2b3c4d"
+        fourth = "3e2d5071-4f60-4182-9d9e-0f1a2b3c4d5e"
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        for rid in (OTHER, third, fourth):
+            gh.add_comment(ISSUE, build("claim", rid))
+        sb = FakeSupabase({OTHER: "timed_out", fourth: "queued"})  # third: no row
+        assert _check(gh, sb).reason == "active_run"

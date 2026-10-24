@@ -324,3 +324,58 @@ def test_the_v_runs_reader_makes_no_call_for_no_ids():
             raise AssertionError("no read expected")
 
     assert RunStatusReader("https://sb", "k", session=NoCalls()).effective_statuses([]) == {}
+
+
+# ---------------------------------------------------------------------------
+# QA 2: an unknown v_runs.effective_status fails closed
+# ---------------------------------------------------------------------------
+
+
+class TestHasActiveRunStatuses:
+    def _run(self, statuses, warnings=None):
+        from refusal import has_active_run
+
+        comments = [_comment(1, build("claim", OTHER))]
+        return has_active_run(
+            comments,
+            APP_ID,
+            RUN,
+            lambda ids: {i: statuses[i] for i in ids if i in statuses},
+            warn=None if warnings is None else warnings.append,
+        )
+
+    @pytest.mark.parametrize("status", sorted(NON_TERMINAL_STATUSES))
+    def test_a_known_active_status_is_active(self, status):
+        assert self._run({OTHER: status}) is True
+
+    @pytest.mark.parametrize("status", sorted(TERMINAL_STATUSES))
+    def test_a_known_terminal_status_is_not(self, status):
+        assert self._run({OTHER: status}) is False
+
+    def test_a_missing_row_counts_as_finished_with_a_warning(self):
+        warnings: list[str] = []
+        assert self._run({}, warnings) is False
+        assert len(warnings) == 1 and "no v_runs row" in warnings[0]
+
+    @pytest.mark.parametrize("status", ["paused", "", "RUNNING", "Queued", "running ", "stale"])
+    def test_an_unknown_status_is_supabase_unavailable_with_a_warning(self, status):
+        from refusal import SupabaseUnavailable
+
+        warnings: list[str] = []
+        with pytest.raises(SupabaseUnavailable) as exc:
+            self._run({OTHER: status}, warnings)
+        assert exc.value.code == "SUPABASE_UNAVAILABLE"
+        assert len(warnings) == 1 and "unknown effective_status" in warnings[0]
+        assert OTHER in warnings[0]
+
+    def test_without_a_warn_callback_the_warning_is_logged(self, caplog):
+        import logging
+
+        from refusal import SupabaseUnavailable
+
+        with (
+            caplog.at_level(logging.WARNING, logger="bug_fix.refusal"),
+            pytest.raises(SupabaseUnavailable),
+        ):
+            self._run({OTHER: "paused"})
+        assert any("unknown effective_status" in r.getMessage() for r in caplog.records)
