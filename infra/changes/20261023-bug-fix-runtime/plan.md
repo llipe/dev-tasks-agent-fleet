@@ -15,6 +15,8 @@
 | New ECR repository (`bugfix/bug_fix`), one image of about 1.5 GB (Node + Python + Claude Code) | about $0.15 ($0.10/GB) | https://aws.amazon.com/ecr/pricing/ | **APPROVAL REQUIRED** |
 | AgentCore runtime (`bug_fix`), idle | $0 idle; billed per invocation (CPU and memory seconds) | https://aws.amazon.com/bedrock/agentcore/pricing/ | **APPROVAL REQUIRED** (usage-based) |
 | CloudWatch Logs for the runtime log group | a few cents at low volume | https://aws.amazon.com/cloudwatch/pricing/ | **APPROVAL REQUIRED** (usage-based) |
+| KMS customer-managed key for the ECR repository (found in the step-7 diff) | about $1.00 | https://aws.amazon.com/kms/pricing/ | **APPROVED by @llipe on 2026-10-23** |
+| CodeBuild ARM build per deploy | a few cents per deploy | https://aws.amazon.com/codebuild/pricing/ | **APPROVED by @llipe on 2026-10-23** |
 | Anthropic API usage | Billed by Anthropic, capped by the key's spend limit (operator-set) | console.anthropic.com | Operator decision (step 2) |
 
 ## Design note: removing the Bedrock grant (task 2.13, DF-180-04)
@@ -57,6 +59,14 @@
 - **Verify:** `get-role-policy` matches the file; the step 8 simulation.
 - **Revert:** `aws iam delete-role-policy --role-name agent-fleet-bug-fix-runtime --policy-name bug-fix-runtime && aws iam delete-role --role-name agent-fleet-bug-fix-runtime`
 
+### Step 5b: add `EcrImageDecrypt` to the role (found in the step-7 diff)
+- **Kind:** attach IAM policy · **Tool:** aws · **Touches state:** yes
+- **Why:** an imported role gets no `kms:Decrypt` on the repository's new KMS key from the construct, so the runtime couldn't pull its encrypted image.
+- **Backup:** `backup/role-policy.step5.json`
+- **Forward:** add `kms:Decrypt` on `arn:aws:kms:us-east-1:755641879575:key/*`, conditioned on `kms:ViaService = ecr.us-east-1.amazonaws.com`, then `put-role-policy`. It can be narrowed to the exact key after the deploy.
+- **Verify:** the live policy equals the file, with 0 `bedrock:` actions.
+- **Revert:** `put-role-policy` with `backup/role-policy.step5.json`.
+
 ### Step 6: point the agent at the role (repo + local target)
 - **Kind:** pipeline change · **Tool:** git · **Touches state:** no (repo files only)
 - **Forward:**
@@ -87,10 +97,10 @@
 
 ### Step 9: panel invoke policy (file + live IAM)
 - **Kind:** attach IAM policy · **Tool:** aws · **Touches state:** yes
-- **Backup:** `aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime > infra/changes/20261023-bug-fix-runtime/backup/invoke-runtime.before.json`
+- **Backup:** `aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime > infra/changes/20261023-bug-fix-runtime/backup/panel-invoke-policy.before.json`
 - **Forward:** add the new runtime ARN and `…/runtime-endpoint/DEFAULT` to `infra/agentcore-invoke-policy.json`, then `aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime --policy-document file://infra/agentcore-invoke-policy.json`
 - **Verify:** `get-role-policy` lists six resources, and `simulate-principal-policy` allows `bedrock-agentcore:InvokeAgentRuntime` on the new ARN.
-- **Revert:** `aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime --policy-document file://infra/changes/20261023-bug-fix-runtime/backup/invoke-runtime.before.json`
+- **Revert:** `aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime --policy-document file://infra/changes/20261023-bug-fix-runtime/backup/panel-invoke-policy.before.json`
 
 ### Step 10: operator grants the GitHub App Issues read and write
 - **Kind:** foundation change (GitHub App settings) · **Tool:** GitHub UI (run by @llipe) · **Touches state:** yes
