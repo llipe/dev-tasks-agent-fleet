@@ -323,7 +323,11 @@ class TestInvalidParams:
     def test_a_bad_key_with_a_valid_issue_replies_naming_the_key(self, extra, key):
         gh, sb = _gh_for("invalid_params")
         out = _check(gh, sb, params={"issue_number": ISSUE, **extra})
-        assert (out.status, out.outcome, out.reason) == ("succeeded", "not_applicable", "invalid_params")
+        assert (out.status, out.outcome, out.reason) == (
+            "succeeded",
+            "not_applicable",
+            "invalid_params",
+        )
         (write,) = gh.writes()
         assert f"`{key}`" in write.json["body"]
         assert parse_block(write.json["body"])[0].reason == "invalid_params"
@@ -345,7 +349,11 @@ class TestInvalidParams:
             run_status=RunStatusReader(SB_URL, SB_KEY, session=FakeSupabase()),
             session=gh,
         )
-        assert (out.status, out.outcome, out.reason) == ("succeeded", "not_applicable", "invalid_params")
+        assert (out.status, out.outcome, out.reason) == (
+            "succeeded",
+            "not_applicable",
+            "invalid_params",
+        )
         assert gh.calls == []
         assert out.reply == "none"
 
@@ -452,7 +460,9 @@ class TestLinkedPr:
         gh.pulls.append(pull_payload(42, "issue/12-gone", fork=None))
         assert _check(gh).reason == "linked_pr"
 
-    @pytest.mark.parametrize("bad", [{"number": 5}, {"number": 5, "head": None}, "x", {"head": {"ref": "issue/12-a"}}])
+    @pytest.mark.parametrize(
+        "bad", [{"number": 5}, {"number": 5, "head": None}, "x", {"head": {"ref": "issue/12-a"}}]
+    )
     def test_malformed_pull_items_are_skipped(self, bad):
         gh = FakeGitHub()
         gh.add_issue(ISSUE)
@@ -515,7 +525,9 @@ class TestActiveRun:
         assert _check(gh, sb).status == "proceed"
         assert sb.calls == []
 
-    @pytest.mark.parametrize("forger", [{"app_id": None, "user_type": "User"}, {"app_id": 1}, {"user_type": "User"}])
+    @pytest.mark.parametrize(
+        "forger", [{"app_id": None, "user_type": "User"}, {"app_id": 1}, {"user_type": "User"}]
+    )
     def test_an_untrusted_claim_is_ignored(self, forger):
         gh = FakeGitHub()
         gh.add_issue(ISSUE)
@@ -755,3 +767,68 @@ def test_github_double_path_is_on_the_api_host():
     gh, sb = _gh_for("proceed")
     _check(gh, sb)
     assert all(c.url.startswith(API + "/") for c in gh.calls)
+
+
+# ---------------------------------------------------------------------------
+# issues.py reads (6.5 edge cases)
+# ---------------------------------------------------------------------------
+
+
+class TestIssueReads:
+    def _client(self, gh):
+        from issues import IssuesClient
+
+        return IssuesClient("o", "r", TOKEN, session=gh)
+
+    def test_open_pulls_are_fetched_once_per_client(self):
+        gh = FakeGitHub()
+        gh.pulls.append(pull_payload(5, "issue/12-a"))
+        client = self._client(gh)
+        assert client.branch_prs(12) == [5]
+        assert client.branch_prs(12) == [5]
+        assert len([p for p in gh.paths("GET") if p.endswith("/pulls")]) == 1
+
+    def test_a_non_json_issue_is_rejected(self):
+        from issues import GitHubRequestRejected
+
+        gh = FakeGitHub()
+        gh.faults["issue"] = [FakeResponse(200, None)]
+        with pytest.raises(GitHubRequestRejected):
+            self._client(gh).get_issue(ISSUE)
+
+    @pytest.mark.parametrize(
+        "conn",
+        [
+            {"nodes": None, "pageInfo": {}},
+            {"nodes": [], "pageInfo": None},
+            {"nodes": "x", "pageInfo": {"hasNextPage": False}},
+        ],
+    )
+    def test_a_malformed_closing_connection_is_rejected(self, conn):
+        from issues import GitHubRequestRejected
+
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        payload = {"data": {"repository": {"issue": {"closedByPullRequestsReferences": conn}}}}
+        gh.faults["graphql"] = [FakeResponse(200, payload)]
+        with pytest.raises(GitHubRequestRejected):
+            self._client(gh).closing_prs(ISSUE)
+
+    def test_malformed_closing_nodes_are_skipped(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        nodes = ["x", {"number": "5", "state": "OPEN"}, {"number": True, "state": "OPEN"}]
+        payload = {
+            "data": {
+                "repository": {
+                    "issue": {
+                        "closedByPullRequestsReferences": {
+                            "nodes": [*nodes, {"number": 9, "state": "OPEN"}],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
+        }
+        gh.faults["graphql"] = [FakeResponse(200, payload)]
+        assert self._client(gh).closing_prs(ISSUE) == [9]

@@ -141,9 +141,7 @@ class TestReplySnapshot:
         refusal, line = SNAPSHOTS[code]
         body = build_reply(RUN, refusal, 42, run_link=LINK)
         assert body == (
-            f"<!-- agent-fleet:bug-fix:refusal run_id={RUN} reason={code} -->\n"
-            f"{line}\n"
-            f"Run: {LINK}"
+            f"<!-- agent-fleet:bug-fix:refusal run_id={RUN} reason={code} -->\n{line}\nRun: {LINK}"
         )
         assert reply_line(refusal, 42) == line
 
@@ -285,8 +283,8 @@ class TestOpenClaimRuns:
 
 def test_status_sets_cover_the_run_status_enum():
     enum = {"queued", "running", "succeeded", "failed", "timed_out", "failed_to_start", "canceled"}
-    assert NON_TERMINAL_STATUSES == {"queued", "running"}
-    assert NON_TERMINAL_STATUSES | TERMINAL_STATUSES == enum
+    assert {"queued", "running"} == NON_TERMINAL_STATUSES
+    assert enum == NON_TERMINAL_STATUSES | TERMINAL_STATUSES
     assert not NON_TERMINAL_STATUSES & TERMINAL_STATUSES
 
 
@@ -294,3 +292,35 @@ def test_refusal_is_a_value_object():
     r = Refusal("linked_pr", pr_number=3)
     with pytest.raises(AttributeError):
         r.reason = "closed"  # type: ignore[misc]
+
+
+class TestReplyLineGuards:
+    def test_an_unknown_code_is_refused_by_the_line_too(self):
+        with pytest.raises(ValueError):
+            reply_line(Refusal("labels"), 42)
+
+    @pytest.mark.parametrize("code", ["pull_request", "closed", "active_run"])
+    def test_a_pr_number_on_another_code_is_refused(self, code):
+        with pytest.raises(ValueError):
+            reply_line(Refusal(code, pr_number=3), 42)
+
+    @pytest.mark.parametrize("issue", [0, -2, True])
+    def test_a_bad_issue_number_is_refused_even_when_unused(self, issue):
+        with pytest.raises(ValueError):
+            reply_line(Refusal("invalid_params", detail="max_turns"), issue)
+
+    def test_invalid_params_and_repo_gate_need_no_issue(self):
+        assert "`issue_number`" in reply_line(
+            Refusal("invalid_params", detail="issue_number"), None
+        )
+        assert "`lint`" in reply_line(Refusal("repo_gate", detail="lint"), None)
+
+
+def test_the_v_runs_reader_makes_no_call_for_no_ids():
+    from refusal import RunStatusReader
+
+    class NoCalls:
+        def get(self, *a, **k):
+            raise AssertionError("no read expected")
+
+    assert RunStatusReader("https://sb", "k", session=NoCalls()).effective_statuses([]) == {}
