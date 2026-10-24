@@ -100,9 +100,7 @@ def test_open_claim_invariants(spec, pool, rnd):
     result = open_claims(comments, APP_ID)
 
     # (3) The oracle: trusted claims with no trusted pr/disposition for the run.
-    closed = {
-        pool[ri] for kind, ri, t in spec if t and kind in ("pr", "disposition")
-    }
+    closed = {pool[ri] for kind, ri, t in spec if t and kind in ("pr", "disposition")}
     expected = sorted(
         (cid, pool[ri])
         for cid, (kind, ri, t) in enumerate(spec, start=1)

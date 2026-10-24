@@ -236,7 +236,7 @@
     - a second call makes zero writes;
     - no reaction when `trigger_comment_id` is absent;
     - the backstop applies only when ownership is confirmed (D-81, D-93).
-  - [ ] 7.4 `[I]` [agents/bug-fix] `markers.py` (D-53, D-80, D-104)
+  - [x] 7.4 `[I]` [agents/bug-fix] `markers.py` (D-53, D-80, D-104)
   - [ ] 7.5 `[I]` [agents/bug-fix] `neutralize.py` (D-65, D-85)
   - [ ] 7.6 `[I]` [agents/bug-fix] `issues.py`: comments and reactions (`eyes`, `rocket`, `confused`); a reaction 4xx is logged and not fatal
   - [ ] 7.7 `[I]` [agents/bug-fix] `disposition.py` and the `signal_backstop.py` hook (10-second budget)

@@ -352,9 +352,7 @@ class TestBackstop:
         order: list[str] = []
         d = _disposer(gh)
         start = time.monotonic()
-        handle_termination(
-            lambda: _run(order, gh), list, d.backstop_action, "SIGTERM", budget=0.2
-        )
+        handle_termination(lambda: _run(order, gh), list, d.backstop_action, "SIGTERM", budget=0.2)
         elapsed = time.monotonic() - start
         assert elapsed < 1.0
         assert order == ["fail after 0 writes"]

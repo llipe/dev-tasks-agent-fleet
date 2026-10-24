@@ -163,9 +163,10 @@ class TestLeadingBlock:
         assert parse_block(GOOD + "\r\nvisible") == (Marker("claim", RUN_A),)
 
     def test_two_marker_block_parses_as_both(self):
-        body = build_block(
-            [Marker("disposition", RUN_A), Marker("disposition", RUN_B)]
-        ) + "\ndiagnosis"
+        body = (
+            build_block([Marker("disposition", RUN_A), Marker("disposition", RUN_B)])
+            + "\ndiagnosis"
+        )
         assert parse_block(body) == (
             Marker("disposition", RUN_A),
             Marker("disposition", RUN_B),

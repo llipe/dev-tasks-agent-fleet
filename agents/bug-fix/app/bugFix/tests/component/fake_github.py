@@ -87,7 +87,10 @@ class FakeGitHub:
         comment = {
             "id": cid,
             "body": body,
-            "user": {"login": "agent-fleet[bot]" if user_type == "Bot" else "human", "type": user_type},
+            "user": {
+                "login": "agent-fleet[bot]" if user_type == "Bot" else "human",
+                "type": user_type,
+            },
             "performed_via_github_app": None if app_id is None else {"id": app_id},
         }
         self.comments.setdefault(issue, []).append(comment)
