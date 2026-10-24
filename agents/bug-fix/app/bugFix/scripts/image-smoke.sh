@@ -33,6 +33,10 @@
 #     the wrapper's capture, which sees only the fixer's file edit; as fixer,
 #     /work/wrapper can't be listed and /work/wrapper/repo/.git/config can't
 #     be read (TC-189-19);
+#   - S-189 fix round: fs.protected_hardlinks and fs.protected_symlinks are 1
+#     (QA-189-01); the image's tar is GNU tar, the clone's fsckObjects refuses
+#     a symlink-plus-directory tree, and with fsck off materialize writes
+#     nothing through the link (gap 6);
 #   - localhost (S-182 re-probes 2b, 2c; fix round 3): the image's /etc/hosts
 #     is empty; nsswitch has `hosts: files myhostname dns`; /etc/gai.conf
 #     prefers IPv4; with an empty, read-only /etc/hosts bind-mounted (as on
@@ -383,5 +387,64 @@ ok "materialize: /work/repo files owned by fixer (10002) through setpriv, no .gi
 ok "a fixer-planted .git/hooks and core.fsmonitor never run in the wrapper's capture; the capture sees only src/app.py"
 ok "as fixer, /work/wrapper can't be listed and /work/wrapper/repo/.git/config can't be read (TC-189-19)"
 ok "control: the plants do fire when git uses the fixer repository"
+
+# --- S-189 fix round: link protection (QA-189-01) and GNU tar (gap 6) -----------
+# The kernel's link protection stops fixer from hardlinking a file it can't
+# read into /work/repo. safe_git.check_work_tree refuses hardlinks anyway;
+# the run-time preflight only logs these (the AgentCore value is probe #446's).
+links="$(as_agentcore 'cat /proc/sys/fs/protected_hardlinks /proc/sys/fs/protected_symlinks' | tr '\n' ' ')"
+[ "$links" = "1 1 " ] || fail "fs.protected_hardlinks / fs.protected_symlinks are '$links', expected '1 1'"
+ok "fs.protected_hardlinks and fs.protected_symlinks are 1 in the image"
+
+# A tree with a symlink `zlink -> /tmp/outside` and a file `zlink/b.txt` (a
+# duplicate name git add never writes), through materialize with the image's
+# GNU tar as fixer. fsck refuses it at the clone (the control); with fsck off
+# for this clone only, nothing may be written through the link.
+tar_out="$(docker run --rm -i --platform "$PLATFORM" --security-opt no-new-privileges \
+  -w /app --entrypoint python3 "$IMAGE" - <<'PY'
+import os, subprocess, sys
+sys.path.insert(0, "/app")
+import safe_git
+from safe_git import GitError, clone
+
+E = {"PATH": "/usr/bin:/bin", "HOME": "/root", "GIT_CONFIG_GLOBAL": "/dev/null",
+     "GIT_AUTHOR_NAME": "s", "GIT_AUTHOR_EMAIL": "s@s", "GIT_COMMITTER_NAME": "s",
+     "GIT_COMMITTER_EMAIL": "s@s"}
+def g(*a, inp=None):
+    return subprocess.run(["git", *a], cwd="/tmp/src", env=E, input=inp,
+                          capture_output=True, check=True).stdout.decode().strip()
+v = subprocess.run(["/usr/bin/tar", "--version"], capture_output=True, text=True).stdout
+print("gnu_tar=%s" % v.startswith("tar (GNU tar)"))
+os.makedirs("/tmp/src")
+os.makedirs("/tmp/outside")
+os.chmod("/tmp/outside", 0o777)  # writable by fixer: the check is not vacuous
+g("init", "-q", "-b", "main")
+link = g("hash-object", "-w", "--stdin", inp=b"/tmp/outside")
+blob = g("hash-object", "-w", "--stdin", inp=b"through\n")
+sub = g("mktree", inp=("100644 blob %s\tb.txt\n" % blob).encode())
+raw = b"120000 zlink\0" + bytes.fromhex(link) + b"40000 zlink\0" + bytes.fromhex(sub)
+tree = g("hash-object", "-t", "tree", "--literally", "-w", "--stdin", inp=raw)
+g("update-ref", "refs/heads/main", g("commit-tree", tree, "-m", "hostile"))
+subprocess.run(["git", "clone", "-q", "--bare", "/tmp/src", "/tmp/remote.git"], env=E, check=True)
+try:
+    clone("file:///tmp/remote.git", "main", "/work/wrapper/fsck")
+    print("fsck_refuses=False")
+except GitError:
+    print("fsck_refuses=True")
+safe_git.CLONE_FSCK_ARGS = ()
+git = clone("file:///tmp/remote.git", "main", "/work/wrapper/repo")
+try:
+    git.materialize(git.base_sha, "/work/repo")
+except GitError:
+    pass
+print("outside_empty=%s" % (os.listdir("/tmp/outside") == []))
+print("through=%s" % os.path.exists("/tmp/outside/b.txt"))
+PY
+)" || fail "GNU tar smoke failed: $tar_out"
+want_tar="$(printf 'gnu_tar=True\nfsck_refuses=True\noutside_empty=True\nthrough=False')"
+[ "$tar_out" = "$want_tar" ] || fail "GNU tar: expected '$want_tar', got: $tar_out"
+ok "the image's tar is GNU tar"
+ok "the clone's fsckObjects refuses a tree with a symlink and a directory under one name"
+ok "with fsck off, materialize through GNU tar as fixer writes nothing through the symlink"
 
 echo "image-smoke: ${pass} checks passed for ${IMAGE}"
