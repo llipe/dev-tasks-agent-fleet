@@ -206,7 +206,7 @@
     > Local run done (2026-10-24, developer): `supabase db reset --local`, `test:integration` 42 files / 328 tests with `REQUIRE_LOCAL_DB=1`, agent `make validate` green. Panel `audit` fails on a pre-existing advisory outside this story (`zod` via `agents/dependency-update/agentcore/cdk`). Open: `coverage_gate` (planner's `qa-engineer`) and the post-apply cloud check.
   - [x] 5.13 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
-- [ ] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply
+- [x] 6.0 Implement Story S-185 (#367 - https://github.com/llipe/dev-tasks-agent-fleet/issues/367): Refusal checks and marked reply
 
   > Note: D-92, D-104. This replaces the label and assignee preflight; the linked-PR check moves here from the old 8.0.
 
@@ -227,7 +227,7 @@
   - [x] 6.8 Verify AC (v2.0): AC1–AC5 by 6.1–6.3
   - [x] 6.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
     > Local run done (2026-10-24, developer): agent gate green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 1858 passed, 3 xfailed, coverage 97.76%, `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
-  - [ ] 6.10 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
+  - [x] 6.10 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [x] 7.0 Implement Story S-186 (#368 - https://github.com/llipe/dev-tasks-agent-fleet/issues/368): Markers, reactions and the idempotent disposition
 
