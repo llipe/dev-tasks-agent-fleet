@@ -34,10 +34,10 @@ Messages carry the method, the label and the status only: never the token, a
 request body or a response body. Transport exceptions are raised ``from None``
 so their text, which may echo headers, is dropped.
 
-Pagination: :func:`next_link` reads the ``next`` relation of a response, from
-``requests.Response.links`` (parsed from the ``Link`` header) or from the raw
-header through :func:`parse_link_header`. Callers restrict where a ``next`` link
-may point.
+Pagination: :func:`next_link` reads the ``next`` relation of a response from
+the raw ``Link`` header through :func:`parse_link_header`, which matches
+``rel`` as a whole parameter name and never inside a quoted value. Callers
+restrict where a ``next`` link may point.
 """
 
 from __future__ import annotations
@@ -60,8 +60,9 @@ MAX_ATTEMPTS = 3
 BACKOFF_SECONDS: tuple[float, ...] = (1.0, 2.0)
 MAX_WAIT_SECONDS = 30.0
 _READ_METHODS = frozenset({"GET", "HEAD"})
-_LINK = re.compile(r"<([^<>]*)>((?:\s*;\s*[^;,]*)*)")
-_REL = re.compile(r"""rel\s*=\s*(?:"([^"]*)"|([^\s;,"]+))""", re.IGNORECASE)
+_LINK_TARGET = re.compile(r"[ \t]*<([^<>]*)>")
+# An RFC 9110 token: a Link parameter name or an unquoted value.
+_TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 _MUTATION = re.compile(r"^\s*mutation\b", re.IGNORECASE)
 
 
@@ -100,41 +101,132 @@ class Response(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def _skip_ws(value: str, i: int) -> int:
+    while i < len(value) and value[i] in " \t":
+        i += 1
+    return i
+
+
+def _skip_entry(value: str, i: int) -> int:
+    """The index just past the next ``,`` outside a quoted string (or the end)."""
+    quoted = False
+    while i < len(value):
+        ch = value[i]
+        if quoted and ch == "\\":
+            i += 2
+            continue
+        if ch == '"':
+            quoted = not quoted
+        elif ch == "," and not quoted:
+            return i + 1
+        i += 1
+    return len(value)
+
+
+def _quoted_string(value: str, i: int) -> tuple[str | None, int]:
+    """The RFC 9110 quoted-string at ``value[i] == '"'``; ``None`` if unterminated."""
+    out: list[str] = []
+    i += 1
+    while i < len(value):
+        ch = value[i]
+        if ch == "\\" and i + 1 < len(value):
+            out.append(value[i + 1])
+            i += 2
+            continue
+        if ch == '"':
+            return "".join(out), i + 1
+        out.append(ch)
+        i += 1
+    return None, len(value)
+
+
+def _link_params(value: str, i: int) -> tuple[list[tuple[str, str]] | None, int]:
+    """The ``; name[=value]`` parameters of one link-value, up to its ``,``.
+
+    Returns ``(None, next_entry)`` when the parameters are malformed, so the
+    whole link-value is dropped.
+    """
+    params: list[tuple[str, str]] = []
+    while True:
+        i = _skip_ws(value, i)
+        if i >= len(value):
+            return params, i
+        if value[i] == ",":
+            return params, i + 1
+        if value[i] != ";":
+            return None, _skip_entry(value, i)
+        i = _skip_ws(value, i + 1)
+        name = _TOKEN.match(value, i)
+        if name is None:
+            return None, _skip_entry(value, i)
+        i = _skip_ws(value, name.end())
+        param = ""
+        if i < len(value) and value[i] == "=":
+            i = _skip_ws(value, i + 1)
+            if i < len(value) and value[i] == '"':
+                quoted, i = _quoted_string(value, i)
+                if quoted is None:
+                    return None, i
+                param = quoted
+            else:
+                token = _TOKEN.match(value, i)
+                if token is None:
+                    return None, _skip_entry(value, i)
+                param, i = token.group(0), token.end()
+        params.append((name.group(0).lower(), param))
+
+
 def parse_link_header(value: object) -> dict[str, str]:
     """``{rel: url}`` from an RFC 8288 ``Link`` header value, as GitHub sends it.
 
-    Unknown parameters are ignored, a quoted or bare ``rel`` is accepted, and a
-    multi-valued ``rel`` (``rel="last next"``) names each relation. Anything
-    unparseable yields no entry, never an exception.
+    Each link-value is ``<url>`` followed by ``; name[=value]`` parameters,
+    where a value is a token or a quoted string. Only a parameter **named**
+    ``rel`` names relations (QA 4): ``xrel=next``, or ``rel=next`` inside
+    another parameter's quoted value (``title="a; rel=next"``), never does.
+    Only the first ``rel`` counts (RFC 8288 §3.3). A multi-valued ``rel``
+    (``rel="last next"``) names each relation; other parameters are ignored.
+    A malformed link-value is dropped whole; nothing raises.
     """
     if not isinstance(value, str):
         return {}
     out: dict[str, str] = {}
-    for m in _LINK.finditer(value):
-        url, params = m.group(1).strip(), m.group(2)
-        if not url:
+    i = 0
+    while i < len(value):
+        m = _LINK_TARGET.match(value, i)
+        if m is None:
+            i = _skip_entry(value, i)
             continue
-        rel = _REL.search(params)
-        if rel is None:
+        url = m.group(1).strip()
+        params, i = _link_params(value, m.end())
+        if params is None or not url:
             continue
-        for name in (rel.group(1) or rel.group(2) or "").split():
+        rel = next((v for k, v in params if k == "rel"), "")
+        for name in rel.split():
             out.setdefault(name.lower(), url)
     return out
 
 
 def next_link(resp: Any) -> str | None:
-    """The ``next`` page URL of a response, or ``None`` on the last page."""
+    """The ``next`` page URL of a response, or ``None`` on the last page.
+
+    A raw ``Link`` header is always parsed here, by :func:`parse_link_header`,
+    because ``requests.Response.links`` splits parameters on every ``;``, even
+    inside a quoted value. A pre-parsed ``links`` dict is read only when there
+    is no header (the L2 double, ``fake_github.py``).
+    """
+    headers = getattr(resp, "headers", None) or {}
+    try:
+        raw = headers.get("Link") or headers.get("link")
+    except AttributeError:
+        raw = None
+    if raw is not None:
+        return parse_link_header(raw).get("next")
     links = getattr(resp, "links", None)
     if isinstance(links, Mapping):
         nxt = links.get("next")
         if isinstance(nxt, Mapping) and isinstance(nxt.get("url"), str):
             return str(nxt["url"])
-    headers = getattr(resp, "headers", None) or {}
-    try:
-        raw = headers.get("Link") or headers.get("link")
-    except AttributeError:
-        return None
-    return parse_link_header(raw).get("next")
+    return None
 
 
 # ---------------------------------------------------------------------------

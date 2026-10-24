@@ -537,26 +537,46 @@ class TestNextLinkPinningAfterTheRefactor:
             IssuesClient("o", "r", TOKEN, session=session).open_pulls()
         assert len(session.calls) == 2
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "DEFECT (low): parse_link_header's _REL regex has no parameter-name "
-            'boundary, so `xrel="next"` or `title="rel=next"` is read as the next '
-            "relation. next_link() falls back to this parser whenever "
-            "requests.Response.links has no `next`, so it is reached in production. "
-            "The URL is still pinned by _check_next and the host check."
-        ),
-    )
     @pytest.mark.parametrize(
         "header",
         [
             '<https://api.github.com/x?page=2>; xrel="next"',
+            "<https://api.github.com/x?page=2>; xrel=next",
+            '<https://api.github.com/x?page=2>; relx="next"',
             '<https://api.github.com/x?page=2>; title="rel=next"',
+            '<https://api.github.com/x?page=2>; title="a; rel=next"',
+            '<https://api.github.com/x?page=2>; title="a\\"; rel=next"',
+            '<https://api.github.com/x?page=2>; title="a, <https://e/>; rel=next"',
+            '<https://api.github.com/x?page=2>; anchor="#rel=next"; rel="prev"',
+            '<https://api.github.com/x?page=2>; rel="prev"; rel="next"',
+            "<https://api.github.com/x?page=2>; rel=",
+            '<https://api.github.com/x?page=2>; title="unterminated; rel=next',
         ],
     )
     def test_only_a_rel_parameter_names_a_relation(self, header):
+        """QA 4: ``rel`` is a whole parameter name, and quoted text is never a parameter."""
         assert "next" not in parse_link_header(header)
         assert next_link(real_response(200, [], headers={"Link": header})) is None
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            '<https://api.github.com/x?page=2>; REL="next"',
+            '<https://api.github.com/x?page=2> ; rel = "next"',
+            '<https://api.github.com/x?page=2>; title="a; b, c"; rel=next',
+            '<https://api.github.com/x?page=1>; title="rel=next", '
+            '<https://api.github.com/x?page=2>; rel="next"',
+        ],
+    )
+    def test_a_real_rel_parameter_still_parses(self, header):
+        assert parse_link_header(header)["next"] == "https://api.github.com/x?page=2"
+
+    def test_a_header_wins_over_requests_own_link_parsing(self):
+        """``requests`` splits parameters on every ``;``, even inside quotes."""
+        header = '<https://api.github.com/x?page=2>; title="a; rel=next"'
+        resp = real_response(200, [], headers={"Link": header})
+        assert "next" in resp.links  # requests' parser is fooled
+        assert next_link(resp) is None
 
 
 @pytest.mark.parametrize("page", [{"message": "x"}, None, "x"])
