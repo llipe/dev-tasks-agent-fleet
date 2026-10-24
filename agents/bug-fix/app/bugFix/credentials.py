@@ -1,8 +1,7 @@
 # Copied from agents/security-analyst/app/securityAnalyst/credentials.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
 # Extended (S-182): `fetch_secret_string`, a generic Secrets Manager read used for
-# the Anthropic key and the Projects token (D-50, D-99). Spec §8.1 extends it
-# further in later stories: token permissions (D-58).
+# the Anthropic key and the Projects token (D-50, D-99).
 # Extended (S-186): `TokenContext.app_id`, the fleet App id from the
 # `github_installations` row, which marker trust checks against (D-53). A non-int
 # or bool `app_id` is a typed `INVALID_APP_ID` error.
