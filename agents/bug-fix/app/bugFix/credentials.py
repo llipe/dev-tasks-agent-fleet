@@ -3,6 +3,8 @@
 # Extended (S-182): `fetch_secret_string`, a generic Secrets Manager read used for
 # the Anthropic key and the Projects token (D-50, D-99). Spec §8.1 extends it
 # further in later stories: token permissions (D-58).
+# Extended (S-186): `TokenContext.app_id`, the fleet App id from the
+# `github_installations` row, which marker trust checks against (D-53).
 """
 Credential resolution — Supabase service role key from Secrets Manager
 and GitHub App installation token minting.
@@ -38,6 +40,8 @@ class TokenContext:
     token: str
     issued_at: float  # time.monotonic()
     installation_id: int
+    # The fleet App id (D-53). ``None`` only for a context built by hand.
+    app_id: int | None = None
 
     def is_stale(self, threshold_minutes: float = TOKEN_STALE_THRESHOLD_MINUTES) -> bool:
         """Return True if the token has been alive longer than threshold."""
@@ -232,6 +236,7 @@ def resolve_github_credentials(
         token=token,
         issued_at=time.monotonic(),
         installation_id=row["installation_id"],
+        app_id=row["app_id"],
     )
 
 
@@ -243,5 +248,6 @@ def refresh_if_stale(token_ctx: TokenContext, pem: str, app_id: int) -> TokenCon
             token=new_token,
             issued_at=time.monotonic(),
             installation_id=token_ctx.installation_id,
+            app_id=token_ctx.app_id,
         )
     return token_ctx
