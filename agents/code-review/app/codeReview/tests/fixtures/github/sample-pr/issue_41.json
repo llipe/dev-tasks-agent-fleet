@@ -1,0 +1,21 @@
+{
+  "number": 41,
+  "title": "[PRD-widgets] Story S-001: widget sizes",
+  "state": "open",
+  "body": "Add widget sizes.\n\nSpec \u00a78.2 applies.\n\n## Task Checklist\n- [ ] do it\n",
+  "labels": [
+    {
+      "id": 1,
+      "name": "prd:widgets",
+      "color": "ededed"
+    },
+    {
+      "id": 2,
+      "name": "type:feature",
+      "color": "ededed"
+    }
+  ],
+  "user": {
+    "login": "octo-pm"
+  }
+}

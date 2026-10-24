@@ -1,0 +1,38 @@
+{
+  "url": "https://api.github.com/repos/llipe/dev-tasks-agent-fleet/issues/315",
+  "html_url": "https://github.com/llipe/dev-tasks-agent-fleet/issues/315",
+  "number": 315,
+  "state": "closed",
+  "state_reason": "completed",
+  "title": "[PRD-webhook-triggers] Story S-170: pure routing engine + safe condition language + bot guard",
+  "body": "## Story S-170 — Pure routing engine `webhook-routing.ts` (safe condition language + bot guard)\n\n**Priority:** Critical **Estimated Size:** M **Dependencies:** none (pure)\n\n### User Story\n\nAs the operator, I want a deterministic, safe matcher so an event resolves to exactly one rule (or none) with no code-execution risk.\n\n### Acceptance Criteria\n\n- [ ] `selectField(payload, path)` — dotted keys + `[n]` index, max depth N, returns undefined on miss, never throws on hostile shapes.\n- [ ] `evaluateCondition` ops: `equals, not_equals, contains, prefix, suffix, in, exists, matches_event`; string operands length-capped; no regex/code.\n- [ ] `routeDelivery(payload, eventType, endpoint, rules)` applies the bot-author guard first (D-W12), then first-match-wins by `position`, returns match / default / `no_match`.\n- [ ] Pure over inputs; exhaustively unit-testable.\n\n### Technical Notes\n\nD-W7/D-W12, Spec §8.1. Same testability posture as `checkSchedulerSecret`.\n\n### Testing Requirements\n\n- **Unit (L1):** every op; depth/length limits; first-match ordering; default fallthrough; bot-author exclusion; adversarial payloads (deep nesting, huge strings, arrays, nulls, prototype-pollution keys).\n- **Random/property:** fuzz `selectField` with generated payloads (reproducible seed).\n- **Commands:** `pnpm --filter panel test:unit`.\n\n### Files\n\n- `panel/lib/domain/webhook-routing.ts` · `panel/tests/unit/webhook-routing.test.ts`\n\n### DoD\n\n- [ ] L1 green incl. adversarial + property · [ ] `make validate` · [ ] PR merged.\n\n## Task Checklist\n\n- [ ] 6.0 Implement Story S-170 (#315): pure routing engine + bot guard · branch `story/S-170-webhook-routing`\n  - [ ] 6.1 `[T]` [panel] L1 `panel/tests/unit/webhook-routing.test.ts`: `selectField` dotted/indexed paths, depth limit, missing path → undefined, `__proto__`/`constructor` keys never traversed; each op true/false; length caps; event-type scoping; first-match by `position`; disabled rules skipped; default fallthrough; `no_match` (D-W7)\n  - [ ] 6.2 `[T]` [panel] L1 bot guard: `sender.login == bot_login` **and** `sender.type == \"Bot\"` excluded when `ignore_bot_author`; a human with the same login text but `type: \"User\"` is not excluded; explicit `author is not <bot>` condition works with the toggle off (D-W12)\n  - [ ] 6.3 `[T]` [panel] Property test: fuzz `selectField`/`routeDelivery` with generated payloads (fixed seed); never throws, always returns a valid result shape\n  - [ ] 6.4 `[I]` [panel] `panel/lib/domain/webhook-routing.ts`: `selectField`, `evaluateCondition`, `evaluateRule`, `routeDelivery`; own-property access only (`Object.hasOwn`), no regex, no `eval` (D-W7, D-W12)\n  - [ ] 6.5 `[I]` [panel] Zod/Ajv schema for the stored `conditions` jsonb, shared later with the rule editor (S-177)\n  - [ ] 6.6 Verify AC: safe language, first-match, default, bot guard\n  - [ ] 6.7 Run tests: `pnpm --filter panel run test:unit`; `make validate`; `coverage_gate`\n  - [ ] 6.8 `verifier` audit; open PR\n",
+  "labels": [
+    {
+      "name": "story",
+      "color": "0e8a16"
+    },
+    {
+      "name": "size:M",
+      "color": "fbca04"
+    },
+    {
+      "name": "scope:panel",
+      "color": "1d76db"
+    },
+    {
+      "name": "phase:orchestration",
+      "color": "5319e7"
+    },
+    {
+      "name": "prd:webhook-triggers",
+      "color": "c5def5"
+    }
+  ],
+  "milestone": {
+    "number": 5,
+    "title": "v4.0 — Phase 1 Webhook Triggers"
+  },
+  "closed_by_pull_requests": {
+    "total_count": 0
+  }
+}
