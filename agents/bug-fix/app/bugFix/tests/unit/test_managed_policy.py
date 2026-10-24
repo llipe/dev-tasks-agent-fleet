@@ -3,6 +3,13 @@
 The key names are provisional until the S-182 spike pins them against the
 installed CLI; when it does, these tests re-run against the spike's keys.
 
+S-182 phase 1 found these keys in the schema of the pinned CLI (2.1.309) and
+added them so the IC probe exercises the hardened policy (TestManagedOnly):
+``sandbox.failIfUnavailable`` (without it, a sandbox that can't start lets
+Bash run unsandboxed), ``allowManagedPermissionRulesOnly`` (repo allow rules
+are ignored, not just outranked), ``sandbox.network.allowManagedDomainsOnly``,
+and D-29's ``allowManagedHooksOnly`` / ``allowManagedMcpServersOnly``.
+
 Path rules use Claude Code's ``//`` prefix for an absolute filesystem path.
 A single leading ``/`` is resolved relative to the settings file's directory,
 so ``Read(/proc/**)`` in ``/etc/claude-code/managed-settings.json`` would
@@ -65,6 +72,29 @@ class TestSandbox:
         net = _policy()["sandbox"]["network"]
         assert net.get("allowLocalBinding", False) is False
         assert not net.get("allowUnixSockets")
+
+
+class TestManagedOnly:
+    """S-182: keys verified in the pinned CLI's settings schema (spike report)."""
+
+    def test_sandbox_fails_closed_when_it_cannot_start(self):
+        assert _policy()["sandbox"]["failIfUnavailable"] is True
+
+    def test_only_managed_permission_rules(self):
+        assert _policy()["allowManagedPermissionRulesOnly"] is True
+
+    def test_only_managed_domains(self):
+        assert _policy()["sandbox"]["network"]["allowManagedDomainsOnly"] is True
+
+    def test_only_managed_hooks_and_mcp_servers(self):
+        # D-29: a repo can't re-enable hooks or MCP servers.
+        assert _policy()["allowManagedHooksOnly"] is True
+        assert _policy()["allowManagedMcpServersOnly"] is True
+
+    def test_managed_only_keys_are_top_level_not_under_permissions(self):
+        perms = _policy()["permissions"]
+        for key in ("allowManagedPermissionRulesOnly", "allowManagedHooksOnly"):
+            assert key not in perms
 
 
 class TestDenyRules:

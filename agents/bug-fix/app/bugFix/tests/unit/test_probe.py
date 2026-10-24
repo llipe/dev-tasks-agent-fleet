@@ -433,7 +433,7 @@ class TestProcAndEnvChecks:
                 ("read", "uid"): {"readable": False, "error": "EACCES"},
             }
         )
-        v = _verdicts(probe.policy_checks(inner))
+        v = _verdicts(probe.policy_checks(inner, _canary))
         assert v == {
             "policy.tamper": "PASS",
             "secrets.dir.sandbox": "PASS",
@@ -448,9 +448,51 @@ class TestProcAndEnvChecks:
                 ("read", "uid"): {"readable": False},
             }
         )
-        v = _verdicts(probe.policy_checks(inner))
+        v = _verdicts(probe.policy_checks(inner, _canary))
         assert v["policy.tamper"] == "FAIL"
         assert v["secrets.dir.sandbox"] == "FAIL"
+
+
+def _canary() -> tuple[str, Any]:
+    return "/work/secrets/probe-canary-test", lambda: None
+
+
+class TestSecretCanary:
+    def test_canary_is_read_and_removed(self, tmp_path):
+        removed: list[bool] = []
+        inner = FakeInner(
+            {
+                ("write", "sandbox"): {"written": False},
+                ("read", "sandbox"): {"readable": False, "error": "EACCES"},
+                ("read", "uid"): {"readable": False, "error": "EACCES"},
+            }
+        )
+
+        def _make():
+            return str(tmp_path / "canary"), lambda: removed.append(True)
+
+        v = _verdicts(probe.policy_checks(inner, _make))
+        assert v["secrets.dir.sandbox"] == "PASS"
+        reads = [c for c in inner.calls if c[0] == "read"]
+        assert [c[1] for c in reads] == [(str(tmp_path / "canary"),)] * 2
+        assert removed == [True]
+
+    def test_canary_write_failure_fails_both(self):
+        def _make():
+            raise PermissionError(13, "denied")
+
+        inner = FakeInner({("write", "sandbox"): {"written": False}})
+        v = _verdicts(probe.policy_checks(inner, _make))
+        assert v["secrets.dir.sandbox"] == "FAIL" and v["secrets.dir.uid"] == "FAIL"
+
+    def test_write_secret_canary(self, tmp_path):
+        import stat
+
+        path, remove = probe.write_secret_canary(str(tmp_path))
+        assert stat.S_IMODE((tmp_path / path.rsplit("/", 1)[1]).stat().st_mode) == 0o600
+        remove()
+        remove()  # idempotent
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestPatAbsent:
@@ -1119,3 +1161,60 @@ class TestExecute:
         assert summary["versions"] == {"claude_code": "2.1.309", "sandbox_runtime": "0.0.81"}
         assert summary["summary"] == "probe: 1 PASS, 0 FAIL"
         assert run.events[0][0].startswith("probe mode")
+
+
+class TestIsolatedChecks:
+    """One broken sandbox call fails that check only; the uid-only checks still report."""
+
+    def test_sandbox_failure_leaves_uid_checks_reported(self):
+        from probe import ProbeError
+
+        err = ProbeError("sandbox failed (exit 1): bwrap: No permissions to create a new namespace")
+        answers: dict[tuple[str, str], Any] = {
+            (sub, "sandbox"): err
+            for sub in ("net", "tool", "proc", "env", "sudo", "write", "read", "scan")
+        }
+        answers.update(
+            {
+                ("proc", "uid"): {"environ": "unreadable:EACCES", "mem": "unreadable:EACCES"},
+                ("env", "uid"): {"names": ["CI", "HOME", "LANG", "PATH"]},
+                ("sudo", "uid"): {"rc": 1},
+                ("read", "uid"): {"readable": False, "error": "EACCES"},
+                ("scan", "uid"): {"matches": 0, "files": 9},
+            }
+        )
+        inner = FakeInner(answers)
+
+        class R:
+            returncode = 1
+
+        results = (
+            probe.net_checks(inner)
+            + probe.proc_checks(inner, 7)
+            + probe.env_checks(inner)
+            + probe.sudo_checks(inner, run=lambda *a, **k: R())
+            + probe.policy_checks(inner, _canary)
+            + probe.pat_absent_checks(inner, PAT)
+        )
+        v = _verdicts(results)
+        for name in (
+            "proc.wrapper.uid",
+            "env.fixer.uid",
+            "sudo.fixer.uid",
+            "sudo.wrapper.root",
+            "secrets.dir.uid",
+            "board.pat_absent.uid",
+        ):
+            assert v[name] == "PASS", name
+        for name in (
+            "net.blocked.example.com",
+            "net.reachable.pypi.org",
+            "proc.wrapper.sandbox",
+            "env.fixer.sandbox",
+            "policy.tamper",
+            "board.pat_absent.sandbox",
+        ):
+            assert v[name] == "FAIL", name
+        bad = next(r for r in results if r.check == "proc.wrapper.sandbox")
+        assert "bwrap" in bad.detail
+        assert len(results) == len(v)  # one result per check name

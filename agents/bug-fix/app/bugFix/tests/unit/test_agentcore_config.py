@@ -72,6 +72,12 @@ class TestRuntime:
         cfg = config.load_config(_env())
         assert cfg.board_updates_enabled is True
 
+    def test_probe_flag_is_never_committed(self):
+        # TC-182-13 (D-70): ALLOW_PROBE is set only for the spike, by
+        # infra-engineer on the deployed runtime, and unset after (task 3.10).
+        assert "ALLOW_PROBE" not in _env()
+        assert "ALLOW_PROBE" not in AGENTCORE.read_text()
+
 
 PROVIDER_FREE = [AGENTCORE, PKG / "config.py", PKG / "Dockerfile"]
 
@@ -95,6 +101,8 @@ SECRET_FREE = [
     AGENTCORE,
     PKG / "Dockerfile",
     PKG / "managed-settings.json",
+    PKG / "srt-settings.json",
+    PKG / "sudoers-bug-fix",
     PKG / "config.py",
     AGENT / "README.md",
 ]

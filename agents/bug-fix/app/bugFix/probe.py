@@ -38,6 +38,7 @@ through the scrubber; no token or key is ever put in a detail or in argv.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import hashlib
 import json
@@ -46,6 +47,7 @@ import subprocess
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 import requests
@@ -288,70 +290,69 @@ def sandbox_checks(sb: Sandbox) -> list[CheckResult]:
     return results
 
 
+def _check(name: str, fn: Callable[[], CheckResult]) -> CheckResult:
+    """One check, isolated: an error in it is that check's FAIL and nothing else's,
+    so a sandbox that won't start still leaves the uid-only checks reported."""
+    try:
+        return fn()
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(name, Verdict.FAIL, f"{type(exc).__name__}: {exc}")
+
+
 def _blocked(d: Mapping[str, Any]) -> bool:
     http = str(d.get("http", ""))
     http_blocked = http == "blocked" or (http == "status:403" and bool(d.get("proxy_error")))
     return http_blocked and d.get("tcp") == "blocked"
 
 
-def net_checks(inner: Any) -> list[CheckResult]:
-    results = []
-    for name, url, host, port in NET_BLOCKED:
-        d = inner.call("net", url, host, str(port))
-        results.append(
-            CheckResult(
-                f"net.blocked.{name}",
-                _pf(_blocked(d)),
-                f"http={d.get('http')} tcp={d.get('tcp')} {d.get('detail', '')}".strip(),
-            )
-        )
-    tools = (
-        ("registry.npmjs.org", ["npm", "view", "left-pad", "version"]),
+_REGISTRY_TOOLS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("registry.npmjs.org", ("npm", "view", "left-pad", "version")),
+    (
+        "pypi.org",
         (
-            "pypi.org",
-            [
-                "python3",
-                "-m",
-                "pip",
-                "download",
-                "--no-deps",
-                "--no-cache-dir",
-                "--disable-pip-version-check",
-                "-d",
-                "/tmp/probe-pip",
-                "six",
-            ],
+            "python3", "-m", "pip", "download", "--no-deps", "--no-cache-dir",
+            "--disable-pip-version-check", "-d", "/tmp/probe-pip", "six",
         ),
-    )
-    for name, argv in tools:
+    ),
+)  # fmt: skip
+
+
+def net_checks(inner: Any) -> list[CheckResult]:
+    def _blocked_check(name: str, url: str, host: str, port: int) -> CheckResult:
+        d = inner.call("net", url, host, str(port))
+        detail = f"http={d.get('http')} tcp={d.get('tcp')} {d.get('detail', '')}".strip()
+        return CheckResult(f"net.blocked.{name}", _pf(_blocked(d)), detail)
+
+    def _reachable_check(name: str, argv: Sequence[str]) -> CheckResult:
         d = inner.call("tool", *argv)
-        results.append(
-            CheckResult(
-                f"net.reachable.{name}",
-                _pf(d.get("rc") == 0),
-                f"rc={d.get('rc')} {str(d.get('out', ''))[-200:]}".strip(),
-            )
-        )
+        detail = f"rc={d.get('rc')} {str(d.get('out', ''))[-200:]}".strip()
+        return CheckResult(f"net.reachable.{name}", _pf(d.get("rc") == 0), detail)
+
+    results = [
+        _check(f"net.blocked.{n}", partial(_blocked_check, n, u, h, p))
+        for n, u, h, p in NET_BLOCKED
+    ]
+    results += [
+        _check(f"net.reachable.{n}", partial(_reachable_check, n, a)) for n, a in _REGISTRY_TOOLS
+    ]
     return results
 
 
 def proc_checks(inner: Any, wrapper_pid: int) -> list[CheckResult]:
-    results = []
-    for where in ("sandbox", "uid"):
+    def _one(where: str) -> CheckResult:
         d = inner.call("proc", str(wrapper_pid), where=where)
         ok = str(d.get("environ", "")).startswith("unreadable") and str(
             d.get("mem", "")
         ).startswith("unreadable")
-        results.append(
-            CheckResult(
-                f"proc.wrapper.{where}",
-                _pf(ok),
-                f"pid={wrapper_pid} visible={d.get('visible')} environ={d.get('environ')} "
-                f"mem={d.get('mem')} cmdline={d.get('cmdline')} "
-                f"init_environ={d.get('init_environ')}",
-            )
+        return CheckResult(
+            f"proc.wrapper.{where}",
+            _pf(ok),
+            f"pid={wrapper_pid} visible={d.get('visible')} environ={d.get('environ')} "
+            f"mem={d.get('mem')} cmdline={d.get('cmdline')} "
+            f"init_environ={d.get('init_environ')}",
         )
-    return results
+
+    return [_check(f"proc.wrapper.{w}", partial(_one, w)) for w in ("sandbox", "uid")]
 
 
 def _forbidden(names: Sequence[str]) -> list[str]:
@@ -363,66 +364,104 @@ def _forbidden(names: Sequence[str]) -> list[str]:
 
 
 def env_checks(inner: Any) -> list[CheckResult]:
-    results = []
-    for where in ("sandbox", "uid"):
+    def _one(where: str) -> CheckResult:
         names = list(inner.call("env", where=where).get("names", []))
         bad = _forbidden(names)
         detail = f"forbidden={bad}" if bad else f"names={names}"
-        results.append(CheckResult(f"env.fixer.{where}", _pf(not bad), detail))
-    return results
+        return CheckResult(f"env.fixer.{where}", _pf(not bad), detail)
+
+    return [_check(f"env.fixer.{w}", partial(_one, w)) for w in ("sandbox", "uid")]
 
 
 def sudo_checks(
     inner: Any, *, run: Callable[..., Any] = subprocess.run, paths: SandboxPaths = DEFAULT_PATHS
 ) -> list[CheckResult]:
-    results = []
-    for where in ("uid", "sandbox"):
+    def _fixer(where: str) -> CheckResult:
         rc = inner.call("sudo", where=where).get("rc")
-        results.append(
-            CheckResult(f"sudo.fixer.{where}", _pf(rc != 0), f"fixer `sudo -n true` rc={rc}")
-        )
-    try:
-        rc = run(
-            [paths.sudo, "-n", "-u", "root", "true"],
-            env=build_env(None),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=15,
-            check=False,
-        ).returncode
-        results.append(
-            CheckResult(
-                "sudo.wrapper.root", _pf(rc != 0), f"wrapper `sudo -n -u root true` rc={rc}"
-            )
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        results.append(
-            CheckResult(
+        return CheckResult(f"sudo.fixer.{where}", _pf(rc != 0), f"fixer `sudo -n true` rc={rc}")
+
+    def _wrapper_root() -> CheckResult:
+        try:
+            rc = run(
+                [paths.sudo, "-n", "-u", "root", "true"],
+                env=build_env(None),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            ).returncode
+        except (OSError, subprocess.SubprocessError) as exc:
+            return CheckResult(
                 "sudo.wrapper.root", Verdict.FAIL, f"sudo not runnable: {type(exc).__name__}"
             )
+        return CheckResult(
+            "sudo.wrapper.root", _pf(rc != 0), f"wrapper `sudo -n -u root true` rc={rc}"
         )
+
+    results = [_check(f"sudo.fixer.{w}", partial(_fixer, w)) for w in ("uid", "sandbox")]
+    results.append(_check("sudo.wrapper.root", _wrapper_root))
     return results
 
 
-def policy_checks(inner: Any) -> list[CheckResult]:
-    w = inner.call("write", "/etc/claude-code/managed-settings.json")
-    results = [
-        CheckResult(
+SECRETS_DIR = "/work/secrets"
+
+
+def write_secret_canary(directory: str = SECRETS_DIR) -> tuple[str, Callable[[], None]]:
+    """Write a wrapper-owned 0600 canary in ``directory``; return its path and a remover.
+
+    An empty-looking directory proves nothing (srt's ``denyRead`` mounts an
+    empty one over it), so the check reads a file that is known to exist.
+    """
+    path = os.path.join(directory, f"probe-canary-{uuid.uuid4().hex[:12]}")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write("probe canary\n")
+
+    def _remove() -> None:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+
+    return path, _remove
+
+
+def policy_checks(
+    inner: Any,
+    make_canary: Callable[[], tuple[str, Callable[[], None]]] = write_secret_canary,
+) -> list[CheckResult]:
+    def _tamper() -> CheckResult:
+        w = inner.call("write", "/etc/claude-code/managed-settings.json")
+        return CheckResult(
             "policy.tamper",
             _pf(not w.get("written")),
             f"written={w.get('written')} error={w.get('error')}",
         )
-    ]
-    for where in ("sandbox", "uid"):
-        r = inner.call("read", "/work/secrets", where=where)
-        results.append(
-            CheckResult(
-                f"secrets.dir.{where}",
-                _pf(not r.get("readable")),
-                f"readable={r.get('readable')} error={r.get('error')}",
-            )
+
+    def _secrets(where: str, canary: str) -> CheckResult:
+        r = inner.call("read", canary, where=where)
+        return CheckResult(
+            f"secrets.dir.{where}",
+            _pf(not r.get("readable")),
+            f"canary in {SECRETS_DIR}: readable={r.get('readable')} error={r.get('error')}",
         )
+
+    results = [_check("policy.tamper", _tamper)]
+    try:
+        canary, remove = make_canary()
+    except OSError as exc:
+        return [
+            *results,
+            *(
+                CheckResult(f"secrets.dir.{w}", Verdict.FAIL, f"canary not written: {exc}")
+                for w in ("sandbox", "uid")
+            ),
+        ]
+    try:
+        results += [
+            _check(f"secrets.dir.{w}", partial(_secrets, w, canary)) for w in ("sandbox", "uid")
+        ]
+    finally:
+        remove()
     return results
 
 
@@ -436,18 +475,17 @@ def pat_absent_checks(inner: Any, pat: str | None) -> list[CheckResult]:
             )
         ]
     digest = hashlib.sha256(pat.encode()).hexdigest()
-    results = []
-    for where in ("sandbox", "uid"):
+
+    def _one(where: str) -> CheckResult:
         d = inner.call("scan", digest, *SCAN_ROOTS, where=where, timeout=300)
-        results.append(
-            CheckResult(
-                f"board.pat_absent.{where}",
-                _pf(d.get("matches") == 0),
-                f"matches={d.get('matches')} files_scanned={d.get('files')} "
-                f"(env + {len(SCAN_ROOTS)} roots)",
-            )
+        return CheckResult(
+            f"board.pat_absent.{where}",
+            _pf(d.get("matches") == 0),
+            f"matches={d.get('matches')} files_scanned={d.get('files')} "
+            f"(env + {len(SCAN_ROOTS)} roots)",
         )
-    return results
+
+    return [_check(f"board.pat_absent.{w}", partial(_one, w)) for w in ("sandbox", "uid")]
 
 
 def board_disabled_without_pat(env: Mapping[str, str] | None = None) -> list[CheckResult]:
