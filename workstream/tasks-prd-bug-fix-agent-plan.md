@@ -277,7 +277,7 @@
     > Local run done (2026-10-24, developer): agent `make validate` green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 2271 passed, 3 xfailed, coverage 98%, `claim.py` 100%, `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
   - [x] 9.8 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
-- [ ] 10.0 Implement Story S-189 (#371 - https://github.com/llipe/dev-tasks-agent-fleet/issues/371): Checkout, repository gate, toolchain, and the gate runner
+- [x] 10.0 Implement Story S-189 (#371 - https://github.com/llipe/dev-tasks-agent-fleet/issues/371): Checkout, repository gate, toolchain, and the gate runner
 
   > Note: needs `sandbox.py` from 3.0. Resolves spec OQ-1 (Python install contract). No issue is changed before the repo gate passes (FR-5).
 
@@ -298,7 +298,7 @@
     > AC1: `test_checkout.py::TestClone`, `TestNoTokenAtRest`, image smoke (root 0700 clone). AC2: `test_git_confinement.py::TestHardened`, `tests/unit/test_safe_git.py` (static scan). AC3: `TestMaterialize`, `TestPlantedRepoNeverRuns`, image smoke (fixer-owned files, plants never run). AC4, AC5: `tests/unit/test_toolchain.py`, `test_checkout.py::TestRepoGate`. AC6: D-112 (docs write-back PR). AC7, AC8: `test_gates.py`, `test_checkout.py::TestBaseGates`. AC9: `test_checkout.py::TestInstall`, `TestRestoreBase`.
   - [x] 10.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
     > Local run done (2026-10-24, developer): agent gate green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 2579 passed, 3 xfailed, coverage 97.37%: `checkout.py` 95%, `safe_git.py` 93%, `gates.py` 96%, `toolchain.py` 96%, `refusal.py` 100%; `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
-  - [ ] 10.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
+  - [x] 10.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
   - [x] 10.12 `[T]` [agents/bug-fix] Do this before 10.9. L2 `tests/component/test_git_confinement.py`:
     - a `.git/hooks/{post-checkout,pre-commit}`, `core.fsmonitor`, `diff.external` and a filter driver planted in `/work/repo` never run in the root wrapper's git calls during checkout or capture (uid model per D-110);
     - every wrapper git call carries `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `core.hooksPath=/dev/null` and `core.fsmonitor=false`;
