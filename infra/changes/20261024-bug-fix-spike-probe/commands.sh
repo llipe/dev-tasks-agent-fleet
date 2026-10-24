@@ -29,3 +29,8 @@ aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --cli-read-timeout
 # Step 1d — deploy fix-round-3 image (ALLOW_PROBE=1 kept) — applied 2026-10-24T15:40:03Z (runtime v4 -> v5); from story/S-182-sandbox-spike @ c71d98a; preview 15:37:13Z: image 150553e8 -> 5b24b169 only
 (cd agents/bug-fix && agentcore deploy -y)
 # Step 2d — re-probe on v5 — 2026-10-24T15:40:11Z..15:40:53Z; run_id 2fd1c9de-5a7c-415c-9a8c-0e4de9b2694c; session s182-probe4-20261024T154011-ef75557e7b04b207; raw backup/probe-run-4.sse (leak scan 0)
+
+# Step 3 — remove ALLOW_PROBE and redeploy — applied 2026-10-24T15:53:10Z (runtime v5 -> v6); preview 15:51:44Z: Runtime EnvironmentVariables "Removed: .ALLOW_PROBE" only, image unchanged
+sed -i '' '/{ "name": "ALLOW_PROBE", "value": "1" },/d' agents/bug-fix/agentcore/agentcore.json
+(cd agents/bug-fix && agentcore deploy -y)
+# Verify: probe payload refused — 2026-10-24T15:53:18Z; run_id f027af3f-cf91-4350-bc99-b8f37796b36a; session s182-refuse-20261024T155318-6b391a6d8d7fbcdf; PROBE_REFUSED; raw backup/probe-refused-v6.sse (leak scan 0)
