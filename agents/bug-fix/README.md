@@ -13,7 +13,8 @@ PRD: [`docs/requirements/prd-bug-fix-agent.md`](../../docs/requirements/prd-bug-
 | Runtime, role, secrets, panel invoke policy | S-181 (`infra-engineer`) |
 | Sandbox spike; pins the managed-settings key names | S-182 |
 | `agents` seed row and typed params (`params.py`, not yet wired into `main.py`) | S-184 |
-| Refusal checks, markers, claim, checkout, orchestration | S-185, S-186, S-188, S-189, S-190 |
+| Markers, neutralizer, comments and reactions, idempotent disposition, SIGTERM disposition hook (`markers.py`, `neutralize.py`, `issues.py`, `disposition.py`; not yet wired into `main.py`) | S-186 |
+| Refusal checks, claim, checkout, orchestration | S-185, S-188, S-189, S-190 |
 | Fix runner, validation, red-to-green, Draft PR, confinement | Wave B (S-191–S-195) |
 
 ## Layout
@@ -35,17 +36,21 @@ agents/bug-fix/
     ├── main.py                    # AgentCore entrypoint (stub + probe-mode hook)
     ├── config.py                  # typed env config (ConfigError)
     ├── params.py                  # typed run params: schema bounds, seed-equal defaults (S-184)
+    ├── markers.py                 # build, parse, trust-check comment markers; open claims (S-186)
+    ├── neutralize.py              # model-text neutralizer: closing refs, @mentions (S-186)
+    ├── issues.py                  # issue comments and reactions, App token (S-186)
+    ├── disposition.py             # diagnosis comment + 😕, once per run, after ownership (S-186)
     ├── sandbox.py                 # starts fixer processes: setpriv drop, env, sandbox, timeout
     ├── fixer_exec.py              # runs as fixer after setpriv; rebuilds the env, refuses root
     ├── probe.py                   # S-182 spike checks (probe mode)
     ├── probe_inner.py             # the probe's fixer-side helper (stdlib only)
     ├── agent_reporter.py          # copied: runs / run_steps / run_events reporting
     ├── heartbeat.py               # copied: stream keep-alive
-    ├── signal_backstop.py         # copied: SIGTERM terminal report
+    ├── signal_backstop.py         # copied + extended: SIGTERM disposition (10 s budget), terminal report
     ├── scrubber.py                # copied + extended: secret redaction
-    ├── credentials.py             # copied + extended: Supabase key, App token, fetch_secret_string
+    ├── credentials.py             # copied + extended: Supabase key, App token + App id, fetch_secret_string
     ├── scripts/image-smoke.sh     # image assertions
-    └── tests/{unit,component,fixtures/contract}/   # contract: params_schema.json (spec §5.2), payloads
+    └── tests/{unit,component,fixtures/contract}/   # contract: params_schema.json (spec §5.2), payloads, marker goldens
 ```
 
 Copied modules follow the sibling convention (copy, don't share; D-03). Each starts with a header naming its source path in `agents/security-analyst/app/securityAnalyst/` and the source commit.
@@ -84,6 +89,18 @@ The `agents` row is seeded by `supabase/migrations/20261024130000_seed_bug_fix_a
 | `max_code_lines` | integer 10–2000 | 400 |
 
 `params.parse_params()` enforces the same types and bounds, because a direct invoke bypasses the panel's Ajv (D-82). It applies the defaults itself, because the panel validates with `useDefaults: false`, so a webhook fire sends only `issue_number` and `trigger_comment_id`. A missing `issue_number` raises `MissingRequiredParam`; a type or bounds violation raises `InvalidParam`. Both name the key and never the value. Unknown keys are ignored. `tests/fixtures/contract/params_schema.json` is the spec copy: the panel's L2.5 test proves the seed equals it, and this package's tests prove `params.DEFAULTS` and the bounds equal it.
+
+## Markers and disposition (S-186, spec §8.3, §8.8)
+
+Every comment the agent posts starts with a hidden marker block, one line per run: `<!-- agent-fleet:bug-fix:<kind> run_id=<uuid> -->`, where `<kind>` is `claim`, `disposition` or `pr`, or `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->` (D-104).
+
+- `markers.parse_block()` reads only the leading block from line 1 (D-80). A line must match the grammar exactly: a lowercase UUID, a known kind and a known refusal reason. A CRLF line end is accepted.
+- `markers.is_trusted()` trusts a comment only when `performed_via_github_app.id` equals the fleet App id (`TokenContext.app_id`, from the `github_installations` row) and `user.type == "Bot"`. The login is never consulted (D-53).
+- `markers.open_claims()` lists trusted claims that no trusted `pr` or `disposition` marker for the same run has closed, ordered by integer comment id. A refusal never opens or closes a claim.
+- `neutralize.neutralize()` turns a closing keyword plus a reference into `(ref <reference>)` and puts U+200B after every `@` (D-65).
+- `issues.IssuesClient` posts and lists comments and adds the `eyes`, `rocket` and `confused` reactions with the App installation token. A missing `trigger_comment_id` skips the reaction with no call, and a reaction 4xx is logged, not raised. Bodies are cut to 65,536 UTF-16 units.
+- `disposition.Disposer` posts the diagnosis comment (why the run stopped, what was tried, the diffstat when a cap was hit), then 😕, then the board hook. It writes no label or assignee and never edits the issue (D-93). It does nothing before `confirm_ownership()` (D-81), and nothing when a trusted `disposition` marker for the run already exists or a disposition is already in flight in the process. The one exception is the SIGTERM backstop: a disposition the dying process can't finish (for example the `finally` path suspended under the signal handler) is taken over. An owner that hasn't started posting is preempted so it can't post as well, and a post that may have landed is re-checked against the trusted marker first. Model text is scrubbed, neutralized, and has `<!--` defused (D-85).
+- `signal_backstop.install_termination_backstop(..., get_disposition=disposer.backstop_action)` runs that disposition on SIGTERM with a 10-second budget before `fail()`, and the `fail()` detail says what it did (posted, already posted, skipped, failed or abandoned). Wiring it into `main.py` is S-188/S-190.
 
 ## Image
 
@@ -167,6 +184,8 @@ make image-smoke    # build, then scripts/image-smoke.sh bug-fix:local
 - the directory owners and modes, and that `fixer` can't modify either policy file.
 
 The repo-root `make validate` includes this package.
+
+`tests/component/fake_github.py` is an in-memory GitHub REST double at the `requests.Session` boundary, used by `test_issues.py` and `test_disposition.py`. The marker grammar is pinned by golden bodies in `tests/fixtures/contract/markers/` (CT-32).
 
 `tests/component/test_sandbox_proc.py` runs the real command chain with real processes. Only `setpriv` and `srt` are replaced by exec-through shims, and the sweep is scoped to a per-test marker (the production sweep would kill every process of the current user).
 

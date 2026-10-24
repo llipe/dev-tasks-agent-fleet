@@ -1,0 +1,91 @@
+{
+  "claim-crlf.md": [
+    [
+      "claim",
+      "1c0b3e5f-2d4e-4f60-9b7c-8d9e0f1a2b3c",
+      null
+    ]
+  ],
+  "claim.md": [
+    [
+      "claim",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      null
+    ]
+  ],
+  "disposition-fake-claim-below.md": [
+    [
+      "disposition",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      null
+    ]
+  ],
+  "disposition-two-runs.md": [
+    [
+      "disposition",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      null
+    ],
+    [
+      "disposition",
+      "1c0b3e5f-2d4e-4f60-9b7c-8d9e0f1a2b3c",
+      null
+    ]
+  ],
+  "disposition.md": [
+    [
+      "disposition",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      null
+    ]
+  ],
+  "pr.md": [
+    [
+      "pr",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      null
+    ]
+  ],
+  "refusal-active-run.md": [
+    [
+      "refusal",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      "active_run"
+    ]
+  ],
+  "refusal-closed.md": [
+    [
+      "refusal",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      "closed"
+    ]
+  ],
+  "refusal-invalid-params.md": [
+    [
+      "refusal",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      "invalid_params"
+    ]
+  ],
+  "refusal-linked-pr.md": [
+    [
+      "refusal",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      "linked_pr"
+    ]
+  ],
+  "refusal-pull-request.md": [
+    [
+      "refusal",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      "pull_request"
+    ]
+  ],
+  "refusal-repo-gate.md": [
+    [
+      "refusal",
+      "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b",
+      "repo_gate"
+    ]
+  ]
+}

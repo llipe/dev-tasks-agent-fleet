@@ -1,6 +1,6 @@
 # Copied from agents/security-analyst/app/securityAnalyst/tests/unit/test_credentials.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
-# Unchanged below this header: covers the copied module of the same name.
+# Extended (S-186): `TokenContext.app_id` from the installation row (D-53).
 """Unit tests for credentials module."""
 
 from __future__ import annotations
@@ -391,6 +391,46 @@ class TestResolveGithubCredentials:
         mock_mint.assert_called_once_with(10, 20, "-----BEGIN RSA PRIVATE KEY-----\n...")
         assert ctx.token == "ghs_resolved"
         assert ctx.installation_id == 20
+        # S-186: the fleet App id that marker trust checks against (D-53).
+        assert ctx.app_id == 10
+
+    @pytest.mark.parametrize("app_id", ["10", True, False, 10.0, None, 0, -3, [10], {"id": 10}])
+    @patch("credentials.mint_installation_token")
+    @patch("credentials._fetch_pem")
+    @patch("credentials._get_installation")
+    def test_a_non_int_app_id_is_a_typed_error(
+        self, mock_get_inst, mock_fetch_pem, mock_mint, app_id
+    ):
+        # QA gap 7: a bad row fails here, typed, not as a TypeError later in
+        # marker trust (is_trusted), and before any secret is read or token minted.
+        mock_get_inst.return_value = {
+            "app_id": app_id,
+            "installation_id": 20,
+            "private_key_secret_arn": "arn:aws:sm:us-east-1:123:secret/key",
+        }
+        with pytest.raises(CredentialError) as exc:
+            resolve_github_credentials("myorg", "https://sb.co", "key123")
+        assert exc.value.code == "INVALID_APP_ID"
+        mock_fetch_pem.assert_not_called()
+        mock_mint.assert_not_called()
+
+    @pytest.mark.parametrize("app_id", ["10", True, 10.0, 0])
+    def test_token_context_rejects_a_non_int_app_id(self, app_id):
+        with pytest.raises(CredentialError) as exc:
+            TokenContext(token="t", issued_at=0.0, installation_id=1, app_id=app_id)
+        assert exc.value.code == "INVALID_APP_ID"
+
+    def test_token_context_built_by_hand_may_omit_the_app_id(self):
+        assert TokenContext(token="t", issued_at=0.0, installation_id=1).app_id is None
+
+    @patch("credentials.mint_installation_token")
+    def test_refresh_keeps_the_app_id(self, mock_mint):
+        mock_mint.return_value = "ghs_new"
+        old = TokenContext(token="ghs_old", issued_at=0.0, installation_id=20, app_id=10)
+        with patch("credentials.time.monotonic", return_value=10_000.0):
+            new = refresh_if_stale(old, "pem", 10)
+        assert new.token == "ghs_new"
+        assert new.app_id == 10
 
 
 # ---------------------------------------------------------------------------
