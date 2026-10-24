@@ -5,13 +5,16 @@ Model-written text (a summary, a rationale, a commit message, a diagnosis)
 must not cause side effects on GitHub when the wrapper posts it:
 
 - **Closing keywords.** ``close[sd]?``, ``fix(e[sd])?`` or ``resolve[sd]?``,
-  in any case, an optional colon, whitespace, then an issue reference
-  (``#N``, ``owner/repo#N``, a GitHub issue or pull URL, or ``GH-N``) would
-  close that issue when a PR merges. The keyword and the whitespace are
-  replaced, leaving ``(ref <reference>)``; for ``#N`` that is exactly
-  ``(ref #N)``. The reference text is kept as written, so a cross-repository
-  reference never turns into a wrong local ``#N``. Only the wrapper writes the
-  single ``Fixes #<N>`` line.
+  in any case, then a colon with optional whitespace or whitespace alone,
+  then an issue reference (``#N``, ``owner/repo#N``, a GitHub issue or pull
+  URL with or without its scheme, or ``GH-N``) would close that issue when a
+  PR merges. A reference wrapped in Markdown (``[#N](url)``, ``**#N**``, a
+  code span, ``<url>``) counts too, and the wrapper is kept inside the
+  ``(ref …)``. The keyword and the separator are replaced, leaving
+  ``(ref <reference>)``; for ``#N`` that is exactly ``(ref #N)``. The
+  reference text is kept as written, so a cross-repository reference never
+  turns into a wrong local ``#N``. Only the wrapper writes the single
+  ``Fixes #<N>`` line.
 - **Mentions.** Every ``@`` gets U+200B (zero-width space) after it, so no
   user or team is notified.
 
@@ -29,14 +32,26 @@ ZWSP = "​"
 
 _REFERENCE = (
     r"(?:"
-    r"https?://(?:www\.)?github\.com/[^\s/]+/[^\s/]+/(?:issues|pull)/\d+"
+    r"(?:https?://)?(?:www\.)?github\.com/[^\s/]+/[^\s/]+/(?:issues|pull)/\d+"
     r"|[\w.-]+/[\w.-]+#\d+"
     r"|#\d+"
     r"|GH-\d+"
     r")"
 )
+# A reference as Markdown may wrap it: a link, emphasis, a code span or an
+# autolink. The wrapper is consumed with the reference so the output stays
+# well-formed; an unclosed opener is consumed too.
+_TARGET = (
+    r"(?:"
+    r"\[" + _REFERENCE + r"\](?:\([^()\s]*\))?"
+    r"|(?P<em>\*{1,2}|_{1,2}|`)" + _REFERENCE + r"(?P=em)"
+    r"|<" + _REFERENCE + r">"
+    r"|[\[*_`<]*" + _REFERENCE + r")"
+)
 _CLOSING = re.compile(
-    r"(?<![A-Za-z0-9])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?P<ref>" + _REFERENCE + r")",
+    r"(?<![A-Za-z0-9])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)(?P<ref>"
+    + _TARGET
+    + r")",
     re.IGNORECASE,
 )
 _AT = re.compile("@(?!" + ZWSP + ")")

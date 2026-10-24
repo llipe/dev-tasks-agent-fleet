@@ -83,6 +83,48 @@ class TestClosingKeywords:
         # first reference becomes "(ref #1)" it would be.
         assert neutralize("close #1close #1") == "(ref #1)(ref #1)"
 
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Fixes:#1", "(ref #1)"),
+            ("closes:o/r#2", "(ref o/r#2)"),
+            ("resolved:https://github.com/o/r/issues/3", "(ref https://github.com/o/r/issues/3)"),
+            ("fixes:**#4**", "(ref **#4**)"),
+        ],
+    )
+    def test_colon_with_no_whitespace(self, text, expected):
+        # QA gap 3: GitHub accepts "Fixes:#1".
+        assert neutralize(text) == expected
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            (
+                "fixes [#1](https://github.com/o/r/issues/1)",
+                "(ref [#1](https://github.com/o/r/issues/1))",
+            ),
+            ("Closes [o/r#2](u)", "(ref [o/r#2](u))"),
+            ("fixes [#1]", "(ref [#1])"),
+            ("fixes **#1**", "(ref **#1**)"),
+            ("fixes *#1*", "(ref *#1*)"),
+            ("fixes __#1__", "(ref __#1__)"),
+            ("fixes `#1`", "(ref `#1`)"),
+            ("fixes **#1", "(ref **#1)"),  # unclosed wrapper: still defused
+            (
+                "fixes <https://github.com/o/r/issues/1>",
+                "(ref <https://github.com/o/r/issues/1>)",
+            ),
+            ("fixes github.com/o/r/issues/1", "(ref github.com/o/r/issues/1)"),
+            ("resolves www.github.com/o/r/pull/2", "(ref www.github.com/o/r/pull/2)"),
+            ("fixes <github.com/o/r/issues/1>", "(ref <github.com/o/r/issues/1>)"),
+        ],
+    )
+    def test_markdown_wrapped_and_schemeless_references(self, text, expected):
+        # QA gap 3: over-neutralizing only changes wording, so wrapped forms go too.
+        out = neutralize(text)
+        assert out == expected
+        assert neutralize(out) == out
+
     def test_keyword_glued_to_underscore_is_still_neutralized(self):
         # Over-neutralizing is harmless; under-neutralizing closes an issue.
         assert neutralize("_fixes #1") == "_(ref #1)"
@@ -107,7 +149,15 @@ class TestMisc:
         assert neutralize("") == ""
 
     def test_idempotent_examples(self):
-        for text in ["Fixes #1 @a", "closes o/r#1", "x@y", "fixes fixes #2"]:
+        for text in [
+            "Fixes #1 @a",
+            "closes o/r#1",
+            "x@y",
+            "fixes fixes #2",
+            "fixes:fixes:#2",
+            "fixes [fixes #1](u)",
+            "fixes **fixes **#3****",
+        ]:
             once = neutralize(text)
             assert neutralize(once) == once
 

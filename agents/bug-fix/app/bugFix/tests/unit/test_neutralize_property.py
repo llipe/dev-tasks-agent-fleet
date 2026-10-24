@@ -16,9 +16,12 @@ from neutralize import ZWSP, neutralize
 
 # GitHub's closing-reference grammar, written independently of the module: a
 # keyword at a word boundary, an optional colon, whitespace, then a reference.
+# A Markdown opener ("[", "**", "`", "<") may sit before the reference, the
+# scheme of an issue URL is optional, and "Fixes:#1" needs no whitespace.
 _CLOSING = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+"
-    r"(?:#\d+|[\w.-]+/[\w.-]+#\d+|https?://(?:www\.)?github\.com/\S+/(?:issues|pull)/\d+|GH-\d+)",
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?::\s*|\s+)[\[*_`<]*"
+    r"(?:#\d+|[\w.-]+/[\w.-]+#\d+|(?:https?://)?(?:www\.)?github\.com/\S+/(?:issues|pull)/\d+"
+    r"|GH-\d+)",
     re.IGNORECASE,
 )
 
@@ -30,10 +33,14 @@ _REF = st.one_of(
     st.integers(1, 999).map(lambda n: f"o/r#{n}"),
     st.integers(1, 999).map(lambda n: f"https://github.com/o/r/issues/{n}"),
     st.integers(1, 999).map(lambda n: f"GH-{n}"),
+    st.integers(1, 999).map(lambda n: f"github.com/o/r/issues/{n}"),
 )
-_CLOSER = st.tuples(_KW, st.sampled_from(["", ":"]), st.sampled_from([" ", "  ", "\n"]), _REF).map(
-    "".join
-)
+_WRAPPED = st.tuples(
+    st.sampled_from(["{}", "[{}](u)", "[{}]", "**{}**", "*{}*", "__{}__", "`{}`", "<{}>", "**{}"]),
+    _REF,
+).map(lambda t: t[0].format(t[1]))
+_SEP = st.sampled_from([" ", "  ", "\n", ": ", ":", ":\n"])
+_CLOSER = st.tuples(_KW, _SEP, _WRAPPED).map("".join)
 _PIECES = st.one_of(
     st.text(max_size=40),
     _CLOSER,
