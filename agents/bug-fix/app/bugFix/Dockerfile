@@ -4,10 +4,15 @@
 # Layout (spec §7, §12; D-05, D-18, D-51):
 #   - Python 3.13 for the wrapper; Node 26 + pnpm and Python for target repos
 #     (JS/TS and Python stacks in v1, D-18).
-#   - git, bubblewrap and socat: the Claude Code Bash sandbox runtime on Linux.
-#   - A pinned @anthropic-ai/claude-code CLI (headless `claude -p`, D-05).
+#   - git, bubblewrap, socat and ripgrep: the Claude Code Bash sandbox runtime
+#     on Linux (bwrap + a proxy for the registry-only network policy).
+#   - A pinned @anthropic-ai/claude-code CLI (headless `claude -p`, D-05) and a
+#     pinned @anthropic-ai/sandbox-runtime (`srt`), the same runtime as a
+#     standalone CLI, for the wrapper's own fixer-run scripts (S-182).
 #   - Two OS users with different uids: `wrapper` (runs this process and holds
 #     every secret in memory) and `fixer` (runs the CLI and repo scripts).
+#   - sudo with one rule, /etc/sudoers.d/bug-fix: `wrapper` may become `fixer`
+#     and nobody else; `fixer` may not sudo at all (D-109).
 #   - /etc/claude-code/managed-settings.json, root-owned 0644: the managed
 #     policy, which takes precedence over a target repo's own .claude/ (D-51).
 #
@@ -28,11 +33,13 @@ RUN if [ -s /usr/local/share/ca-certificates/extra-ca.crt ]; then \
       update-ca-certificates; \
     fi
 
-# System toolchain. bubblewrap + socat are the Claude Code sandbox runtime's
-# Linux dependencies; git is used by the wrapper's own clone (D-62) and by
-# repo scripts; make runs Python repos' gate targets (D-19).
+# System toolchain. bubblewrap, socat and ripgrep are the Claude Code sandbox
+# runtime's Linux dependencies; git is used by the wrapper's own clone (D-62)
+# and by repo scripts; make runs Python repos' gate targets (D-19); sudo is the
+# wrapper -> fixer switch (D-109); procps provides /usr/bin/kill for the
+# post-run sweep of every fixer process (D-62).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bubblewrap ca-certificates curl git gnupg make socat && \
+      bubblewrap ca-certificates curl git gnupg make procps ripgrep socat sudo && \
     rm -rf /var/lib/apt/lists/*
 
 # Node.js 26 (NodeSource, same mechanism as the sibling image).
@@ -41,20 +48,25 @@ RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# pnpm and the Claude Code CLI, both pinned. Node >= 25 no longer bundles
-# corepack, so pnpm is installed directly. The CLI is installed root-owned, so
-# neither runtime user can modify or update it; the auto-updater is off.
+# pnpm, the Claude Code CLI and the sandbox runtime, all pinned. Node >= 25 no
+# longer bundles corepack, so pnpm is installed directly. Everything is
+# installed root-owned, so neither runtime user can modify or update it; the
+# auto-updater is off.
 ARG PNPM_VERSION=10.11.0
 ARG CLAUDE_CODE_VERSION=2.1.309
+ARG SANDBOX_RUNTIME_VERSION=0.0.81
 RUN npm install -g --no-fund --no-audit \
       "pnpm@${PNPM_VERSION}" \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" && \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+      "@anthropic-ai/sandbox-runtime@${SANDBOX_RUNTIME_VERSION}" && \
     npm cache clean --force
 ENV DISABLE_AUTOUPDATER=1 \
-    CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION}
+    CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION} \
+    SANDBOX_RUNTIME_VERSION=${SANDBOX_RUNTIME_VERSION}
 
 # Users. Fixed, distinct, non-zero uids and separate primary groups; `fixer`
-# is in no group of `wrapper`'s and has no sudo. Home directories are private.
+# is in no group of `wrapper`'s and has no sudo rule. Home directories are
+# private.
 ARG WRAPPER_UID=10001
 ARG FIXER_UID=10002
 RUN groupadd --gid "${WRAPPER_UID}" wrapper && \
@@ -80,6 +92,21 @@ COPY managed-settings.json /etc/claude-code/managed-settings.json
 RUN chown -R root:root /etc/claude-code && \
     chmod 0755 /etc/claude-code && \
     chmod 0644 /etc/claude-code/managed-settings.json
+
+# The wrapper -> fixer switch (D-109): one sudoers file, root:root 0440,
+# validated here so a syntax error fails the build instead of disabling sudo.
+COPY sudoers-bug-fix /etc/sudoers.d/bug-fix
+RUN chown root:root /etc/sudoers.d/bug-fix && \
+    chmod 0440 /etc/sudoers.d/bug-fix && \
+    visudo -cf /etc/sudoers.d/bug-fix && \
+    visudo -c
+
+# Sandbox-runtime policy for the wrapper's fixer-run scripts (S-182): the same
+# registry-only network allow-list as the managed Claude Code policy.
+COPY srt-settings.json /etc/bug-fix/srt-settings.json
+RUN chown -R root:root /etc/bug-fix && \
+    chmod 0755 /etc/bug-fix && \
+    chmod 0644 /etc/bug-fix/srt-settings.json
 
 # Python deps for the wrapper, installed system-wide as root.
 WORKDIR /app

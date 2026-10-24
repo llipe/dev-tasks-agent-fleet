@@ -1,0 +1,11 @@
+# /etc/sudoers.d/bug-fix - installed root:root 0440, checked with `visudo -cf`
+# at build time (S-182 task 3.16, D-109).
+#
+# The wrapper (uid 10001) may start processes as `fixer` (uid 10002) and as
+# nobody else: never root, never with a chosen group. `fixer` has no rule.
+# env_reset starts every `sudo -u fixer` command from a clean environment;
+# sandbox.py passes the allow-listed variables explicitly (D-51), and
+# fixer_exec.py rebuilds the final environment from that allow-list.
+Defaults env_reset
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+wrapper ALL=(fixer) NOPASSWD: ALL

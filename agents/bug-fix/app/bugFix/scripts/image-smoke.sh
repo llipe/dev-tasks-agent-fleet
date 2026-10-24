@@ -7,7 +7,13 @@
 #   - toolchain: Python 3.13.x, Node v26.x, pnpm, git, bwrap, socat, and
 #     `claude --version` equal to the version pinned in the Dockerfile;
 #   - users: `wrapper` and `fixer` have different, non-zero uids, fixer is in
-#     none of wrapper's groups and has no sudo, the default user is wrapper;
+#     none of wrapper's groups, the default user is wrapper;
+#   - uid switch (S-182 task 3.16, D-109): /etc/sudoers.d/bug-fix is root:root
+#     0440 and valid; as wrapper, `sudo -n -u fixer id -u` is 10002 with a
+#     clean environment; wrapper can't become root or pick a group; fixer
+#     can't sudo at all; `sudo -u fixer kill -9 -- -1` leaves no fixer process;
+#   - sandbox runtime: `srt --version` equals the pinned version, `rg` works,
+#     /etc/bug-fix/srt-settings.json is root:root 0644;
 #   - dirs: /work/repo and /work/out owned by fixer, /home/fixer exists,
 #     /work/wrapper and /work/secrets are wrapper-only (0700);
 #   - policy: /etc/claude-code/managed-settings.json is root:root 0644, and as
@@ -60,6 +66,15 @@ ok "$(as_root 'bwrap --version')"
 as_root 'socat -V' >/dev/null || fail "socat -V failed"
 ok "socat present"
 
+as_root 'rg --version' >/dev/null || fail "rg (ripgrep) not runnable"
+ok "$(as_root 'rg --version | head -1')"
+
+srt_pinned="$(sed -n 's/^ARG SANDBOX_RUNTIME_VERSION=//p' "$DOCKERFILE")"
+[ -n "$srt_pinned" ] || fail "no ARG SANDBOX_RUNTIME_VERSION in the Dockerfile"
+srt_v="$(as_user fixer 'srt --version')"
+echo "$srt_v" | grep -qF "$srt_pinned" || fail "srt --version is '$srt_v', expected $srt_pinned"
+ok "srt $srt_v (pinned $srt_pinned)"
+
 pinned="$(sed -n 's/^ARG CLAUDE_CODE_VERSION=//p' "$DOCKERFILE")"
 [ -n "$pinned" ] || fail "no ARG CLAUDE_CODE_VERSION in the Dockerfile"
 claude_v="$(as_user fixer 'claude --version')"
@@ -87,10 +102,55 @@ done
 echo " $fixer_groups " | grep -qE ' (sudo|wheel|root|adm) ' && fail "fixer is in a privileged group: $fixer_groups"
 ok "fixer groups ($fixer_groups) disjoint from wrapper's ($wrapper_groups)"
 
-if as_user fixer 'command -v sudo' >/dev/null 2>&1; then
-  fail "sudo is installed and on fixer's PATH"
+# --- uid switch: the narrow sudo rule (S-182 task 3.16, D-109) ---------------
+sudoers=/etc/sudoers.d/bug-fix
+om="$(as_root "stat -c '%U:%G %a' $sudoers")"
+[ "$om" = "root:root 440" ] || fail "$sudoers is $om, expected root:root 440"
+ok "$sudoers $om"
+as_root "visudo -cf $sudoers" >/dev/null || fail "visudo -cf $sudoers failed"
+ok "$sudoers passes visudo -cf"
+extra="$(as_root 'ls -A /etc/sudoers.d | grep -v -x -e README -e bug-fix || true')"
+[ -z "$extra" ] || fail "unexpected files in /etc/sudoers.d: $extra"
+ok "/etc/sudoers.d holds only bug-fix"
+
+switched="$(as_user wrapper 'sudo -n -u fixer id -u')"
+[ "$switched" = "10002" ] || fail "as wrapper, sudo -n -u fixer id -u gave '$switched', expected 10002"
+ok "wrapper -> fixer: sudo -n -u fixer id -u = $switched"
+
+if as_user fixer 'sudo -n true' >/dev/null 2>&1; then
+  fail "fixer can run sudo -n true"
 fi
-ok "no sudo for fixer"
+ok "fixer can't sudo"
+if as_user wrapper 'sudo -n -u root true' >/dev/null 2>&1; then
+  fail "wrapper can become root"
+fi
+if as_user wrapper 'sudo -n true' >/dev/null 2>&1; then
+  fail "wrapper can run sudo -n true (root by default)"
+fi
+ok "wrapper can't become root"
+if as_user wrapper 'sudo -n -u fixer -g root true' >/dev/null 2>&1; then
+  fail "wrapper can pick group root"
+fi
+ok "wrapper can't pick a group"
+
+leaked="$(as_user wrapper 'env AWS_ACCESS_KEY_ID=leak-7f3a SUPABASE_URL=leak-7f3a sudo -n -u fixer env' | grep -c 'leak-7f3a' || true)"
+[ "$leaked" = "0" ] || fail "sudo -u fixer inherited $leaked caller variable(s)"
+ok "sudo -u fixer starts from a clean environment (env_reset)"
+
+# The post-run sweep sandbox.py uses: every fixer process, daemons included.
+# Zombies are not counted: the throwaway container's pid 1 is a plain shell
+# that doesn't reap orphans (in the runtime, the wrapper reaps them).
+fixer_procs="$(as_user wrapper "sudo -n -u fixer sh -c 'setsid sleep 1000 >/dev/null 2>&1 < /dev/null &'; sleep 0.3; \
+  sudo -n -u fixer /usr/bin/kill -9 -- -1; sleep 0.3; \
+  ps -u 10002 -o stat= | grep -vc '^Z' || true")"
+[ "$fixer_procs" = "0" ] || fail "$fixer_procs fixer process(es) survived the kill sweep"
+ok "kill sweep as fixer leaves no fixer process (setsid daemon included)"
+
+as_root 'test -x /usr/local/bin/python3' || fail "/usr/local/bin/python3 missing (fixer_exec.py interpreter)"
+envout="$(as_user wrapper 'env AWS_ACCESS_KEY_ID=leak-7f3a CI=1 LANG=C.UTF-8 sudo -n -u fixer --preserve-env=CI,LANG -- /usr/local/bin/python3 -I /app/fixer_exec.py /usr/bin/env')"
+names="$(echo "$envout" | cut -d= -f1 | sort | tr '\n' ' ')"
+[ "$names" = "CI HOME LANG PATH " ] || fail "fixer_exec.py env is '$names', expected 'CI HOME LANG PATH '"
+ok "fixer_exec.py rebuilds the env from the allow-list ($names)"
 
 owner_mode() { as_root "stat -c '%U:%G %a' $1"; }
 for d in /work/repo /work/out; do
@@ -140,5 +200,14 @@ done
 
 as_user fixer "python -c 'import json,sys; json.load(open(\"$policy\"))'" || fail "$policy is not valid JSON"
 ok "policy is readable JSON for fixer"
+
+srt_policy=/etc/bug-fix/srt-settings.json
+om="$(owner_mode "$srt_policy")"
+[ "$om" = "root:root 644" ] || fail "$srt_policy is $om, expected root:root 644"
+ok "$srt_policy $om"
+if as_user fixer "echo '{}' >> $srt_policy" >/dev/null 2>&1; then
+  fail "fixer can append to $srt_policy"
+fi
+ok "fixer can't modify $srt_policy"
 
 echo "image-smoke: ${pass} checks passed for ${IMAGE}"
