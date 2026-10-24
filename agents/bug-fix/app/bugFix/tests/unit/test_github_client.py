@@ -378,3 +378,190 @@ def test_no_error_or_log_line_carries_the_token(status, method, caplog):
     text = f"{exc.value!s} {exc.value!r} {exc.value.args!r}"
     assert TOKEN not in text
     assert TOKEN not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# QA gate (S-185): bounded waits, partial GraphQL, Link-header hardening
+# ---------------------------------------------------------------------------
+
+
+class TestWaitsAreBounded:
+    @pytest.mark.parametrize("value", ["inf", "Infinity", "1e400", "-inf"])
+    def test_a_non_finite_retry_after_never_becomes_the_wait(self, value):
+        sleeps = Sleeps()
+        session = Scripted(real_response(429, {}, headers={"retry-after": value}), 200)
+        _client(session, sleeps).request("GET", f"{API}/x", label="x")
+        assert sleeps.waits == [1.0]
+
+    def test_a_retry_after_at_the_cap_is_taken(self):
+        sleeps = Sleeps()
+        cap = str(MAX_WAIT_SECONDS)
+        session = Scripted(real_response(429, {}, headers={"retry-after": cap}), 200)
+        _client(session, sleeps).request("GET", f"{API}/x", label="x")
+        assert sleeps.waits == [MAX_WAIT_SECONDS]
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    def test_one_call_never_waits_longer_than_its_retries_allow(self, method):
+        sleeps = Sleeps()
+        limited = real_response(429, {}, headers={"retry-after": str(MAX_WAIT_SECONDS)})
+        session = Scripted(limited)
+        with pytest.raises(GitHubUnavailable):
+            _client(session, sleeps).request(method, f"{API}/x", label="x")
+        assert len(session.calls) == MAX_ATTEMPTS
+        assert sum(sleeps.waits) <= MAX_WAIT_SECONDS * (MAX_ATTEMPTS - 1)
+
+    def test_a_huge_retry_after_on_a_write_gives_up_without_waiting(self):
+        sleeps = Sleeps()
+        session = Scripted(real_response(429, {}, headers={"retry-after": "86400"}))
+        with pytest.raises(GitHubUnavailable):
+            _client(session, sleeps).request("POST", f"{API}/x", label="x")
+        assert sleeps.waits == [] and len(session.calls) == 1
+
+    def test_a_far_reset_with_a_small_retry_after_honours_retry_after(self, monkeypatch):
+        monkeypatch.setattr(github_client.time, "time", lambda: 1000.0)
+        sleeps = Sleeps()
+        limited = real_response(
+            403,
+            {},
+            headers={
+                "retry-after": "2",
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": "999999",
+            },
+        )
+        _client(Scripted(limited, 200), sleeps).request("GET", f"{API}/x", label="x")
+        assert sleeps.waits == [2.0]
+
+
+class TestGraphQLPartialAndShape:
+    def test_data_with_errors_is_rejected_not_returned(self):
+        payload = {"data": {"repository": {"issue": None}}, "errors": [{"type": "FORBIDDEN"}]}
+        with pytest.raises(GitHubRequestRejected):
+            _client(Scripted(real_response(200, payload))).graphql("query { x }", {}, label="q")
+
+    @pytest.mark.parametrize("errors", ["boom", {"type": "X"}, [{"message": "no type"}], [1]])
+    def test_malformed_errors_are_still_errors(self, errors):
+        payload = {"data": {"x": 1}, "errors": errors}
+        with pytest.raises(GitHubRequestRejected):
+            _client(Scripted(real_response(200, payload))).graphql("query { x }", {}, label="q")
+
+    @pytest.mark.parametrize("query", ["  mutation { x }", "MUTATION { x }", "\nmutation m { x }"])
+    def test_a_mutation_in_any_spelling_is_refused(self, query):
+        session = Scripted(200)
+        with pytest.raises(ValueError):
+            _client(session).graphql(query, {}, label="m")
+        assert session.calls == []
+
+
+class TestClosingQueryUsesVariables:
+    """GraphQL injection: owner, repo and number travel as variables only."""
+
+    def test_the_query_text_is_constant_and_values_are_variables(self):
+        import issues
+
+        page = {
+            "data": {
+                "repository": {
+                    "issue": {
+                        "closedByPullRequestsReferences": {
+                            "nodes": [],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
+        }
+        session = Scripted(real_response(200, page))
+        IssuesClient("my-org", "my.repo_1", TOKEN, session=session).closing_prs(987654)
+        (_, url, body) = session.calls[0]
+        assert url == f"{API}/graphql"
+        assert body["query"] == issues._CLOSING_PRS_QUERY
+        assert "987654" not in body["query"] and "my-org" not in body["query"]
+        assert body["variables"] == {
+            "owner": "my-org",
+            "name": "my.repo_1",
+            "number": 987654,
+            "after": None,
+        }
+
+    @pytest.mark.parametrize(
+        "owner,repo",
+        [
+            ('o") { x } #', "r"),
+            ("o", "r\n}"),
+            ("o/../x", "r"),
+            ("..", "r"),
+            ("o", ""),
+            ("o", "r$x"),
+        ],
+    )
+    def test_a_hostile_owner_or_repo_is_refused_before_any_call(self, owner, repo):
+        session = Scripted(200)
+        with pytest.raises(ValueError):
+            IssuesClient(owner, repo, TOKEN, session=session)
+        assert session.calls == []
+
+
+class TestNextLinkPinningAfterTheRefactor:
+    """QA gap 5 holds on top of github_client.py: a ``next`` link stays on the resource."""
+
+    @pytest.mark.parametrize(
+        "link",
+        [
+            "https://api.github.com@evil.example/repos/o/r/issues/7/comments?page=2",
+            "https://evil.example/repos/o/r/issues/7/comments?page=2",
+            "http://api.github.com/repos/o/r/issues/7/comments?page=2",
+            "https://api.github.com:8443/repos/o/r/issues/7/comments?page=2",
+            "//api.github.com/repos/o/r/issues/7/comments?page=2",
+            "https://api.github.com/repos/o/r/issues/7/comments/../../8/comments?page=2",
+            "https://api.github.com/repos/o/r/issues/7%2fcomments?page=2",
+            "https://api.github.com/repos/other/r/issues/7/comments?page=2",
+            "https://api.github.com/repos/o/r/issues/7/comments#frag",
+            "https://api.github.com/user?page=2",
+        ],
+    )
+    def test_a_real_header_off_the_resource_is_refused(self, link):
+        session = Scripted(real_response(200, [], headers={"Link": f'<{link}>; rel="next"'}))
+        with pytest.raises(GitHubRequestRejected):
+            IssuesClient("o", "r", TOKEN, session=session).list_comments(7)
+        assert len(session.calls) == 1
+
+    def test_a_repository_id_change_between_pages_is_refused(self):
+        p2 = f"{API}/repositories/1/pulls?page=2"
+        p3 = f"{API}/repositories/2/pulls?page=3"
+        session = Scripted(
+            real_response(200, [], headers={"Link": f'<{p2}>; rel="next"'}),
+            real_response(200, [], headers={"Link": f'<{p3}>; rel="next"'}),
+        )
+        with pytest.raises(GitHubRequestRejected):
+            IssuesClient("o", "r", TOKEN, session=session).open_pulls()
+        assert len(session.calls) == 2
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "DEFECT (low): parse_link_header's _REL regex has no parameter-name "
+            'boundary, so `xrel="next"` or `title="rel=next"` is read as the next '
+            "relation. next_link() falls back to this parser whenever "
+            "requests.Response.links has no `next`, so it is reached in production. "
+            "The URL is still pinned by _check_next and the host check."
+        ),
+    )
+    @pytest.mark.parametrize(
+        "header",
+        [
+            '<https://api.github.com/x?page=2>; xrel="next"',
+            '<https://api.github.com/x?page=2>; title="rel=next"',
+        ],
+    )
+    def test_only_a_rel_parameter_names_a_relation(self, header):
+        assert "next" not in parse_link_header(header)
+        assert next_link(real_response(200, [], headers={"Link": header})) is None
+
+
+@pytest.mark.parametrize("page", [{"message": "x"}, None, "x"])
+def test_a_page_that_is_not_a_list_is_rejected_not_read_as_empty(page):
+    """D-67: a malformed comments page must not read as "no claims"."""
+    resp = real_response(200, page) if page is not None else real_response(200)
+    with pytest.raises(GitHubRequestRejected):
+        IssuesClient("o", "r", TOKEN, session=Scripted(resp)).list_comments(7)

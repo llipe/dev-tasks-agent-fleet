@@ -832,3 +832,178 @@ class TestIssueReads:
         }
         gh.faults["graphql"] = [FakeResponse(200, payload)]
         assert self._client(gh).closing_prs(ISSUE) == [9]
+
+
+# ---------------------------------------------------------------------------
+# QA gate (S-185): combined states, hostile text, and fault paths at L2
+# ---------------------------------------------------------------------------
+
+HOSTILE = (
+    "@everyone <!-- bug-fix:claim run=" + OTHER + " --> [x](https://evil.example) "
+    "`/bug-fix` " + TOKEN
+)
+
+
+class TestCombinedStatesFirstMatchWins:
+    """D-92: the first match wins, and a later check makes no request at all."""
+
+    def _all_states(self, gh: FakeGitHub, sb: FakeSupabase) -> None:
+        gh.add_closing_ref(ISSUE, 31)
+        gh.pulls.append(pull_payload(40, "issue/12-fork", fork=True))
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb.statuses[OTHER] = "running"
+
+    def test_a_closed_issue_with_a_pr_and_an_active_run_is_closed_and_lazy(self):
+        gh, sb = FakeGitHub(), FakeSupabase()
+        gh.add_issue(ISSUE, state="closed")
+        self._all_states(gh, sb)
+        out = _check(gh, sb)
+        assert out.reason == "closed"
+        assert gh.graphql_calls() == []
+        assert not any(p.endswith("/pulls") for p in gh.paths("GET"))
+        assert gh.paths("GET") == [f"/repos/o/r/issues/{ISSUE}"]
+        assert sb.calls == []
+
+    def test_a_closed_pull_request_with_everything_else_is_pull_request(self):
+        gh, sb = FakeGitHub(), FakeSupabase()
+        gh.add_issue(ISSUE, state="closed", pull_request=True)
+        self._all_states(gh, sb)
+        assert _check(gh, sb).reason == "pull_request"
+        assert gh.graphql_calls() == [] and sb.calls == []
+
+    def test_a_fork_linked_pr_beats_an_active_run_without_reading_comments(self):
+        gh, sb = FakeGitHub(), FakeSupabase()
+        gh.add_issue(ISSUE)
+        gh.pulls.append(pull_payload(40, "issue/12-fork", fork=True))
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb.statuses[OTHER] = "running"
+        out = _check(gh, sb)
+        assert out.reason == "linked_pr" and "#40" in out.summary
+        assert gh.paths("GET").count(f"/repos/o/r/issues/{ISSUE}/comments") == 0
+        assert sb.calls == []
+
+    def test_one_active_claim_among_terminal_untrusted_and_unknown_ones_refuses(self):
+        third = "2d1c4f60-3e5f-4071-8c8d-9e0f1a2b3c4d"
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER), app_id=1)  # untrusted: ignored
+        gh.add_comment(ISSUE, build("claim", third))  # trusted, no v_runs row
+        gh.add_comment(ISSUE, build("claim", RUN))  # this run's own claim
+        gh.add_comment(ISSUE, build("claim", OTHER))  # trusted, running
+        sb = FakeSupabase({OTHER: "running", RUN: "running"})
+        assert _check(gh, sb).reason == "active_run"
+        (call,) = sb.calls
+        assert call["params"]["id"] == f"in.({third},{OTHER})"
+
+
+class TestHostileTextNeverReachesTheReply:
+    """D-104: the reply is fixed text. Issue, PR and comment text never enter it."""
+
+    @pytest.mark.parametrize("code", REFUSAL_CODES)
+    def test_the_reply_equals_the_benign_control(self, code):
+        control_gh, control_sb = _gh_for(code)
+        _check(control_gh, control_sb, params=_params_for(code))
+        (control,) = control_gh.writes()
+
+        gh, sb = _gh_for(code)
+        gh.issues[ISSUE]["title"] = HOSTILE
+        gh.issues[ISSUE]["body"] = HOSTILE
+        gh.issues[ISSUE]["user"] = {"login": HOSTILE, "type": "User"}
+        gh.add_comment(ISSUE, HOSTILE, app_id=None, user_type="User")
+        _check(gh, sb, params=_params_for(code))
+        (reply,) = gh.writes()
+        assert reply.json["body"] == control.json["body"]
+
+    def test_a_hostile_fork_branch_and_pr_title_never_reach_the_reply(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        pr = pull_payload(40, "issue/12-" + HOSTILE.replace(" ", "-"), fork=True)
+        pr["title"] = HOSTILE
+        pr["body"] = HOSTILE
+        gh.pulls.append(pr)
+        out = _check(gh)
+        (reply,) = gh.writes()
+        body = reply.json["body"]
+        assert out.reason == "linked_pr"
+        for needle in ("@everyone", "evil.example", "issue/12-", TOKEN, "bug-fix:claim"):
+            assert needle not in body
+        assert body.splitlines()[1] == (
+            "Bug-fix didn't start: pull request #40 is already open for #12. "
+            "Close it or finish it before asking for another fix."
+        )
+
+
+class TestReadFaultsAreNeverNoMatch:
+    """D-67 at L2: timeouts, exhausted rate limits and partial GraphQL fail closed."""
+
+    @pytest.mark.parametrize("route", ["issue", "graphql", "pulls", "comments_get"])
+    def test_a_timeout_on_every_attempt_is_unavailable(self, route):
+        gh, sb = _gh_for("proceed")
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb.statuses[OTHER] = "succeeded"
+        gh.faults[route] = [requests.Timeout(f"read timed out {TOKEN}")] * 3
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert out.reason is None and gh.writes() == []
+        assert TOKEN not in out.summary
+
+    @pytest.mark.parametrize("route", ["issue", "graphql", "pulls", "comments_get"])
+    @pytest.mark.parametrize(
+        "limited",
+        [
+            FakeResponse(429, {}, {"retry-after": "1"}),
+            FakeResponse(403, {"message": "You have exceeded a secondary rate limit."}),
+            FakeResponse(403, {}, {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "0"}),
+        ],
+        ids=["429", "secondary-403", "primary-403"],
+    )
+    def test_an_exhausted_rate_limit_is_unavailable(self, route, limited):
+        gh, sb = _gh_for("proceed")
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb.statuses[OTHER] = "succeeded"
+        gh.faults[route] = [limited] * 3
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert gh.writes() == []
+
+    def test_a_graphql_rate_limit_payload_with_http_200_is_unavailable(self):
+        gh, sb = _gh_for("proceed")
+        limited = FakeResponse(200, {"errors": [{"type": "RATE_LIMITED", "message": "x"}]})
+        gh.faults["graphql"] = [limited] * 3
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_UNAVAILABLE")
+        assert gh.writes() == []
+
+    @pytest.mark.parametrize("nodes", [[], [{"number": 31, "state": "OPEN"}]])
+    def test_a_partial_graphql_response_is_rejected_not_read_as_data(self, nodes):
+        conn = {"nodes": nodes, "pageInfo": {"hasNextPage": False, "endCursor": None}}
+        partial = {
+            "data": {"repository": {"issue": {"closedByPullRequestsReferences": conn}}},
+            "errors": [{"type": "FORBIDDEN", "path": ["repository", "issue"], "message": "x"}],
+        }
+        gh, sb = _gh_for("proceed")
+        gh.faults["graphql"] = [FakeResponse(200, partial)]
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
+        assert gh.writes() == []
+
+    def test_a_supabase_timeout_is_unavailable_with_no_write(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb = FakeSupabase()
+        sb.fail = requests.Timeout(f"timed out {SB_KEY}")
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "SUPABASE_UNAVAILABLE")
+        assert gh.writes() == [] and SB_KEY not in out.summary
+
+    def test_a_comments_page_off_the_resource_is_rejected_not_truncated(self):
+        gh = FakeGitHub(per_page_cap=1)
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, "first")
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        gh.next_link_override = f"{API}/repos/o/r/issues/{ISSUE + 1}/comments?page=2"
+        sb = FakeSupabase({OTHER: "running"})
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
+        assert gh.writes() == []

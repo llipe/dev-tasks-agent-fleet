@@ -104,3 +104,28 @@ def test_a_hand_built_context_has_no_permissions():
     ctx = TokenContext(token="t", issued_at=0.0, installation_id=1)
     assert ctx.permissions is None
     assert has_issues_write(ctx.permissions) is False
+
+
+@pytest.mark.parametrize(
+    "permissions",
+    [
+        {"issues": "write "},
+        {"issues": " write"},
+        {"issues": "Write"},
+        {"issues": "writ"},
+        {"issues": "read,write"},
+        {"Issues": "write"},
+        {"issues ": "write"},
+        {"issues": b"write"},
+        {"issues": 1},
+        {"issues": True},
+        MappingProxyType({}),
+    ],
+)
+def test_issues_write_is_an_exact_match(permissions):
+    """QA gate (S-185, D-58): only the exact pair ``issues: write`` passes."""
+    assert has_issues_write(permissions) is False
+
+
+def test_a_read_only_mapping_with_issues_write_passes():
+    assert has_issues_write(MappingProxyType({"issues": "write"})) is True
