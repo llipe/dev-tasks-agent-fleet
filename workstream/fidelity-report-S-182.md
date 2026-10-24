@@ -9,6 +9,7 @@
 | Version | Date       | Summary                       | Author   |
 | ------- | ---------- | ----------------------------- | -------- |
 | 1.0     | 2026-10-24 | Initial Audit Mode report, S-182 | verifier |
+| 1.1     | 2026-10-24 | §7 Reconciliation: route of each finding, confirmed by @llipe 2026-10-24 | product-engineer |
 
 ## 1. What changed and why (plain language)
 
@@ -88,3 +89,20 @@ All items are **non-blocking** to PR #443 readiness and to issue #364 completion
 ## 6. Publication
 
 The report is written to `workstream/fidelity-report-S-182.md`. It isn't committed and hasn't been posted to #364, because this run's instructions limited writes to the report file. The `planner` commits it and posts the header/verdict block (or a link to the file on PR #443) to issue #364.
+
+## 7. Reconciliation
+
+Routed by `product-engineer` (`activity-drift-reconciliation`). The Intended spec write-backs were confirmed by @llipe on 2026-10-24.
+
+| Finding | Route |
+| ------- | ----- |
+| DF-182-01, -02, -06, -10 | Spec v2.2 (§1, §2, §4, §7, §8.1, §8.7, §12, §16, §18) |
+| DF-182-03 | Spec §17 (OQ-2 answered) + spike report §3 (v0.6) |
+| DF-182-04, -05 | Issue #446, which blocks #373 (S-191) |
+| DF-182-07 | Issue #447 (plus QA's bounded-wait gap) |
+| DF-182-08 | Fixed in `4b4e426` |
+| DF-182-09 | Roadmap updated in `24d6cd7` |
+
+No PRD change is needed: the PRD doesn't specify a user model ("runs as a separate user", FR-9), so the root wrapper with a `setpriv` drop, the two sandbox paths and the image NSS all stay within PRD intent.
+
+Non-blocking: this reconciliation ran after the S-182 merge (#443) and did not reopen it.

@@ -30,6 +30,7 @@
 | 0.3     | 2026-10-24 | Re-probe 2b results (34/37). Fix round 2: `/etc/hosts` loopback entry (registries), `cli.deny.*` reads the offered tool list, `--disallowedTools=WebFetch,WebSearch`; §4.3 local evidence; `net.localhost`, `cli.deny.websearch` rows | developer |
 | 0.4     | 2026-10-24 | Re-probe 2c results (18/37: AgentCore's `/etc/hosts` is empty and read-only). Fix round 3 (D-111): `localhost` through `libnss-myhostname` and `/etc/gai.conf` in the image; `sandbox.py` preflight is read-only (`check_localhost_resolution`, `localhost_via`); `net.localhost` reports `via=` and needs `127.0.0.1` first; §4.4 local evidence; 2d column | developer |
 | 0.5     | 2026-10-24 | Re-probe 2d: 39/39 PASS on runtime v5; 2d column; verdict PASS (§6); open question 5 answered; question 3 narrowed to a follow-up; `ALLOW_PROBE` removed (runtime v6, `PROBE_REFUSED`) | planner (infra-engineer) |
+| 0.6     | 2026-10-24 | Drift reconciliation (DF-182-03, confirmed by @llipe 2026-10-24): §3 is no longer provisional; each key's Status comes from the 2d evidence, and keys not directly exercised on IC point to #446. §7 Q3 follow-up is #446 | product-engineer |
 
 ## 1. Versions (image `bug-fix:local`, linux/arm64)
 
@@ -70,23 +71,23 @@ Caveats for the re-probe:
 - `bwrap` needs unprivileged user namespaces. If AgentCore blocks them, both modes are affected, and Wave B stays blocked (exit rule, §6). D-110 then reopens the fallback (a separate CLI runtime). `userns.available` answers this directly.
 - ~~`sudo` is setuid. A runtime that sets `no_new_privs` would break the uid switch.~~ **Confirmed by run 1** (§5.1), which is why D-110 replaces the switch. `setpriv` needs only `CAP_SETUID`/`CAP_SETGID` in the root wrapper, and `setpriv.wrapper.root` checks that.
 
-## 3. Managed-settings keys (provisional until IC)
+## 3. Managed-settings keys (IC status after re-probe 2d)
 
-Phase 1 found each key below in the settings schema compiled into CLI 2.1.309 (string search of the binary for the key and its schema description), and added it to `managed-settings.json`. **IC must confirm each takes effect.**
+Phase 1 found each key below in the settings schema compiled into CLI 2.1.309 (string search of the binary for the key and its schema description), and added it to `managed-settings.json`. Every key is present in the policy deployed on runtime v5 (2d). The Status column says what IC evidence 2d gives for each key, and no more: several keys were not directly exercised, and those are followed up in #446 (with open question 3, §7).
 
 | Key | Where | Purpose | Status |
 | --- | ----- | ------- | ------ |
-| `permissions.deny` (`Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, Read/Edit `//proc/**`, `//etc/claude-code/**`, `//work/secrets/**`) | `permissions` | D-51 deny rules | IC 2b: `git push` denied, no ref. The bare `WebFetch`/`WebSearch` form is a **tool-wide deny: the CLI removes the tool from the list offered to the model** (LOCAL-2-04), so no denial is ever recorded; 2c checks the offered list |
-| `permissions.disableBypassPermissionsMode: "disable"` | `permissions` | no bypass mode from a repo | present in schema; IC pending |
-| `allowManagedPermissionRulesOnly: true` | top level (next to `disablePluginDirectory`) | repo, user, local and `--settings` permission rules are **ignored**, not just outranked | **added in phase 1**; IC pending |
-| `allowManagedHooksOnly: true` | top level | D-29: only managed hooks run | **added in phase 1**; IC pending |
-| `allowManagedMcpServersOnly: true` | top level | D-29: only managed MCP servers | **added in phase 1**; IC pending |
-| `sandbox.enabled: true` | `sandbox` | Bash sandbox on | present; IC pending |
-| `sandbox.allowUnsandboxedCommands: false` | `sandbox` | no escape hatch | present; IC pending |
-| `sandbox.failIfUnavailable: true` | `sandbox` | "exit with an error at startup if the sandbox can't start"; without it the CLI warns and **runs Bash unsandboxed** | **added in phase 1**; see LOCAL-07; IC pending |
-| `sandbox.network.allowedDomains` (4 registries) | `sandbox.network` | registry-only network | present; IC pending |
-| `sandbox.network.allowManagedDomainsOnly: true` | `sandbox.network` | repo domains ignored | **added in phase 1**; IC pending |
-| `sandbox.network.allowLocalBinding: false` | `sandbox.network` | no local ports | present; IC pending |
+| `permissions.deny` (`Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, Read/Edit `//proc/**`, `//etc/claude-code/**`, `//work/secrets/**`) | `permissions` | D-51 deny rules | **IC 2d:** `git push` denied with no ref on the bare remote, although the repo's `.claude/settings.json` allowed it (`cli.deny.git_push` `denied=True remote_refs=0`). `WebFetch`/`WebSearch` not offered to the model (`cli.deny.webfetch`/`websearch` `offered=False`, 22 tools). The bare form is a **tool-wide deny: the CLI removes the tool from the list offered to the model** (LOCAL-2-04), so no denial is recorded. The IC result measures this deny **and** `--disallowedTools` together; the policy alone is LOCAL-2-04 only. The Read/Edit path rules are not directly exercised through the CLI on IC (the `/proc` and `/work/secrets` checks run at uid and `srt` level) |
+| `permissions.disableBypassPermissionsMode: "disable"` | `permissions` | no bypass mode from a repo | present in the deployed policy; not directly exercised by IC — see #446 (LOCAL-2-04: `permissionMode=default`, bypass refused) |
+| `allowManagedPermissionRulesOnly: true` | top level (next to `disablePluginDirectory`) | repo, user, local and `--settings` permission rules are **ignored**, not just outranked | **IC-indirect:** the repo allow for `git push` lost (`cli.deny.git_push`), but a managed deny wins at any level, so this key isn't isolated — see #446 |
+| `allowManagedHooksOnly: true` | top level | D-29: only managed hooks run | present in the deployed policy; not directly exercised by IC — see #446 |
+| `allowManagedMcpServersOnly: true` | top level | D-29: only managed MCP servers | present in the deployed policy; not directly exercised by IC — see #446 |
+| `sandbox.enabled: true` | `sandbox` | Bash sandbox on | **IC-indirect:** the CLI started and ran on AgentCore under this policy (`cli.*` PASS), and `srt`, the library the CLI's Bash sandbox is built on, starts there (`sandbox.starts`, `userns.available`). No IC check shows an allowed model Bash call running inside the CLI's sandbox (§7 Q3) — see #446 |
+| `sandbox.allowUnsandboxedCommands: false` | `sandbox` | no escape hatch | present in the deployed policy; not directly exercised by IC — see #446 |
+| `sandbox.failIfUnavailable: true` | `sandbox` | "exit with an error at startup if the sandbox can't start"; without it the CLI warns and **runs Bash unsandboxed** | present in the deployed policy; not directly exercised by IC — see #446. Locally it didn't refuse when bwrap couldn't start (LOCAL-07) |
+| `sandbox.network.allowedDomains` (4 registries) | `sandbox.network` | registry-only network | **IC 2d via `srt`:** the same four registries in `srt-settings.json` are enforced (`net.*` PASS: link-local and non-registry hosts get the proxy's 403, npm and PyPI reachable). The CLI's own Bash path is not directly measured — see #446 |
+| `sandbox.network.allowManagedDomainsOnly: true` | `sandbox.network` | repo domains ignored | present in the deployed policy; not directly exercised by IC — see #446 |
+| `sandbox.network.allowLocalBinding: false` | `sandbox.network` | no local ports | present in the deployed policy; not directly exercised by IC — see #446 |
 
 Also seen in the schema, **not adopted** (no decision covers them): `sandbox.enableWeakerNestedSandbox` (would weaken the sandbox for Docker; must stay off), `sandbox.excludedCommands`, `autoAllowBashIfSandboxed`, `permissions.blockReadsOutsideWorkingDirectories`, `sandbox.filesystem.allowManagedReadPathsOnly`.
 
@@ -257,6 +258,6 @@ Run 1: **FAIL** on sandbox and isolation (`no_new_privs` blocks `sudo`, §5.1) a
 
 1. ~~Does AgentCore allow unprivileged user namespaces (bwrap) under its `no_new_privs`?~~ **Answered by 2b: yes** (`userns.available` PASS, fixer and root).
 2. ~~Does `sudo` work there?~~ **Answered by run 1: no.** AgentCore sets `no_new_privs` (§5.1), hence D-110. New question: does the runtime run the image as root with `CAP_SETUID`/`CAP_SETGID`? `setpriv.wrapper.root` answers it.
-3. Does the CLI's own Bash sandbox start, and does `failIfUnavailable` refuse when it can't (LOCAL-07)? **Partly answered by 2d:** the CLI ran on AgentCore under the managed policy (`cli.deny.*` PASS: permission denies hold, WebFetch/WebSearch not offered), and srt, the library the CLI's Bash sandbox is built on, starts and filters there (`sandbox.starts`, `net.*`). **Still open:** a direct check that an *allowed* Bash tool call runs inside the CLI's sandbox (e.g. a Bash write outside the cwd must fail, a non-registry fetch must hit the proxy's 403). Not in the exit rule; tracked as a follow-up probe item before S-191 relies on it.
+3. Does the CLI's own Bash sandbox start, and does `failIfUnavailable` refuse when it can't (LOCAL-07)? **Partly answered by 2d:** the CLI ran on AgentCore under the managed policy (`cli.deny.*` PASS: permission denies hold, WebFetch/WebSearch not offered), and srt, the library the CLI's Bash sandbox is built on, starts and filters there (`sandbox.starts`, `net.*`). **Still open:** a direct check that an *allowed* Bash tool call runs inside the CLI's sandbox (e.g. a Bash write outside the cwd must fail, a non-registry fetch must hit the proxy's 403). Not in the exit rule; tracked in #446, which blocks S-191 (#373).
 4. ~~Is the wrapper pid 1 in the AgentCore container?~~ **Answered by 2b: yes** (`proc.wrapper.*` reads `pid=1`).
 5. ~~Is AgentCore's `/etc/hosts` empty, and is it writable by the root wrapper?~~ **Answered by 2c: empty and read-only.** Hence fix round 3 (§4.4, D-111). ~~Does AgentCore keep the image's `/etc/nsswitch.conf` and `/etc/gai.conf`?~~ **Answered by 2d: yes** (`via=nss`, `nsswitch='files myhostname dns'`, `127.0.0.1` first).

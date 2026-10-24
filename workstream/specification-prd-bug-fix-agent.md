@@ -4,6 +4,7 @@
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 2.2 | 2026-10-24 | Drift reconciliation of S-182 audit findings DF-182-01, -02, -03, -06 and -10 ([`fidelity-report-S-182.md`](fidelity-report-S-182.md)), confirmed by @llipe 2026-10-24. The non-root `wrapper` user is gone: the wrapper runs as root and drops every `fixer` process with `setpriv` (D-110, superseding D-109), with the root-wrapper mitigations. `localhost` resolves through the image's NSS (D-111). Confinement has two enforcement paths with one registry allow-list: the CLI's own Bash sandbox (`managed-settings.json`) and `srt` for wrapper-run scripts (`srt-settings.json`). New modules `fixer_exec.py`, `probe.py`, `probe_inner.py`; `--disallowedTools=WebFetch,WebSearch` on every `-p` run. Spike result and evidence limits recorded; OQ-2 answered. Sections §1, §2, §4, §7, §8.1, §8.7, §12, §16, §17 and §18 changed. | product-engineer |
 | 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108). New §8.11 covers trigger-side changes: the `agents.guardrail_scope` migration and the `public.webhook_guardrail` change, and the panel's best-effort 👎 reaction on matched-but-blocked deliveries. §3, §7, §15 and §16 updated. | product-engineer |
 | 2.0 | 2026-10-22 | **Issue-mode rewrite** for PRD v2.0. WHAT decisions are D-88–D-102; HOW decisions D-103–D-106 come from the `activity-grill` session confirmed by @llipe on 2026-10-22. Changes: the trigger is a `/bug-fix` webhook rule or a manual invoke (§4, §6). Params are reduced (§5.2). Preflight and selection are replaced by the refusal checks with a marked reply (§8.2, D-92, D-104). The claim, success and disposition signals are reactions plus marker comments, with no labels or assignee (§8.3, §8.6, §8.8, D-93). The sweep (§8.4) and selection (§8.5) are removed (D-94). New §8.10 covers Projects v2 board updates (D-97–D-103). The `string-list` UI is removed (§10, D-95). The spike gains a board probe (§12, D-105). Rollout is restated in the new waves (§15, D-106). The fix loop (§8.7) and confinement (§12) are unchanged. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
@@ -26,7 +27,7 @@ The Python **wrapper** does every credentialed act:
 - the Draft PR (🚀) or the disposition (😕 plus a diagnosis);
 - best-effort Projects v2 board updates on the repo's linked board.
 
-It runs a headless `claude -p` subprocess only to reproduce, test, and fix. That subprocess uses the Anthropic API key as its only secret, runs as a separate user under an image-baked managed sandbox policy, and has no route to the runtime role (D-49–D-51, D-62). There are no labels, no queue, no schedule and no sweep (D-90, D-93–D-96).
+It runs a headless `claude -p` subprocess only to reproduce, test, and fix. That subprocess uses the Anthropic API key as its only secret, runs as the unprivileged user `fixer`, dropped from the root wrapper with `setpriv` (D-110), under an image-baked managed sandbox policy, and has no route to the runtime role (D-49–D-51, D-62). There are no labels, no queue, no schedule and no sweep (D-90, D-93–D-96).
 
 ## 2. Reference Documents
 
@@ -34,7 +35,9 @@ It runs a headless `claude -p` subprocess only to reproduce, test, and fix. That
 - Decision log: [`workstream/decisions-bug-fix-agent.md`](decisions-bug-fix-agent.md):
   - WHAT D-01–D-46 and D-88–D-102 (issue mode);
   - HOW D-47–D-61 and D-103–D-106;
-  - drift reconciliation D-62–D-86.
+  - drift reconciliation D-62–D-86;
+  - S-182 spike D-109–D-111 (D-109 superseded by D-110).
+- Spike report: [`workstream/spike-bug-fix-sandbox.md`](spike-bug-fix-sandbox.md) (S-182, verdict PASS on 2026-10-24)
 - Research: [`workstream/research-bug-fix-agent-spec-inputs-2026-10-18.md`](research-bug-fix-agent-spec-inputs-2026-10-18.md)
 - Technical guidelines: [`docs/technical-guidelines.md`](../docs/technical-guidelines.md) §6, §7, §8, §11, §13
 - Webhook trigger: [`docs/requirements/prd-webhook-triggers.md`](../docs/requirements/prd-webhook-triggers.md) (merged in PR #398); routing at `panel/lib/domain/webhook-routing.ts`, resolution at `panel/lib/domain/webhook-resolve.ts`.
@@ -63,13 +66,13 @@ flowchart LR
     WE --> RT
     I --> RT
     subgraph RT["AgentCore runtime: bug-fix (ARM64)"]
-      W["Wrapper (uid wrapper)<br/>secrets, GitHub, board, Supabase, gates"]
+      W["Wrapper (root, D-110)<br/>secrets, GitHub, board, Supabase, gates"]
       subgraph SB["Sandbox (uid fixer, no AWS, no secrets, registry-only network)"]
-        C["claude -p<br/>ANTHROPIC_API_KEY only"]
-        G["repo scripts: install, gates,<br/>changed tests"]
+        C["claude -p<br/>ANTHROPIC_API_KEY only<br/>CLI Bash sandbox"]
+        G["repo scripts: install, gates,<br/>changed tests<br/>srt"]
       end
-      W -- spawn, minimal env --> C
-      W -- spawn, minimal env --> G
+      W -- setpriv drop, minimal env --> C
+      W -- setpriv drop, minimal env --> G
     end
     W --> SM[(Secrets Manager:<br/>Supabase key, App PEM,<br/>Anthropic key, Projects PAT)]
     W --> GH[GitHub REST + GraphQL<br/>App installation token]
@@ -173,7 +176,7 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 
 | Principal | Credentials | May | May not |
 | --------- | ----------- | --- | ------- |
-| Wrapper (uid `wrapper`) | Runtime role → Secrets Manager; App token; Projects PAT; Supabase key | Everything in §6; spawn sandboxed subprocesses | Run model output or repo scripts in its own process or with its own env |
+| Wrapper (root, D-110) | Runtime role → Secrets Manager; App token; Projects PAT; Supabase key | Everything in §6; spawn sandboxed subprocesses as `fixer` through `setpriv` | Run model output or repo scripts in its own process, as root, or with its own env |
 | `claude -p` (uid `fixer`) | `ANTHROPIC_API_KEY` only (D-50) | Read and edit the checkout; run allowed Bash inside the sandbox; reach the Anthropic API | AWS credentials, the container-credential endpoint, the link-local range, `git push`, `gh`, `curl`/`wget`, `WebFetch`, secrets on disk |
 | Panel (Fly), webhook trigger | Panel AWS role → Secrets Manager (App PEM only, D-108) | Mint an installation token; add one 👎 reaction to a matched-but-blocked `issue_comment` | Any other GitHub call; post comments; read other secrets |
 | Repo scripts (uid `fixer`) | None | Install, gates and changed tests, with network to package registries only | The same exclusions as the CLI |
@@ -181,8 +184,16 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 - **Who may trigger** is the webhook rule's business (D-91). The agent checks nothing about the commenter.
 - **Runtime role** (infra story): `secretsmanager:GetSecretValue` on **four** secret ARNs: `SUPABASE_SERVICE_ROLE_KEY`, the App PEM, `ANTHROPIC_API_KEY` and `GITHUB_PROJECTS_TOKEN`. No Bedrock grant (D-50, D-58, D-99).
 - **Panel invoke policy:** add the new runtime ARN and `runtime-endpoint/DEFAULT` (issue #280).
-- **Wrapper git (D-62).** The wrapper runs git **only** against its own clone `/work/wrapper/repo` (uid `wrapper`, mode 0700), through `safe_git.py` with a hardened config.
+- **Wrapper git (D-62).** The wrapper runs git **only** against its own clone `/work/wrapper/repo`, inside `/work/wrapper` (root-owned, mode 0700, D-110), through `safe_git.py` with a hardened config.
 - **Uid separation.** The wrapper's secrets, including the PAT, live only in its process memory. They are never exported or written where `fixer` can read them.
+- **Uid drop (D-110, supersedes D-109).** AgentCore starts the container with `no_new_privs` set, so a setuid switch (`sudo`) can't run. The wrapper therefore runs as **root**, and every process that runs model output or repo code starts as `fixer` (uid/gid 10002) through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs -- python3 -I /app/fixer_exec.py …`. The child has no supplementary groups, no capabilities and `no_new_privs` set, so no setuid binary can take it back to root.
+- **Root-wrapper mitigations (D-110).**
+  - Only wrapper code runs as root. The wrapper never runs model output or repo scripts in its own process.
+  - `fixer` can't read the root wrapper's `/proc/<pid>/environ` or `mem`.
+  - The child env is an allow-list (§8.7), never `os.environ`. `fixer_exec.py` rebuilds it from the same allow-list and refuses to exec while still root.
+  - There is no escalation path: no `sudo` or sudoers in the image (the build fails if `sudo` is present), and `setuid(0)`, `su` and `setpriv --reuid=0` fail as `fixer`.
+  - Each AgentCore session runs in its own microVM.
+- **Work directories** (image): `/work/repo` and `/work/out` are `fixer`-owned; `/work/wrapper` and `/work/secrets` are root-owned, mode 0700. The managed policy also denies Read/Edit on `/work/secrets/**`, and `srt-settings.json` denies reads of `/work/secrets` and `/work/wrapper`.
 
 ## 8. Business Logic Implementation
 
@@ -201,7 +212,9 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 | `projects.py` | New | Board look-up, add card, set status; best effort, 10-second timeout, no retries; `BOARD_UPDATES_ENABLED` flag (D-103, D-105) |
 | `toolchain.py` | Copied from `dependency-update`, extended | pnpm/npm detection, Python Makefile targets, the repo gate (FR-6, D-19) |
 | `safe_git.py` | New | Hardened wrapper git; tree materialization as `fixer`; capture with `--git-dir`/`--work-tree` (D-62) |
-| `sandbox.py` | New | Spawns `fixer` subprocesses: minimal env, sandbox, timeouts, kill (D-51) |
+| `sandbox.py` | New | Spawns `fixer` subprocesses through the `setpriv` drop: minimal env, two sandbox modes (`Mode.CLI`: the CLI's own Bash sandbox; `Mode.SCRIPT`: `srt`), the read-only `localhost` preflight, timeouts, kill and sweep (D-51, D-110, D-111) |
+| `fixer_exec.py` | New | Runs as `fixer` after `setpriv`: rebuilds the env from the allow-list and refuses to exec while still root (D-110) |
+| `probe.py`, `probe_inner.py` | New (S-182) | In-container probe, honoured only with `ALLOW_PROBE=1` (D-70); `probe_inner.py` is the helper that runs inside the sandbox |
 | `fix_runner.py` | New | Prompt (stdin), `claude -p`, JSON result and metrics (FR-9–FR-12, D-76) |
 | `classify.py` | New | D-52 classification, caps, forbidden paths, entry types, secret scan (D-83, D-84) |
 | `gates.py` | New | Four blocking gates plus audit, on the base and final trees (D-14) |
@@ -210,6 +223,8 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 | `pull_request.py` | Copied from `security-analyst`, adapted | Branch, Conventional Commit, Draft PR, artifact, 🚀 plus a PR comment (FR-20, FR-21) |
 | `disposition.py` | New | 😕 plus the diagnosis comment; idempotent per `run_id` (D-08, D-93) |
 | `main.py` | New | AgentCore entrypoint; step orchestration and outcome mapping (§8.9) |
+
+Policy files baked into the image (root-owned, 0644): `managed-settings.json` → `/etc/claude-code/managed-settings.json` (the CLI's managed policy) and `srt-settings.json` → `/etc/bug-fix/srt-settings.json` (`srt`'s policy for wrapper-run scripts). Both carry the same four-registry allow-list (§12).
 
 ### 8.2 Preflight and refusal checks (steps `preflight`, `refuse`)
 
@@ -276,7 +291,7 @@ stateDiagram-v2
 *Unchanged from v1.5 except the repo-gate outcome, which is now a refusal reply.*
 
 **`checkout`** (D-62).
-- Shallow-clone `base_branch` into the wrapper clone `/work/wrapper/repo` (uid `wrapper`, mode 0700) with `safe_git.py`, and record the base SHA. The clone's `info/exclude` lists only dependency directories (`node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/`); build outputs are governed by the repo's own `.gitignore` (D-83).
+- Shallow-clone `base_branch` into the wrapper clone `/work/wrapper/repo` (under root-owned `/work/wrapper`, mode 0700; D-110) with `safe_git.py`, and record the base SHA. The clone's `info/exclude` lists only dependency directories (`node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/`); build outputs are governed by the repo's own `.gitignore` (D-83).
 - Materialize the base tree into `/work/repo` as plain files: `git archive <base>` from the wrapper clone, piped into `tar -x` **running as `fixer`** into a fresh directory. `fixer` may `git init` its own repository there for the model's use. The wrapper never reads it.
 - Run the repo gate (FR-6) through `toolchain.py`:
   - **JS/TS:** `.claude/agents/developer.md`, plus `package.json` scripts `test`, `lint`, `format:check`, `typecheck`.
@@ -287,9 +302,9 @@ stateDiagram-v2
 - **Restore the base** (D-63). The wrapper captures `/work/repo`, and any tracked path that install or the base runs changed is restored as `fixer` (`git archive` piped to `tar -x`, plus `rm` for files they added), with a `run_event`. The CLI therefore always starts from an exact base tree, and the captured change contains only the CLI's edits.
 
 **`fix`** (FR-9–FR-12, D-04, D-05, D-11, D-50, D-51).
-- The wrapper spawns, as `fixer` inside the sandbox:
-  `claude -p --output-format json --max-turns <max_turns> --model $MODEL_ID --allowedTools <allow-list>`, with the prompt on **stdin**, never in argv, so long multi-byte issue bodies can't hit `E2BIG` (D-76).
-- The environment is exactly `ANTHROPIC_API_KEY`, `PATH`, `HOME=/home/fixer`, `LANG`, and `CI=1`.
+- The wrapper spawns, as `fixer` (`setpriv` drop, D-110) under the CLI's own Bash sandbox (`Mode.CLI`, §12):
+  `claude --disallowedTools=WebFetch,WebSearch -p --output-format json --max-turns <max_turns> --model $MODEL_ID --allowedTools <allow-list>`, with the prompt on **stdin**, never in argv, so long multi-byte issue bodies can't hit `E2BIG` (D-76). `sandbox.py` adds `--disallowedTools=WebFetch,WebSearch` (one token) straight after the binary on every `-p`/`--print` run, on top of the managed deny.
+- The environment is exactly `ANTHROPIC_API_KEY`, `PATH`, `HOME=/home/fixer`, `LANG`, and `CI=1`; `fixer_exec.py` rebuilds it from that allow-list (D-110).
 - The wall-clock limit is `cli_timeout_minutes`, ending with SIGTERM, then SIGKILL after 15 s.
 - The CLI reads the repo's own `.claude/` (D-05). The managed policy (§12) overrides it where they conflict.
 - **Prompt:**
@@ -413,11 +428,15 @@ The **threat** is prompt injection through issue text or repo files, plus repo-c
    - The wrapper fetches every secret before any `fixer` process starts.
    - Secrets are held in memory and never exported.
    - `fixer` subprocesses get the minimal environment in §8.7. No `AWS_*`, `AWS_CONTAINER_*`, `SUPABASE_*`, or secret IDs (D-51 layer 1).
-2. **Managed policy.** The image installs `/etc/claude-code/managed-settings.json`, root-owned with mode 0644, and its settings override the repo's `.claude/` (D-51 layer 2):
+   - Every `fixer` process starts through the root wrapper's `setpriv` drop, and `fixer_exec.py` rebuilds the env and refuses to run as root (§7, D-110).
+2. **Managed policy for `claude -p`.** The image installs `/etc/claude-code/managed-settings.json`, root-owned with mode 0644, and its settings override the repo's `.claude/` (D-51 layer 2). `claude -p` runs as `fixer` under the CLI's own Bash sandbox, configured by this file (`Mode.CLI`). It is never nested inside `srt`: a registry-only proxy would cut it off from `api.anthropic.com`.
    - Bash sandbox **enabled** and **not escapable**; network allow-list limited to the package registries (`registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`).
    - **Deny rules:** `Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`; Read/Edit on `/proc/**`, `/etc/claude-code/**`, `/work/secrets/**`.
-   - The exact key names are pinned by the spike against the installed CLI version.
-3. **Same sandbox for repo scripts.** Install, the gates, and the changed tests run as `fixer` under the same sandbox runtime and network policy, through `sandbox.py` (D-51 layer 3).
+   - Every `-p` run also gets `--disallowedTools=WebFetch,WebSearch` (§8.7).
+   - The key names are pinned by the S-182 spike against CLI 2.1.309 (spike report §3; OQ-2).
+3. **`srt` for repo scripts.** Install, the gates, and the changed tests run as `fixer` under `srt` (`@anthropic-ai/sandbox-runtime`, the library the CLI's Bash sandbox is built on), configured by `/etc/bug-fix/srt-settings.json` (`Mode.SCRIPT`, through `sandbox.py`; D-51 layer 3). It adds filesystem rules the managed policy doesn't have: no reads of `/work/secrets` or `/work/wrapper`, writes only to `/work/repo`, `/work/out`, `/home/fixer` and `/tmp`.
+   - Both paths use the **same four-registry allow-list**. Two policy files can diverge; **residual:** nothing yet checks that the two registry lists stay equal (no such test exists).
+   - **`localhost` (D-111).** Both runtimes hard-code their proxy as `http://…@localhost:<port>`, and the sandbox's network namespace has no DNS. AgentCore's `/etc/hosts` is empty and read-only, so the image resolves `localhost` through NSS (`libnss-myhostname`, `hosts: files myhostname dns`), and `/etc/gai.conf` prefers IPv4 so `127.0.0.1` comes before `::1`. Before each run `sandbox.py` only checks, read-only, that `/etc/hosts` or NSS resolves `localhost`, and refuses the run otherwise. It never writes `/etc/hosts`.
 4. **Credential endpoint blocked.** The link-local range (`169.254.0.0/16`, including the container-credentials and metadata endpoints) is denied inside the sandbox. The spike proves this on AgentCore ARM64 (AC-5, AC-6).
 5. **The output is validated, not trusted.**
    - Forbidden paths, caps and the secret scan run on the diff (§8.7).
@@ -455,6 +474,11 @@ The **threat** is prompt injection through issue text or repo files, plus repo-c
   - (5) without the PAT the board is disabled and the run ends normally.
 
   Cleanup deletes the card (`deleteProjectV2Item`) and closes the probe issue. If (1)–(3) fail, the runtime sets `BOARD_UPDATES_ENABLED=0` and the finding goes to drift reconciliation. This doesn't block Wave B.
+
+**Spike result** (S-182, [`spike-bug-fix-sandbox.md`](spike-bug-fix-sandbox.md)): **PASS** on 2026-10-24, re-probe 2d, 39/39 on runtime v5, for the D-110 + D-111 design. Runtime v6 has `ALLOW_PROBE` removed. Limits of the evidence:
+- Board check (5), "the run ends normally" without the PAT, is verified at config level only (`board.disabled_without_pat`: the board is disabled with `reason=no_token_secret_id`). The end-to-end behaviour is verified in S-199 (#420).
+- The IC `cli.deny.webfetch`/`websearch` result (the tool isn't offered) measures the managed policy **and** `--disallowedTools` together. The policy alone is shown only locally (spike LOCAL-2-04).
+- The network allow-list is shown directly on IC for the `srt` path. That an allowed model Bash call runs inside the CLI's own sandbox is still open (spike §7 Q3), tracked in #446, which blocks S-191 (#373).
 
 ## 13. Error Handling & Logging
 
@@ -520,6 +544,8 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | Python install has no contract (OQ-1) | Resolved in S-189 task 10.1 |
 | The Anthropic key's spend | Dedicated key with a cap; per-run limits; cost recorded in `runs.metrics` |
 | Wrapper git reading `fixer`-controlled state | D-62 |
+| The wrapper runs as root (D-110) | Only wrapper code runs as root; `setpriv` drop with `no_new_privs` for every `fixer` process; allow-list env; no `sudo` in the image; one microVM per session (§7) |
+| The CLI's and `srt`'s registry lists diverge | Both files are root-owned and baked into the image; an equality check is not yet in place (residual, §12) |
 | The panel holding the App private key (D-108) | Role scoped to the one secret; a single reaction call; best effort; token cached briefly in memory only |
 | Per-repo guardrails silently skipping `/bug-fix` (DF-29) | `guardrail_scope = 'issue'` (D-107); AC-25 |
 | The PAT expires or is revoked | Best effort, so runs continue without board updates; Settings UI follow-up for rotation (D-99) |
@@ -527,7 +553,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 ## 17. Open Questions
 
 1. **OQ-1, Python dependency install:** resolved in S-189 (task 10.1).
-2. **OQ-2, managed-settings key names:** pinned by the S-182 spike.
+2. **OQ-2, managed-settings key names:** answered by the S-182 spike (CLI 2.1.309). Keys and their IC status: [`spike-bug-fix-sandbox.md`](spike-bug-fix-sandbox.md) §3. Keys not directly exercised on IC are followed up in #446.
 
 ## 18. Decisions (HOW phase)
 
@@ -564,8 +590,11 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-106 | Story and issue mapping for v2.0. |
 | D-107 | `agents.guardrail_scope`; G1/G5 lifted for issue-scoped agents; G4 stays. |
 | D-108 | The panel adds 👎 on matched-but-blocked deliveries. |
+| D-109 | *(Superseded by D-110.)* Non-root `wrapper` user switching to `fixer` through a narrow sudo rule. |
+| D-110 | Root wrapper; `setpriv` drop to `fixer` for every process that runs model output or repo code (AgentCore sets `no_new_privs`); no sudo in the image. |
+| D-111 | `localhost` resolves through the image's NSS (`libnss-myhostname`, IPv4 first via `/etc/gai.conf`); `sandbox.py` only checks it. |
 
-WHAT-phase decisions (D-01–D-46, D-88–D-102) are consumed through the PRD. D-47, D-48, D-57, D-59, D-68, D-69, D-71, D-75 and D-79 are superseded by v2.0.
+WHAT-phase decisions (D-01–D-46, D-88–D-102) are consumed through the PRD. D-47, D-48, D-57, D-59, D-68, D-69, D-71, D-75 and D-79 are superseded by v2.0. D-109 is superseded by D-110 (v2.2).
 
 ## Vocabulary
 
