@@ -9,7 +9,7 @@
 - Test plan: `workstream/test-plan-prd-bug-fix-agent.md` (v2.0)
 - Decision log: `workstream/decisions-bug-fix-agent.md`
 - Started: 2026-10-23
-- Last updated: 2026-10-24 (after S-188)
+- Last updated: 2026-10-24 (after S-189)
 
 ## Story Status
 
@@ -22,14 +22,14 @@
 | 5 | S-186 | #368 | ✅ Merged | #451 | story/S-186-markers-disposition |
 | 6 | S-185 | #367 | ✅ Merged | #453 | story/S-185-refusal-checks |
 | 7 | S-188 | #370 | ✅ Merged | #454 | story/S-188-claim-race |
-| 8 | S-189 | #371 | 🔄 Next (OQ-1 decision) | — | — |
-| 9 | S-190 | #372 | ⏳ Pending | — | — |
+| 8 | S-189 | #371 | ✅ Merged | #458 | story/S-189-checkout-gates |
+| 9 | S-190 | #372 | 🔄 Next (includes the runtime redeploy via infra-engineer) | — | — |
 
 ## Current Position
 
-- Next story: S-189 (#371), after the OQ-1 decision
-- Last merged PR: #454 (`62544bc`)
-- Integration branch HEAD: `62544bc`
+- Next story: S-190 (#372)
+- Last merged PR: #458 (`1fe65c4`)
+- Integration branch HEAD: `1fe65c4`
 
 ## Decisions Log
 
@@ -46,3 +46,5 @@
 - 2026-10-24: S-185 (#453) merged (`3bcc61b`). Gates: quality PASS (2137 passed; CI green on 9 jobs); `qa-engineer` coverage_gate PASS (98.03%; found fail-open paths: page caps, unknown status, redirects, an unbounded wait, `Link` rel matching; all fixed in the fix round); verifier High/Minor (DF-185-01..09). DF-185-01/02/03 (Intended) and the GraphQL error classification still need a spec §8.9/§9 and CT-13/CT-33/CT-34 wording write-back. DF-185-04 is tied to the open DF-33 (the open-claim definition), to be decided before S-188. Residuals: CT-34 real-database L2.5; S-190 maps `refresh_if_stale` `PermissionMissing` via `exc.error_code`; S-188's post-check passes `warn=` to `has_active_run`. A developer subagent popped the user's `stash@{0}` by mistake during the fix round; the files were restored to HEAD, and the stash is verified intact and unchanged. Memo: intent and outcome written (bf3322fd, aaf024de; fix-round outcome 292847d8).
 - 2026-10-24: DF-33 decided by @llipe: an open claim has no trusted `pr`, `disposition` or `refusal` marker and its run is not terminal. The S-185 write-back (spec v2.4, stories v2.3, test plan v2.2, matrix v2.1) was merged via #455 (`6e0fa0a`).
 - 2026-10-24: S-188 (#454) merged (`62544bc`). Gates: quality PASS (2308 passed; CI green); `qa-engineer` coverage_gate PASS (98.16%; 37 L2 tests, no defects); verifier High/Minor (DF-188-01..07). Carried to S-190: an end-to-end L2 test (refusal → claim → disposer) and one shared strict run-link validator (QA gaps 1–2), plus mapping `refresh_if_stale` errors via `exc.error_code`. DF-38 (a race-loss DELETE fault ends `failed`) and DF-188-01/02/05 still need a decision and a write-back. Memo: intent and outcome written (7c564b09, fdb855ab).
+- 2026-10-24: OQ-1 decided by @llipe: D-112 (Python needs `make install`; otherwise `repo_gate` "missing install target"). DF-38 race-loss decided: a non-404 DELETE fault ends `failed`. Both written back via #459 (`54d27c4`; spec v2.5, stories v2.4, test plan v2.3, matrix v2.2).
+- 2026-10-24: S-189 (#458) merged (`1fe65c4`). Gates: quality PASS (2737 local, CI 9/9, pnpm frozen-install test now runs in CI); image smoke 57/57 (local arm64, not deployed); `qa-engineer` coverage_gate PASS (97.59%; 4 real defects fixed: hardlink capture, FIFO stall, `.git` path components plus fsckObjects, `packageManager` lockfile); verifier High/Minor (DF-189-01..09; 04/05/08/09 fixed). Pending: the AgentCore `fs.protected_hardlinks`/`protected_symlinks` check (#446). Docs write-back still due: DF-189-01 (raw-blob tar vs spec §8.7/D-62), DF-189-07 (`wrapper` user wording), and the new `repo_gate` items and phrases (spec §8.7/D-112). Memo: intent and outcome written (bb2ae7e4, ed01871d; fix round b421ec9d, 2dd73be3).
