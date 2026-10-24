@@ -280,7 +280,7 @@
 
   - [x] 10.1 **Decide OQ-1 before 10.5:** for Python, require a `make install` target, or end `not_applicable` "missing install target" (the proposal). Append the result to `workstream/decisions-bug-fix-agent.md` as a new `D-NN`, with user confirmation (D-112, recorded via the docs write-back PR)
     > Confirmed by @llipe on 2026-10-24: Python repos need a `make install` target, which the wrapper runs in the sandbox; without it the run ends with refusal `repo_gate`, "missing install target", before any issue change (FR-5). JS stays `pnpm install --frozen-lockfile` or `npm ci`.
-  - [ ] 10.2 [agents/bug-fix] Fixture repos `tests/fixtures/repos/{js-pnpm-ok, js-missing-typecheck, py-make-ok, py-no-developer-md}`
+  - [x] 10.2 [agents/bug-fix] Fixture repos `tests/fixtures/repos/{js-pnpm-ok, js-missing-typecheck, py-make-ok, py-no-developer-md}`
   - [ ] 10.3 `[T]` [agents/bug-fix] L1 `tests/unit/test_toolchain.py`: stack detection (pnpm, npm, Makefile, none), gate-name resolution, `Makefile` target parsing (`format_check` ≠ `format-check`) (D-17, D-19)
   - [ ] 10.4 `[T]` [agents/bug-fix] L2 `tests/component/test_checkout.py` and `test_gates.py` with real `git`:
     - shallow clone and base SHA recorded;
