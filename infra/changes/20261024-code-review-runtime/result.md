@@ -25,6 +25,6 @@
 
 - Identity: AWS root, explicitly accepted by @llipe on 2026-10-24 for this change.
 - Model: planned GPT-6.1 Sol (D-58); gated for the account (step 11), so DeepSeek V3.2 (`deepseek.v3.2`, D-59) is live.
-- The CDK project is not in CI (same as the siblings); its tests run locally, from the `cdk` directory (`cd agents/code-review/agentcore/cdk && npm test`); `npm --prefix` from the repo root fails because the construct resolves the project from the current directory.
+- The CDK project is not in CI (same as the siblings). Its tests run locally, from the `cdk` directory or the repo root (`test/setup-project-root.ts` from #445 pins the project root).
 
 status: verified (step 11f: a live review re-run on the rebuilt image is pending)
