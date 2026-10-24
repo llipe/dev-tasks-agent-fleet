@@ -9,7 +9,7 @@ related:
     "agents/code-review/agentcore/cdk/lib/runtime-policy.ts",
     "agents/code-review/agentcore/cdk/test/code-review-runtime.test.ts",
     "infra/agentcore-invoke-policy.json",
-    "infra/changes/2026-10-24-code-review-runtime/plan.md",
+    "infra/changes/20261024-code-review-runtime/plan.md",
     "supabase/migrations/20261022120000_seed_code_review_agent.sql",
   ]
 ---
@@ -24,7 +24,7 @@ panel invoke it, and enables its `agents` row. Companion to
 webhook rule and the 5-PR smoke are S-215, not this runbook.
 
 Every step runs through `infra-engineer`, one approved step at a time, recorded
-in [`infra/changes/2026-10-24-code-review-runtime/`](../../infra/changes/2026-10-24-code-review-runtime/plan.md).
+in [`infra/changes/20261024-code-review-runtime/`](../../infra/changes/20261024-code-review-runtime/plan.md).
 The change record has no separate IAM step: this runbook's step 3 is checked as
 part of its step 1, so its steps 3–7 are this runbook's steps 4–8.
 
@@ -180,7 +180,7 @@ pair. Leave everything else unchanged:
 
 ```bash
 aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime \
-  --query PolicyDocument > infra/changes/2026-10-24-code-review-runtime/backup/runtime-invoke-policy.before.json
+  --query PolicyDocument > infra/changes/20261024-code-review-runtime/backup/runtime-invoke-policy.before.json
 ```
 
 ```json

@@ -1,6 +1,6 @@
-# Change plan — 2026-10-24-code-review-runtime
+# Change plan — 20261024-code-review-runtime
 
-- **ChangeId:** `infra/changes/2026-10-24-code-review-runtime/`
+- **ChangeId:** `infra/changes/20261024-code-review-runtime/`
 - **Issue:** #416 (S-214, Wave B of `prd-code-review-agent`; ACs 3–6 and 8 are verified here)
 - **Environment:** `prod` (`production: true`)
 - **Resolved identity:** _to fill at execution_ — `aws sts get-caller-identity` (expected account `755641879575`, `us-east-1`); `agentcore --version`; Supabase project `hegxeycmbmjfgzqpdiik`; target `default`
@@ -51,7 +51,7 @@
 - **Kind:** IAM inline-policy update · **Tool:** aws · **Touches state:** yes
 - **Forward:** add the runtime ARN and `<runtime ARN>/runtime-endpoint/DEFAULT` to `infra/agentcore-invoke-policy.json` (issue #280 pattern), then `aws iam put-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime --policy-document file://infra/agentcore-invoke-policy.json`
 - **Verify:** `aws iam get-role-policy --role-name panel-agentcore-invoke --policy-name invoke-runtime` matches the file; `aws iam simulate-principal-policy` allows `bedrock-agentcore:InvokeAgentRuntime` on both ARNs (TC-214-07)
-- **Revert:** `aws iam put-role-policy … --policy-document file://infra/changes/2026-10-24-code-review-runtime/backup/runtime-invoke-policy.before.json`
+- **Revert:** `aws iam put-role-policy … --policy-document file://infra/changes/20261024-code-review-runtime/backup/runtime-invoke-policy.before.json`
 
 ### Step 4 — GitHub App Issues read
 
