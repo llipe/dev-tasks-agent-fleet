@@ -1,0 +1,2 @@
+# Golden bodies are byte-exact (CT-32); claim-crlf.md must keep its CRLF line ends.
+*.md -text

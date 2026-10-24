@@ -225,7 +225,7 @@
 
 - [ ] 7.0 Implement Story S-186 (#368 - https://github.com/llipe/dev-tasks-agent-fleet/issues/368): Markers, reactions and the idempotent disposition
 
-  - [ ] 7.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_markers.py`:
+  - [x] 7.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_markers.py`:
     - a round-trip for `claim`, `disposition`, `refusal` (`reason=`) and `pr`;
     - the leading marker block;
     - forged markers (human author, wrong App id, `user.type == "User"`) untrusted (D-53, D-80, D-104).
@@ -243,7 +243,7 @@
   - [ ] 7.8 Edge cases: CRLF bodies; a diagnosis truncated to 65,536 characters
   - [ ] 7.9 Verify AC (v2.0): AC1, AC2 and AC4 by 7.1–7.2; AC3, AC5 and AC6 by 7.3
   - [ ] 7.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 7.11 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [ ] 7.11 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] ~~8.0 Implement Story S-187 (#369)~~ — **removed in v2.0** (D-90); linked-PR detection moved to 6.0; #369 closed as not planned.
 
