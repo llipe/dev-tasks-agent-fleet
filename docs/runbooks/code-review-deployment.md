@@ -22,7 +22,7 @@ review costs Bedrock tokens. The rule's author guard is what limits who can spen
 | AgentCore runtime | `codereview_code_review-g73KtjA3MT` (`arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/codereview_code_review-g73KtjA3MT`) |
 | CloudFormation stack | `AgentCore-codereview-default` (project `agents/code-review/agentcore/`) |
 | Execution role | `agent-fleet-code-review-runtime`, inline policy `code-review-runtime` = [`role-policy.json`](../../infra/changes/20261024-code-review-runtime/role-policy.json) |
-| Model | `MODEL_ID=deepseek.v3.2`: on-demand, us-east-1 only, no marketplace agreement (D-59) |
+| Model | `MODEL_ID=deepseek.v3.2`: on-demand, us-east-1 only, no marketplace agreement (D-59). `AWS_REGION=us-east-1` is set explicitly (spec §9) |
 | Lifecycle | idle 900 s, max 1800 s; a run stops itself at 900 s (D-32) |
 | Secrets (read on every run, by name) | `agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY`, `agent-fleet/prod/GITHUB_APP_PRIVATE_KEY` |
 | `agents` row | slug `code-review`, enabled, `runtime_arn` = the runtime ARN above |
@@ -42,15 +42,20 @@ construct then imports it read-only and attaches nothing. Without it, the constr
   (`supabase projects list` must show it), and the checkout linked
   (`supabase link --project-ref hegxeycmbmjfgzqpdiik`).
 - The GitHub App installation has Issues read (it has Issues write; checked 2026-10-24).
+- No other open branch or PR is changing the same agent: `gh pr list --state all --search "S-214"`
+  and `git branch -a | grep -i code-review`. On 2026-10-24 a parallel code-only PR (#445) on
+  `integration/code-review-agent-wave-b` was found only after deploying, and had to be reconciled.
+  **Never `agentcore deploy` from a branch whose `agentcore.json` differs from what is live** (see
+  "What is deployed"): CloudFormation applies the whole template, including a different role or model.
 
 ## 1. Deploy or redeploy the runtime
 
-1. Run the CDK tests. They pin the role policy and the runtime config. Run them **from the `cdk`
-   directory**: the AgentCore construct finds its project from the current directory, so
-   `npm --prefix … test` from the repo root fails with "Could not find agentcore directory".
+1. Run the CDK tests. They pin the role policy and the runtime config. `test/setup-project-root.ts`
+   pins the AgentCore project root, so they run from the `cdk` directory or from the repo root:
 
    ```bash
    cd agents/code-review/agentcore/cdk && npm ci && npm test
+   # or, from the repo root: npm --prefix agents/code-review/agentcore/cdk test
    ```
 
 2. Preview the change. Read the diff before applying:

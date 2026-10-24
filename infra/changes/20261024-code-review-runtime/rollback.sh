@@ -7,6 +7,11 @@ FROM=""
 [[ "${1:-}" == "--from" ]] && FROM="${2:?--from needs a step number}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
+revert_step_11f() {
+  git -C "$REPO_ROOT" revert --no-edit f4c66c2
+  echo "then: (cd agents/code-review && agentcore deploy -y)"
+}
+
 revert_step_11d() {
   # Redeploys the GPT-6.1 Sol config: run after revert_step_11b has restored agentcore.json.
   echo "after revert_step_11b: (cd agents/code-review && agentcore deploy -y)"
@@ -71,7 +76,7 @@ revert_step_1() {
 }
 
 # Applied steps, newest first. --from N starts at step N (e.g. 7 or 11b).
-STEPS=(11d 11c 11b 10 8 7 6 5 4 2 1)
+STEPS=(11f 11d 11c 11b 10 8 7 6 5 4 2 1)
 started=0
 [[ "$FROM" == "${STEPS[0]}" || "${1:-}" != "--from" ]] && started=1
 for n in "${STEPS[@]}"; do

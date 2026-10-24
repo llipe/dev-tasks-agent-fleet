@@ -152,3 +152,17 @@ Step 11 failed: GPT-6.1 Sol is gated per account ("not available for this accoun
 
 ### Step 11e: positive panel invoke (AC-8), as step 11
 - Same as step 11, on `llipe/security-analyst-fixture#5`.
+
+## Amendment 2 (2026-10-24): reconcile with #445, set AWS_REGION
+
+Found during step 12: #445 (S-214 code part, merged 14:39Z into `integration/code-review-agent-wave-b`) changed the same files with a CDK-managed role and a non-existent Sol ID, and applied nothing to AWS. @llipe chose "integration branch, keep live". This branch merges the integration branch, keeps the deployed design and records, and takes #445's test setup, lockfile patch, seed-contract test and fidelity report. The draft PR targets `integration/code-review-agent-wave-b`.
+
+### Step 11f: set `AWS_REGION` (spec §9) and redeploy
+- **Kind:** deploy app · **Tool:** agentcore · **Touches state:** yes (runtime version 2 → 3)
+- **Why:** #445's `test_seed_contract.py` requires `AWS_REGION` in `agentcore.json`. AgentCore injects it at run time, so behavior is unchanged.
+- **Diff (read before approval):** `EnvironmentVariables` `[+] AWS_REGION`, and an image rebuild because the source hash covers `tests/` (dockerignored, so the runtime code is identical).
+- **Backup:** runtime version 2 (`MODEL_ID=deepseek.v3.2`, image tag `21487b89…`).
+- **Verify:** READY, version 3, `AWS_REGION` and `MODEL_ID` set, same role.
+- **Revert:** `git revert` the 11f commit, then `agentcore deploy -y`.
+
+Known advisory, not fixed here (approved by @llipe): `brace-expansion@5.0.6` (GHSA-3jxr-9vmj-r5cp and five related DoS advisories) is bundled inside `aws-cdk-lib@2.261.0` and can't be overridden; `aws-cdk-lib@2.274.0` bundles 5.0.12. It affects synth-time tooling only, not the runtime image. Follow-up: bump `aws-cdk-lib` across the three AgentCore projects.

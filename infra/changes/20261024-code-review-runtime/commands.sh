@@ -74,3 +74,6 @@ aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-nam
 (cd agents/code-review && agentcore deploy --diff --json && agentcore deploy -y --json)
 
 # Step 11e: positive panel invoke (operator): run db46270a-d954-4071-b0e2-a9810ef3d0f4 on llipe/security-analyst-fixture#5 -> succeeded
+
+# Step 11f: AWS_REGION=us-east-1 in agentcore.json (commit f4c66c2), redeploy
+(cd agents/code-review && agentcore deploy --diff --json && agentcore deploy -y --json)
