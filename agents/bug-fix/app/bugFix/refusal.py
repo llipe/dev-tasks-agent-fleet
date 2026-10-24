@@ -41,8 +41,10 @@ and a ``v_runs`` read failure ``SUPABASE_UNAVAILABLE``. None of them writes.
 
 **Reply** (D-104). Exactly one comment: line 1 is the ``refusal`` marker, line 2
 one fixed sentence per code, line 3 the run link. Its only variable parts are
-the issue number, ``#M``, a ``repo_gate`` item and an ``invalid_params`` key,
-each from a closed set, so no issue, commenter or model text can reach it. A
+the issue number, the linked PR (``#M``, or ``owner/name#M`` for a PR in
+another repository, DF-185-07), a ``repo_gate`` item and an ``invalid_params``
+key, each from a closed set or a strict grammar, so no issue, commenter or
+model text can reach it. A
 refusal adds **no** reaction, makes **no** claim and touches **no** board
 (D-102). The run ends ``succeeded``/``not_applicable`` with
 ``result.reason = <code>``. A failure to post the reply is logged as a
@@ -66,7 +68,7 @@ import requests
 
 from credentials import CredentialError, TokenContext, has_issues_write
 from github_client import GitHubError
-from issues import IssueFacts, IssuesClient
+from issues import IssueFacts, IssuesClient, LinkedPr
 from markers import build, canonical_run_id, open_claims, trusted_markers
 from params import SCHEMA_KEYS, Params, ParamsError, parse_params
 from scrubber import SecretsLike, scrub_all, scrub_exception
@@ -84,7 +86,7 @@ REPLY_TEXT: Mapping[str, str] = {
     "pull_request": "#{issue} is a pull request. Comment `/bug-fix` on an issue instead.",
     "closed": "#{issue} is closed. Reopen it, then comment `/bug-fix` again.",
     "linked_pr": (
-        "pull request #{pr} is already open for #{issue}. "
+        "pull request {pr} is already open for #{issue}. "
         "Close it or finish it before asking for another fix."
     ),
     "active_run": (
@@ -113,6 +115,8 @@ _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {
     "invalid_params": INVALID_PARAMS_KEYS,
 }
 _RUN_LINK = re.compile(r"https://\S+")
+# A GitHub ``owner/name`` (the reply's only other free-form part, DF-185-07).
+_PR_REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 
 
 class SupabaseUnavailable(Exception):
@@ -123,11 +127,17 @@ class SupabaseUnavailable(Exception):
 
 @dataclass(frozen=True)
 class Refusal:
-    """A refusal verdict: the code, plus ``#M`` or the item/key it names."""
+    """A refusal verdict: the code, plus ``#M`` or the item/key it names.
+
+    ``pr_repo`` is ``owner/name`` for a ``linked_pr`` in another repository
+    (DF-185-07), so the reply names it ``owner/name#M``, never a bare ``#M``
+    that GitHub would link to this repository's PR of that number.
+    """
 
     reason: str
     pr_number: int | None = None
     detail: str | None = None
+    pr_repo: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +147,7 @@ class Refusal:
 
 def decide(
     facts: IssueFacts,
-    linked_pr: Callable[[], int | None],
+    linked_pr: Callable[[], LinkedPr | None],
     active_run: Callable[[], bool],
 ) -> Refusal | None:
     """The first matching refusal, or ``None`` to proceed (D-92).
@@ -151,7 +161,7 @@ def decide(
         return Refusal("closed")
     pr = linked_pr()
     if pr is not None:
-        return Refusal("linked_pr", pr_number=pr)
+        return Refusal("linked_pr", pr_number=pr.number, pr_repo=pr.repo)
     if active_run():
         return Refusal("active_run")
     return None
@@ -177,18 +187,29 @@ def reply_line(refusal: Refusal, issue_number: int | None) -> str:
             raise ValueError(f"refusal {code} takes no detail")
     elif refusal.detail not in allowed:
         raise ValueError(f"refusal {code} names a value outside its closed set")
+    pr_ref: str | None = None
     if code == "linked_pr":
         if not _positive(refusal.pr_number):
             raise ValueError("refusal linked_pr needs a positive PR number")
-    elif refusal.pr_number is not None:
-        raise ValueError(f"refusal {code} takes no PR number")
+        pr_ref = f"#{refusal.pr_number}"
+        if refusal.pr_repo is not None:
+            repo = refusal.pr_repo
+            if (
+                not isinstance(repo, str)
+                or not _PR_REPO.fullmatch(repo)
+                or set(repo.split("/")) & {".", ".."}
+            ):
+                raise ValueError("refusal linked_pr names a repository outside GitHub's grammar")
+            pr_ref = f"{repo}#{refusal.pr_number}"
+    elif refusal.pr_number is not None or refusal.pr_repo is not None:
+        raise ValueError(f"refusal {code} takes no PR")
     needs_issue = "{issue}" in REPLY_TEXT[code]
     if needs_issue and not _positive(issue_number):
         raise ValueError("the issue number must be a positive integer")
     if issue_number is not None and not _positive(issue_number):
         raise ValueError("the issue number must be a positive integer")
     return REPLY_PREFIX + REPLY_TEXT[code].format(
-        issue=issue_number, pr=refusal.pr_number, detail=refusal.detail
+        issue=issue_number, pr=pr_ref, detail=refusal.detail
     )
 
 

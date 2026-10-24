@@ -54,9 +54,16 @@ def test_disposition_body_has_exactly_its_own_marker(run_id, why, tried, diffsta
     assert utf16_len(body) <= MAX_COMMENT_CHARS
 
 
-def _refusal(code: str, pr: int, item: str, key: str) -> Refusal:
+_NAME = st.from_regex(r"[A-Za-z0-9._-]{1,39}", fullmatch=True).filter(
+    lambda n: n not in (".", "..")
+)
+# DF-185-07: a cross-repo linked PR names its ``owner/name``; ``None`` is this repo.
+_PR_REPO = st.one_of(st.none(), st.tuples(_NAME, _NAME).map("/".join))
+
+
+def _refusal(code: str, pr: int, item: str, key: str, pr_repo: str | None = None) -> Refusal:
     if code == "linked_pr":
-        return Refusal(code, pr_number=pr)
+        return Refusal(code, pr_number=pr, pr_repo=pr_repo)
     if code == "repo_gate":
         return Refusal(code, detail=item)
     if code == "invalid_params":
@@ -73,9 +80,12 @@ def _refusal(code: str, pr: int, item: str, key: str) -> Refusal:
     st.sampled_from(REPO_GATE_ITEMS),
     st.sampled_from(INVALID_PARAMS_KEYS),
     st.one_of(st.none(), st.just("https://panel.example/runs/x"), _MODEL_TEXT),
+    _PR_REPO,
 )
-def test_refusal_body_is_fixed_text_with_its_own_marker(run_id, code, issue, pr, item, key, link):
-    refusal = _refusal(code, pr, item, key)
+def test_refusal_body_is_fixed_text_with_its_own_marker(
+    run_id, code, issue, pr, item, key, link, pr_repo
+):
+    refusal = _refusal(code, pr, item, key, pr_repo)
     body = build_reply(run_id, refusal, issue, run_link=link)
     # (1) Its own marker on line 1; the body never starts with the trigger.
     assert body.split("\n", 1)[0] == build("refusal", run_id, code)
@@ -91,3 +101,6 @@ def test_refusal_body_is_fixed_text_with_its_own_marker(run_id, code, issue, pr,
         assert lines[2] == f"Run: {link}"
         assert re.fullmatch(r"https://\S+", link or "")
     assert body.count("<!--") == 1
+    if code == "linked_pr":
+        ref = f"{pr_repo}#{pr}" if pr_repo else f"#{pr}"
+        assert f"pull request {ref} is already open" in lines[1]

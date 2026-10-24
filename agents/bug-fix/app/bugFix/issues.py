@@ -61,6 +61,7 @@ __all__ = [
     "GitHubUnavailable",
     "IssueFacts",
     "IssuesClient",
+    "LinkedPr",
     "ReactionResult",
     "cut_utf16",
     "truncate_comment",
@@ -76,6 +77,7 @@ REACTIONS: tuple[str, ...] = ("eyes", "rocket", "confused")
 _MAX_PAGES = 100
 _MAX_GRAPHQL_PAGES = 20
 _NAME = re.compile(r"[A-Za-z0-9._-]+")
+_NAME_WITH_OWNER = re.compile(r"(?P<owner>[A-Za-z0-9._-]+)/(?P<repo>[A-Za-z0-9._-]+)")
 # A pagination link's path, relative to the API base (see _check_next).
 _REPO_PREFIX = (
     r"/(?:repos/(?P<owner>[A-Za-z0-9._-]+)/(?P<repo>[A-Za-z0-9._-]+)"
@@ -89,7 +91,7 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       closedByPullRequestsReferences(first: 100, after: $after, includeClosedPrs: false) {
-        nodes { number state }
+        nodes { number state repository { nameWithOwner } }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -105,6 +107,21 @@ class IssueFacts:
     number: int
     state: str
     is_pull_request: bool
+
+
+@dataclass(frozen=True)
+class LinkedPr:
+    """An open linked PR (D-55). ``repo`` is ``owner/name`` when the PR lives in
+    **another** repository (a cross-repo closing reference), ``None`` when it is
+    in this one. A reply names it ``owner/name#M`` or ``#M`` (DF-185-07).
+    """
+
+    number: int
+    repo: str | None = None
+
+    def sort_key(self) -> tuple[bool, str, int]:
+        """Same-repo first, then ``(owner/name, number)``, case-insensitively."""
+        return (self.repo is not None, (self.repo or "").lower(), self.number)
 
 
 @dataclass(frozen=True)
@@ -276,20 +293,23 @@ class IssuesClient(GitHubClient):
 
     # -- linked pull requests (S-185, D-55) ------------------------------------------
 
-    def closing_prs(self, issue_number: int) -> list[int]:
+    def closing_prs(self, issue_number: int) -> list[LinkedPr]:
         """Open PRs whose closing reference names the issue, in GitHub's order.
 
-        Pages until one is found or the connection ends. Reaching
-        ``_MAX_GRAPHQL_PAGES`` with none found and pages still left is
-        :class:`GitHubUnavailable`, and ``hasNextPage`` without a cursor is
+        A PR may live in another repository (CT-33): its ``nameWithOwner`` is
+        kept, and an open node without a valid one is
+        :class:`GitHubRequestRejected`. Every page is read, so the choice in
+        :meth:`linked_pr` sees them all. Reaching ``_MAX_GRAPHQL_PAGES`` with
+        pages still left is :class:`GitHubUnavailable` when none was found (with
+        one found, the refusal stands), and ``hasNextPage`` without a cursor is
         :class:`GitHubRequestRejected`: neither is read as "no linked PR" (D-67).
         """
         with self.deadline():
             return self._closing_prs(issue_number)
 
-    def _closing_prs(self, issue_number: int) -> list[int]:
+    def _closing_prs(self, issue_number: int) -> list[LinkedPr]:
         label = "POST /graphql (closedByPullRequestsReferences)"
-        found: list[int] = []
+        found: list[LinkedPr] = []
         after: str | None = None
         for _ in range(_MAX_GRAPHQL_PAGES):
             data = self.graphql(
@@ -301,17 +321,30 @@ class IssuesClient(GitHubClient):
             for node in conn["nodes"]:
                 number = _positive_int(node.get("number")) if isinstance(node, dict) else None
                 if number is not None and node.get("state") == "OPEN":
-                    found.append(number)
+                    found.append(LinkedPr(number, self._other_repo(node.get("repository"), label)))
             page = conn["pageInfo"]
             if page.get("hasNextPage") is not True:
                 return found
             cursor = page.get("endCursor")
             if not isinstance(cursor, str) or not cursor:
                 raise GitHubRequestRejected(f"{label} returned a next page with no cursor")
-            if found:
-                return found
             after = cursor
+        if found:
+            return found
         raise GitHubUnavailable(f"{label} has more than {_MAX_GRAPHQL_PAGES} pages")
+
+    def _other_repo(self, repository: object, label: str) -> str | None:
+        """``owner/name`` of a PR's repository, or ``None`` when it is this one."""
+        name = repository.get("nameWithOwner") if isinstance(repository, dict) else None
+        m = _NAME_WITH_OWNER.fullmatch(name) if isinstance(name, str) else None
+        if m is None or {m.group("owner"), m.group("repo")} & {".", ".."}:
+            raise GitHubRequestRejected(f"{label} returned a PR with no valid repository")
+        if (m.group("owner").lower(), m.group("repo").lower()) == (
+            self.owner.lower(),
+            self.repo.lower(),
+        ):
+            return None
+        return f"{m.group('owner')}/{m.group('repo')}"
 
     def open_pulls(self) -> list[dict]:
         """Every open PR of the repository, fetched once per client and paged."""
@@ -320,10 +353,14 @@ class IssuesClient(GitHubClient):
             self._open_pulls = [p for p in items if isinstance(p, dict)]
         return self._open_pulls
 
-    def branch_prs(self, issue_number: int) -> list[int]:
-        """Open PRs whose head branch starts with ``issue/<N>-``, forks included."""
+    def branch_prs(self, issue_number: int) -> list[LinkedPr]:
+        """Open PRs whose head branch starts with ``issue/<N>-``, forks included.
+
+        These are this repository's PRs (a fork PR targets it), so each is
+        named ``#M``.
+        """
         prefix = f"issue/{issue_number}-"
-        found: list[int] = []
+        found: list[LinkedPr] = []
         for pr in self.open_pulls():
             number = _positive_int(pr.get("number"))
             head = pr.get("head")
@@ -331,18 +368,20 @@ class IssuesClient(GitHubClient):
             if number is None or pr.get("state", "open") != "open" or not isinstance(ref, str):
                 continue
             if ref.startswith(prefix):
-                found.append(number)
+                found.append(LinkedPr(number))
         return found
 
-    def linked_pr(self, issue_number: int) -> int | None:
-        """The lowest-numbered open linked PR (D-55), or ``None``.
+    def linked_pr(self, issue_number: int) -> LinkedPr | None:
+        """The open linked PR to name (D-55), or ``None``.
 
         The closing references are asked first; open PRs are listed only when
-        none is found. Both run under one deadline (QA 5).
+        none is found. Both run under one deadline (QA 5). The choice never
+        compares numbers across repositories (DF-185-07): a same-repo PR wins,
+        then the lowest ``(owner/name, number)``.
         """
         with self.deadline():
             found = self.closing_prs(issue_number) or self.branch_prs(issue_number)
-        return min(found) if found else None
+        return min(found, key=LinkedPr.sort_key) if found else None
 
     # -- comments ----------------------------------------------------------------
 

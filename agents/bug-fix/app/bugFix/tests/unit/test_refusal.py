@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from issues import IssueFacts
+from issues import IssueFacts, LinkedPr
 from markers import REFUSAL_REASONS, build, parse_block
 from params import SCHEMA_KEYS
 from refusal import (
@@ -56,8 +56,12 @@ class TestDecisionTable:
         assert decide(_facts(state="closed"), _never, _never) == Refusal("closed")
 
     def test_an_open_issue_with_a_linked_pr_and_an_active_run_is_linked_pr(self):
-        got = decide(_facts(), lambda: 17, _never)
+        got = decide(_facts(), lambda: LinkedPr(17), _never)
         assert got == Refusal("linked_pr", pr_number=17)
+
+    def test_a_cross_repo_linked_pr_keeps_its_repository(self):
+        got = decide(_facts(), lambda: LinkedPr(5, "other-org/lib"), _never)
+        assert got == Refusal("linked_pr", pr_number=5, pr_repo="other-org/lib")
 
     def test_an_open_issue_with_only_an_active_run_is_active_run(self):
         assert decide(_facts(), lambda: None, lambda: True) == Refusal("active_run")
@@ -379,3 +383,45 @@ class TestHasActiveRunStatuses:
         ):
             self._run({OTHER: "paused"})
         assert any("unknown effective_status" in r.getMessage() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# DF-185-07: a cross-repository linked PR is named owner/repo#M
+# ---------------------------------------------------------------------------
+
+
+class TestCrossRepoReply:
+    def test_a_cross_repo_pr_is_named_with_its_repository(self):
+        line = reply_line(Refusal("linked_pr", pr_number=5, pr_repo="other-org/lib.js"), 42)
+        assert line == (
+            "Bug-fix didn't start: pull request other-org/lib.js#5 is already open for #42. "
+            "Close it or finish it before asking for another fix."
+        )
+
+    def test_a_same_repo_pr_stays_bare(self):
+        assert "pull request #5 is" in reply_line(Refusal("linked_pr", pr_number=5), 42)
+
+    @pytest.mark.parametrize(
+        "repo",
+        [
+            "other",
+            "a/b/c",
+            "../x",
+            "o/..",
+            "o/r#1",
+            "@x/y",
+            "a/ b",
+            "",
+            "o/r\n/bug-fix",
+            5,
+            "[x](y)/z",
+        ],
+    )
+    def test_a_repository_outside_the_name_grammar_is_refused(self, repo):
+        with pytest.raises(ValueError):
+            reply_line(Refusal("linked_pr", pr_number=5, pr_repo=repo), 42)
+
+    @pytest.mark.parametrize("code", ["pull_request", "closed", "active_run"])
+    def test_a_repository_on_another_code_is_refused(self, code):
+        with pytest.raises(ValueError):
+            reply_line(Refusal(code, pr_repo="o/r"), 42)

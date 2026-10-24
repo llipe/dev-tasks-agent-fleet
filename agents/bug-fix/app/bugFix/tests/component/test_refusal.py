@@ -831,9 +831,11 @@ class TestIssueReads:
     def test_open_pulls_are_fetched_once_per_client(self):
         gh = FakeGitHub()
         gh.pulls.append(pull_payload(5, "issue/12-a"))
+        from issues import LinkedPr
+
         client = self._client(gh)
-        assert client.branch_prs(12) == [5]
-        assert client.branch_prs(12) == [5]
+        assert client.branch_prs(12) == [LinkedPr(5)]
+        assert client.branch_prs(12) == [LinkedPr(5)]
         assert len([p for p in gh.paths("GET") if p.endswith("/pulls")]) == 1
 
     def test_a_non_json_issue_is_rejected(self):
@@ -871,7 +873,14 @@ class TestIssueReads:
                 "repository": {
                     "issue": {
                         "closedByPullRequestsReferences": {
-                            "nodes": [*nodes, {"number": 9, "state": "OPEN"}],
+                            "nodes": [
+                                *nodes,
+                                {
+                                    "number": 9,
+                                    "state": "OPEN",
+                                    "repository": {"nameWithOwner": "o/r"},
+                                },
+                            ],
                             "pageInfo": {"hasNextPage": False, "endCursor": None},
                         }
                     }
@@ -879,7 +888,9 @@ class TestIssueReads:
             }
         }
         gh.faults["graphql"] = [FakeResponse(200, payload)]
-        assert self._client(gh).closing_prs(ISSUE) == [9]
+        from issues import LinkedPr
+
+        assert self._client(gh).closing_prs(ISSUE) == [LinkedPr(9)]
 
 
 # ---------------------------------------------------------------------------
@@ -1228,3 +1239,78 @@ class TestCT34ClaimsAgainstVRuns:
             gh.add_comment(ISSUE, build("claim", rid))
         sb = FakeSupabase({OTHER: "timed_out", fourth: "queued"})  # third: no row
         assert _check(gh, sb).reason == "active_run"
+
+
+# ---------------------------------------------------------------------------
+# CT-33 / DF-185-07: cross-repository closing references
+# ---------------------------------------------------------------------------
+
+
+class TestCrossRepoLinkedPr:
+    def test_a_cross_repo_closing_pr_is_named_owner_repo_hash_m(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_closing_ref(ISSUE, 5, repo="other-org/lib")
+        out = _check(gh)
+        assert out.reason == "linked_pr"
+        body = gh.writes()[0].json["body"]
+        assert body.splitlines()[1] == (
+            "Bug-fix didn't start: pull request other-org/lib#5 is already open for #12. "
+            "Close it or finish it before asking for another fix."
+        )
+        assert "pull request #5" not in body and "other-org/lib#5" in out.summary
+
+    def test_the_query_asks_for_each_prs_repository(self):
+        gh, sb = _gh_for("proceed")
+        _check(gh, sb)
+        (call,) = gh.graphql_calls()
+        assert "repository { nameWithOwner }" in call.json["query"]
+
+    def test_a_same_repo_pr_is_preferred_over_a_lower_numbered_cross_repo_one(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_closing_ref(ISSUE, 3, repo="aaa/first")
+        gh.add_closing_ref(ISSUE, 90)
+        gh.add_closing_ref(ISSUE, 70, repo="O/R")  # same repo, any case
+        out = _check(gh)
+        assert "pull request #70 is" in out.summary
+
+    def test_cross_repo_prs_are_ordered_by_owner_repo_then_number(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_closing_ref(ISSUE, 1, repo="zeta/x")
+        gh.add_closing_ref(ISSUE, 9, repo="Alpha/y")
+        gh.add_closing_ref(ISSUE, 4, repo="alpha/y")
+        out = _check(gh)
+        assert "pull request alpha/y#4 is" in out.summary
+
+    def test_the_choice_never_compares_numbers_across_pages_by_order(self):
+        gh = FakeGitHub(graphql_page_size=1)
+        gh.add_issue(ISSUE)
+        gh.add_closing_ref(ISSUE, 2, repo="other/lib")
+        gh.add_closing_ref(ISSUE, 50)
+        out = _check(gh)
+        assert "pull request #50 is" in out.summary
+        assert len(gh.graphql_calls()) == 2
+
+    @pytest.mark.parametrize(
+        "repository", [None, {}, {"nameWithOwner": None}, {"nameWithOwner": "../x"}, "o/r"]
+    )
+    def test_an_open_node_without_a_valid_repository_is_rejected(self, repository):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        node: dict[str, Any] = {"number": 5, "state": "OPEN"}
+        if repository is not None:
+            node["repository"] = repository
+        conn = {"nodes": [node], "pageInfo": {"hasNextPage": False, "endCursor": None}}
+        payload = {"data": {"repository": {"issue": {"closedByPullRequestsReferences": conn}}}}
+        gh.faults["graphql"] = [FakeResponse(200, payload)]
+        out = _check(gh)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
+        assert gh.writes() == []
+
+    def test_a_head_branch_pr_is_always_this_repository(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.pulls.append(pull_payload(41, "issue/12-from-fork", fork=True))
+        assert "pull request #41 is" in _check(gh).summary

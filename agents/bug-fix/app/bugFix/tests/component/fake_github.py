@@ -160,8 +160,17 @@ class FakeGitHub:
         self.issues[number] = issue_payload(number, **kwargs)
         return self.issues[number]
 
-    def add_closing_ref(self, issue: int, pr: int, state: str = "OPEN") -> None:
-        self.closing_refs.setdefault(issue, []).append({"number": pr, "state": state})
+    def add_closing_ref(
+        self, issue: int, pr: int, state: str = "OPEN", repo: str | None = "o/r"
+    ) -> None:
+        """A closing reference; ``repo`` is the PR's ``nameWithOwner`` (CT-33).
+
+        ``repo=None`` omits ``repository`` from the node, a malformed answer.
+        """
+        node: dict[str, Any] = {"number": pr, "state": state}
+        if repo is not None:
+            node["repository"] = {"nameWithOwner": repo}
+        self.closing_refs.setdefault(issue, []).append(node)
 
     # -- inspection ----------------------------------------------------------
 
