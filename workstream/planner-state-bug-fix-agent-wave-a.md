@@ -9,15 +9,15 @@
 - Test plan: `workstream/test-plan-prd-bug-fix-agent.md` (v2.0)
 - Decision log: `workstream/decisions-bug-fix-agent.md`
 - Started: 2026-10-23
-- Last updated: 2026-10-23 (after S-180)
+- Last updated: 2026-10-24 (after S-181)
 
 ## Story Status
 
 | Sequence | Story ID | Issue # | Status | PR | Branch |
 | -------- | -------- | ------- | ------ | -- | ------ |
 | 1 | S-180 | #362 | ✅ Merged | #433 | story/S-180-agent-scaffold |
-| 2 | S-181 | #363 | 🔄 Next (infra-engineer + operator actions) | — | — |
-| 3 | S-182 | #364 | ⏳ Pending | — | — |
+| 2 | S-181 | #363 | ✅ Merged | #442 | story/S-181-infra-runtime |
+| 3 | S-182 | #364 | 🔄 Next (spike; redeploys via infra-engineer) | — | — |
 | 4 | S-184 | #366 | ⏳ Pending (migration apply needs confirmation) | — | — |
 | 5 | S-186 | #368 | ⏳ Pending | — | — |
 | 6 | S-185 | #367 | ⏳ Pending | — | — |
@@ -27,9 +27,9 @@
 
 ## Current Position
 
-- Next story: S-181 (#363)
-- Last merged PR: #433 (`b779c3e`)
-- Integration branch HEAD: `b779c3e`
+- Next story: S-182 (#364)
+- Last merged PR: #442 (`242032d`)
+- Integration branch HEAD: `242032d`
 
 ## Decisions Log
 
@@ -37,3 +37,4 @@
 - 2026-10-23: S-181 runs through `infra-engineer`. S-182 and S-190 redeploys also go through `infra-engineer` (per-story infra routing).
 - 2026-10-23: S-180 (#433) merged. Gates: quality PASS (re-run by the planner, 213 tests); `qa-engineer` coverage_gate PASS; verifier High/Minor. A fix round closed the QA redaction gaps and DF-180-05. Memo: intent skipped(follow-up pass), outcome written (id unverified). There's no CI on non-`main` PRs, so the gates were re-run locally. GitHub rejects self-approval, so the review was recorded as a review comment.
 - 2026-10-23: Carried forward: DF-180-04 (the CDK construct's default `bedrock:InvokeModel` grant conflicts with D-50) becomes S-181 task 2.13; DF-180-03 (how `wrapper` switches to `fixer`) is settled in S-182 before S-191; DF-180-01 (`//` path notation) gets a spec §12 note.
+- 2026-10-24: S-181 (#442) merged. Change record `infra/changes/20261023-bug-fix-runtime/` verified (12 steps, each approved by @llipe; AWS root accepted by name). Runtime `bugfix_bug_fix-BiuPsdGSPK` READY with the imported role `agent-fleet-bug-fix-runtime` (no Bedrock, 4 secrets). Panel invoke policy updated. GitHub App Issues write verified by probe. For `infra/` work the human PR review is the gate (verifier n/a). AC4 (panel invoke) deferred to S-184, which seeds `runtime_arn = arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/bugfix_bug_fix-BiuPsdGSPK`.
