@@ -20,6 +20,7 @@ import requests
 from credentials import CredentialError, TokenContext
 from markers import build, parse_block
 from refusal import CheckOutcome, RunStatusReader, run_refusal_checks
+from run_link import RunLink
 from scrubber import SecretSet
 from tests.component.fake_github import (
     API,
@@ -37,7 +38,7 @@ ISSUE = 12
 SB_URL = "https://sb.example"
 SB_KEY = "sb_secret_" + "K" * 40
 PAT = "ghp_" + "P" * 36
-LINK = "https://panel.example/runs/" + RUN
+LINK = RunLink("https://panel.example", RUN)
 
 REFUSAL_CODES = ("pull_request", "closed", "linked_pr", "active_run", "invalid_params")
 

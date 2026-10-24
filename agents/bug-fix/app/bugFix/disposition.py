@@ -50,6 +50,7 @@ from typing import Any
 from issues import MAX_COMMENT_CHARS, IssuesClient, cut_utf16, truncate_comment, utf16_len
 from markers import build, canonical_run_id, has_trusted
 from neutralize import ZWSP, neutralize
+from run_link import run_ref
 from scrubber import SecretsLike, scrub_all, scrub_exception
 
 log = logging.getLogger("bug_fix.disposition")
@@ -59,7 +60,6 @@ RETRY_LINE = (
     "No labels or assignees were changed, and the issue stays open. "
     "Comment `/bug-fix` to try again."
 )
-_RUN_LINK = re.compile(r"https://\S+")
 _LOCK_TIMEOUT = 1.0
 # The longest the backstop waits for a live owner's in-flight post. The
 # backstop's own budget (10 s) abandons it sooner in practice.
@@ -128,24 +128,28 @@ def _shorten(value: str, excess: int) -> str:
 
 
 def build_body(
-    run_id: str, diagnosis: Diagnosis, secrets: SecretsLike, run_link: str | None = None
+    run_id: str, diagnosis: Diagnosis, secrets: SecretsLike, run_link: object = None
 ) -> str:
-    """The diagnosis comment for ``run_id``, ready to post."""
+    """The diagnosis comment for ``run_id``, ready to post.
+
+    The link passes the shared strict validator (``run_link.py``) or the run
+    id is named instead.
+    """
     rid = canonical_run_id(run_id)
-    run_ref = run_link if run_link and _RUN_LINK.fullmatch(run_link) else f"`{rid}`"
+    link_ref = run_ref(run_link, rid)
     parts = {
         "why": _clean(diagnosis.why, secrets),
         "tried": _clean(diagnosis.tried, secrets),
         "diffstat": _clean(diagnosis.diffstat, secrets),
     }
-    body = _render(run_ref, rid, **parts)
+    body = _render(link_ref, rid, **parts)
     for key in ("tried", "diffstat", "why"):
         excess = utf16_len(body) - MAX_COMMENT_CHARS
         if excess <= 0:
             break
         if parts[key]:
             parts[key] = _shorten(parts[key], excess)
-            body = _render(run_ref, rid, **parts)
+            body = _render(link_ref, rid, **parts)
     return truncate_comment(body)
 
 

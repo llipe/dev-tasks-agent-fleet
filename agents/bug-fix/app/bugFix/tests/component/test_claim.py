@@ -36,6 +36,7 @@ from disposition import Diagnosis, Disposer
 from issues import IssuesClient
 from markers import build, parse_block
 from refusal import RunStatusReader, run_refusal_checks
+from run_link import RunLink
 from scrubber import SecretSet
 from tests.component.fake_github import APP_ID, TOKEN, FakeGitHub, FakeResponse
 from tests.component.test_refusal import SB_KEY, SB_URL, FakeSupabase, _token
@@ -47,7 +48,7 @@ ISSUE = 12
 TRIGGER = 9_001
 OTHER_TRIGGER = 9_002
 PANEL = "https://dt-agent-fleet-panel.fly.dev"
-LINK = f"{PANEL}/runs/{RUN}"
+LINK = RunLink(PANEL, RUN)
 LABELS = ("type: bug", "status: ready")
 
 

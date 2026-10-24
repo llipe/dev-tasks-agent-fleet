@@ -76,6 +76,7 @@ from github_client import GitHubError
 from issues import IssueFacts, IssuesClient, LinkedPr
 from markers import build, canonical_run_id, open_claims
 from params import SCHEMA_KEYS, Params, ParamsError, parse_params
+from run_link import run_ref
 from scrubber import SecretsLike, scrub_all, scrub_exception
 
 log = logging.getLogger("bug_fix.refusal")
@@ -150,7 +151,6 @@ _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {
     "repo_gate": REPO_GATE_ITEMS,
     "invalid_params": INVALID_PARAMS_KEYS,
 }
-_RUN_LINK = re.compile(r"https://\S+")
 # A GitHub ``owner/name`` (the reply's only other free-form part, DF-185-07).
 _PR_REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 
@@ -251,16 +251,17 @@ def reply_line(refusal: Refusal, issue_number: int | None) -> str:
 
 
 def build_reply(
-    run_id: str, refusal: Refusal, issue_number: int | None, run_link: str | None = None
+    run_id: str, refusal: Refusal, issue_number: int | None, run_link: object = None
 ) -> str:
-    """The refusal comment: marker, fixed sentence, run link (D-104)."""
+    """The refusal comment: marker, fixed sentence, run link (D-104).
+
+    The link passes the shared strict validator (``run_link.py``) or the run
+    id is named instead.
+    """
     rid = canonical_run_id(run_id)
     marker = build("refusal", rid, refusal.reason)
     line = reply_line(refusal, issue_number)
-    run_ref = (
-        run_link if isinstance(run_link, str) and _RUN_LINK.fullmatch(run_link) else f"`{rid}`"
-    )
-    return f"{marker}\n{line}\nRun: {run_ref}"
+    return f"{marker}\n{line}\nRun: {run_ref(run_link, rid)}"
 
 
 # ---------------------------------------------------------------------------

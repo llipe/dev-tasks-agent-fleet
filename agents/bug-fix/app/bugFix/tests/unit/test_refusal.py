@@ -25,12 +25,13 @@ from refusal import (
     open_claim_runs,
     reply_line,
 )
+from run_link import RunLink
 
 RUN = "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b"
 OTHER = "1c0b3e5f-2d4e-4f60-9b7c-8d9e0f1a2b3c"
 THIRD = "2d1c4f60-3e5f-4071-8c8d-9e0f1a2b3c4d"
 APP_ID = 424242
-LINK = "https://panel.example/runs/" + RUN
+LINK = RunLink("https://panel.example", RUN)
 
 
 def _facts(*, state="open", pr=False, number=42) -> IssueFacts:

@@ -48,7 +48,6 @@ Every message is scrubbed of secrets before it is logged or reported.
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -57,25 +56,24 @@ from github_client import GitHubError
 from issues import IssuesClient
 from markers import build, canonical_run_id, comment_id
 from refusal import SupabaseUnavailable, active_claim_runs
+from run_link import run_ref
 from scrubber import SecretsLike, scrub_all, scrub_exception
 
 log = logging.getLogger("bug_fix.claim")
 
 CLAIM_LINE = "🔧 Bug-fix run {run} is working on this issue."
-_RUN_LINK = re.compile(r"https://\S+")
 
 
-def build_claim_body(run_id: str, run_link: str | None = None) -> str:
+def build_claim_body(run_id: str, run_link: object = None) -> str:
     """The claim comment: the ``claim`` marker, then one fixed line (spec §8.3).
 
-    An unusable run link (missing, not ``https``, or with whitespace) falls
-    back to the run id in backticks, as the refusal reply and the diagnosis do.
+    ``run_link`` must pass the shared strict validator
+    (:func:`run_link.is_valid_run_link`: a ``RunLink`` from the configured panel
+    origin, for this run); anything else falls back to the run id in
+    backticks, as the refusal reply and the diagnosis do.
     """
     rid = canonical_run_id(run_id)
-    run_ref = (
-        run_link if isinstance(run_link, str) and _RUN_LINK.fullmatch(run_link) else f"`{rid}`"
-    )
-    return f"{build('claim', rid)}\n{CLAIM_LINE.format(run=run_ref)}"
+    return f"{build('claim', rid)}\n{CLAIM_LINE.format(run=run_ref(run_link, rid))}"
 
 
 def race_winner(

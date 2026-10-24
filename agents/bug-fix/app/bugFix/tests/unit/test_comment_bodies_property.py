@@ -15,6 +15,7 @@ from disposition import Diagnosis, build_body
 from issues import MAX_COMMENT_CHARS, utf16_len
 from markers import REFUSAL_REASONS, Marker, build, parse_block
 from refusal import INVALID_PARAMS_KEYS, REPO_GATE_ITEMS, Refusal, build_reply
+from run_link import RunLink
 
 _HOSTILE = st.one_of(
     st.text(max_size=200),
@@ -71,6 +72,9 @@ def _refusal(code: str, pr: int, item: str, key: str, pr_repo: str | None = None
     return Refusal(code)
 
 
+_VALID = "<valid run link>"
+
+
 @settings(max_examples=1000, deadline=None)
 @given(
     st.uuids().map(str),
@@ -79,13 +83,15 @@ def _refusal(code: str, pr: int, item: str, key: str, pr_repo: str | None = None
     st.integers(min_value=1, max_value=2**31),
     st.sampled_from(REPO_GATE_ITEMS),
     st.sampled_from(INVALID_PARAMS_KEYS),
-    st.one_of(st.none(), st.just("https://panel.example/runs/x"), _MODEL_TEXT),
+    st.one_of(st.none(), st.just("https://panel.example/runs/x"), st.just(_VALID), _MODEL_TEXT),
     _PR_REPO,
 )
 def test_refusal_body_is_fixed_text_with_its_own_marker(
     run_id, code, issue, pr, item, key, link, pr_repo
 ):
     refusal = _refusal(code, pr, item, key, pr_repo)
+    if link == _VALID:  # the one accepted shape: a RunLink for this run (S-190)
+        link = RunLink("https://panel.example", run_id)
     body = build_reply(run_id, refusal, issue, run_link=link)
     # (1) Its own marker on line 1; the body never starts with the trigger.
     assert body.split("\n", 1)[0] == build("refusal", run_id, code)

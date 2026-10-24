@@ -34,6 +34,7 @@ from checkout import (
 from issues import IssuesClient
 from markers import parse_block
 from refusal import REPO_GATE_PHRASES
+from run_link import RunLink
 from scrubber import SecretSet
 from tests.component.fake_github import APP_ID, TOKEN, FakeGitHub
 from tests.component.repo_fixtures import (
@@ -50,7 +51,7 @@ from tests.component.repo_fixtures import (
 
 RUN = "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b"
 ISSUE = 12
-LINK = "https://panel.example/runs/" + RUN
+LINK = RunLink("https://panel.example", RUN)
 
 
 class FakeRun:

@@ -902,3 +902,37 @@ def test_next_link_tolerates_headers_without_get():
         links = {"next": {"url": "https://api.github.com/x?page=2"}}
 
     assert next_link(Odd()) == "https://api.github.com/x?page=2"
+
+
+# ---------------------------------------------------------------------------
+# DF-188-02 follow-up (S-190): the one retried write is named and is the only one
+# ---------------------------------------------------------------------------
+
+
+def test_module_docstring_names_the_race_loss_delete_as_the_one_retried_write():
+    import github_client
+
+    doc = " ".join((github_client.__doc__ or "").split())
+    assert "race-loss withdrawal" in doc
+    assert "single-id ``DELETE``" in doc
+    assert "retried on a 5xx and on a transport error" in doc
+
+
+def test_only_the_comment_delete_and_graphql_queries_pass_idempotent_true():
+    import ast
+    from pathlib import Path
+
+    pkg = Path(__file__).resolve().parents[2]
+    found: list[tuple[str, str]] = []
+    for path in sorted(pkg.glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Call) and any(
+                    k.arg == "idempotent" and isinstance(k.value, ast.Constant) and k.value.value
+                    for k in node.keywords
+                ):
+                    found.append((path.name, fn.name))
+    assert sorted(set(found)) == [("github_client.py", "_graphql"), ("issues.py", "delete_comment")]

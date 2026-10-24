@@ -13,6 +13,14 @@ times:
   limit, which GitHub refuses before applying the request. A write is never
   retried on a 5xx or a transport error, because GitHub may already have
   applied it, and a retry would post the same comment twice.
+- **The one exception** (DF-188-02, D-67 amendment; spec v2.5 §9): the
+  race-loss withdrawal, the single-id ``DELETE`` of this run's own claim
+  comment (``issues.IssuesClient.delete_comment``, D-54), **is** retried on a
+  5xx and on a transport error, like a read. It passes ``idempotent=True``
+  because deleting one id twice is harmless: a retry after a delete that
+  already landed gets a 404, which the caller reads as "already gone". No
+  other write passes ``idempotent=True``; a GraphQL *query* passes it only
+  because it is a read sent as a ``POST``.
 
 A rate-limit wait honours ``Retry-After`` or ``x-ratelimit-reset`` up to
 :data:`MAX_WAIT_SECONDS` (60 s), so GitHub's common secondary-limit
