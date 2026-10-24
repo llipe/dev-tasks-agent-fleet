@@ -18,12 +18,18 @@ A rate-limit wait honours ``Retry-After`` or ``x-ratelimit-reset``. A wait
 beyond :data:`MAX_WAIT_SECONDS` isn't taken: the call gives up at once, so a
 long primary-limit reset can't consume the run budget.
 
+Redirects are never followed (``allow_redirects=False``, QA 3): a redirect
+could carry the token off the API host, and GitHub doesn't apply a redirected
+write.
+
 Errors:
 
 - transport errors, 5xx and rate limits that outlast the attempts →
   :class:`GitHubUnavailable` (``GITHUB_UNAVAILABLE``);
-- any other 4xx, a URL off the API host, or a malformed body →
-  :class:`GitHubRequestRejected` (``GITHUB_REQUEST_REJECTED``);
+- any 3xx, any other 4xx, a URL off the API host, or a malformed body →
+  :class:`GitHubRequestRejected` (``GITHUB_REQUEST_REJECTED``). A 3xx is not
+  retried: GitHub sends one for a renamed or transferred resource, which a
+  retry can't change. A redirected write is never reported as applied;
 - a 404 is **data** when the caller passes ``not_found_ok=True``, and the call
   returns ``None``.
 
@@ -363,6 +369,7 @@ class GitHubClient:
                     json=json,
                     params=params,
                     timeout=self.timeout if timeout is None else timeout,
+                    allow_redirects=False,
                 )
             except requests.RequestException as exc:
                 error = GitHubUnavailable(
@@ -389,6 +396,12 @@ class GitHubClient:
                 log.warning("%s %s returned %s; retrying", method, label, status)
                 self._wait(_backoff(attempt))
                 continue
+            if 300 <= status < 400:
+                # Never followed (QA 3): a redirect could carry the token off
+                # the API host, and a redirected write was not applied.
+                raise GitHubRequestRejected(
+                    f"{method} {label} returned a redirect ({status})", status=status
+                )
             if status == 404 and not_found_ok:
                 return None
             if status >= 400:

@@ -28,6 +28,7 @@ from tests.component.fake_github import (
     FakeGitHub,
     FakeResponse,
     pull_payload,
+    redirect,
 )
 
 RUN = "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b"
@@ -55,8 +56,18 @@ class FakeSupabase:
         self.fail: BaseException | int | None = None
         self.payload_override: Any = None
 
-    def get(self, url: str, *, headers=None, params=None, timeout=None) -> FakeResponse:
-        self.calls.append({"url": url, "headers": headers, "params": params, "timeout": timeout})
+    def get(
+        self, url: str, *, headers=None, params=None, timeout=None, allow_redirects=None
+    ) -> FakeResponse:
+        self.calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "params": params,
+                "timeout": timeout,
+                "allow_redirects": allow_redirects,
+            }
+        )
         if isinstance(self.fail, BaseException):
             raise self.fail
         if isinstance(self.fail, int):
@@ -1058,3 +1069,48 @@ class TestPageCapsAreFaults:
         gh.faults["graphql"] = [FakeResponse(200, payload)]
         out = _check(gh)
         assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
+
+
+class TestRedirectsAreFaults:
+    """QA 3: no request follows a redirect, and a 3xx is never a success or "no match"."""
+
+    @pytest.mark.parametrize("code", ("proceed", *REFUSAL_CODES))
+    def test_every_github_and_supabase_call_disables_redirects(self, code):
+        gh, sb = _gh_for(code)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb.statuses.setdefault(OTHER, "succeeded")
+        _check(gh, sb, params=_params_for(code))
+        assert gh.calls and all(c.allow_redirects is False for c in gh.calls)
+        assert all(c["allow_redirects"] is False for c in sb.calls)
+
+    @pytest.mark.parametrize("route", ["issue", "graphql", "pulls", "comments_get"])
+    @pytest.mark.parametrize("status", [301, 302, 307, 308])
+    def test_a_read_redirect_is_rejected_with_no_write(self, route, status):
+        gh, sb = _gh_for("proceed")
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb.statuses[OTHER] = "succeeded"
+        gh.faults[route] = [redirect(status)]
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "GITHUB_REQUEST_REJECTED")
+        assert out.reason is None and gh.writes() == []
+        assert not any("evil.example" in c.url for c in gh.calls)
+
+    @pytest.mark.parametrize("status", [301, 302, 307])
+    def test_a_redirected_reply_post_is_not_reported_as_posted(self, status):
+        gh, sb = _gh_for("closed")
+        gh.faults["comments_post"] = [redirect(status)]
+        run = MagicMock()
+        out = _check(gh, sb, run=run)
+        assert (out.status, out.reason) == ("succeeded", "closed")
+        assert out.reply == "failed"
+        assert gh.comments.get(ISSUE, []) == []
+        run.warn.assert_called()
+
+    def test_a_supabase_redirect_is_unavailable(self):
+        gh = FakeGitHub()
+        gh.add_issue(ISSUE)
+        gh.add_comment(ISSUE, build("claim", OTHER))
+        sb = FakeSupabase({OTHER: "running"})
+        sb.fail = 302
+        out = _check(gh, sb)
+        assert (out.status, out.error_code) == ("failed", "SUPABASE_UNAVAILABLE")

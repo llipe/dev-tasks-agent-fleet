@@ -51,9 +51,11 @@ class Scripted:
     def __init__(self, *answers: Any) -> None:
         self.answers = list(answers)
         self.calls: list[tuple[str, str, Any]] = []
+        self.kwargs: list[dict[str, Any]] = []
 
     def request(self, method: str, url: str, **kw: Any) -> Any:
         self.calls.append((method, url, kw.get("json")))
+        self.kwargs.append(kw)
         item = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
         if isinstance(item, BaseException):
             raise item
@@ -614,3 +616,58 @@ class TestPageCap:
             f"{API}/x", label="GET /x", params=None, allow_next=lambda _u: None, max_pages=2
         )
         assert got == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# QA 3: redirects are never followed; a 3xx is a typed fault
+# ---------------------------------------------------------------------------
+
+
+def _redirect(status: int) -> requests.Response:
+    return real_response(status, None, headers={"Location": "https://evil.example/steal"})
+
+
+class TestNoRedirects:
+    @pytest.mark.parametrize("method", ["GET", "POST", "PATCH", "DELETE"])
+    def test_every_request_disables_redirects(self, method):
+        session = Scripted(200)
+        _client(session).request(method, f"{API}/x", label="x")
+        assert session.kwargs[0]["allow_redirects"] is False
+
+    def test_a_graphql_query_disables_redirects(self):
+        session = Scripted(real_response(200, {"data": {}}))
+        _client(session).graphql("query { x }", {}, label="q")
+        assert session.kwargs[0]["allow_redirects"] is False
+
+    @pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+    def test_a_read_redirect_is_rejected_and_not_retried(self, status):
+        session = Scripted(_redirect(status))
+        with pytest.raises(GitHubRequestRejected) as exc:
+            _client(session).request("GET", f"{API}/repos/o/r/issues/1", label="GET issue")
+        assert exc.value.code == "GITHUB_REQUEST_REJECTED"
+        assert exc.value.status == status
+        assert "redirect" in str(exc.value)
+        assert "evil.example" not in str(exc.value)
+        assert len(session.calls) == 1
+
+    @pytest.mark.parametrize("status", [301, 302, 307, 308])
+    def test_a_write_redirect_is_rejected_never_a_success(self, status):
+        session = Scripted(_redirect(status))
+        with pytest.raises(GitHubRequestRejected):
+            _client(session).request("POST", f"{API}/repos/o/r/issues/1/comments", label="x")
+        assert len(session.calls) == 1
+
+    def test_a_redirect_with_not_found_ok_is_still_rejected(self):
+        with pytest.raises(GitHubRequestRejected):
+            _client(Scripted(_redirect(301))).request(
+                "GET", f"{API}/repos/o/r/issues/1", label="x", not_found_ok=True
+            )
+
+    def test_a_graphql_redirect_is_rejected(self):
+        with pytest.raises(GitHubRequestRejected):
+            _client(Scripted(_redirect(307))).graphql("query { x }", {}, label="q")
+
+    def test_a_paged_redirect_is_rejected_not_read_as_the_last_page(self):
+        session = Scripted(_redirect(302))
+        with pytest.raises(GitHubRequestRejected):
+            IssuesClient("o", "r", TOKEN, session=session).list_comments(7)

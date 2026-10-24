@@ -232,8 +232,9 @@ class RunStatusReader:
     """Reads ``v_runs.effective_status`` through PostgREST with the service key.
 
     Mirrors ``credentials._get_installation``: a plain ``GET`` on
-    ``/rest/v1/<view>`` with the ``apikey`` and bearer headers. Any failure is
-    :class:`SupabaseUnavailable`, whose message names no key or body.
+    ``/rest/v1/<view>`` with the ``apikey`` and bearer headers, never following
+    a redirect. Any failure, a 3xx included, is :class:`SupabaseUnavailable`,
+    whose message names no key or body.
     """
 
     def __init__(
@@ -268,6 +269,9 @@ class RunStatusReader:
                 },
                 params={"select": "id,effective_status", "id": f"in.({','.join(ids)})"},
                 timeout=self.timeout,
+                # Never followed (QA 3): a redirect would carry the ``apikey``
+                # header, which ``requests`` doesn't strip, to another host.
+                allow_redirects=False,
             )
         except requests.RequestException as exc:
             raise SupabaseUnavailable(

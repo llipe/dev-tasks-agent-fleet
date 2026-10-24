@@ -19,6 +19,12 @@ Fault injection (S-185): ``faults[route]`` is a list of responses (an ``int``
 status, a :class:`FakeResponse`, or an exception) served, in order, before the
 route's normal answer. Routes: ``issue``, ``pulls``, ``graphql``,
 ``comments_get``, ``comments_post``, ``reaction``.
+
+Redirects (S-185, QA 3): :func:`redirect` builds a 3xx answer with a
+``Location`` off the API host, for ``faults``. Each :class:`Call` records the
+``allow_redirects`` the client sent; the double never follows a redirect
+itself, so a test asserts the client both disabled redirects and treated the
+3xx as a fault.
 """
 
 from __future__ import annotations
@@ -49,6 +55,7 @@ class Call:
     json: Any
     params: dict[str, Any] | None
     timeout: Any
+    allow_redirects: Any = None
 
 
 class FakeResponse:
@@ -68,6 +75,11 @@ class FakeResponse:
         if self._payload is None:
             raise ValueError("no JSON body")
         return self._payload
+
+
+def redirect(status: int = 301, location: str = "https://evil.example/steal") -> FakeResponse:
+    """A 3xx answer pointing off the API host (QA 3)."""
+    return FakeResponse(status, None, {"Location": location})
 
 
 def issue_payload(number: int, *, state: str = "open", pull_request: bool = False, labels=()):
@@ -192,11 +204,23 @@ class FakeGitHub:
         json: Any = None,
         params: dict[str, Any] | None = None,
         timeout: Any = None,
+        allow_redirects: Any = None,
     ) -> FakeResponse:
         parts = urlsplit(url)
         query = {k: v[0] for k, v in parse_qs(parts.query).items()}
         merged = {**query, **(params or {})}
-        self.calls.append(Call(method, url, parts.path, dict(headers or {}), json, merged, timeout))
+        self.calls.append(
+            Call(
+                method,
+                url,
+                parts.path,
+                dict(headers or {}),
+                json,
+                merged,
+                timeout,
+                allow_redirects,
+            )
+        )
         if self.delay:
             time.sleep(self.delay)
         if self.raise_exc is not None:
