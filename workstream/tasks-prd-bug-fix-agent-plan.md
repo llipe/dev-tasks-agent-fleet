@@ -256,7 +256,7 @@
 
 - [ ] ~~8.0 Implement Story S-187 (#369)~~ — **removed in v2.0** (D-90); linked-PR detection moved to 6.0; #369 closed as not planned.
 
-- [ ] 9.0 Implement Story S-188 (#370 - https://github.com/llipe/dev-tasks-agent-fleet/issues/370): Claim with the post-claim race check
+- [x] 9.0 Implement Story S-188 (#370 - https://github.com/llipe/dev-tasks-agent-fleet/issues/370): Claim with the post-claim race check
 
   > Note: the claim is 👀 plus a marker comment, with no labels and no assignee (D-93). The race check stays (D-54).
 
@@ -272,7 +272,7 @@
   - [x] 9.6 Verify AC (v2.0): AC1–AC5 by 9.1–9.2
   - [x] 9.7 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
     > Local run done (2026-10-24, developer): agent `make validate` green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 2271 passed, 3 xfailed, coverage 98%, `claim.py` 100%, `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
-  - [ ] 9.8 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
+  - [x] 9.8 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`
 
 - [ ] 10.0 Implement Story S-189 (#371 - https://github.com/llipe/dev-tasks-agent-fleet/issues/371): Checkout, repository gate, toolchain, and the gate runner
 
