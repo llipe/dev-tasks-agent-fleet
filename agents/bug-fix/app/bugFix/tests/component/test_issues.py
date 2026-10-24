@@ -184,3 +184,21 @@ class TestTruncation:
 
     def test_tiny_limit(self):
         assert utf16_len(truncate_comment("abcdef", limit=3)) <= 3
+
+
+class TestEdgesOfTheClient:
+    @pytest.mark.parametrize("cid", [0, -3, True, "55"])
+    def test_reaction_rejects_an_invalid_comment_id(self, cid):
+        with pytest.raises(ValueError):
+            _client(FakeGitHub()).add_reaction(cid, "eyes")
+
+    @pytest.mark.parametrize("payload", [None, ["not", "an", "object"]])
+    def test_post_comment_without_a_json_object_returns_empty(self, payload):
+        from tests.component.fake_github import FakeResponse
+
+        class _NoJson(FakeGitHub):
+            def request(self, method, url, **kw):
+                super().request(method, url, **kw)
+                return FakeResponse(201, payload)
+
+        assert _client(_NoJson()).post_comment(7, "body") == {}

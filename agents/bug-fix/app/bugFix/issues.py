@@ -82,7 +82,7 @@ def utf16_len(text: str) -> int:
     return len(text.encode("utf-16-le", "surrogatepass")) // 2
 
 
-def _cut(text: str, units: int) -> str:
+def cut_utf16(text: str, units: int) -> str:
     """The longest prefix of ``text`` of at most ``units`` UTF-16 code units."""
     used = 0
     for i, ch in enumerate(text):
@@ -98,8 +98,8 @@ def truncate_comment(body: str, limit: int = MAX_COMMENT_CHARS) -> str:
         return body
     keep = limit - utf16_len(TRUNCATION_NOTICE)
     if keep < 0:
-        return _cut(body, limit)
-    return _cut(body, keep) + TRUNCATION_NOTICE
+        return cut_utf16(body, limit)
+    return cut_utf16(body, keep) + TRUNCATION_NOTICE
 
 
 def _rate_limited(resp: _Response) -> bool:

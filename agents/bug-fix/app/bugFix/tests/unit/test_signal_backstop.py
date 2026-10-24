@@ -97,3 +97,28 @@ class TestInstallTerminationBackstop:
         t.start()
         t.join()
         assert errors == []
+
+
+class TestHandleTerminationEdges:
+    """S-186: the disposition hook never lets an error escape the handler."""
+
+    def test_raising_disposition_still_fails_the_run(self):
+        from signal_backstop import handle_termination
+
+        run = MagicMock()
+        run._terminal = False
+
+        def action():
+            raise RuntimeError("github down")
+
+        handle_termination(lambda: run, list, lambda: action, "SIGTERM", budget=2)
+        run.fail.assert_called_once()
+        assert "attempted" in run.fail.call_args.kwargs["error_message"]
+
+    def test_raising_run_getter_is_swallowed(self):
+        from signal_backstop import handle_termination
+
+        def boom():
+            raise RuntimeError("no run")
+
+        handle_termination(boom, list, None, "SIGTERM")

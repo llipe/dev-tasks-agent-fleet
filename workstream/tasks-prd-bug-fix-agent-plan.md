@@ -239,7 +239,7 @@
   - [x] 7.4 `[I]` [agents/bug-fix] `markers.py` (D-53, D-80, D-104)
   - [x] 7.5 `[I]` [agents/bug-fix] `neutralize.py` (D-65, D-85)
   - [x] 7.6 `[I]` [agents/bug-fix] `issues.py`: comments and reactions (`eyes`, `rocket`, `confused`); a reaction 4xx is logged and not fatal
-  - [ ] 7.7 `[I]` [agents/bug-fix] `disposition.py` and the `signal_backstop.py` hook (10-second budget)
+  - [x] 7.7 `[I]` [agents/bug-fix] `disposition.py` and the `signal_backstop.py` hook (10-second budget)
   - [ ] 7.8 Edge cases: CRLF bodies; a diagnosis truncated to 65,536 characters
   - [ ] 7.9 Verify AC (v2.0): AC1, AC2 and AC4 by 7.1–7.2; AC3, AC5 and AC6 by 7.3
   - [ ] 7.10 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
