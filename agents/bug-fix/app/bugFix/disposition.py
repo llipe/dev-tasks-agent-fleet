@@ -128,15 +128,21 @@ def _shorten(value: str, excess: int) -> str:
 
 
 def build_body(
-    run_id: str, diagnosis: Diagnosis, secrets: SecretsLike, run_link: object = None
+    run_id: str,
+    diagnosis: Diagnosis,
+    secrets: SecretsLike,
+    run_link: object = None,
+    *,
+    panel_origin: str | None = None,
 ) -> str:
     """The diagnosis comment for ``run_id``, ready to post.
 
-    The link passes the shared strict validator (``run_link.py``) or the run
-    id is named instead.
+    The link passes the shared strict validator (``run_link.py``) against
+    ``panel_origin``, the configured ``PANEL_BASE_URL``, or the run id is
+    named instead.
     """
     rid = canonical_run_id(run_id)
-    link_ref = run_ref(run_link, rid)
+    link_ref = run_ref(run_link, rid, panel_origin)
     parts = {
         "why": _clean(diagnosis.why, secrets),
         "tried": _clean(diagnosis.tried, secrets),
@@ -167,6 +173,7 @@ class Disposer:
         secrets: SecretsLike,
         run: Any | None = None,
         run_link: str | None = None,
+        panel_origin: str | None = None,
         board_ready: Callable[[], object] | None = None,
     ) -> None:
         self.client = client
@@ -177,6 +184,7 @@ class Disposer:
         self.secrets = secrets
         self.run = run
         self.run_link = run_link
+        self.panel_origin = panel_origin
         self.board_ready = board_ready
         self._owned = threading.Event()
         self._lock = threading.Lock()
@@ -314,7 +322,9 @@ class Disposer:
                 return DispositionResult("already_disposed", reaction=reaction, board=board)
             if not self._may_post():
                 return DispositionResult("in_progress")
-            body = build_body(self.run_id, diagnosis, self.secrets, self.run_link)
+            body = build_body(
+                self.run_id, diagnosis, self.secrets, self.run_link, panel_origin=self.panel_origin
+            )
             created = self.client.post_comment(self.issue_number, body)
             self._done = True
             if not self._still_owner():

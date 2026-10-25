@@ -64,16 +64,20 @@ log = logging.getLogger("bug_fix.claim")
 CLAIM_LINE = "🔧 Bug-fix run {run} is working on this issue."
 
 
-def build_claim_body(run_id: str, run_link: object = None) -> str:
+def build_claim_body(
+    run_id: str, run_link: object = None, *, panel_origin: str | None = None
+) -> str:
     """The claim comment: the ``claim`` marker, then one fixed line (spec §8.3).
 
     ``run_link`` must pass the shared strict validator
     (:func:`run_link.is_valid_run_link`: a ``RunLink`` from the configured panel
-    origin, for this run); anything else falls back to the run id in
-    backticks, as the refusal reply and the diagnosis do.
+    origin, for this run, on the host of ``panel_origin``, the configured
+    ``PANEL_BASE_URL``); anything else falls back to the run id in backticks,
+    as the refusal reply and the diagnosis do.
     """
     rid = canonical_run_id(run_id)
-    return f"{build('claim', rid)}\n{CLAIM_LINE.format(run=run_ref(run_link, rid))}"
+    ref = run_ref(run_link, rid, panel_origin)
+    return f"{build('claim', rid)}\n{CLAIM_LINE.format(run=ref)}"
 
 
 def race_winner(
@@ -162,6 +166,7 @@ class Claimer:
         run_status: Callable[[Sequence[str]], Mapping[str, str]],
         run: Any = None,
         run_link: str | None = None,
+        panel_origin: str | None = None,
         secrets: SecretsLike | None = None,
         disposer: Any = None,
         board_in_progress: Callable[[], object] | None = None,
@@ -174,6 +179,7 @@ class Claimer:
         self.run_status = run_status
         self.run = run
         self.run_link = run_link
+        self.panel_origin = panel_origin
         self.secrets: SecretsLike = [] if secrets is None else secrets
         self.disposer = disposer
         self.board_in_progress = board_in_progress
@@ -207,7 +213,7 @@ class Claimer:
         """Post the claim comment, then 👀. ``posted``, or ``failed`` on a fault."""
         if self._posted is not None:
             raise RuntimeError("the claim was already posted")
-        body = build_claim_body(self.run_id, self.run_link)
+        body = build_claim_body(self.run_id, self.run_link, panel_origin=self.panel_origin)
         try:
             created = self.client.post_comment(self.issue_number, body)
         except GitHubError as exc:

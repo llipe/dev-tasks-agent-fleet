@@ -155,9 +155,14 @@ class TestIsValidRunLink:
         assert not is_valid_run_link(value, RUN)
 
     def test_run_ref_falls_back_to_the_run_id(self):
-        assert run_ref(RunLink(PANEL, RUN), RUN) == LINK
-        assert run_ref(LINK, RUN) == f"`{RUN}`"
-        assert run_ref(None, RUN.upper()) == f"`{RUN}`"
+        assert run_ref(RunLink(PANEL, RUN), RUN, PANEL) == LINK
+        assert run_ref(LINK, RUN, PANEL) == f"`{RUN}`"
+        assert run_ref(None, RUN.upper(), PANEL) == f"`{RUN}`"
+
+    def test_run_ref_trusts_no_link_without_a_configured_origin(self):
+        # DF-190-12: the origin has no default, and None never validates.
+        assert run_ref(RunLink(PANEL, RUN), RUN, None) == f"`{RUN}`"
+        assert run_ref(RunLink("https://other.example", RUN), RUN, PANEL) == f"`{RUN}`"
 
 
 class TestOneValidatorEverywhere:
@@ -193,11 +198,13 @@ class TestOneValidatorEverywhere:
     @pytest.mark.parametrize(
         "render",
         [
-            lambda link: build_claim_body(RUN, link).splitlines()[-1],
-            lambda link: build_reply(RUN, Refusal("closed"), 4, run_link=link).splitlines()[-1],
-            lambda link: build_body(RUN, Diagnosis("why", "tried"), [], run_link=link).splitlines()[
-                1
-            ],
+            lambda link: build_claim_body(RUN, link, panel_origin=PANEL).splitlines()[-1],
+            lambda link: build_reply(
+                RUN, Refusal("closed"), 4, run_link=link, panel_origin=PANEL
+            ).splitlines()[-1],
+            lambda link: build_body(
+                RUN, Diagnosis("why", "tried"), [], run_link=link, panel_origin=PANEL
+            ).splitlines()[1],
         ],
         ids=["claim", "refusal", "disposition"],
     )
@@ -209,9 +216,11 @@ class TestOneValidatorEverywhere:
     @pytest.mark.parametrize(
         "render",
         [
-            lambda link: build_claim_body(RUN, link),
-            lambda link: build_reply(RUN, Refusal("closed"), 4, run_link=link),
-            lambda link: build_body(RUN, Diagnosis("why", "tried"), [], run_link=link),
+            lambda link: build_claim_body(RUN, link, panel_origin=PANEL),
+            lambda link: build_reply(RUN, Refusal("closed"), 4, run_link=link, panel_origin=PANEL),
+            lambda link: build_body(
+                RUN, Diagnosis("why", "tried"), [], run_link=link, panel_origin=PANEL
+            ),
         ],
         ids=["claim", "refusal", "disposition"],
     )
@@ -221,7 +230,9 @@ class TestOneValidatorEverywhere:
         assert f"`{RUN}`" in body
 
     def test_the_claim_line_with_a_valid_link(self):
-        assert build_claim_body(RUN, RunLink(PANEL, RUN)).endswith(CLAIM_LINE.format(run=LINK))
+        assert build_claim_body(RUN, RunLink(PANEL, RUN), panel_origin=PANEL).endswith(
+            CLAIM_LINE.format(run=LINK)
+        )
 
 
 @settings(max_examples=500, deadline=None)
@@ -229,7 +240,7 @@ class TestOneValidatorEverywhere:
 def test_no_text_is_ever_a_valid_link(text):
     # A plain string never passes, whatever it holds.
     assert not is_valid_run_link(text, RUN)
-    assert run_ref(text, RUN) == f"`{RUN}`"
+    assert run_ref(text, RUN, PANEL) == f"`{RUN}`"
 
 
 @settings(max_examples=300, deadline=None)
@@ -303,8 +314,8 @@ def test_a_bad_run_id_or_a_bad_configured_origin_never_validates():
     assert not is_valid_run_link(link, "not-a-uuid")
     assert not is_valid_run_link(link, None)
     assert not is_valid_run_link(link, RUN, origin="http://dt-agent-fleet-panel.fly.dev")
-    assert run_ref(link, "not-a-uuid") == "`unknown run`"
-    assert run_ref(None, "") == "`unknown run`"
+    assert run_ref(link, "not-a-uuid", PANEL) == "`unknown run`"
+    assert run_ref(None, "", PANEL) == "`unknown run`"
 
 
 def test_a_non_canonical_scheme_spelling_is_invalid():
@@ -313,3 +324,126 @@ def test_a_non_canonical_scheme_spelling_is_invalid():
     forged.origin = PANEL  # type: ignore[misc]
     forged.run_id = RUN  # type: ignore[misc]
     assert not is_valid_run_link(forged, RUN)
+
+
+# S-190 fix round, QA gap 7: the docstring says "a DNS host", so an IP literal
+# is refused, as is a port with a leading zero (one port, one spelling).
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://127.0.0.1",
+        "https://10.0.0.1:8443",
+        "https://192.168.1.1",
+        "https://1.2.3",  # shorthand IPv4
+        "https://2130706433",  # a single-number IPv4
+        "https://0x7f000001",  # hex IPv4
+        "https://127.0.0.0x1",
+        "https://0177.0.0.1",  # octal IPv4
+        "https://panel.example.123",  # a numeric last label parses as IPv4
+        "https://[::1]",
+        "https://[::1]:443",
+        "https://[2001:db8::1]",
+        "https://::1",
+        "https://fe80::1",
+        "https://panel.example:0443",
+        "https://panel.example:00443",
+        "https://panel.example:08",
+    ],
+)
+def test_an_ip_literal_or_a_leading_zero_port_is_refused(raw):
+    with pytest.raises(ValueError) as info:
+        parse_origin(raw)
+    assert raw.removeprefix("https://") not in str(info.value)
+    assert make_run_link(raw, RUN) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://panel.example:443",
+        "https://panel.example:1",
+        "https://localhost",
+        "https://1panel.example",  # a leading digit in a label is a DNS name
+        "https://panel1.example",
+        "https://123.example",  # only the last label decides
+        "https://a-0x1.example",
+    ],
+)
+def test_dns_hosts_and_plain_ports_are_still_accepted(raw):
+    assert parse_origin(raw) == raw
+
+
+class TestBuildersPassTheConfiguredOrigin:
+    """DF-190-12: every ``run_ref()`` caller passes the configured panel origin,
+    so a RunLink built on another host never reaches a comment."""
+
+    OFF_HOST = "https://other.example"
+
+    def test_the_claim_body_uses_the_configured_origin(self):
+        body = build_claim_body(RUN, RunLink(self.OFF_HOST, RUN), panel_origin=PANEL)
+        assert self.OFF_HOST not in body
+        assert body.endswith(CLAIM_LINE.format(run=f"`{RUN}`"))
+        assert build_claim_body(RUN, RunLink(PANEL, RUN), panel_origin=PANEL).endswith(
+            CLAIM_LINE.format(run=LINK)
+        )
+
+    def test_the_refusal_reply_uses_the_configured_origin(self):
+        body = build_reply(
+            RUN, Refusal("closed"), 4, run_link=RunLink(self.OFF_HOST, RUN), panel_origin=PANEL
+        )
+        assert self.OFF_HOST not in body
+        assert f"`{RUN}`" in body
+        good = build_reply(
+            RUN, Refusal("closed"), 4, run_link=RunLink(PANEL, RUN), panel_origin=PANEL
+        )
+        assert LINK in good
+
+    def test_the_diagnosis_uses_the_configured_origin(self):
+        body = build_body(
+            RUN,
+            Diagnosis("why", "tried"),
+            [],
+            run_link=RunLink(self.OFF_HOST, RUN),
+            panel_origin=PANEL,
+        )
+        assert self.OFF_HOST not in body
+        assert f"`{RUN}`" in body
+        good = build_body(
+            RUN, Diagnosis("why", "tried"), [], run_link=RunLink(PANEL, RUN), panel_origin=PANEL
+        )
+        assert LINK in good
+
+    def test_without_a_configured_origin_no_link_is_trusted(self):
+        # No PANEL_BASE_URL means there is no origin to check against, so the
+        # comment names the run id, whatever RunLink it is handed.
+        for body in (
+            build_claim_body(RUN, RunLink(PANEL, RUN), panel_origin=None),
+            build_reply(RUN, Refusal("closed"), 4, run_link=RunLink(PANEL, RUN), panel_origin=None),
+            build_body(
+                RUN, Diagnosis("why", "tried"), [], run_link=RunLink(PANEL, RUN), panel_origin=None
+            ),
+        ):
+            assert LINK not in body
+            assert f"`{RUN}`" in body
+
+    def test_every_run_ref_call_passes_an_origin(self):
+        import ast
+        from pathlib import Path
+
+        pkg = Path(__file__).resolve().parents[2]
+        for name in ("claim.py", "refusal.py", "disposition.py"):
+            tree = ast.parse((pkg / name).read_text())
+            calls = [
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name)
+                and n.func.id == "run_ref"
+            ]
+            assert calls, name
+            for call in calls:
+                assert len(call.args) == 3 or any(k.arg == "origin" for k in call.keywords), (
+                    f"{name}:{call.lineno} calls run_ref() without the configured origin"
+                )

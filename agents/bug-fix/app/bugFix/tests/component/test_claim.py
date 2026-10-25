@@ -95,6 +95,7 @@ def _disposer(gh: FakeGitHub, run_id: str = RUN, trigger: int | None = TRIGGER, 
         trigger_comment_id=trigger,
         secrets=_secrets(),
         run_link=LINK,
+        panel_origin=LINK.origin,
         board_ready=board,
     )
 
@@ -119,6 +120,7 @@ def _claimer(
         run_status=RunStatusReader(SB_URL, SB_KEY, session=sb),
         run=run,
         run_link=link,
+        panel_origin=PANEL,
         secrets=_secrets(),
         disposer=disposer,
         board_in_progress=board,
@@ -192,7 +194,7 @@ class TestHappyClaim:
         assert LINK in comment["body"]
 
     def test_the_body_is_exactly_the_marker_and_one_line(self):
-        assert build_claim_body(RUN, LINK) == (
+        assert build_claim_body(RUN, LINK, panel_origin=PANEL) == (
             f"{build('claim', RUN)}\n🔧 Bug-fix run {LINK} is working on this issue."
         )
 
@@ -235,6 +237,7 @@ class TestHappyClaim:
             trigger_comment_id=TRIGGER,
             run_status=RunStatusReader(SB_URL, SB_KEY, session=FakeSupabase()),
             run_link=LINK,
+            panel_origin=LINK.origin,
         )
         assert out.status == "owned"
         assert _writes(gh) == [("POST", COMMENTS), ("POST", EYES)]
@@ -448,6 +451,7 @@ class TestCrashAfterTheComment:
             run_status=RunStatusReader(SB_URL, SB_KEY, session=sb),
             session=gh,
             run_link=LINK,
+            panel_origin=LINK.origin,
             secrets=_secrets(),
         )
 

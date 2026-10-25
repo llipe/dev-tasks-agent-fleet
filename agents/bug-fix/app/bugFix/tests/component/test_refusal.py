@@ -116,6 +116,7 @@ def _check(
         session=gh,
         run=run,
         run_link=LINK,
+        panel_origin=LINK.origin,
         secrets=_secrets(),
     )
 

@@ -9,7 +9,9 @@ the only place that checks either one:
 
 - :func:`parse_origin` validates ``PANEL_BASE_URL`` for ``config.load_config``:
   a bare ``https`` origin (a DNS host and an optional port), with no userinfo,
-  path, query or fragment, and no whitespace or control character.
+  path, query or fragment, and no whitespace or control character. An IP
+  literal (IPv4 in any spelling, IPv6 in brackets or not) is not a DNS host,
+  and a port has no leading zero.
 - :class:`RunLink` is a ``str`` that only a validated origin and a run id can
   build. ``Config.run_link`` is its one production source, so a run link's
   host is always the configured panel host.
@@ -21,7 +23,10 @@ the only place that checks either one:
   only (so no whitespace, control character, or zero-width space), and no
   ``javascript:`` scheme.
 - :func:`run_ref` returns the link, or the run id in backticks when the link
-  is unusable. A missing or bad link therefore never fails a run, and nothing
+  is unusable. It takes the configured origin with no default, and every
+  comment builder passes it (DF-190-12), so the host check is enforced at the
+  builders rather than held by the convention that only ``Config.run_link``
+  builds a link. A missing or bad link therefore never fails a run, and nothing
   but this grammar can reach a comment's last line.
 
 Errors name the reason only, never the value.
@@ -38,7 +43,12 @@ __all__ = ["RunLink", "is_valid_run_link", "make_run_link", "parse_origin", "run
 # One DNS label: letters, digits and inner hyphens.
 _LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 _HOST = re.compile(rf"{_LABEL}(?:\.{_LABEL})*")
-_PORT = re.compile(r"[0-9]{1,5}")
+# A port in one spelling only: no leading zero (QA gap 7).
+_PORT = re.compile(r"[1-9][0-9]{0,4}")
+# The WHATWG URL parser reads a host whose last label is a number (decimal,
+# or ``0x`` hex) as IPv4, so ``https://2130706433`` is ``127.0.0.1``. Such a
+# host is an IP literal, not a DNS name (QA gap 7).
+_NUMERIC_LABEL = re.compile(r"[0-9]+|0[xX][0-9A-Fa-f]*")
 _MAX_HOST = 253
 
 
@@ -53,7 +63,9 @@ def _split_netloc(netloc: str) -> tuple[str, int | None] | None:
         return None
     host, sep, port = netloc.partition(":")
     if len(host) > _MAX_HOST or not _HOST.fullmatch(host):
-        return None
+        return None  # also every IPv6 literal: ``[`` and ``:`` are not DNS characters
+    if _NUMERIC_LABEL.fullmatch(host.rsplit(".", 1)[-1]):
+        return None  # an IPv4 literal in any of its spellings
     if not sep:
         return host, None
     if not _PORT.fullmatch(port) or not 1 <= int(port) <= 65535:
@@ -155,9 +167,16 @@ def is_valid_run_link(link: object, run_id: object, origin: str | None = None) -
     return origin is None or _host_port(origin) == host
 
 
-def run_ref(link: object, run_id: str, origin: str | None = None) -> str:
-    """The link when :func:`is_valid_run_link`, else the run id in backticks."""
-    if is_valid_run_link(link, run_id, origin):
+def run_ref(link: object, run_id: str, origin: str | None) -> str:
+    """The link when :func:`is_valid_run_link` against ``origin``, else the run
+    id in backticks.
+
+    ``origin`` is the configured panel origin and has no default (DF-190-12):
+    each comment builder passes it, so a link's host is checked against the
+    configuration, not only against the origin the link carries. Without a
+    configured origin (``None``) no link is trusted.
+    """
+    if origin is not None and is_valid_run_link(link, run_id, origin):
         return str.__str__(link)  # type: ignore[arg-type]
     try:
         return f"`{_canonical(run_id)}`"

@@ -118,6 +118,7 @@ class Env:
             token=token,
             run=self.run,
             run_link=LINK,
+            panel_origin=LINK.origin,
             paths=self.paths,
             tools=self.spy.tools(),
             remote_url=url if url is not None else self.remote.url,

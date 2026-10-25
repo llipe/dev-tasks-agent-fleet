@@ -233,6 +233,7 @@ def run_checkout(
     token: str | None = None,
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     paths: WorkPaths | None = None,
     tools: GitTools | None = None,
     remote_url: str | None = None,
@@ -281,6 +282,7 @@ def run_checkout(
             issue_number,
             run=run,
             run_link=run_link,
+            panel_origin=panel_origin,
             secrets=scrub,
             summary=gate.summary,
         )

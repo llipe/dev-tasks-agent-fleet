@@ -187,6 +187,7 @@ class ClaimMachine(RuleBasedStateMachine):
             run=None,
             run_link=None,
             secrets=_secrets(),
+            panel_origin=None,
         )
         # Checkout sits between the refusal checks and the claim, so another
         # run can pass its own checks before this one claims (AC-20).

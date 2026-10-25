@@ -307,12 +307,15 @@ def wire_claim(
     run: Any,
     run_link: RunLink | None,
     secrets: SecretSet,
+    panel_origin: str | None,
 ) -> tuple[Claimer, Disposer]:
     """The claim and its disposition, wired as a run uses them (S-188 QA gap 1).
 
     The :class:`claim.Claimer` gets the real :class:`disposition.Disposer` and
     the configured run link, so a won race confirms ownership on the very
-    object the ``finally`` path and the SIGTERM backstop dispose through.
+    object the ``finally`` path and the SIGTERM backstop dispose through. Both
+    get ``panel_origin``, the configured ``PANEL_BASE_URL``, so each comment
+    checks the link's host against the configuration (DF-190-12).
     Wave A has no board client (``projects.py`` is S-199), so no board call is
     wired.
     """
@@ -325,6 +328,7 @@ def wire_claim(
         secrets=secrets,
         run=run,
         run_link=run_link,
+        panel_origin=panel_origin,
     )
     claimer = Claimer(
         client=client,
@@ -335,6 +339,7 @@ def wire_claim(
         run_status=run_status,
         run=run,
         run_link=run_link,
+        panel_origin=panel_origin,
         secrets=secrets,
         disposer=disposer,
     )
@@ -446,6 +451,7 @@ def _preflight(ctx: RunContext) -> RunResult | None:
         session=rt.github_session,
         run=ctx.run,
         run_link=ctx.run_link,
+        panel_origin=ctx.cfg.panel_base_url,
         secrets=ctx.secrets,
         client_token=client_token,
     )
@@ -470,6 +476,7 @@ def _refuse(ctx: RunContext) -> RunResult | None:
         run_status=ctx.run_status,
         run=ctx.run,
         run_link=ctx.run_link,
+        panel_origin=ctx.cfg.panel_base_url,
         secrets=ctx.secrets,
     )
     return outcomes.from_check(out)
@@ -491,6 +498,7 @@ def _checkout(ctx: RunContext) -> RunResult | None:
         token=ctx.token_source(),
         run=ctx.run,
         run_link=ctx.run_link,
+        panel_origin=ctx.cfg.panel_base_url,
         paths=rt.paths,
         tools=rt.git_tools,
         remote_url=rt.remote_url(ctx.owner, ctx.repo),
@@ -516,6 +524,7 @@ def _claim(ctx: RunContext) -> RunResult | None:
         run=ctx.run,
         run_link=ctx.run_link,
         secrets=ctx.secrets,
+        panel_origin=ctx.cfg.panel_base_url,
     )
     ctx.disposer = disposer
     result = outcomes.from_claim(claimer.claim())

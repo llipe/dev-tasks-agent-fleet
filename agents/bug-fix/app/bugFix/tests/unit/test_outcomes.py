@@ -453,7 +453,10 @@ def test_an_unhandled_summary_names_the_type_once():
     [
         (RuntimeError(), "UNHANDLED_ERROR: RuntimeError"),
         (KeyError("k"), "UNHANDLED_ERROR: KeyError: 'k'"),
-        (ValueError("a RuntimeError: inside"), "UNHANDLED_ERROR: ValueError: a RuntimeError: inside"),
+        (
+            ValueError("a RuntimeError: inside"),
+            "UNHANDLED_ERROR: ValueError: a RuntimeError: inside",
+        ),
     ],
 )
 def test_an_unhandled_summary_names_each_type_once(exc, summary):

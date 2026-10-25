@@ -1246,3 +1246,43 @@ class TestQASecretsInLogs:
         assert set(metrics) <= {"issue_number", "step_timings_ms", "gates_base"}
         for gate in metrics.get("gates_base", {}).values():
             assert set(gate) == {"pass", "exit_code"}
+
+
+class TestRunLinkHostIsChecked:
+    """DF-190-12: every comment the run posts checks its link against the
+    configured ``PANEL_BASE_URL``, not only against the origin the link carries."""
+
+    OFF_HOST = "https://other.example"
+
+    def _off_host(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            Config, "run_link", lambda self, rid: RunLink(TestRunLinkHostIsChecked.OFF_HOST, rid)
+        )
+
+    def test_a_link_on_another_host_never_reaches_the_claim_or_the_diagnosis(
+        self, world, monkeypatch
+    ):
+        self._off_host(monkeypatch)
+        w = world()
+        res, _, _ = _invoke(w)
+        assert res["outcome"] == "needs_review"
+        bodies = _bodies(w)
+        assert len(bodies) == 2  # the claim and the diagnosis
+        for body in bodies:
+            assert self.OFF_HOST not in body
+            assert f"`{RUN}`" in body
+
+    def test_a_link_on_another_host_never_reaches_a_refusal_reply(self, world, monkeypatch):
+        self._off_host(monkeypatch)
+        w = world()
+        w.gh.add_issue(ISSUE, state="closed")
+        res, _, _ = _invoke(w)
+        assert res["reason"] == "closed"
+        (body,) = _bodies(w)
+        assert self.OFF_HOST not in body
+        assert body.endswith(f"`{RUN}`")
+
+    def test_the_configured_host_still_links(self, world):
+        w = world()
+        _invoke(w)
+        assert all(LINK in body for body in _bodies(w))

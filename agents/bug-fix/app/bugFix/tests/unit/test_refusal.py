@@ -144,7 +144,7 @@ class TestReplySnapshot:
     @pytest.mark.parametrize("code", sorted(SNAPSHOTS))
     def test_exact_body(self, code):
         refusal, line = SNAPSHOTS[code]
-        body = build_reply(RUN, refusal, 42, run_link=LINK)
+        body = build_reply(RUN, refusal, 42, run_link=LINK, panel_origin=LINK.origin)
         assert body == (
             f"<!-- agent-fleet:bug-fix:refusal run_id={RUN} reason={code} -->\n{line}\nRun: {LINK}"
         )
@@ -152,7 +152,7 @@ class TestReplySnapshot:
 
     @pytest.mark.parametrize("code", sorted(SNAPSHOTS))
     def test_line_one_parses_back_to_the_refusal(self, code):
-        body = build_reply(RUN, SNAPSHOTS[code][0], 42, run_link=LINK)
+        body = build_reply(RUN, SNAPSHOTS[code][0], 42, run_link=LINK, panel_origin=LINK.origin)
         (marker,) = parse_block(body)
         assert (marker.kind, marker.run_id, marker.reason) == ("refusal", RUN, code)
 
@@ -165,7 +165,9 @@ class TestReplySnapshot:
         ["http://panel.example/runs/x", "javascript:alert(1)", "https://x y", "", "@octocat"],
     )
     def test_an_unsafe_run_link_falls_back_to_the_run_id(self, link):
-        assert build_reply(RUN, Refusal("closed"), 42, run_link=link).endswith(f"`{RUN}`")
+        assert build_reply(
+            RUN, Refusal("closed"), 42, run_link=link, panel_origin=LINK.origin
+        ).endswith(f"`{RUN}`")
 
     def test_an_uppercase_run_id_is_canonicalized(self):
         body = build_reply(RUN.upper(), Refusal("closed"), 42)
@@ -176,7 +178,7 @@ class TestReplySnapshot:
             assert not build_reply(RUN, refusal, 42).startswith("/bug-fix")
 
     def test_the_reply_carries_no_reaction_or_model_text(self):
-        body = build_reply(RUN, Refusal("closed"), 42, run_link=LINK)
+        body = build_reply(RUN, Refusal("closed"), 42, run_link=LINK, panel_origin=LINK.origin)
         assert len(body.splitlines()) == 3
 
 

@@ -251,17 +251,23 @@ def reply_line(refusal: Refusal, issue_number: int | None) -> str:
 
 
 def build_reply(
-    run_id: str, refusal: Refusal, issue_number: int | None, run_link: object = None
+    run_id: str,
+    refusal: Refusal,
+    issue_number: int | None,
+    run_link: object = None,
+    *,
+    panel_origin: str | None = None,
 ) -> str:
     """The refusal comment: marker, fixed sentence, run link (D-104).
 
-    The link passes the shared strict validator (``run_link.py``) or the run
-    id is named instead.
+    The link passes the shared strict validator (``run_link.py``) against
+    ``panel_origin``, the configured ``PANEL_BASE_URL``, or the run id is
+    named instead.
     """
     rid = canonical_run_id(run_id)
     marker = build("refusal", rid, refusal.reason)
     line = reply_line(refusal, issue_number)
-    return f"{marker}\n{line}\nRun: {run_ref(run_link, rid)}"
+    return f"{marker}\n{line}\nRun: {run_ref(run_link, rid, panel_origin)}"
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +517,7 @@ def post_refusal(
     reply: bool = True,
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     secrets: SecretsLike | None = None,
     token: TokenContext | None = None,
     summary: str | None = None,
@@ -527,7 +534,9 @@ def post_refusal(
     state = "none"
     if reply and issue is not None:
         try:
-            client.post_comment(issue, build_reply(run_id, refusal, issue, run_link))
+            client.post_comment(
+                issue, build_reply(run_id, refusal, issue, run_link, panel_origin=panel_origin)
+            )
             state = "posted"
         except Exception as exc:  # noqa: BLE001 — the reply is best effort (spec §8.2)
             state = "failed"
@@ -558,6 +567,7 @@ def run_preflight(
     session: Any = None,
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     secrets: SecretsLike | None = None,
     sleep: Callable[[float], None] | None = None,
     client_token: Callable[[TokenContext], str | Callable[[], str]] | None = None,
@@ -611,6 +621,7 @@ def run_preflight(
             reply=issue is not None,
             run=run,
             run_link=run_link,
+            panel_origin=panel_origin,
             secrets=secrets,
             token=token,
         )
@@ -632,6 +643,7 @@ def run_refusals(
     run_status: Callable[[Sequence[str]], Mapping[str, str]],
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     secrets: SecretsLike | None = None,
 ) -> CheckOutcome:
     """The ``refuse`` step (spec §8.2): the decision table on a passed preflight."""
@@ -650,6 +662,7 @@ def run_refusals(
             reply=reply,
             run=run,
             run_link=run_link,
+            panel_origin=panel_origin,
             secrets=secrets,
             token=token,
         )
@@ -700,6 +713,7 @@ def run_refusal_checks(
     session: Any = None,
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     secrets: SecretsLike | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> CheckOutcome:
@@ -720,11 +734,18 @@ def run_refusal_checks(
         session=session,
         run=run,
         run_link=run_link,
+        panel_origin=panel_origin,
         secrets=secrets,
         sleep=sleep,
     )
     if not pre.proceed:
         return pre
     return run_refusals(
-        pre, run_id=run_id, run_status=run_status, run=run, run_link=run_link, secrets=secrets
+        pre,
+        run_id=run_id,
+        run_status=run_status,
+        run=run,
+        run_link=run_link,
+        panel_origin=panel_origin,
+        secrets=secrets,
     )
