@@ -359,6 +359,29 @@ The S-190 orchestration tests (`tests/component/test_main.py`) instead call
 inside the running step (a sandbox answer or a GitHub-double hook), then raise
 a `BaseException` as the dying process would; `main.execute()` catches only
 `Exception`, so nothing after the signal runs.
+The stream-close tests (`TestQAStreamClosedMidRun`) close the `invoke`
+generator with `aclose()` after the first heartbeat, or cancel the task
+consuming it, during a slow install. `asyncio.run` joins the default executor
+on exit, and with it `main.RunWorker`'s thread, so the asserts see the worker's
+own terminal row.
+Strict `xfail`s in the `bug-fix` suite, by status (S-190 fix round):
+
+- **Fixed, marker removed:** QA-190-01 (a closed or cancelled stream ended the
+  run `failed`/`GeneratorExit` or `CancelledError` with a traceback; now the
+  worker reports its real outcome), QA-190-02 (a non-UUID `run_id` ended
+  `UNHANDLED_ERROR`; now `failed`/`INVALID_PAYLOAD` at preflight with no GitHub
+  call), QA-190-03 (an `UNHANDLED_ERROR` summary named the exception type
+  twice).
+- **Still open, pinned:** DF-32 (`test_claim_state_machine.py::TestUnansweredEyes::test_a_race_loser_with_its_own_trigger_gets_an_answer`,
+  a race loser's own 👀 gets no answer); DF-190-01 / RT-07
+  (`TestOwnedWhileAPrIsOpen::test_a_claim_after_another_runs_pr_does_not_win`,
+  a late claim can win while another run's Draft PR is open, so two Draft PRs
+  are possible in Wave B; waits on a spec §8.6 decision and S-194); the S-182
+  QA gap in `tests/unit/test_sandbox.py::TestNsswitchActionBlocks` (three
+  cases: a spaced or multi-action `[..=return]` nsswitch block isn't
+  detected). `tests/unit/test_agentcore_config.py::TestRuntime::test_probe_flag_is_never_committed`
+  is a conditional strict `xfail` that applies only while `ALLOW_PROBE` is
+  committed (the S-182 spike window); it is inactive today.
 
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real

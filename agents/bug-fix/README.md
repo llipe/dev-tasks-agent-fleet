@@ -177,10 +177,15 @@ Every terminal path is one `outcomes.RunResult` (spec §8.9):
 | Clone / install | `failed` | `CLONE_FAILED` / `INSTALL_FAILED` |
 | GitHub retries exhausted / request refused / `v_runs` read | `failed` | `GITHUB_UNAVAILABLE` / `GITHUB_REQUEST_REJECTED` / `SUPABASE_UNAVAILABLE` |
 | Any other exception | `failed` (after the disposition, if ownership was confirmed) | `UNHANDLED_ERROR` |
+| Entrypoint: bad runtime env / unusable payload (before the run, or at `preflight`: a non-UUID `run_id`, a missing or wrongly typed repository field) / probe refused / SIGTERM or the process stopping | `failed` | `CONFIG_INVALID` / `INVALID_PAYLOAD` / `PROBE_REFUSED` / `SIGNAL_TERMINATION` |
+
+A `failed` result never carries an `outcome` (DF-190-05). The entrypoint codes are in `outcomes.ENTRYPOINT_ERROR_CODES`; spec §8.9 doesn't list them yet.
 
 - Only `failed` counts toward the breaker (D-20): `RunResult.counts_toward_breaker`.
 - Every `needs_review` and `not_applicable` result has `result.summary` and `result.reason`; an empty one is rejected when the result is built. The agent never produces `no_findings`.
 - **Ownership gate** (D-81). The `finally` path in `main.execute()` disposes after a fault only when the claim's post-check confirmed ownership, and only if no disposition was attempted yet. The SIGTERM backstop gets the run's `Disposer`, which returns nothing before confirmed ownership. A fault or SIGTERM during `checkout`, or before the post-check confirms, disposes nothing and keeps any claim comment.
+- **Stream close** (QA-190-01). `main.RunWorker` runs `execute()` on its own thread and owns the terminal write; the entrypoint only relays its heartbeats and result. If the caller closes or cancels the stream mid-run, the run carries on, ends with its real outcome, and adds one `warn` event noting the close. The entrypoint doesn't use `with run:`, because `RunReporter.__exit__` would end the run on the consumer's `GeneratorExit`/`CancelledError`.
+- **Run link** (DF-190-12). Each comment builder checks its run link against the configured `PANEL_BASE_URL` (`panel_origin`), not only the origin the link carries; with no origin configured, the comment names the run id. `PANEL_BASE_URL` must be a DNS host: an IP literal or a port with a leading zero is a `CONFIG_INVALID`.
 - **Token refresh** (S-185 residual). The issues client takes its token from `main.TokenSource`, which calls `credentials.refresh_if_stale()` and maps its errors by `exc.error_code`: `PermissionMissing` → `GITHUB_PERMISSION_MISSING`, a mint failure → `CREDENTIALS_UNAVAILABLE`. A refreshed token is added to the scrubber. A refresh error that a best-effort call swallowed (the refusal reply) still fails the run.
 - **Metrics** (FR-27): `runs.metrics` holds `issue_number`, `step_timings_ms` (integer milliseconds per step) and, after checkout, `gates_base` (`{gate: {pass, exit_code}}`).
 - The reporter doesn't capture the standard `logging` stream (`capture_logging=False`): every `run_event` comes from a module's own scrubbed call. A reporter failure never changes the outcome or the terminal chunk.
