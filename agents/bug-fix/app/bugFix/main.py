@@ -132,12 +132,13 @@ class InvalidPayloadError(ValueError):
     """The invocation payload is not a usable run request."""
 
 
-def _result(status: str, outcome: str, summary: str, error_code: str | None = None) -> dict:
-    """The terminal payload of a pre-run fault or the probe."""
-    out: dict[str, Any] = {"status": status, "outcome": outcome, "summary": summary}
-    if error_code is not None:
-        out["error_code"] = error_code
-    return out
+def _fault_chunk(error_code: str, summary: str) -> dict:
+    """The terminal chunk of a fault outside the steps (pre-run, probe refused).
+
+    Built through :class:`outcomes.RunResult`, so it follows the same rule as
+    every other fault: ``failed`` with its code and no outcome (DF-190-05).
+    """
+    return terminal_chunk(json.dumps(outcomes.failed(error_code, summary).terminal()))
 
 
 def unwrap_payload(payload: Any) -> dict:
@@ -647,18 +648,14 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
     except ConfigError as exc:
         # The message names the variable, never its value.
         log.error("Configuration error: %s", exc)
-        yield terminal_chunk(
-            json.dumps(_result("failed", "not_applicable", str(exc), "CONFIG_INVALID"))
-        )
+        yield _fault_chunk("CONFIG_INVALID", str(exc))
         return
 
     try:
         request = unwrap_payload(payload)
     except InvalidPayloadError as exc:
         log.error("Invalid payload: %s", exc)
-        yield terminal_chunk(
-            json.dumps(_result("failed", "not_applicable", str(exc), "INVALID_PAYLOAD"))
-        )
+        yield _fault_chunk("INVALID_PAYLOAD", str(exc))
         return
 
     try:
@@ -667,9 +664,7 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
         # Spec §8.9: secrets / token mint -> failed / CREDENTIALS_UNAVAILABLE.
         summary = scrub_all(f"credentials unavailable ({exc.code})", secrets)
         log.error("%s", summary)
-        yield terminal_chunk(
-            json.dumps(_result("failed", "not_applicable", summary, "CREDENTIALS_UNAVAILABLE"))
-        )
+        yield _fault_chunk("CREDENTIALS_UNAVAILABLE", summary)
         return
     secrets.add("SUPABASE_SERVICE_ROLE_KEY", supabase_key)
 
@@ -702,12 +697,8 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
                 if not probe_allowed():
                     # D-70: no check runs; the run ends with the reason.
                     log.warning("%s", PROBE_REFUSED)
-                    run.fail("PROBE_REFUSED", PROBE_REFUSED, outcome="not_applicable")
-                    yield terminal_chunk(
-                        json.dumps(
-                            _result("failed", "not_applicable", PROBE_REFUSED, "PROBE_REFUSED")
-                        )
-                    )
+                    run.fail("PROBE_REFUSED", PROBE_REFUSED)
+                    yield _fault_chunk("PROBE_REFUSED", PROBE_REFUSED)
                     return
                 probe_summary = execute_probe(run, cfg, secrets, supabase_key)
                 run.succeed("not_applicable", result=probe_summary)
@@ -732,8 +723,12 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
             return
 
     if probe_summary is not None:
-        out = _result("succeeded", "not_applicable", str(probe_summary.get("summary", "probe")))
-        out["probe"] = probe_summary
+        out: dict[str, Any] = {
+            "status": "succeeded",
+            "outcome": "not_applicable",
+            "summary": str(probe_summary.get("summary", "probe")),
+            "probe": probe_summary,
+        }
         yield terminal_chunk(json.dumps(out))
         return
     assert result is not None  # execute() always returns a result

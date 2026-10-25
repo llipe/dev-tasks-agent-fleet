@@ -74,10 +74,23 @@ LOST_RACE_REASON = "active_run"
 FIX_LOOP_DISABLED_REASON = "fix_loop_disabled"
 FIX_LOOP_DISABLED = "fix loop not yet enabled"
 
+# The entrypoint's own codes, before or around the steps: a bad runtime env,
+# an unusable payload (before the run and at preflight), a refused probe, and
+# the SIGTERM backstop. Each ends ``failed`` with no outcome, like every other
+# fault (DF-190-05). TODO(spec §8.9): these need §8.9 rows; spec §8.9 v2.6
+# lists none of them, and the docs write-back for S-190 adds them.
+ENTRYPOINT_ERROR_CODES: tuple[str, ...] = (
+    "CONFIG_INVALID",
+    "INVALID_PAYLOAD",
+    "PROBE_REFUSED",
+    "SIGNAL_TERMINATION",
+)
+
 # Every ``error_code`` a run can end with (spec §8.9, plus the entrypoint's
-# own pre-run codes). ``RUNTIME_TIMEOUT`` is the reaper's, never the agent's.
+# own codes above). ``RUNTIME_TIMEOUT`` is the reaper's, never the agent's.
 ERROR_CODES: frozenset[str] = frozenset(
     {
+        *ENTRYPOINT_ERROR_CODES,
         "GITHUB_PERMISSION_MISSING",
         "CREDENTIALS_UNAVAILABLE",
         "CLONE_FAILED",
@@ -88,11 +101,6 @@ ERROR_CODES: frozenset[str] = frozenset(
         "SUPABASE_UNAVAILABLE",
         "PR_CREATE_FAILED",
         "UNHANDLED_ERROR",
-        # The entrypoint, before or around the steps.
-        "CONFIG_INVALID",
-        "INVALID_PAYLOAD",
-        "PROBE_REFUSED",
-        "SIGNAL_TERMINATION",
     }
 )
 UNHANDLED_ERROR = "UNHANDLED_ERROR"

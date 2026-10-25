@@ -274,3 +274,73 @@ class TestFailurePaths:
         assert final["status"] == "failed"
         assert final["error_code"] == "UNHANDLED_ERROR"
         assert SUPABASE_KEY not in json.dumps(db.calls)
+
+
+class TestNoFailedResultCarriesAnOutcome:
+    """DF-190-05: ``RunResult`` forbids an outcome on ``failed``, and the
+    entrypoint's own codes follow the same rule, in the terminal chunk and in
+    the ``runs`` row."""
+
+    def _assert_no_outcome(self, result: dict, code: str) -> None:
+        assert (result["status"], result["error_code"]) == ("failed", code)
+        assert "outcome" not in result
+
+    def test_config_invalid(self, monkeypatch):
+        def _bad():
+            raise ConfigError("MODEL_ID", "is not set")
+
+        monkeypatch.setattr(main, "load_config", _bad)
+        self._assert_no_outcome(_result(_drain(main.invoke(dict(PAYLOAD), None))), "CONFIG_INVALID")
+
+    @pytest.mark.parametrize("payload", [{}, {"prompt": "not json"}])
+    def test_invalid_payload_before_the_run(self, payload):
+        self._assert_no_outcome(_result(_drain(main.invoke(payload, None))), "INVALID_PAYLOAD")
+
+    def test_credentials_unavailable_before_the_run(self, monkeypatch):
+        def _no_key(secret_id):
+            raise CredentialError("SUPABASE_KEY_UNAVAILABLE", "denied")
+
+        monkeypatch.setattr(main, "fetch_supabase_key", _no_key)
+        self._assert_no_outcome(
+            _result(_drain(main.invoke(dict(PAYLOAD), None))), "CREDENTIALS_UNAVAILABLE"
+        )
+
+    def test_probe_refused(self, monkeypatch):
+        monkeypatch.delenv("ALLOW_PROBE", raising=False)
+        result = _result(_drain(main.invoke({**PAYLOAD, "__probe": True}, None)))
+        self._assert_no_outcome(result, "PROBE_REFUSED")
+        final = FakeSupabase.instances[0].run_patches()[-1]
+        assert (final["status"], final["error_code"]) == ("failed", "PROBE_REFUSED")
+        assert "outcome" not in final
+
+    def test_signal_termination(self, monkeypatch):
+        import signal_backstop
+
+        seen: dict[str, Any] = {}
+
+        def _install(get_run, get_secrets, get_disposition=None, **_kw):
+            seen.update(run=get_run, secrets=get_secrets, disposition=get_disposition)
+
+        def _sigterm_inside(ctx):
+            signal_backstop.handle_termination(
+                seen["run"], seen["secrets"], seen["disposition"], "SIGTERM", budget=1
+            )
+            return _fake_execute(ctx)
+
+        monkeypatch.setattr(main, "install_termination_backstop", _install)
+        monkeypatch.setattr(main, "execute", _sigterm_inside)
+        _drain(main.invoke(dict(PAYLOAD), None))
+        final = FakeSupabase.instances[0].run_patches()[-1]
+        assert (final["status"], final["error_code"]) == ("failed", "SIGNAL_TERMINATION")
+        assert "outcome" not in final
+
+    def test_every_entrypoint_code_is_in_the_closed_set(self):
+        from outcomes import ENTRYPOINT_ERROR_CODES, ERROR_CODES
+
+        assert {
+            "CONFIG_INVALID",
+            "INVALID_PAYLOAD",
+            "PROBE_REFUSED",
+            "SIGNAL_TERMINATION",
+        } == set(ENTRYPOINT_ERROR_CODES)
+        assert set(ENTRYPOINT_ERROR_CODES) <= ERROR_CODES

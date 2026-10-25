@@ -2,8 +2,11 @@
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
 # Extended (S-186): before `fail()`, the handler runs the run's disposition
 # with a 10-second budget, only when the claim's ownership is confirmed (D-81).
-# `report_abrupt_termination` is unchanged. The `fail()` detail names what the
-# disposition did: posted, already posted, skipped, failed or abandoned.
+# The `fail()` detail names what the disposition did: posted, already posted,
+# skipped, failed or abandoned.
+# Changed (S-190 fix round, DF-190-05): `report_abrupt_termination` no longer
+# passes `outcome="not_applicable"`; a `failed` run carries no outcome, as
+# `outcomes.RunResult` requires.
 """
 Best-effort terminal-report backstop on abrupt termination (issue #98, AC6).
 
@@ -70,11 +73,8 @@ def report_abrupt_termination(
         if detail:
             msg = f"{msg} {detail}"
         msg = scrub(msg, secrets)
-        run.fail(
-            error_code=_SIGNAL_ERROR_CODE,
-            error_message=msg,
-            outcome="not_applicable",
-        )
+        # No outcome: a failed run has none (DF-190-05, outcomes.RunResult).
+        run.fail(error_code=_SIGNAL_ERROR_CODE, error_message=msg)
     except Exception:  # noqa: BLE001 — a backstop must never raise
         return
 

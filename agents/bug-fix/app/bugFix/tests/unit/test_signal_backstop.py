@@ -1,6 +1,7 @@
 # Copied from agents/security-analyst/app/securityAnalyst/tests/unit/test_signal_backstop.py
 # Source commit: 8cfed33b9974f82047b065732ad956936d3fb5d0
 # Extended (S-186): `handle_termination` edge cases for the disposition hook.
+# Changed (S-190 fix round, DF-190-05): a `failed` report carries no outcome.
 """
 Unit tests for the best-effort terminal-report backstop on abrupt termination
 (issue #98, AC6 / EC-5 / EC-7).
@@ -33,7 +34,8 @@ class TestReportAbruptTermination:
         kwargs = run.fail.call_args.kwargs
         assert kwargs["error_code"] == "SIGNAL_TERMINATION"
         assert "SIGTERM" in kwargs["error_message"]
-        assert kwargs["outcome"] == "not_applicable"
+        # DF-190-05: like every failed result (outcomes.RunResult), no outcome.
+        assert kwargs.get("outcome") is None
 
     def test_is_noop_when_already_terminal(self):
         run = MagicMock()
