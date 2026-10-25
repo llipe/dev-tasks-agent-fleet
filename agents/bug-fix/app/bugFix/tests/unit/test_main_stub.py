@@ -344,3 +344,24 @@ class TestNoFailedResultCarriesAnOutcome:
             "SIGNAL_TERMINATION",
         } == set(ENTRYPOINT_ERROR_CODES)
         assert set(ENTRYPOINT_ERROR_CODES) <= ERROR_CODES
+
+
+class _ProcessStopping(BaseException):
+    """A process-level stop (like SystemExit) raised out of the worker."""
+
+
+def test_a_process_stop_without_the_backstop_ends_signal_termination(monkeypatch):
+    # QA-190-01: no `with run:`, so the entrypoint ends the run itself, in the
+    # closed set and scrubbed, and passes the stop on.
+    def _stop(ctx):
+        raise _ProcessStopping(f"stopping {SUPABASE_KEY}")
+
+    monkeypatch.setattr(main, "execute", _stop)
+    with pytest.raises(_ProcessStopping):
+        _drain(main.invoke(dict(PAYLOAD), None))
+    db = FakeSupabase.instances[0]
+    final = db.run_patches()[-1]
+    assert (final["status"], final["error_code"]) == ("failed", "SIGNAL_TERMINATION")
+    assert final["error_message"] == "the run stopped on _ProcessStopping"
+    assert "outcome" not in final
+    assert not any("Traceback" in m or SUPABASE_KEY in m for m in db.event_messages())
