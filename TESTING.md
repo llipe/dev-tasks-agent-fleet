@@ -185,7 +185,7 @@ thin `pnpm --filter panel run <script>` wrappers, so `pnpm run test` /
 | `code-review`       | All of the above              | Same targets run from `agents/code-review/app/codeReview/`, with `test-integration` (`python -m pytest -m integration`) in place of `test-component`; `make audit` is plain `pip-audit . --strict` (no exception) |
 | `security-analyst`  | Audit                         | `make audit` → `pip-audit . --strict`, no ignored vulnerabilities. `semgrep` is installed in its own venv in the Dockerfile, not in `pyproject.toml`, so its exact `mcp`/`opentelemetry-api` pins stay out of the audited tree (#360). `tests/unit/test_semgrep_isolation.py` pins this |
 | `bug-fix`           | All of the above              | Identical `Makefile` targets run from `agents/bug-fix/app/bugFix/`; `make audit` → `pip-audit . --strict` |
-| `bug-fix`           | Image (Layer 2, Docker)       | `make image` → `docker build --platform linux/arm64 -t bug-fix:local .`; `make image-smoke` → build, then `scripts/image-smoke.sh` (privilege checks under `--security-opt no-new-privileges` to emulate AgentCore; toolchain versions incl. pinned `claude`/`srt`; the D-110 root wrapper and `setpriv` drop: default user root, no `sudo`, uid/gid 10002 with no groups, no capabilities and `NoNewPrivs` 1, no way back to root, root `/proc/<pid>/environ`/`mem` unreadable, `fixer_exec.py` env and root refusal, `Sandbox().sweep()`; `localhost` through nss-myhostname, `127.0.0.1` first, with an empty read-only `/etc/hosts` mounted (D-111); dir owners; managed-policy and `srt-settings.json` ownership; S-189: git `--attr-source`, `safe_git` end to end as root under `no_new_privs`, fixer-owned materialized files, planted hooks never run in the wrapper's capture, `/work/wrapper/repo/.git/config` unreadable as `fixer`; S-189 fix round: `fs.protected_hardlinks` and `fs.protected_symlinks` are 1, the image's tar is GNU tar, the clone's `fsckObjects` refuses a symlink-plus-directory tree, and with fsck off `materialize` writes nothing through the link; S-190: `main.py`, the image `CMD`, imports with the image's interpreter and dependencies, its steps are `preflight` … `fix`, and the fix loop is off by default). Not part of `validate`: it needs Docker |
+| `bug-fix`           | Image (Layer 2, Docker)       | `make image` → `docker build --platform linux/arm64 -t bug-fix:local .`; `make image-smoke` → build, then `scripts/image-smoke.sh` (privilege checks under `--security-opt no-new-privileges` to emulate AgentCore; toolchain versions incl. pinned `claude`/`srt`; the D-110 root wrapper and `setpriv` drop: default user root, no `sudo`, uid/gid 10002 with no groups, no capabilities and `NoNewPrivs` 1, no way back to root, root `/proc/<pid>/environ`/`mem` unreadable, `fixer_exec.py` env and root refusal, `Sandbox().sweep()`; `localhost` through nss-myhostname, `127.0.0.1` first, with an empty read-only `/etc/hosts` mounted (D-111); dir owners; managed-policy and `srt-settings.json` ownership; S-189: git `--attr-source`, `safe_git` end to end as root under `no_new_privs`, fixer-owned materialized files, planted hooks never run in the wrapper's capture, `/work/wrapper/repo/.git/config` unreadable as `fixer`; S-189 fix round: `fs.protected_hardlinks` and `fs.protected_symlinks` are 1, the image's tar is GNU tar, the clone's `fsckObjects` refuses a symlink-plus-directory tree, and with fsck off `materialize` writes nothing through the link; S-190: `main.py`, the image `CMD`, imports with the image's interpreter and dependencies, its steps are `preflight` … `fix`, and the fix loop is off by default; S-190 fix round 2: under the image's own server (`main.serve`, uvicorn, as PID 1) the SIGTERM backstop sits on uvicorn's handler, fails a registered run once, and the process exits 143 although a non-daemon thread still runs). Not part of `validate`: it needs Docker |
 | `agentcore-cdk-app` | Run test / build / format     | `pnpm test` (→ `jest`) / `pnpm run build` (→ `tsc`) / `pnpm run format:check` (from its own package dir) |
 
 ### Repo-root aggregate (`Makefile`)
@@ -358,20 +358,45 @@ The S-190 orchestration tests (`tests/component/test_main.py`) instead call
 `signal_backstop.handle_termination()` with the getters `main` installed, from
 inside the running step (a sandbox answer or a GitHub-double hook), then raise
 a `BaseException` as the dying process would; `main.execute()` catches only
-`Exception`, so nothing after the signal runs.
+`Exception`, so nothing after the signal runs. For that, the `world` fixture
+replaces `main.install_termination_backstop` with a recorder of the getters
+(unit isolation). The real install path is covered too (S-190 fix round 2):
+`World(real_backstop=True)` keeps the real installer;
+`tests/component/test_s190_run_ownership.py` runs the handler on the main
+thread while the worker runs, including through the SDK's own
+`BedrockAgentCoreApp._async_gen_to_sync_gen` bridge (the entrypoint on the
+`agentcore-worker-loop` thread); and
+`tests/component/test_s190_fix_round2.py::TestUnderUvicorn` starts the real
+server (`main.serve`) in a subprocess, sends it SIGTERM, and checks one
+terminal write and a SIGTERM exit. That file also covers the busy `/ping`
+while the worker runs, the run deadline (`RUNTIME_TIMEOUT`: between steps,
+after a confirmed claim, a worker stuck in a step), the stop flag on
+`SystemExit`/`KeyboardInterrupt`, and the reporter write lock (a control test
+shows the vendored reporter alone lets writers overlap). Its waits are real
+and short (at most 0.3 s per step, a 0.1 s overdue slack patched in).
 The stream-close tests (`TestQAStreamClosedMidRun`) close the `invoke`
 generator with `aclose()` after the first heartbeat, or cancel the task
 consuming it, during a slow install. `asyncio.run` joins the default executor
 on exit, and with it `main.RunWorker`'s thread, so the asserts see the worker's
 own terminal row.
-Strict `xfail`s in the `bug-fix` suite, by status (S-190 fix round):
+Strict `xfail`s in the `bug-fix` suite, by status (S-190 fix rounds 1 and 2):
 
 - **Fixed, marker removed:** QA-190-01 (a closed or cancelled stream ended the
   run `failed`/`GeneratorExit` or `CancelledError` with a traceback; now the
   worker reports its real outcome), QA-190-02 (a non-UUID `run_id` ended
   `UNHANDLED_ERROR`; now `failed`/`INVALID_PAYLOAD` at preflight with no GitHub
   call), QA-190-03 (an `UNHANDLED_ERROR` summary named the exception type
-  twice).
+  twice). S-190 fix round 2, in `tests/component/test_s190_run_ownership.py`:
+  the SIGTERM backstop under the SDK bridge (it was never installed in
+  production: `signal.signal` raised off the main thread and the error was
+  swallowed; now one handler is installed on the main thread and resolves the
+  live run through a registry), a SIGTERM inside the worker's terminal write
+  (zero terminal rows; now the handler waits on the run's write lock), and a
+  relay failure mid-run (the entrypoint wrote `UNHANDLED_ERROR`; now it only
+  logs and the worker writes the row). The terminal-write test's in-flight
+  PATCH now lands by itself after 0.5 s: QA's draft held it until after the
+  handler returned, which a handler that waits for the write can only meet
+  with a second terminal write.
 - **Still open, pinned:** DF-32 (`test_claim_state_machine.py::TestUnansweredEyes::test_a_race_loser_with_its_own_trigger_gets_an_answer`,
   a race loser's own 👀 gets no answer); DF-190-01 / RT-07
   (`TestOwnedWhileAPrIsOpen::test_a_claim_after_another_runs_pr_does_not_win`,
