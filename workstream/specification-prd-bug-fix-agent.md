@@ -4,6 +4,7 @@
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 2.7 | 2026-10-24 | Drift reconciliation of S-190 audit findings DF-190-01/04/05/06/10 and the stream rule ([`fidelity-report-S-190.md`](fidelity-report-S-190.md), PR #460), confirmed by @llipe 2026-10-24. DF-190-01 (Major): the §8.6 post-check also re-runs refusal (c) `linked_pr` after the open-claim read; a linked PR means the run withdraws its own claim comment under the DF-38 withdrawal rules and ends `not_applicable`/`linked_pr`; a fault on that read fails closed with its D-67 code; ownership is confirmed only when both reads pass. S-194 re-checks `linked_pr` just before push and PR creation, and a PR found there takes the disposition path (`needs_review`, reason `linked_pr`) with no second PR. The fix gates `FIX_LOOP_ENABLED=1`; the DF-33 rule that a `pr` marker closes a claim is unchanged (D-54 amendment). DF-190-05: §8.9 entrypoint rows `CONFIG_INVALID`, `INVALID_PAYLOAD`, `PROBE_REFUSED`, `SIGNAL_TERMINATION`, all `failed` and counted by the breaker; a `failed` result never carries `outcome: not_applicable`. DF-190-06: `result.reason` on `needs_review` (`fix_loop_disabled`, `fix_unavailable`). DF-190-04: `FIX_LOOP_ENABLED=1` with no fix runner → `needs_review`/`fix_unavailable`. DF-190-10 is a test-plan change only. Stream rule: a closed or cancelled invoke stream never decides the run outcome. Sections §4, §6, §8.2, §8.6, §8.9, §13 and §18 changed; D-54 carries a dated amendment. | product-engineer |
 | 2.6 | 2026-10-24 | Drift reconciliation of S-189 audit findings DF-189-01/04/05/07/08 and the S-189 fix-round hardening ([`fidelity-report-S-189.md`](fidelity-report-S-189.md), PR #458), confirmed by @llipe 2026-10-24. DF-189-01: materialize, the base restore and red-to-green steps 2 and 5 use a tar the wrapper builds from the base commit's raw blobs, not `git archive` (which applies `export-ignore`/`export-subst`), extracted as `fixer` into `/work/repo` with no `.git`, capped at 100,000 entries and 2 GiB (D-62 amendment). Fix-round hardening: a link-free walk refuses hardlinked regular files, FIFOs, sockets and device nodes before any root git read of `/work/repo`, skipping the four dependency folders; `.git` path components (any case, NTFS/HFS lookalikes) are rejected; the clone runs with `fsckObjects` (`zeroPaddedFilemode` ignored); the link-protection sysctls are logged and asserted by image smoke (#446 for AgentCore); all of these end `failed`/`CLONE_FAILED` (residual noted for S-193). DF-189-04/05/08: the repo-gate item set and fixed reply phrases (`lockfile`, `supported package manager (pnpm or npm)`, `package.json or Makefile`, `install` as "missing install target (the Makefile target `install`)"), GNU make's makefile order, `include` not followed (D-112 amendment). DF-189-07: D-62 reads as amended by D-110 (no `wrapper` user). Sections §8.7, §8.9, §12, §16 and §18 changed. | product-engineer |
 | 2.5 | 2026-10-24 | D-112 / OQ-1 and drift reconciliation of DF-38 (race-loss part) and S-188 audit findings DF-188-01/02/05 ([`fidelity-report-S-188.md`](fidelity-report-S-188.md)), confirmed by @llipe 2026-10-24. D-112 / OQ-1: a Python repo must provide a `make install` target, which the wrapper runs in the sandbox; without it, the run ends `not_applicable` through the `repo_gate` refusal "missing install target", before any issue change (FR-5); JS is unchanged. DF-38 (race-loss part): a non-404 `DELETE` fault on the loser's withdrawal ends `failed` with its D-67 code, with no disposition and no board call; a 404 is "already gone" and the run ends `not_applicable`/`active_run`; the stranded comment stops counting once the loser is terminal and can never outrank the winner. DF-188-01: the open-claim rule has two shared halves, `markers.open_claims()` (markers) and `refusal.active_claim_runs()` (`v_runs` status). DF-188-02: the single-id race-loss `DELETE` is retried on a 5xx or a transport error; every other write still isn't. DF-188-05 is a test-plan change only. Sections §8.1, §8.2, §8.3, §8.6, §8.7, §8.9, §9, §16, §17 and §18 changed; D-112 is new, and D-54 and D-67 carry dated amendments. | product-engineer |
 | 2.4 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07 ([`fidelity-report-S-185.md`](fidelity-report-S-185.md)), confirmed by @llipe 2026-10-24. DF-33: one definition of an open claim (a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`; no row counts as finished with a warning; an unknown status fails closed as `SUPABASE_UNAVAILABLE`), implemented once in `markers.open_claims()` and used by refusal (d) and the race post-check. DF-185-01/02/03/05/06/07: the GitHub client's error semantics: reads retry 5xx and transport errors, writes retry only rate limits; 3 attempts in total; a 120 s monotonic budget per logical operation, `Retry-After` honoured up to 60 s, 60 s for a secondary limit with no header; redirects never followed; a page cap with pages left is `GITHUB_UNAVAILABLE`; GraphQL `errors[]` split into transient and permanent; mint and refresh failures typed; a cross-repo linked PR is named `owner/repo#M`. Sections §8.1, §8.2, §8.3, §8.6, §8.9, §9 and §18 changed; D-55, D-67 and D-81 carry dated amendments in the decision log. | product-engineer |
@@ -94,7 +95,7 @@ flowchart TD
     S1 --> S2["checkout: clone, repo gate FR-6, install, base gates"]
     S2 -- gate missing --> RF
     S2 --> S3["claim: 👀 + marker comment, race check D-54"]
-    S3 -- lost race --> RF2["withdraw own comment<br/>succeeded / not_applicable"]
+    S3 -- lost race or linked PR --> RF2["withdraw own comment<br/>succeeded / not_applicable"]
     S3 --> B1["board lookup + In progress D-103"]
     B1 --> S5["fix: claude -p in sandbox D-51"]
     S5 --> S6["validate: forbidden paths, caps,<br/>test present, 4 gates, audit"]
@@ -159,7 +160,7 @@ No new HTTP endpoint. The agent uses the existing AgentCore payload `{run_id, re
 | ------- | ---- |
 | Token and permissions | `POST /app/installations/{id}/access_tokens` → `permissions.issues == "write"` (D-58) |
 | Issue facts | `GET /repos/{o}/{r}/issues/{n}` → `state`, and `pull_request` present → it's a PR (refusal a, b) |
-| Linked PRs | GraphQL `issue.closedByPullRequestsReferences(includeClosedPrs: false)`, plus `GET …/pulls?state=open` with head ref prefix `issue/<N>-` (refusal c; D-55) |
+| Linked PRs | GraphQL `issue.closedByPullRequestsReferences(includeClosedPrs: false)`, plus `GET …/pulls?state=open` with head ref prefix `issue/<N>-` (refusal c; D-55). Re-run in the race post-check and, in S-194, before push (DF-190-01, v2.7) |
 | Markers | `GET …/issues/{n}/comments` → `performed_via_github_app.id`, `user.type == "Bot"` (D-53) |
 | Replies and claim | `POST …/issues/{n}/comments` (refusal, claim, success and diagnosis comments with markers) |
 | Reactions | `POST …/issues/comments/{trigger_comment_id}/reactions` with `eyes`, `rocket` or `confused` (D-93) |
@@ -242,7 +243,7 @@ Policy files baked into the image (root-owned, 0644): `managed-settings.json` �
 | ---- | ----- |
 | `pull_request` | The issue payload has `pull_request` (D-88) |
 | `closed` | `state != "open"` |
-| `linked_pr` | An open closing-reference PR, or an open PR whose head ref starts with `issue/<N>-` (D-55) |
+| `linked_pr` | An open closing-reference PR, or an open PR whose head ref starts with `issue/<N>-` (D-55). The same detection runs twice more: in the race post-check (§8.6 step 2), and just before push and PR creation (S-194) (DF-190-01, v2.7) |
 | `active_run` | An **open claim** (below) for a run other than this one |
 | `repo_gate` | Checked after the clone (§8.7): `developer.md` or a gate missing |
 
@@ -297,7 +298,7 @@ stateDiagram-v2
     [*] --> Triggered: /bug-fix comment or manual invoke
     Triggered --> Refused: refusal check (reply, no claim)
     Triggered --> Claimed: 👀 + claim marker comment
-    Claimed --> Withdrawn: lost race (own comment deleted)
+    Claimed --> Withdrawn: lost race or linked PR found (own comment deleted)
     Claimed --> PROpen: Draft PR (🚀 + pr marker comment)
     Claimed --> Disposed: no PR (😕 + diagnosis)
     Disposed --> Triggered: a later /bug-fix
@@ -306,7 +307,14 @@ stateDiagram-v2
 1. **Claim.** Post the claim marker comment, then add the 👀 reaction when `trigger_comment_id` is present. No labels and no assignee change (D-93).
 2. **Post-check.** Read the open claims with `refusal.active_claim_runs()` over `markers.open_claims()`, the §8.2 definition (DF-33, DF-188-01). If an open claim with a lower comment id belongs to another run, delete this run's comment and end `not_applicable`, reason `active_run`. The 👀 stays, because it's on the shared trigger comment or belongs to the winner.
    - **Withdrawal faults** (DF-38 race-loss part, decided by @llipe 2026-10-24; D-54 amendment). The `DELETE` targets only this run's own comment id, and is retried on a 5xx or a transport error (§9, DF-188-02). A **404** means the comment is already gone: the run logs a warning and still ends `not_applicable`/`active_run`. Any **other fault** ends `failed` with its D-67 code (`GITHUB_UNAVAILABLE` or `GITHUB_REQUEST_REJECTED`), with no disposition and no board call. The stranded comment does no harm: it stops counting once the losing run is terminal, which a `failed` run is, and it can never outrank the winner, whose claim has the lower comment id.
-3. **Ownership gate (D-81).** The `finally`/backstop disposition and every board update apply only after the post-check has **confirmed** ownership. If the post-check fails (`SUPABASE_UNAVAILABLE`, including an unknown `effective_status`), the run keeps its comment, applies nothing else and ends `failed`. Once that run is terminal, refusal (d) no longer applies to it.
+   - **Linked-PR re-check** (DF-190-01, decided by @llipe 2026-10-24; D-54 amendment). After the open-claim read finds no earlier open claim, the post-check re-runs refusal (c) `linked_pr` with the same detection as §8.2: an open closing-reference PR, or an open PR whose head ref starts with `issue/<N>-`. This closes the two-Draft-PR window: a `pr` marker closes the earlier run's claim (DF-33), so a run still in `checkout` when that earlier run opened its PR would otherwise find no open claim and own the issue.
+     - **A linked PR exists:** the run withdraws its own claim comment under the withdrawal rules above (DF-38: the single-id `DELETE`, retried on a 5xx or a transport error; a 404 is "already gone"; any other fault ends `failed` with its D-67 code, no disposition, no board call) and ends `succeeded`/`not_applicable`, reason `linked_pr`. It posts no refusal reply and no disposition, and makes no board call.
+     - **A fault on the read** fails closed with its D-67 code (`GITHUB_UNAVAILABLE` or `GITHUB_REQUEST_REJECTED`). It is never read as "no linked PR". The run keeps its comment and applies nothing else, as for a post-check failure in step 3.
+     - **Ownership counts as confirmed only when both reads pass:** the open-claim read and the linked-PR re-check.
+   - **Pre-push re-check, in S-194** (DF-190-01, defense in depth). The same `linked_pr` detection runs again immediately before `git push` and `gh pr create`. Ownership is already confirmed there, so a PR found at that point takes the disposition path (§8.8): `succeeded`/`needs_review`, reason `linked_pr`, with the summary "another bug-fix PR was opened for this issue while this run worked". The run pushes nothing and opens no second PR. A fault on this read is `failed` with its D-67 code, after the disposition.
+   - **Unchanged:** a trusted `pr` marker still closes its run's claim (DF-33). Keeping a successful run's claim open until its PR closes was rejected: it would strand blocks and make the claim depend on the PR's state.
+   - **Rollout gate.** Both checks must be implemented and tested before `FIX_LOOP_ENABLED` turns to `1` (S-194). Wave A opens no PR, so the window can't open before then.
+3. **Ownership gate (D-81).** The `finally`/backstop disposition and every board update apply only after the post-check has **confirmed** ownership, which needs both the open-claim read and the linked-PR re-check to pass (step 2). If the post-check fails (`SUPABASE_UNAVAILABLE`, including an unknown `effective_status`, or a D-67 GitHub fault on the linked-PR re-check), the run keeps its comment, applies nothing else and ends `failed`. Once that run is terminal, refusal (d) no longer applies to it.
 
 ### 8.7 Checkout, fix, validate, red-to-green
 
@@ -413,7 +421,11 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 | ---- | ---------------- | ------------ | ------- |
 | Draft PR opened | `succeeded` / `fixed` | — | no |
 | Refusal (a)–(e), `invalid_params`, lost race (own comment deleted, or already gone: a 404) | `succeeded` / `not_applicable` | — | no |
+| Linked PR found by the post-check re-check (§8.6 step 2; own comment deleted, or already gone: a 404), reason `linked_pr` (DF-190-01, v2.7) | `succeeded` / `not_applicable` | — | no |
 | Give-up, cap, forbidden path, entry type, no test, missing rationale, secret in change, red gate, red-to-green fail, invalid report, any budget ceiling | `succeeded` / `needs_review` | — | no |
+| Linked PR found by the pre-push re-check (S-194, §8.6 step 2), reason `linked_pr`; no push, no second PR (DF-190-01, v2.7) | `succeeded` / `needs_review` | — | no |
+| Fix loop not yet enabled (`FIX_LOOP_ENABLED=0`, Wave A): disposition "fix loop not yet enabled", reason `fix_loop_disabled` (DF-190-06, v2.7) | `succeeded` / `needs_review` | — | no |
+| `FIX_LOOP_ENABLED=1` but the build wires no fix runner: disposition "the fix step is not available in this build", reason `fix_unavailable` (DF-190-04, v2.7). A Wave B story (S-191/S-194) must wire the runner before the flag flips | `succeeded` / `needs_review` | — | no |
 | Board look-up or update failure (any) | *(no effect; `run_event` + `metrics.board`)* | — | no |
 | Missing `issues: write` (at preflight, or on a refreshed token) | `failed` | `GITHUB_PERMISSION_MISSING` | yes |
 | Secrets / token mint | `failed` | `CREDENTIALS_UNAVAILABLE` | yes |
@@ -424,9 +436,20 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 | Supabase failure in refusal (d) or the post-check: a transport error, a non-2xx (a 3xx included), a malformed row, or an unknown `effective_status` | `failed` | `SUPABASE_UNAVAILABLE` | yes |
 | Push / PR API failure | `failed` (after disposition) | `PR_CREATE_FAILED` | yes |
 | Unhandled wrapper exception | `failed` (after disposition) | `UNHANDLED_ERROR` | yes |
+| **Entrypoint** (DF-190-05, v2.7): the runtime config is invalid (`config.ConfigError`: a missing or invalid env var, such as `FIX_LOOP_ENABLED` or `BOARD_UPDATES_ENABLED` other than `0`/`1`, or a `PANEL_BASE_URL` that isn't a bare `https` origin). Raised before any GitHub call | `failed` | `CONFIG_INVALID` | yes |
+| **Entrypoint**: a payload field is missing or malformed at preflight (`run_id` missing or not a UUID, `repository_org`, `repository_name`; D-60). Checked before any GitHub call, and no GitHub call is made. These are payload fields, not params, so FR-26's `invalid_params` refusal doesn't apply | `failed` | `INVALID_PAYLOAD` | yes |
+| **Entrypoint**: a `__probe` payload while `ALLOW_PROBE` isn't `1` (D-70) | `failed` | `PROBE_REFUSED` | yes |
+| **Entrypoint**: SIGTERM or another termination signal; the backstop disposes first only after confirmed ownership (§8.6 step 3, D-81), then fails the run | `failed` (after disposition, when owned) | `SIGNAL_TERMINATION` | yes |
 | Reaper `timed_out` | `timed_out` (reaper) | `RUNTIME_TIMEOUT` | yes |
 
 "Breaker" means the webhook rule's per-rule circuit breaker, plus G3 for any manual-invoke accounting. `result.summary` always states the reason for `needs_review` and `not_applicable` (FR-26).
+
+**Result shape** (DF-190-05, DF-190-06, confirmed by @llipe 2026-10-24).
+- **`failed` has no outcome.** A `failed` result never carries `outcome: not_applicable`, or any other outcome; it carries only `error_code` and the summary. This holds for the entrypoint rows too: the terminal chunk of a config, payload or probe refusal, and the backstop's `fail()`, carry no outcome. A `succeeded` result has no `error_code`. None of the four entrypoint codes has a `not_applicable` form.
+- **`result.reason`** is set on every `not_applicable` and every `needs_review` result. On `not_applicable` it is the refusal code (§8.2: `pull_request`, `closed`, `linked_pr`, `active_run`, `repo_gate`, `invalid_params`; a lost race is `active_run`). On `needs_review` the values are `fix_loop_disabled` (Wave A, `FIX_LOOP_ENABLED=0`), `fix_unavailable` (`FIX_LOOP_ENABLED=1` with no fix runner wired), `linked_pr` (the S-194 pre-push re-check), and the Wave B fix-loop reasons, which S-191 to S-194 name when they land. `runs.result` holds `{summary, reason}`.
+- **As delivered** (S-190): a fault before the reporter can reach Supabase (an invalid config, a payload with no `run_id`, an unreadable Supabase key) appears only in the terminal chunk, so the reaper later marks that run `timed_out`.
+
+**Invoke stream close or cancel** (S-190 fix round, QA-190-01, confirmed by @llipe 2026-10-24). A closed or cancelled invoke stream never decides the run outcome. The worker keeps running to its own terminal result and reports it through `succeed()` or `fail()`; the stream's end is never mapped to `failed`, `canceled` or any other status. Ownership and the disposition follow the step boundaries above, not the stream.
 
 **GitHub and Supabase fault rules** (DF-185-01/02/03/05/06, confirmed by @llipe 2026-10-24). The retry and timing rules are in §9. These rules decide the codes above:
 - **A fault is never "no match"** (D-67). No GitHub or Supabase fault is ever read as "no linked PR", "no open claim" or empty data.
@@ -436,6 +459,7 @@ D-52 classification is first-match-wins: forbidden, test, docs, code (lists wide
 - **Credentials.** A token mint failure is `CREDENTIALS_UNAVAILABLE`. A refreshed token without `issues: write` is `GITHUB_PERMISSION_MISSING`.
 - **`v_runs` status.** A claim whose run has no `v_runs` row counts as finished, with a `run_event` warning. An unknown `effective_status` is `SUPABASE_UNAVAILABLE` (§8.2).
 - **Race-loss withdrawal** (DF-38 race-loss part, decided by @llipe 2026-10-24; D-54 amendment). A 404 on the loser's `DELETE` of its own claim comment is "already gone", and the run still ends `succeeded`/`not_applicable`, reason `active_run`. Any other fault on that `DELETE` ends `failed` with its D-67 code: `GITHUB_UNAVAILABLE` (5xx or transport retries exhausted, rate limit over its cap or budget) or `GITHUB_REQUEST_REJECTED` (another 4xx, a 3xx). Either way the run applies no disposition and makes no board call, because it never confirmed ownership (§8.6). The stranded comment stops counting once the run is terminal and can never outrank the winner.
+- **Linked-PR re-checks** (DF-190-01, decided by @llipe 2026-10-24; D-54 amendment). A fault on the post-check `linked_pr` re-check fails closed with its D-67 code and never counts as "no linked PR"; ownership is not confirmed, so the run applies no disposition and makes no board call. A linked PR found there withdraws this run's claim comment under the race-loss withdrawal rules above and ends `succeeded`/`not_applicable`, reason `linked_pr`. A linked PR found by the S-194 pre-push re-check ends `succeeded`/`needs_review`, reason `linked_pr`, after the disposition, with no push and no second PR; a fault on that read is `failed` with its D-67 code, after the disposition.
 - **Messages** name the method, the call's label and the status only: never the token, a request body, a response body or a GraphQL error message.
 
 ### 8.10 Projects v2 board updates (FR-31–FR-34, D-97–D-103)
@@ -552,7 +576,8 @@ The **threat** is prompt injection through issue text or repo files, plus repo-c
 
 ## 13. Error Handling & Logging
 
-- **Errors.** Every path ends through `succeed()` or `fail()` with a reason in `result.summary`.
+- **Errors.** Every path ends through `succeed()` or `fail()` with a reason in `result.summary`. `not_applicable` and `needs_review` also set `result.reason`, and a `failed` result carries no outcome (§8.9 "Result shape", DF-190-05, DF-190-06, v2.7).
+- **Invoke stream.** A closed or cancelled invoke stream never decides the run outcome; the worker reports its own terminal result (§8.9, QA-190-01, v2.7).
 - **Events.** `run_events` at each step and decision: refusal code, claim result, board transitions, caps, each gate, red/green, PR URL.
 - **Metrics.** `runs.metrics` holds `issue_number`, `cli_turns`, `cli_usage`, `cli_cost_usd`, `cli_duration_ms`, `code_files`, `code_lines`, `gates_base`, `gates_final`, `red_green` and `board` (FR-27).
 - **Recovery.**
@@ -635,7 +660,7 @@ Test-first (CLAUDE.md, `/TESTING.md`). Python uses `pytest` with layer markers b
 | D-51 | Three-layer confinement; spike first. |
 | D-52 | Fixed first-match file classification. |
 | D-53 | Hidden markers trusted by App id. |
-| D-54 | Claim, post-claim race check; the loser withdraws its own comment. Amended 2026-10-24 (DF-38 race-loss part): a non-404 `DELETE` fault ends `failed` with its D-67 code, no disposition, no board call; a 404 is "already gone" (§8.6, §8.9). |
+| D-54 | Claim, post-claim race check; the loser withdraws its own comment. Amended 2026-10-24 (DF-38 race-loss part): a non-404 `DELETE` fault ends `failed` with its D-67 code, no disposition, no board call; a 404 is "already gone" (§8.6, §8.9). Amended again 2026-10-24 (DF-190-01): the post-check also re-runs refusal (c) `linked_pr`; a linked PR → withdraw under the DF-38 rules, `not_applicable`/`linked_pr`; a fault fails closed with its D-67 code; ownership is confirmed only when both reads pass. S-194 re-checks `linked_pr` before push and PR creation (`needs_review`, no second PR), and this gates `FIX_LOOP_ENABLED=1`. A `pr` marker still closes a claim (DF-33) (§8.6, §8.9). |
 | D-55 | Linked PR = closing reference or `issue/<N>-` branch. Amended 2026-10-24: a cross-repo PR is named `owner/repo#M` (§8.2). |
 | D-56 | Red-to-green on the changed test files. |
 | D-58 | One infra change in Wave A; run-start Issues-write check. |
