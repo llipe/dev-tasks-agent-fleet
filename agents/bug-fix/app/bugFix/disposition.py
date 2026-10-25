@@ -50,6 +50,7 @@ from typing import Any
 from issues import MAX_COMMENT_CHARS, IssuesClient, cut_utf16, truncate_comment, utf16_len
 from markers import build, canonical_run_id, has_trusted
 from neutralize import ZWSP, neutralize
+from run_link import run_ref
 from scrubber import SecretsLike, scrub_all, scrub_exception
 
 log = logging.getLogger("bug_fix.disposition")
@@ -59,7 +60,6 @@ RETRY_LINE = (
     "No labels or assignees were changed, and the issue stays open. "
     "Comment `/bug-fix` to try again."
 )
-_RUN_LINK = re.compile(r"https://\S+")
 _LOCK_TIMEOUT = 1.0
 # The longest the backstop waits for a live owner's in-flight post. The
 # backstop's own budget (10 s) abandons it sooner in practice.
@@ -128,24 +128,34 @@ def _shorten(value: str, excess: int) -> str:
 
 
 def build_body(
-    run_id: str, diagnosis: Diagnosis, secrets: SecretsLike, run_link: str | None = None
+    run_id: str,
+    diagnosis: Diagnosis,
+    secrets: SecretsLike,
+    run_link: object = None,
+    *,
+    panel_origin: str | None = None,
 ) -> str:
-    """The diagnosis comment for ``run_id``, ready to post."""
+    """The diagnosis comment for ``run_id``, ready to post.
+
+    The link passes the shared strict validator (``run_link.py``) against
+    ``panel_origin``, the configured ``PANEL_BASE_URL``, or the run id is
+    named instead.
+    """
     rid = canonical_run_id(run_id)
-    run_ref = run_link if run_link and _RUN_LINK.fullmatch(run_link) else f"`{rid}`"
+    link_ref = run_ref(run_link, rid, panel_origin)
     parts = {
         "why": _clean(diagnosis.why, secrets),
         "tried": _clean(diagnosis.tried, secrets),
         "diffstat": _clean(diagnosis.diffstat, secrets),
     }
-    body = _render(run_ref, rid, **parts)
+    body = _render(link_ref, rid, **parts)
     for key in ("tried", "diffstat", "why"):
         excess = utf16_len(body) - MAX_COMMENT_CHARS
         if excess <= 0:
             break
         if parts[key]:
             parts[key] = _shorten(parts[key], excess)
-            body = _render(run_ref, rid, **parts)
+            body = _render(link_ref, rid, **parts)
     return truncate_comment(body)
 
 
@@ -163,6 +173,7 @@ class Disposer:
         secrets: SecretsLike,
         run: Any | None = None,
         run_link: str | None = None,
+        panel_origin: str | None = None,
         board_ready: Callable[[], object] | None = None,
     ) -> None:
         self.client = client
@@ -173,6 +184,7 @@ class Disposer:
         self.secrets = secrets
         self.run = run
         self.run_link = run_link
+        self.panel_origin = panel_origin
         self.board_ready = board_ready
         self._owned = threading.Event()
         self._lock = threading.Lock()
@@ -310,7 +322,9 @@ class Disposer:
                 return DispositionResult("already_disposed", reaction=reaction, board=board)
             if not self._may_post():
                 return DispositionResult("in_progress")
-            body = build_body(self.run_id, diagnosis, self.secrets, self.run_link)
+            body = build_body(
+                self.run_id, diagnosis, self.secrets, self.run_link, panel_origin=self.panel_origin
+            )
             created = self.client.post_comment(self.issue_number, body)
             self._done = True
             if not self._still_owner():

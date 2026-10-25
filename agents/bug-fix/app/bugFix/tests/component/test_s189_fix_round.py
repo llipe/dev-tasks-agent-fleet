@@ -35,7 +35,7 @@ from tests.component.repo_fixtures import (
     write_blob,
     write_tree,
 )
-from tests.component.test_checkout import Env
+from tests.component.test_checkout import Env, FakeRun
 from tests.component.test_git_confinement import World
 
 
@@ -190,32 +190,57 @@ class TestLinkProtectionPreflight:
             "protected_symlinks": "unavailable",
         }
 
-    def test_checkout_logs_both_values_and_never_fails_on_them(self, tmp_path, monkeypatch):
+    def test_the_preflight_records_both_values_and_never_fails_on_them(self, tmp_path):
+        # Spec v2.6 §8.7: recorded at the start of the checkout step.
         proc = tmp_path / "proc-fs"
         proc.mkdir()
         (proc / "protected_hardlinks").write_text("0\n")
         (proc / "protected_symlinks").write_text("0\n")
-        monkeypatch.setattr(safe_git, "PROC_SYS_FS", str(proc))
-        env = Env(tmp_path, "py-make-ok")
-        out = env.checkout()
-        assert out.status == "proceed", out.summary
-        events = [e for e in env.run.events if "fs.protected_hardlinks" in e[1]]
+        run = FakeRun()
+        assert checkout_mod.record_link_protection(run, [], str(proc)) == {
+            "protected_hardlinks": "0",
+            "protected_symlinks": "0",
+        }
+        events = [e for e in run.events if "fs.protected_hardlinks" in e[1]]
         assert len(events) == 1
         level, msg, data = events[0]
-        assert msg == "preflight: fs.protected_hardlinks=0 fs.protected_symlinks=0"
+        assert msg == "link protection: fs.protected_hardlinks=0 fs.protected_symlinks=0"
         assert data == {"protected_hardlinks": "0", "protected_symlinks": "0"}
         assert level == "warn"  # 0 is below the expected 1
 
-    def test_expected_values_log_at_info(self, tmp_path, monkeypatch):
+    def test_expected_values_log_at_info(self, tmp_path):
         proc = tmp_path / "proc-fs"
         proc.mkdir()
         for name in ("protected_hardlinks", "protected_symlinks"):
             (proc / name).write_text("1\n")
-        monkeypatch.setattr(safe_git, "PROC_SYS_FS", str(proc))
-        env = Env(tmp_path, "py-make-ok")
-        env.checkout()
-        events = [e for e in env.run.events if "fs.protected_hardlinks" in e[1]]
+        run = FakeRun()
+        checkout_mod.record_link_protection(run, [], str(proc))
+        events = [e for e in run.events if "fs.protected_hardlinks" in e[1]]
         assert [e[0] for e in events] == ["info"]
+
+    def test_checkout_logs_them_first_before_the_clone(self, tmp_path):
+        # Spec v2.6 §8.7: "At the start of `checkout`".
+        proc = tmp_path / "proc-fs"
+        proc.mkdir()
+        for name in ("protected_hardlinks", "protected_symlinks"):
+            (proc / name).write_text("1\n")
+        env = Env(tmp_path, "py-make-ok")
+        out = env.checkout(sysctl_base=str(proc))
+        assert out.status == "proceed", out.summary
+        messages = [e[1] for e in env.run.events]
+        hits = [i for i, m in enumerate(messages) if "fs.protected_hardlinks" in m]
+        assert hits == [0], messages[:3]
+        assert messages[0] == "link protection: fs.protected_hardlinks=1 fs.protected_symlinks=1"
+        assert messages[1].startswith("cloned ")
+
+    def test_checkout_logs_them_even_when_the_clone_fails(self, tmp_path):
+        proc = tmp_path / "proc-fs"
+        proc.mkdir()
+        env = Env(tmp_path, "py-make-ok")
+        out = env.checkout(url=str(tmp_path / "no-such-remote"), sysctl_base=str(proc))
+        assert out.status == "failed"
+        assert out.error_code == CLONE_FAILED
+        assert [e for e in env.run.events if "fs.protected_hardlinks" in e[1]]
 
     def test_checkout_module_uses_the_safe_git_preflight(self):
         assert checkout_mod.link_protection is link_protection

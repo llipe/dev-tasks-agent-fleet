@@ -441,6 +441,52 @@ class TestResolveGithubCredentials:
         assert new.app_id == 10
 
 
+class TestResolveGithubSession:
+    """S-190: the entrypoint keeps the PEM, so it can call ``refresh_if_stale``."""
+
+    @patch("credentials.mint_installation")
+    @patch("credentials._fetch_pem")
+    @patch("credentials._get_installation")
+    def test_returns_the_token_context_and_the_pem(self, mock_get_inst, mock_fetch_pem, mock_mint):
+        from credentials import GitHubSession, resolve_github_session
+
+        mock_get_inst.return_value = {
+            "app_id": 10,
+            "installation_id": 20,
+            "private_key_secret_arn": "arn:aws:sm:us-east-1:123:secret/key",
+        }
+        mock_fetch_pem.return_value = "-----BEGIN RSA PRIVATE KEY-----\n..."
+        mock_mint.return_value = MintedToken("ghs_resolved", {"issues": "write"})
+        session = resolve_github_session("myorg", "https://sb.co", "key123")
+        assert isinstance(session, GitHubSession)
+        assert session.pem == "-----BEGIN RSA PRIVATE KEY-----\n..."
+        assert (session.token.token, session.token.app_id, session.token.installation_id) == (
+            "ghs_resolved",
+            10,
+            20,
+        )
+        assert "BEGIN" not in repr(session)
+
+    @pytest.mark.parametrize("status", [401, 404, 500, 503])
+    def test_a_supabase_http_error_is_a_typed_credential_error(self, status, monkeypatch):
+        from credentials import resolve_github_session
+
+        class Resp:
+            status_code = status
+
+            def raise_for_status(self):
+                raise requests.HTTPError(f"{status} for url with key123")
+
+        import credentials as c
+
+        monkeypatch.setattr(c.requests, "get", lambda *a, **k: Resp())
+        with pytest.raises(CredentialError) as info:
+            resolve_github_session("myorg", "https://sb.co", "key123")
+        assert info.value.code == "SUPABASE_UNREACHABLE"
+        assert info.value.error_code == "CREDENTIALS_UNAVAILABLE"
+        assert "key123" not in str(info.value)
+
+
 # ---------------------------------------------------------------------------
 # fetch_secret_string (S-182): the Anthropic key and the Projects token
 # ---------------------------------------------------------------------------

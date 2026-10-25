@@ -25,12 +25,13 @@ from refusal import (
     open_claim_runs,
     reply_line,
 )
+from run_link import RunLink
 
 RUN = "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b"
 OTHER = "1c0b3e5f-2d4e-4f60-9b7c-8d9e0f1a2b3c"
 THIRD = "2d1c4f60-3e5f-4071-8c8d-9e0f1a2b3c4d"
 APP_ID = 424242
-LINK = "https://panel.example/runs/" + RUN
+LINK = RunLink("https://panel.example", RUN)
 
 
 def _facts(*, state="open", pr=False, number=42) -> IssueFacts:
@@ -143,7 +144,7 @@ class TestReplySnapshot:
     @pytest.mark.parametrize("code", sorted(SNAPSHOTS))
     def test_exact_body(self, code):
         refusal, line = SNAPSHOTS[code]
-        body = build_reply(RUN, refusal, 42, run_link=LINK)
+        body = build_reply(RUN, refusal, 42, run_link=LINK, panel_origin=LINK.origin)
         assert body == (
             f"<!-- agent-fleet:bug-fix:refusal run_id={RUN} reason={code} -->\n{line}\nRun: {LINK}"
         )
@@ -151,7 +152,7 @@ class TestReplySnapshot:
 
     @pytest.mark.parametrize("code", sorted(SNAPSHOTS))
     def test_line_one_parses_back_to_the_refusal(self, code):
-        body = build_reply(RUN, SNAPSHOTS[code][0], 42, run_link=LINK)
+        body = build_reply(RUN, SNAPSHOTS[code][0], 42, run_link=LINK, panel_origin=LINK.origin)
         (marker,) = parse_block(body)
         assert (marker.kind, marker.run_id, marker.reason) == ("refusal", RUN, code)
 
@@ -164,7 +165,9 @@ class TestReplySnapshot:
         ["http://panel.example/runs/x", "javascript:alert(1)", "https://x y", "", "@octocat"],
     )
     def test_an_unsafe_run_link_falls_back_to_the_run_id(self, link):
-        assert build_reply(RUN, Refusal("closed"), 42, run_link=link).endswith(f"`{RUN}`")
+        assert build_reply(
+            RUN, Refusal("closed"), 42, run_link=link, panel_origin=LINK.origin
+        ).endswith(f"`{RUN}`")
 
     def test_an_uppercase_run_id_is_canonicalized(self):
         body = build_reply(RUN.upper(), Refusal("closed"), 42)
@@ -175,7 +178,7 @@ class TestReplySnapshot:
             assert not build_reply(RUN, refusal, 42).startswith("/bug-fix")
 
     def test_the_reply_carries_no_reaction_or_model_text(self):
-        body = build_reply(RUN, Refusal("closed"), 42, run_link=LINK)
+        body = build_reply(RUN, Refusal("closed"), 42, run_link=LINK, panel_origin=LINK.origin)
         assert len(body.splitlines()) == 3
 
 

@@ -41,6 +41,11 @@ markers = [
     "unit: unit tests (no I/O, no network)",
     "component: component tests (mocked external services)",
 ]
+# The SDK's own log formatter calls datetime.utcnow(); the run worker's busy
+# mark (app.add_async_task) logs through it on every run (S-190 fix round 2).
+filterwarnings = [
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:bedrock_agentcore.runtime.app",
+]
 
 # ---------------------------------------------------------------------------
 # Quality toolchain

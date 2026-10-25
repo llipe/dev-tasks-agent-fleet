@@ -308,13 +308,13 @@ class TestClaimBodyFromConfig:
         cfg = load_config(self._env("https://dt-agent-fleet-panel.fly.dev/"))
         link = cfg.run_link(RUN.upper())
         assert link == LINK
-        body = build_claim_body(RUN, link)
+        body = build_claim_body(RUN, link, panel_origin=cfg.panel_base_url)
         assert body == f"{build('claim', RUN)}\n{CLAIM_LINE.format(run=LINK)}"
         assert [m.kind for m in parse_block(body)] == ["claim"]
 
     def test_no_panel_origin_names_the_run_id(self):
         cfg = load_config(self._env(None))
-        body = build_claim_body(RUN, cfg.run_link(RUN))
+        body = build_claim_body(RUN, cfg.run_link(RUN), panel_origin=cfg.panel_base_url)
         assert body.endswith(CLAIM_LINE.format(run=f"`{RUN}`"))
 
     @pytest.mark.parametrize(

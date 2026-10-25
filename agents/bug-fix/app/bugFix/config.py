@@ -20,16 +20,23 @@ the run.
 builds ``<origin>/runs/<run_id>``, the run link in the claim comment and every
 other agent comment (S-188). It is optional: without it a comment names the
 run id instead, so a missing link never fails the run. A value that isn't a
-bare ``https`` origin is a :class:`ConfigError`.
+bare ``https`` origin is a :class:`ConfigError`. Both checks are the shared
+strict validator in ``run_link.py`` (S-190, QA gap 2).
+
+``FIX_LOOP_ENABLED`` gates the run's ``fix`` step (S-190). It is optional and
+off when absent, so a runtime without it never runs the fix loop; Wave A
+ships it as ``0``, and a claimed run then disposes "fix loop not yet
+enabled". Only ``0`` and ``1`` are valid.
 """
 
 from __future__ import annotations
 
 import os
 import re
-import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+
+from run_link import RunLink, make_run_link, parse_origin
 
 # --- Legacy module-level reads ---------------------------------------------
 # ``credentials.py`` (copied from the sibling) imports these names, with the
@@ -46,6 +53,10 @@ SUPABASE_KEY_SECRET_ID: str = os.environ.get(
 # `lifecycleConfiguration`; the seed's `max_runtime_seconds` (S-184) MUST
 # equal MAX_LIFETIME (research Q7). A unit test pins both.
 MAX_LIFETIME: int = 3600
+# The seed's `grace_seconds` (spec §5.1). The run's own deadline is
+# MAX_LIFETIME - RUN_GRACE_SECONDS, so the run ends itself (RUNTIME_TIMEOUT)
+# before the reaper's `started_at + max_runtime + grace` (S-190 fix round 2).
+RUN_GRACE_SECONDS: int = 120
 IDLE_SESSION_TIMEOUT: int = 900
 # Heartbeat cadence for long blocking steps; well below the idle bound.
 HEARTBEAT_INTERVAL: int = 120
@@ -66,13 +77,6 @@ REQUIRED_VARS: tuple[str, ...] = (
 # or without a region prefix (``anthropic.claude-...``, ``US.anthropic....``,
 # ``global.anthropic....``). A plain Anthropic API id (``claude-...``) has none.
 _PROVIDER_MODEL_ID = re.compile(r"^arn:|/|(?:^|\.)anthropic\.", re.IGNORECASE)
-
-# A bare https origin: a DNS host and an optional port. No user info, path,
-# query or fragment, so the run link can't point anywhere but the panel.
-_PANEL_ORIGIN = re.compile(
-    r"https://[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*"
-    r"(?::[0-9]{1,5})?"
-)
 
 
 class ConfigError(ValueError):
@@ -102,16 +106,13 @@ class Config:
     board_disabled_reason: str | None
     # The panel's https origin (no trailing slash), or None when unset.
     panel_base_url: str | None = None
+    # S-190: the ``fix`` step runs only when FIX_LOOP_ENABLED=1. Absent is off.
+    fix_loop_enabled: bool = False
 
-    def run_link(self, run_id: str) -> str | None:
-        """``<panel>/runs/<run_id>``, or ``None`` without a panel origin or a UUID."""
-        if self.panel_base_url is None:
-            return None
-        try:
-            rid = str(uuid.UUID(run_id))
-        except (TypeError, ValueError, AttributeError):
-            return None
-        return f"{self.panel_base_url}/runs/{rid}"
+    def run_link(self, run_id: str) -> RunLink | None:
+        """``<panel>/runs/<run_id>`` as a :class:`run_link.RunLink`, the only
+        link a comment builder accepts; ``None`` without a panel origin or a UUID."""
+        return make_run_link(self.panel_base_url, run_id)
 
 
 def _get(env: Mapping[str, str], name: str) -> str | None:
@@ -154,9 +155,16 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
 
     panel = _get(source, "PANEL_BASE_URL")
     if panel is not None:
-        panel = panel.removesuffix("/")
-        if not _PANEL_ORIGIN.fullmatch(panel):
+        # The one strict validator (run_link.py), shared with every comment
+        # builder. Its message names the reason, never the value.
+        try:
+            panel = parse_origin(panel)
+        except ValueError:
             raise ConfigError("PANEL_BASE_URL", "must be an https origin with no path") from None
+
+    fix_loop = _get(source, "FIX_LOOP_ENABLED")
+    if fix_loop not in (None, "0", "1"):
+        raise ConfigError("FIX_LOOP_ENABLED", "must be 1 or 0") from None
 
     return Config(
         supabase_url=values["SUPABASE_URL"],
@@ -167,4 +175,5 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         board_updates_enabled=reason is None,
         board_disabled_reason=reason,
         panel_base_url=panel,
+        fix_loop_enabled=fix_loop == "1",
     )

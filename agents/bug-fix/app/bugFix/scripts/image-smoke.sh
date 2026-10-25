@@ -43,7 +43,10 @@
 #     AgentCore), `getent ahostsv4 localhost` gives 127.0.0.1, sandbox.py's
 #     preflight reports `nss` without writing, and fixer's getaddrinfo returns
 #     127.0.0.1 first; the pinned CLI accepts the
-#     `--disallowedTools=WebFetch,WebSearch` flag sandbox.py adds.
+#     `--disallowedTools=WebFetch,WebSearch` flag sandbox.py adds;
+#   - entrypoint (S-190): main.py, the image CMD, imports with the image's
+#     interpreter and dependencies; its steps are preflight, refuse,
+#     checkout, claim, fix, and the fix loop is off unless FIX_LOOP_ENABLED=1.
 #
 # Exits non-zero on the first failed assertion. Needs Docker and a locally
 # built image; needs no credentials and no network.
@@ -446,5 +449,64 @@ want_tar="$(printf 'gnu_tar=True\nfsck_refuses=True\noutside_empty=True\nthrough
 ok "the image's tar is GNU tar"
 ok "the clone's fsckObjects refuses a tree with a symlink and a directory under one name"
 ok "with fsck off, materialize through GNU tar as fixer writes nothing through the symlink"
+
+# --- S-190: the entrypoint loads in the image --------------------------------
+# main.py is the image's CMD. Import it with the image's interpreter and
+# dependencies, as AgentCore runs it, and check the step orchestration and
+# the outcome table are the ones this build ships. No network, no secrets:
+# importing main builds the AgentCore app object only.
+entry="$(as_agentcore "cd /app && env -u ALLOW_PROBE python3 -c 'import main, outcomes, config; \
+  print(\"steps=\" + \",\".join([main.STEP_PREFLIGHT, main.STEP_REFUSE, main.STEP_CHECKOUT, main.STEP_CLAIM, main.STEP_FIX])); \
+  print(\"fix_loop_default=\" + str(config.Config.__dataclass_fields__[\"fix_loop_enabled\"].default)); \
+  print(\"disabled=\" + outcomes.FIX_LOOP_DISABLED)'")" || fail "main.py does not import in the image: $entry"
+want_entry="$(printf 'steps=preflight,refuse,checkout,claim,fix\nfix_loop_default=False\ndisabled=fix loop not yet enabled')"
+[ "$entry" = "$want_entry" ] || fail "entrypoint: expected '$want_entry', got: $entry"
+ok "main.py (the image CMD) imports with the image's dependencies; steps preflight..fix; fix loop off by default"
+
+# --- S-190 fix round 2: the SIGTERM backstop under the image's server ---------
+# The server main.py starts (uvicorn, through main.serve) with a fake run
+# registered: once it serves /ping, the backstop must be on top of uvicorn's
+# handler; a SIGTERM must fail the run once, and the process must end on
+# SIGTERM (exit 143) although a non-daemon thread like RunWorker still runs.
+set +e
+term_out="$(docker run --rm -i --platform "$PLATFORM" --security-opt no-new-privileges \
+  -w /app --entrypoint python3 "$IMAGE" - 18080 <<'PY'
+import os, signal, sys, threading, time, urllib.request
+sys.path.insert(0, "/app")
+import main, signal_backstop
+
+class Run:
+    _terminal = False
+    def fail(self, **kw):
+        print("FAIL", kw["error_code"], flush=True)
+        self._terminal = True
+
+run = Run()
+
+def fire():
+    for _ in range(400):
+        try:
+            urllib.request.urlopen("http://127.0.0.1:18080/ping", timeout=1)
+            break
+        except Exception:
+            time.sleep(0.05)
+    h = signal.getsignal(signal.SIGTERM)
+    print("ON_TOP", signal_backstop.is_backstop_handler(h), h.previous.__qualname__, flush=True)
+    signal_backstop.install_termination_backstop(lambda: run, list)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+threading.Thread(target=fire, daemon=True).start()
+threading.Thread(target=time.sleep, args=(60,), name="bug-fix-run").start()
+main.serve(18080)
+print("SERVE_RETURNED", flush=True)
+PY
+)"
+term_status=$?
+set -e
+term_lines="$(printf '%s\n' "$term_out" | grep -E '^(ON_TOP|FAIL|SERVE)' || true)"
+want_term="$(printf 'ON_TOP True Server.handle_exit\nFAIL SIGNAL_TERMINATION')"
+[ "$term_lines" = "$want_term" ] || fail "SIGTERM backstop: expected '$want_term', got: $term_out"
+[ "$term_status" = 143 ] || fail "SIGTERM backstop: expected exit 143 (SIGTERM), got $term_status"
+ok "under the image's server, the SIGTERM backstop sits on uvicorn's handler, fails the run once, and the process ends on SIGTERM"
 
 echo "image-smoke: ${pass} checks passed for ${IMAGE}"

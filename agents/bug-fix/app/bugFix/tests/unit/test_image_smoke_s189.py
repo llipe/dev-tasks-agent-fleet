@@ -33,3 +33,12 @@ def test_smoke_runs_the_symlink_then_file_tree_through_gnu_tar():
     # The second line is tested on its own: fsck is off for this clone only.
     assert "CLONE_FSCK_ARGS = ()" in text
     assert "fsck_refuses=True" in text
+
+
+def test_smoke_imports_the_entrypoint_in_the_image():
+    # S-190: main.py is the image CMD; the smoke imports it as AgentCore runs it.
+    text = SMOKE.read_text()
+    assert "import main, outcomes, config" in text
+    assert "steps=preflight,refuse,checkout,claim,fix" in text
+    assert "fix_loop_default=False" in text
+    assert "env -u ALLOW_PROBE" in text

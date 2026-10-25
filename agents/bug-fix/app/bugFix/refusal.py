@@ -66,7 +66,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import requests
@@ -76,6 +76,7 @@ from github_client import GitHubError
 from issues import IssueFacts, IssuesClient, LinkedPr
 from markers import build, canonical_run_id, open_claims
 from params import SCHEMA_KEYS, Params, ParamsError, parse_params
+from run_link import run_ref
 from scrubber import SecretsLike, scrub_all, scrub_exception
 
 log = logging.getLogger("bug_fix.refusal")
@@ -150,7 +151,6 @@ _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {
     "repo_gate": REPO_GATE_ITEMS,
     "invalid_params": INVALID_PARAMS_KEYS,
 }
-_RUN_LINK = re.compile(r"https://\S+")
 # A GitHub ``owner/name`` (the reply's only other free-form part, DF-185-07).
 _PR_REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 
@@ -251,16 +251,23 @@ def reply_line(refusal: Refusal, issue_number: int | None) -> str:
 
 
 def build_reply(
-    run_id: str, refusal: Refusal, issue_number: int | None, run_link: str | None = None
+    run_id: str,
+    refusal: Refusal,
+    issue_number: int | None,
+    run_link: object = None,
+    *,
+    panel_origin: str | None = None,
 ) -> str:
-    """The refusal comment: marker, fixed sentence, run link (D-104)."""
+    """The refusal comment: marker, fixed sentence, run link (D-104).
+
+    The link passes the shared strict validator (``run_link.py``) against
+    ``panel_origin``, the configured ``PANEL_BASE_URL``, or the run id is
+    named instead.
+    """
     rid = canonical_run_id(run_id)
     marker = build("refusal", rid, refusal.reason)
     line = reply_line(refusal, issue_number)
-    run_ref = (
-        run_link if isinstance(run_link, str) and _RUN_LINK.fullmatch(run_link) else f"`{rid}`"
-    )
-    return f"{marker}\n{line}\nRun: {run_ref}"
+    return f"{marker}\n{line}\nRun: {run_ref(run_link, rid, panel_origin)}"
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +457,8 @@ class CheckOutcome:
     params: Params | None = None
     facts: IssueFacts | None = None
     token: TokenContext | None = None
+    # The issues client the preflight built, for the next steps (S-190).
+    client: IssuesClient | None = field(default=None, repr=False, compare=False)
 
     @property
     def proceed(self) -> bool:
@@ -508,6 +517,7 @@ def post_refusal(
     reply: bool = True,
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     secrets: SecretsLike | None = None,
     token: TokenContext | None = None,
     summary: str | None = None,
@@ -524,7 +534,9 @@ def post_refusal(
     state = "none"
     if reply and issue is not None:
         try:
-            client.post_comment(issue, build_reply(run_id, refusal, issue, run_link))
+            client.post_comment(
+                issue, build_reply(run_id, refusal, issue, run_link, panel_origin=panel_origin)
+            )
             state = "posted"
         except Exception as exc:  # noqa: BLE001 — the reply is best effort (spec §8.2)
             state = "failed"
@@ -545,25 +557,28 @@ def post_refusal(
     )
 
 
-def run_refusal_checks(
+def run_preflight(
     *,
     run_id: str,
     owner: str,
     repo: str,
     raw_params: object,
     resolve_token: Callable[[], TokenContext],
-    run_status: Callable[[Sequence[str]], Mapping[str, str]],
     session: Any = None,
     run: Any = None,
     run_link: str | None = None,
+    panel_origin: str | None = None,
     secrets: SecretsLike | None = None,
     sleep: Callable[[float], None] | None = None,
+    client_token: Callable[[TokenContext], str | Callable[[], str]] | None = None,
 ) -> CheckOutcome:
-    """Run the preflight and the refusal checks; post the reply on a refusal.
+    """The ``preflight`` step (spec §8.2, steps 1–3): token, ``issues: write``, params.
 
-    ``session`` is the GitHub transport (tests pass the in-repo double),
-    ``run_status`` reads ``v_runs`` (a :class:`RunStatusReader`), and ``run`` is
-    the run reporter for ``run_events``. Makes no claim and no board call.
+    On ``proceed`` the outcome carries ``params``, ``token`` and the issues
+    ``client``. ``client_token`` lets the caller give the client a token
+    source (a callable that refreshes a stale token) instead of the minted
+    string; ``main.py`` passes one (S-185 residual). An ``invalid_params``
+    refusal posts its reply here, when the issue number is usable.
     """
     secrets = [] if secrets is None else secrets
     rid = canonical_run_id(run_id)
@@ -589,20 +604,8 @@ def run_refusal_checks(
             status="failed", summary=summary, error_code="GITHUB_PERMISSION_MISSING"
         )
 
-    client = IssuesClient(owner, repo, token.token, session=session, sleep=sleep)
-
-    def refuse(refusal: Refusal, issue: int | None, *, reply: bool) -> CheckOutcome:
-        return post_refusal(
-            client,
-            rid,
-            refusal,
-            issue,
-            reply=reply,
-            run=run,
-            run_link=run_link,
-            secrets=secrets,
-            token=token,
-        )
+    auth = client_token(token) if client_token is not None else token.token
+    client = IssuesClient(owner, repo, auth, session=session, sleep=sleep)
 
     # Preflight 3: params (D-82).
     try:
@@ -610,7 +613,60 @@ def run_refusal_checks(
     except ParamsError as exc:
         key = exc.key if exc.key in INVALID_PARAMS_KEYS else "params"
         issue = _usable_issue(raw_params)
-        return refuse(Refusal("invalid_params", detail=key), issue, reply=issue is not None)
+        out = post_refusal(
+            client,
+            rid,
+            Refusal("invalid_params", detail=key),
+            issue,
+            reply=issue is not None,
+            run=run,
+            run_link=run_link,
+            panel_origin=panel_origin,
+            secrets=secrets,
+            token=token,
+        )
+        return replace(out, client=client)
+    _event(run, "info", f"preflight passed for #{params.issue_number}", secrets)
+    return CheckOutcome(
+        status="proceed",
+        summary=f"preflight passed for #{params.issue_number}",
+        params=params,
+        token=token,
+        client=client,
+    )
+
+
+def run_refusals(
+    pre: CheckOutcome,
+    *,
+    run_id: str,
+    run_status: Callable[[Sequence[str]], Mapping[str, str]],
+    run: Any = None,
+    run_link: str | None = None,
+    panel_origin: str | None = None,
+    secrets: SecretsLike | None = None,
+) -> CheckOutcome:
+    """The ``refuse`` step (spec §8.2): the decision table on a passed preflight."""
+    if not pre.proceed or pre.client is None or pre.params is None or pre.token is None:
+        raise ValueError("run_refusals needs a passed preflight")
+    secrets = [] if secrets is None else secrets
+    rid = canonical_run_id(run_id)
+    client, params, token = pre.client, pre.params, pre.token
+
+    def refuse(refusal: Refusal, issue: int | None, *, reply: bool) -> CheckOutcome:
+        out = post_refusal(
+            client,
+            rid,
+            refusal,
+            issue,
+            reply=reply,
+            run=run,
+            run_link=run_link,
+            panel_origin=panel_origin,
+            secrets=secrets,
+            token=token,
+        )
+        return replace(out, params=params, client=client)
 
     issue = params.issue_number
     try:
@@ -629,9 +685,9 @@ def run_refusal_checks(
             ),
         )
     except GitHubError as exc:
-        return _failed(exc.code, exc, secrets, run)
+        return replace(_failed(exc.code, exc, secrets, run), params=params, client=client)
     except SupabaseUnavailable as exc:
-        return _failed(exc.code, exc, secrets, run)
+        return replace(_failed(exc.code, exc, secrets, run), params=params, client=client)
 
     if verdict is not None:
         return refuse(verdict, issue, reply=True)
@@ -642,4 +698,54 @@ def run_refusal_checks(
         params=params,
         facts=facts,
         token=token,
+        client=client,
+    )
+
+
+def run_refusal_checks(
+    *,
+    run_id: str,
+    owner: str,
+    repo: str,
+    raw_params: object,
+    resolve_token: Callable[[], TokenContext],
+    run_status: Callable[[Sequence[str]], Mapping[str, str]],
+    session: Any = None,
+    run: Any = None,
+    run_link: str | None = None,
+    panel_origin: str | None = None,
+    secrets: SecretsLike | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> CheckOutcome:
+    """Run the preflight and the refusal checks; post the reply on a refusal.
+
+    ``session`` is the GitHub transport (tests pass the in-repo double),
+    ``run_status`` reads ``v_runs`` (a :class:`RunStatusReader`), and ``run`` is
+    the run reporter for ``run_events``. Makes no claim and no board call.
+    ``main.py`` runs the two halves, :func:`run_preflight` and
+    :func:`run_refusals`, as the ``preflight`` and ``refuse`` steps.
+    """
+    pre = run_preflight(
+        run_id=run_id,
+        owner=owner,
+        repo=repo,
+        raw_params=raw_params,
+        resolve_token=resolve_token,
+        session=session,
+        run=run,
+        run_link=run_link,
+        panel_origin=panel_origin,
+        secrets=secrets,
+        sleep=sleep,
+    )
+    if not pre.proceed:
+        return pre
+    return run_refusals(
+        pre,
+        run_id=run_id,
+        run_status=run_status,
+        run=run,
+        run_link=run_link,
+        panel_origin=panel_origin,
+        secrets=secrets,
     )

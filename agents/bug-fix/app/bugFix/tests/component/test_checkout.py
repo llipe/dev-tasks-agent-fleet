@@ -34,6 +34,7 @@ from checkout import (
 from issues import IssuesClient
 from markers import parse_block
 from refusal import REPO_GATE_PHRASES
+from run_link import RunLink
 from scrubber import SecretSet
 from tests.component.fake_github import APP_ID, TOKEN, FakeGitHub
 from tests.component.repo_fixtures import (
@@ -50,7 +51,7 @@ from tests.component.repo_fixtures import (
 
 RUN = "0b9a2f4e-1c3d-4e5f-8a6b-7c8d9e0f1a2b"
 ISSUE = 12
-LINK = "https://panel.example/runs/" + RUN
+LINK = RunLink("https://panel.example", RUN)
 
 
 class FakeRun:
@@ -103,7 +104,9 @@ class Env:
     def work(self) -> Path:
         return Path(self.paths.repo_dir)
 
-    def checkout(self, sandbox=None, *, branch="main", token=TOKEN, url=None) -> CheckoutResult:
+    def checkout(
+        self, sandbox=None, *, branch="main", token=TOKEN, url=None, sysctl_base=None
+    ) -> CheckoutResult:
         issues = IssuesClient("o", "r", TOKEN, session=self.gh)
         return run_checkout(
             run_id=RUN,
@@ -117,10 +120,12 @@ class Env:
             token=token,
             run=self.run,
             run_link=LINK,
+            panel_origin=LINK.origin,
             paths=self.paths,
             tools=self.spy.tools(),
             remote_url=url if url is not None else self.remote.url,
             app_id=APP_ID,
+            sysctl_base=sysctl_base,
         )
 
 

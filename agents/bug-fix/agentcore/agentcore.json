@@ -24,7 +24,8 @@
         { "name": "PROJECTS_TOKEN_SECRET_ID", "value": "agent-fleet/prod/GITHUB_PROJECTS_TOKEN" },
         { "name": "BOARD_UPDATES_ENABLED", "value": "1" },
         { "name": "MODEL_ID", "value": "claude-sonnet-5-5" },
-        { "name": "PANEL_BASE_URL", "value": "https://dt-agent-fleet-panel.fly.dev" }
+        { "name": "PANEL_BASE_URL", "value": "https://dt-agent-fleet-panel.fly.dev" },
+        { "name": "FIX_LOOP_ENABLED", "value": "0" }
       ],
       "lifecycleConfiguration": {
         "idleRuntimeSessionTimeout": 900,

@@ -270,3 +270,43 @@ class TestClocks:
     def test_heartbeat_well_below_idle(self):
         assert 0 < config.HEARTBEAT_INTERVAL <= config.IDLE_SESSION_TIMEOUT / 2
         assert config.IDLE_SESSION_TIMEOUT <= config.MAX_LIFETIME
+
+
+class TestFixLoopFlag:
+    """S-190 (task 11.4/11.5): ``FIX_LOOP_ENABLED`` gates the ``fix`` step.
+
+    Absent means off, so a runtime without the variable never runs the fix
+    loop (fail safe). Only ``0`` and ``1`` are accepted.
+    """
+
+    def test_absent_is_off(self):
+        assert load_config(_env()).fix_loop_enabled is False
+
+    @pytest.mark.parametrize(("raw", "enabled"), [("0", False), ("1", True), (" 1 ", True)])
+    def test_zero_and_one(self, raw, enabled):
+        assert load_config(_env(FIX_LOOP_ENABLED=raw)).fix_loop_enabled is enabled
+
+    @pytest.mark.parametrize("raw", ["true", "yes", "2", "on", "01"])
+    def test_anything_else_is_a_config_error_naming_the_variable(self, raw):
+        with pytest.raises(ConfigError) as info:
+            load_config(_env(FIX_LOOP_ENABLED=raw))
+        assert info.value.variable == "FIX_LOOP_ENABLED"
+        assert raw not in str(info.value)
+
+    def test_it_is_not_required(self):
+        assert "FIX_LOOP_ENABLED" not in REQUIRED_VARS
+
+
+class TestFixLoopEnabledQA:
+    """qa-engineer, S-190 gate: empty is off; garbage fails closed (a ConfigError,
+    so no run starts) and never defaults to on."""
+
+    @pytest.mark.parametrize("raw", ["", "   ", "\t\n"])
+    def test_empty_or_blank_is_off(self, raw):
+        assert load_config(_env(FIX_LOOP_ENABLED=raw)).fix_loop_enabled is False
+
+    @pytest.mark.parametrize("raw", ["TRUE", "-1", "1 1", "1\x00", "\u0661", "0x1", "1.0"])
+    def test_garbage_fails_closed(self, raw):
+        with pytest.raises(ConfigError) as info:
+            load_config(_env(FIX_LOOP_ENABLED=raw))
+        assert info.value.variable == "FIX_LOOP_ENABLED"

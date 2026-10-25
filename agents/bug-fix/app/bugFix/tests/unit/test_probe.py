@@ -29,7 +29,14 @@ from heartbeat import read_terminal_payload
 from probe import CheckResult, Verdict
 from sandbox import Outcome, SandboxResult, SandboxUnavailable
 from scrubber import SecretSet
-from tests.unit.test_main_stub import CONFIG, PAYLOAD, SUPABASE_KEY, FakeSupabase
+from tests.unit.test_main_stub import (
+    CONFIG,
+    NORMAL_SUMMARY,
+    PAYLOAD,
+    SUPABASE_KEY,
+    FakeSupabase,
+    _fake_execute,
+)
 
 ANTHROPIC_KEY = "sk-ant-api03-probe-sentinel-0123456789abcdef"
 PAT = "ghp_" + "P" * 36
@@ -53,7 +60,7 @@ def _result(chunks: list) -> dict:
 def probe_calls(monkeypatch):
     calls: list[dict[str, Any]] = []
 
-    def _fake_execute(run, cfg, secrets, supabase_key):
+    def _fake_execute_probe(run, cfg, secrets, supabase_key):
         calls.append({"run": run, "cfg": cfg})
         for c in ("net.blocked.example.com", "proc.environ.uid"):
             run.log(f"probe {c}: PASS", check=c, verdict="PASS", detail="ok")
@@ -63,8 +70,12 @@ def probe_calls(monkeypatch):
     monkeypatch.setattr(agent_reporter, "_SupabaseClient", FakeSupabase)
     monkeypatch.setattr(main, "load_config", lambda: CONFIG)
     monkeypatch.setattr(main, "fetch_supabase_key", lambda secret_id: SUPABASE_KEY)
-    monkeypatch.setattr(main, "install_termination_backstop", lambda get_run, get_secrets: None)
-    monkeypatch.setattr(main, "execute_probe", _fake_execute)
+    monkeypatch.setattr(
+        main, "install_termination_backstop", lambda get_run, get_secrets, get_disposition: None
+    )
+    monkeypatch.setattr(main, "execute_probe", _fake_execute_probe)
+    # The normal path is the orchestration, replaced by the shell tests' fake.
+    monkeypatch.setattr(main, "execute", _fake_execute)
     monkeypatch.delenv("ALLOW_PROBE", raising=False)
     return calls
 
@@ -118,7 +129,7 @@ class TestGate:
         monkeypatch.setenv("ALLOW_PROBE", "1")
         result = _result(_drain(main.invoke(_with(), None)))
         assert probe_calls == []
-        assert result["summary"] == "not yet implemented"
+        assert result["summary"] == NORMAL_SUMMARY
 
     def test_params_probe_is_ignored_even_with_allow(self, probe_calls, monkeypatch):
         monkeypatch.setenv("ALLOW_PROBE", "1")
@@ -127,21 +138,21 @@ class TestGate:
         result = _result(_drain(main.invoke(payload, None)))
         assert probe_calls == []
         assert result["status"] == "succeeded"
-        assert result["summary"] == "not yet implemented"
+        assert result["summary"] == NORMAL_SUMMARY
 
     def test_params_probe_without_allow_never_probes(self, probe_calls):
         payload = _with()
         payload["params"]["__probe"] = True
         result = _result(_drain(main.invoke(payload, None)))
         assert probe_calls == []
-        assert result["summary"] == "not yet implemented"
+        assert result["summary"] == NORMAL_SUMMARY
 
     @pytest.mark.parametrize("value", ["true", 1, "1", [True], {"x": True}, None, False])
     def test_non_boolean_top_level_is_not_probe_mode(self, probe_calls, monkeypatch, value):
         monkeypatch.setenv("ALLOW_PROBE", "1")
         result = _result(_drain(main.invoke(_with(__probe=value), None)))
         assert probe_calls == []
-        assert result["summary"] == "not yet implemented"
+        assert result["summary"] == NORMAL_SUMMARY
 
     @pytest.mark.parametrize("value", ["true", 1])
     def test_non_boolean_top_level_without_allow_never_probes(self, probe_calls, value):

@@ -14,6 +14,10 @@
 # never a raw `requests.HTTPError`. `refresh_if_stale` takes the new token's own
 # `permissions` and raises `PermissionMissing` if it lost `issues: write`.
 # `CredentialError.error_code` names the run's `error_code`.
+# Extended (S-190): `resolve_github_session` returns the token context and the
+# App PEM (`GitHubSession`), so the entrypoint can call `refresh_if_stale`; a
+# Supabase HTTP error on the installation lookup is a typed
+# `CredentialError("SUPABASE_UNREACHABLE")`, never a raw `requests.HTTPError`.
 """
 Credential resolution — Supabase service role key from Secrets Manager
 and GitHub App installation token minting.
@@ -195,7 +199,15 @@ def _get_installation(org: str, supabase_url: str, supabase_key: str) -> dict:
             "SUPABASE_UNREACHABLE",
             f"Supabase answered a redirect ({resp.status_code}) resolving org '{org}'",
         )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError:
+        # S-190: typed, naming the status only (the HTTPError text carries the
+        # URL, and a raw HTTPError would end the run UNHANDLED_ERROR).
+        raise CredentialError(
+            "SUPABASE_UNREACHABLE",
+            f"Supabase answered {resp.status_code} resolving org '{org}'",
+        ) from None
 
     rows = resp.json()
     if not rows:
@@ -340,6 +352,29 @@ def resolve_github_credentials(
       3. Sign JWT, exchange for installation token
       4. Return TokenContext
     """
+    return resolve_github_session(org, supabase_url, supabase_key).token
+
+
+class GitHubSession(NamedTuple):
+    """A token context and the App PEM it was minted with (S-190).
+
+    The entrypoint holds the PEM in memory, registered with its scrubber, only
+    to re-mint a stale token through :func:`refresh_if_stale`.
+    """
+
+    token: TokenContext
+    pem: str
+
+    def __repr__(self) -> str:
+        return f"GitHubSession(installation_id={self.token.installation_id!r}, pem=<redacted>)"
+
+
+def resolve_github_session(
+    org: str,
+    supabase_url: str | None = None,
+    supabase_key: str | None = None,
+) -> GitHubSession:
+    """:func:`resolve_github_credentials`, also returning the PEM (S-190)."""
     url = supabase_url or SUPABASE_URL
     key = supabase_key or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
@@ -347,13 +382,14 @@ def resolve_github_credentials(
     app_id = _check_app_id(row.get("app_id"))
     pem = _fetch_pem(row["private_key_secret_arn"])
     minted = mint_installation(app_id, row["installation_id"], pem)
-    return TokenContext(
+    ctx = TokenContext(
         token=minted.token,
         issued_at=time.monotonic(),
         installation_id=row["installation_id"],
         app_id=app_id,
         permissions=minted.permissions,
     )
+    return GitHubSession(ctx, pem)
 
 
 def refresh_if_stale(token_ctx: TokenContext, pem: str, app_id: int) -> TokenContext:
