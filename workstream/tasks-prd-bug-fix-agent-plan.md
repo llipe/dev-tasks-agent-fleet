@@ -348,7 +348,7 @@
     > AC1: `test_main.py::TestWaveAHappyPath`, `TestFixStep`, `TestRefusals` (steps and events per path). AC2: `test_outcomes.py` (TC-190-03/-04/-05/-12), `test_main.py::TestFaults`, `test_every_github_call_is_scoped_to_the_one_issue` (TC-190-11/-13). AC3: `test_main.py::TestOwnershipGate` (TC-190-06/-07/-08), `TestReporter` (heartbeat, flush failure), RT-07 (`test_claim_state_machine.py`). AC4: `test_main.py::TestMetrics` (TC-190-09). AC5: open; the planner's 11.6/11.7 through `/infra-engineer` (the runbook's "Wave A run" lists the expected result).
   - [x] 11.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
     > Local run done (2026-10-24, developer): agent gate green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 3020 passed, 5 xfailed, coverage 97%: `main.py` 97%, `outcomes.py` 99%, `run_link.py` 94%; `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). Image smoke 58/58 on a local arm64 build (not deployed). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
-  - [ ] 11.10 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`; roadmap Wave A row → `In progress` (set by `planner`)
+  - [x] 11.10 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`; roadmap Wave A row → `In progress` (set by `planner`)
 
 ## Decisions Consumed
 
