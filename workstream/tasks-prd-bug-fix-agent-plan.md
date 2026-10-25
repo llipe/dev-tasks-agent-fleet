@@ -125,26 +125,26 @@
   - [x] 1.10 Edge cases: each missing env var gives a typed error, never a traceback that contains values
   - [x] 1.11 Verify AC: layout and copied modules (AC1–AC2); `agentcore.json` envs with no Bedrock (AC3); ARM64 build with the toolchain (AC4); users and dirs (AC5); policy ownership and content (AC6); stub entrypoint (AC7). Map each to 1.1, 1.2 or 1.9
   - [x] 1.12 Run tests: `make test`, `make image`, `scripts/image-smoke.sh`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 1.13 `verifier` audit; open PR → `integration/bug-fix-agent`
+  - [x] 1.13 `verifier` audit; open PR → `integration/bug-fix-agent`
 
 - [x] 2.0 Implement Story S-181 (#363 - https://github.com/llipe/dev-tasks-agent-fleet/issues/363): Infra change — Anthropic key, runtime and role, panel invoke policy, App Issues write
 
   > Note: run with `/infra-engineer`. One approval per step; each step reversible and recorded. No secret value is ever logged or committed (D-58).
 
-  - [ ] 2.1 [infra] Open the change record `infra/changes/<date>-bug-fix-runtime/` with a plan, plus backup and revert steps for each item
-  - [ ] 2.2 [infra] **Operator action:** create a dedicated Anthropic API key with a spend cap. Store it as `agent-fleet/prod/ANTHROPIC_API_KEY` in Secrets Manager. Record the cap, never the key (D-50, D-58)
-  - [ ] 2.2b [infra] **Operator action:** create a classic PAT with only the `project` scope. Store it as `agent-fleet/prod/GITHUB_PROJECTS_TOKEN`, and record the scope and expiry, never the token (D-99)
-  - [ ] 2.3 [infra] Runtime role: `secretsmanager:GetSecretValue` on exactly the Supabase key, App PEM, Anthropic key and Projects token ARNs, with no `bedrock:*` (D-58, D-99)
-  - [ ] 2.4 [infra] `agentcore deploy` the 1.0 image. Record the runtime ARN from `agentcore status`
-  - [ ] 2.5 [infra] Panel `invoke-runtime` policy: add the runtime ARN and its `runtime-endpoint/DEFAULT` (issue #280) (D-58)
+  - [x] 2.1 [infra] Open the change record `infra/changes/<date>-bug-fix-runtime/` with a plan, plus backup and revert steps for each item
+  - [x] 2.2 [infra] **Operator action:** create a dedicated Anthropic API key with a spend cap. Store it as `agent-fleet/prod/ANTHROPIC_API_KEY` in Secrets Manager. Record the cap, never the key (D-50, D-58)
+  - [x] 2.2b [infra] **Operator action:** create a classic PAT with only the `project` scope. Store it as `agent-fleet/prod/GITHUB_PROJECTS_TOKEN`, and record the scope and expiry, never the token (D-99)
+  - [x] 2.3 [infra] Runtime role: `secretsmanager:GetSecretValue` on exactly the Supabase key, App PEM, Anthropic key and Projects token ARNs, with no `bedrock:*` (D-58, D-99)
+  - [x] 2.4 [infra] `agentcore deploy` the 1.0 image. Record the runtime ARN from `agentcore status`
+  - [x] 2.5 [infra] Panel `invoke-runtime` policy: add the runtime ARN and its `runtime-endpoint/DEFAULT` (issue #280) (D-58)
   - [x] 2.6 [infra] **Operator action:** GitHub App → **Issues: read and write**, then accept the change on every installation in `github_installations` (D-58)
-  - [ ] 2.7 [infra] Verify with `aws iam simulate-principal-policy`: allowed on the three secrets, denied on another secret, denied on `bedrock:InvokeModel`
-  - [ ] 2.8 [infra] Verify a token-mint probe shows `permissions.issues == "write"` for each installation. List any installation that hasn't accepted (edge case)
-  - [ ] 2.9 [panel] Manual check: invoking the stub from the deployed panel creates a run that ends `succeeded`/`not_applicable`
-  - [ ] 2.10 [repo root] Create the runbook stub `docs/runbooks/bug-fix-agent.md` with the deploy and verify sections (FR-49a)
-  - [ ] 2.13 [infra] Remove the copied CDK construct's default Bedrock grant (`bedrock:InvokeModel`, `InvokeModelWithResponseStream`, `CountTokens` on all foundation models; `@aws/agentcore-cdk` `AgentCoreRuntime`) before the first deploy, using an explicit `executionRoleArn` or a construct override. Verify with the 2.7 simulation that `bedrock:InvokeModel` is denied (DF-180-04, D-50). Do this before 2.4.
-  - [ ] 2.11 Verify AC: AC1 key and cap recorded; AC2 deployed with the ARN recorded; AC3 role simulation; AC4 panel invoke; AC5 `issues: write`; AC6 backup and revert per item. Map each to the change-record verification table
-  - [ ] 2.12 `verifier` audit; draft PR → `integration/bug-fix-agent`
+  - [x] 2.7 [infra] Verify with `aws iam simulate-principal-policy`: allowed on the three secrets, denied on another secret, denied on `bedrock:InvokeModel`
+  - [x] 2.8 [infra] Verify a token-mint probe shows `permissions.issues == "write"` for each installation. List any installation that hasn't accepted (edge case)
+  - [x] 2.9 [panel] Manual check: invoking the stub from the deployed panel creates a run that ends `succeeded`/`not_applicable`
+  - [x] 2.10 [repo root] Create the runbook stub `docs/runbooks/bug-fix-agent.md` with the deploy and verify sections (FR-49a)
+  - [x] 2.13 [infra] Remove the copied CDK construct's default Bedrock grant (`bedrock:InvokeModel`, `InvokeModelWithResponseStream`, `CountTokens` on all foundation models; `@aws/agentcore-cdk` `AgentCoreRuntime`) before the first deploy, using an explicit `executionRoleArn` or a construct override. Verify with the 2.7 simulation that `bedrock:InvokeModel` is denied (DF-180-04, D-50). Do this before 2.4.
+  - [x] 2.11 Verify AC: AC1 key and cap recorded; AC2 deployed with the ARN recorded; AC3 role simulation; AC4 panel invoke; AC5 `issues: write`; AC6 backup and revert per item. Map each to the change-record verification table
+  - [x] 2.12 `verifier` audit; draft PR → `integration/bug-fix-agent`
 
 - [x] 3.0 Implement Story S-182 (#364 - https://github.com/llipe/dev-tasks-agent-fleet/issues/364): Sandbox spike on the deployed runtime
 
