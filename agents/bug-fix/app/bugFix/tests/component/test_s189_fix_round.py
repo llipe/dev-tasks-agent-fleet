@@ -191,7 +191,7 @@ class TestLinkProtectionPreflight:
         }
 
     def test_the_preflight_records_both_values_and_never_fails_on_them(self, tmp_path):
-        # S-190: recorded by the run's preflight step (main.py), not checkout.
+        # Spec v2.6 §8.7: recorded at the start of the checkout step.
         proc = tmp_path / "proc-fs"
         proc.mkdir()
         (proc / "protected_hardlinks").write_text("0\n")
@@ -204,7 +204,7 @@ class TestLinkProtectionPreflight:
         events = [e for e in run.events if "fs.protected_hardlinks" in e[1]]
         assert len(events) == 1
         level, msg, data = events[0]
-        assert msg == "preflight: fs.protected_hardlinks=0 fs.protected_symlinks=0"
+        assert msg == "link protection: fs.protected_hardlinks=0 fs.protected_symlinks=0"
         assert data == {"protected_hardlinks": "0", "protected_symlinks": "0"}
         assert level == "warn"  # 0 is below the expected 1
 
@@ -218,11 +218,29 @@ class TestLinkProtectionPreflight:
         events = [e for e in run.events if "fs.protected_hardlinks" in e[1]]
         assert [e[0] for e in events] == ["info"]
 
-    def test_checkout_itself_no_longer_logs_them(self, tmp_path):
+    def test_checkout_logs_them_first_before_the_clone(self, tmp_path):
+        # Spec v2.6 §8.7: "At the start of `checkout`".
+        proc = tmp_path / "proc-fs"
+        proc.mkdir()
+        for name in ("protected_hardlinks", "protected_symlinks"):
+            (proc / name).write_text("1\n")
         env = Env(tmp_path, "py-make-ok")
-        out = env.checkout()
+        out = env.checkout(sysctl_base=str(proc))
         assert out.status == "proceed", out.summary
-        assert not [e for e in env.run.events if "fs.protected_hardlinks" in e[1]]
+        messages = [e[1] for e in env.run.events]
+        hits = [i for i, m in enumerate(messages) if "fs.protected_hardlinks" in m]
+        assert hits == [0], messages[:3]
+        assert messages[0] == "link protection: fs.protected_hardlinks=1 fs.protected_symlinks=1"
+        assert messages[1].startswith("cloned ")
+
+    def test_checkout_logs_them_even_when_the_clone_fails(self, tmp_path):
+        proc = tmp_path / "proc-fs"
+        proc.mkdir()
+        env = Env(tmp_path, "py-make-ok")
+        out = env.checkout(url=str(tmp_path / "no-such-remote"), sysctl_base=str(proc))
+        assert out.status == "failed"
+        assert out.error_code == CLONE_FAILED
+        assert [e for e in env.run.events if "fs.protected_hardlinks" in e[1]]
 
     def test_checkout_module_uses_the_safe_git_preflight(self):
         assert checkout_mod.link_protection is link_protection

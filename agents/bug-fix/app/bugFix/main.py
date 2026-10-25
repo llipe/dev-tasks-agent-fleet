@@ -9,14 +9,16 @@ base_branch, params}``, optionally wrapped as ``{"prompt": "<json>"}``.
 **Steps.** Each is one ``run_steps`` entry with ``run_events`` at its
 decisions (FR-25):
 
-1. ``preflight`` — the link-protection sysctls as a ``run_event`` (S-189,
-   QA-189-01); the installation token and ``issues: write`` (D-58); the
-   params and their bounds (D-82, refusal ``invalid_params``).
+1. ``preflight`` — the payload (``run_id`` a UUID, the repository fields);
+   the installation token and ``issues: write`` (D-58); the params and their
+   bounds (D-82, refusal ``invalid_params``).
 2. ``refuse`` — refusal checks (a)–(d) (D-92): ``pull_request``, ``closed``,
    ``linked_pr``, ``active_run``.
-3. ``checkout`` — clone, materialize, repo gate (refusal ``repo_gate``),
-   install, base gates, base restore (S-189). No issue changes before the repo
-   gate passes (FR-5): the refusal reply is the only write until here.
+3. ``checkout`` — the link-protection sysctls as a ``run_event`` first
+   (S-189, QA-189-01; spec v2.6 §8.7), then clone, materialize, repo gate
+   (refusal ``repo_gate``), install, base gates, base restore (S-189). No
+   issue changes before the repo gate passes (FR-5): the refusal reply is the
+   only write until here.
 4. ``claim`` — the claim comment, 👀, the post-claim race check and the
    ownership gate (S-188, D-54, D-81). With ``FIX_LOOP_ENABLED=0`` (Wave A),
    a confirmed claim then disposes "fix loop not yet enabled" (😕 plus the
@@ -75,7 +77,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 import outcomes
 from agent_reporter import RunReporter
-from checkout import WorkPaths, record_link_protection, run_checkout
+from checkout import WorkPaths, run_checkout
 from claim import Claimer
 from config import HEARTBEAT_INTERVAL, Config, ConfigError, load_config
 from credentials import (
@@ -425,7 +427,6 @@ def _payload_problems(request: Mapping[str, Any]) -> list[str]:
 
 def _preflight(ctx: RunContext) -> RunResult | None:
     rt = ctx.runtime
-    record_link_protection(ctx.run, ctx.secrets, rt.sysctl_base)
     raw_params = ctx.request.get("params")
     ctx.issue_number = _issue_of(raw_params)
     problems = _payload_problems(ctx.request)
@@ -503,6 +504,7 @@ def _checkout(ctx: RunContext) -> RunResult | None:
         paths=rt.paths,
         tools=rt.git_tools,
         remote_url=rt.remote_url(ctx.owner, ctx.repo),
+        sysctl_base=rt.sysctl_base,
     )
     if out.base_gates is not None:
         ctx.gates_base = {

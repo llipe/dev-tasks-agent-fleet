@@ -104,7 +104,9 @@ class Env:
     def work(self) -> Path:
         return Path(self.paths.repo_dir)
 
-    def checkout(self, sandbox=None, *, branch="main", token=TOKEN, url=None) -> CheckoutResult:
+    def checkout(
+        self, sandbox=None, *, branch="main", token=TOKEN, url=None, sysctl_base=None
+    ) -> CheckoutResult:
         issues = IssuesClient("o", "r", TOKEN, session=self.gh)
         return run_checkout(
             run_id=RUN,
@@ -123,6 +125,7 @@ class Env:
             tools=self.spy.tools(),
             remote_url=url if url is not None else self.remote.url,
             app_id=APP_ID,
+            sysctl_base=sysctl_base,
         )
 
 

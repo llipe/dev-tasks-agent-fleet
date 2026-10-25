@@ -809,26 +809,38 @@ class TestMetrics:
         assert db.final()["metrics"]["issue_number"] is None
 
 
+LINK_EVENT = "link protection: fs."
+
+
 class TestSysctlPreflight:
-    def test_link_protection_is_a_preflight_event(self, world):
-        # S-189 QA-189-01, wired into the run's preflight step.
+    def test_link_protection_is_the_first_checkout_event(self, world):
+        # S-189 QA-189-01; spec v2.6 §8.7: "At the start of `checkout`" (QA gap 2).
         w = world()
         (w.proc / "protected_hardlinks").write_text("0\n")
         _, _, db = _invoke(w)
-        pre = db.events_by_step()["preflight"]
-        assert "preflight: fs.protected_hardlinks=0 fs.protected_symlinks=1" in pre
-        event = next(e for e in db.events() if e["message"].startswith("preflight: fs."))
+        by_step = db.events_by_step()
+        assert by_step["checkout"][0] == (
+            "link protection: fs.protected_hardlinks=0 fs.protected_symlinks=1"
+        )
+        event = next(e for e in db.events() if e["message"].startswith(LINK_EVENT))
         assert event["level"] == "warn"
         assert event["data"] == {"protected_hardlinks": "0", "protected_symlinks": "1"}
-        assert not any(
-            m.startswith("preflight: fs.") for m in db.events_by_step().get("checkout", [])
-        )
+        for step in ("preflight", "refuse", "claim"):
+            assert not any(m.startswith(LINK_EVENT) for m in by_step.get(step, [])), step
+        assert sum(m.startswith(LINK_EVENT) for m in db.messages()) == 1
 
     def test_expected_values_log_at_info(self, world):
         w = world()
         _, _, db = _invoke(w)
-        event = next(e for e in db.events() if e["message"].startswith("preflight: fs."))
+        event = next(e for e in db.events() if e["message"].startswith(LINK_EVENT))
         assert event["level"] == "info"
+
+    def test_a_refused_run_never_reaches_checkout_or_logs_them(self, world):
+        w = world()
+        w.gh.add_issue(ISSUE, state="closed")
+        res, _, db = _invoke(w)
+        assert res["reason"] == "closed"
+        assert not any(m.startswith(LINK_EVENT) for m in db.messages())
 
 
 # ---------------------------------------------------------------------------
