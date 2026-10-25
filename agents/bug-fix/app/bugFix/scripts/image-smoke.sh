@@ -43,7 +43,10 @@
 #     AgentCore), `getent ahostsv4 localhost` gives 127.0.0.1, sandbox.py's
 #     preflight reports `nss` without writing, and fixer's getaddrinfo returns
 #     127.0.0.1 first; the pinned CLI accepts the
-#     `--disallowedTools=WebFetch,WebSearch` flag sandbox.py adds.
+#     `--disallowedTools=WebFetch,WebSearch` flag sandbox.py adds;
+#   - entrypoint (S-190): main.py, the image CMD, imports with the image's
+#     interpreter and dependencies; its steps are preflight, refuse,
+#     checkout, claim, fix, and the fix loop is off unless FIX_LOOP_ENABLED=1.
 #
 # Exits non-zero on the first failed assertion. Needs Docker and a locally
 # built image; needs no credentials and no network.
@@ -446,5 +449,18 @@ want_tar="$(printf 'gnu_tar=True\nfsck_refuses=True\noutside_empty=True\nthrough
 ok "the image's tar is GNU tar"
 ok "the clone's fsckObjects refuses a tree with a symlink and a directory under one name"
 ok "with fsck off, materialize through GNU tar as fixer writes nothing through the symlink"
+
+# --- S-190: the entrypoint loads in the image --------------------------------
+# main.py is the image's CMD. Import it with the image's interpreter and
+# dependencies, as AgentCore runs it, and check the step orchestration and
+# the outcome table are the ones this build ships. No network, no secrets:
+# importing main builds the AgentCore app object only.
+entry="$(as_agentcore "cd /app && env -u ALLOW_PROBE python3 -c 'import main, outcomes, config; \
+  print(\"steps=\" + \",\".join([main.STEP_PREFLIGHT, main.STEP_REFUSE, main.STEP_CHECKOUT, main.STEP_CLAIM, main.STEP_FIX])); \
+  print(\"fix_loop_default=\" + str(config.Config.__dataclass_fields__[\"fix_loop_enabled\"].default)); \
+  print(\"disabled=\" + outcomes.FIX_LOOP_DISABLED)'")" || fail "main.py does not import in the image: $entry"
+want_entry="$(printf 'steps=preflight,refuse,checkout,claim,fix\nfix_loop_default=False\ndisabled=fix loop not yet enabled')"
+[ "$entry" = "$want_entry" ] || fail "entrypoint: expected '$want_entry', got: $entry"
+ok "main.py (the image CMD) imports with the image's dependencies; steps preflight..fix; fix loop off by default"
 
 echo "image-smoke: ${pass} checks passed for ${IMAGE}"
