@@ -22,6 +22,11 @@ other agent comment (S-188). It is optional: without it a comment names the
 run id instead, so a missing link never fails the run. A value that isn't a
 bare ``https`` origin is a :class:`ConfigError`. Both checks are the shared
 strict validator in ``run_link.py`` (S-190, QA gap 2).
+
+``FIX_LOOP_ENABLED`` gates the run's ``fix`` step (S-190). It is optional and
+off when absent, so a runtime without it never runs the fix loop; Wave A
+ships it as ``0``, and a claimed run then disposes "fix loop not yet
+enabled". Only ``0`` and ``1`` are valid.
 """
 
 from __future__ import annotations
@@ -97,6 +102,8 @@ class Config:
     board_disabled_reason: str | None
     # The panel's https origin (no trailing slash), or None when unset.
     panel_base_url: str | None = None
+    # S-190: the ``fix`` step runs only when FIX_LOOP_ENABLED=1. Absent is off.
+    fix_loop_enabled: bool = False
 
     def run_link(self, run_id: str) -> RunLink | None:
         """``<panel>/runs/<run_id>`` as a :class:`run_link.RunLink`, the only
@@ -151,6 +158,10 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         except ValueError:
             raise ConfigError("PANEL_BASE_URL", "must be an https origin with no path") from None
 
+    fix_loop = _get(source, "FIX_LOOP_ENABLED")
+    if fix_loop not in (None, "0", "1"):
+        raise ConfigError("FIX_LOOP_ENABLED", "must be 1 or 0") from None
+
     return Config(
         supabase_url=values["SUPABASE_URL"],
         supabase_key_secret_id=values["SUPABASE_KEY_SECRET_ID"],
@@ -160,4 +171,5 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         board_updates_enabled=reason is None,
         board_disabled_reason=reason,
         panel_base_url=panel,
+        fix_loop_enabled=fix_loop == "1",
     )

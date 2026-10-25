@@ -1,7 +1,7 @@
 """L1 tests for ``agentcore.json`` and secret hygiene (TC-180-03..05; S-180 AC3).
 
-Runtime ``bug_fix`` (Container, PUBLIC, maxLifetime 3600) with the seven env
-vars (``PANEL_BASE_URL`` added by S-188), secret IDs only, and no reference to the cloud model provider anywhere
+Runtime ``bug_fix`` (Container, PUBLIC, maxLifetime 3600) with the eight env
+vars (``PANEL_BASE_URL`` added by S-188, ``FIX_LOOP_ENABLED=0`` by S-190), secret IDs only, and no reference to the cloud model provider anywhere
 in the runtime config, ``config.py`` or the Dockerfile (D-50, D-99).
 """
 
@@ -82,6 +82,7 @@ class TestRuntime:
             "BOARD_UPDATES_ENABLED",
             "MODEL_ID",
             "PANEL_BASE_URL",
+            "FIX_LOOP_ENABLED",
         }
         assert env["SUPABASE_URL"].startswith("https://")
         assert env["SUPABASE_KEY_SECRET_ID"] == "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY"
@@ -90,6 +91,16 @@ class TestRuntime:
         assert env["BOARD_UPDATES_ENABLED"] == "1"
         # S-188 (task 9.3): the panel origin that builds the run link.
         assert env["PANEL_BASE_URL"] == "https://dt-agent-fleet-panel.fly.dev"
+        # S-190 (task 11.5): Wave A ships with the fix loop off, so a run that
+        # wins its claim disposes "fix loop not yet enabled".
+        assert env["FIX_LOOP_ENABLED"] == "0"
+
+    def test_the_fix_loop_flag_is_the_last_one_line_entry(self):
+        # A minimal add (11.5): one new line, after the S-188 entry.
+        names = [e["name"] for e in _runtime()["envVars"]]
+        assert names[-2:] == ["PANEL_BASE_URL", "FIX_LOOP_ENABLED"]
+        line = '{ "name": "FIX_LOOP_ENABLED", "value": "0" }'
+        assert line in AGENTCORE.read_text()
 
     def test_env_vars_keep_one_entry_per_line(self):
         # The file is edited by hand and by the agentcore CLI: one env entry
@@ -108,6 +119,7 @@ class TestRuntime:
 
     def test_env_loads_through_config(self):
         cfg = config.load_config(_env())
+        assert cfg.fix_loop_enabled is False
         assert cfg.board_updates_enabled is True
         assert cfg.panel_base_url == "https://dt-agent-fleet-panel.fly.dev"
 
