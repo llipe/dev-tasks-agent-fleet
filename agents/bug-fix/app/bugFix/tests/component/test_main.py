@@ -1210,19 +1210,17 @@ async def _cancel_the_consumer(w: World) -> None:
 class TestQAStreamClosedMidRun:
     """The panel resolves ``invokeAgentRuntime`` once AgentCore accepts the call
     and the webhook path aborts it on a timeout, so the response stream can close
-    while the steps run. ``asyncio.run`` joins the worker before these asserts."""
+    while the steps run. ``asyncio.run`` joins the worker before these asserts.
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "QA-190-01: closing or cancelling the invoke stream mid-run raises "
-            "GeneratorExit/CancelledError through `with run:`; RunReporter.__exit__ "
-            "then writes failed with error_code 'GeneratorExit'/'CancelledError' "
-            "(outside the closed set, counts toward the breaker) and an unscrubbed "
-            "traceback to run_events, while the worker goes on to claim and dispose"
-        ),
+    QA-190-01: the run's outcome doesn't depend on the stream's consumer. The
+    worker finishes the steps and reports its own terminal result; the
+    entrypoint only relays, and a close or cancel is noted, never terminal."""
+
+    CLOSES = pytest.mark.parametrize(
+        "close", [_close_after_first_heartbeat, _cancel_the_consumer], ids=["aclose", "cancel"]
     )
-    @pytest.mark.parametrize("close", [_close_after_first_heartbeat, _cancel_the_consumer])
+
+    @CLOSES
     def test_the_terminal_row_stays_in_the_closed_set(self, world, close):
         w = world(heartbeat_interval=0.02)
         _slow_install(w)
@@ -1230,6 +1228,56 @@ class TestQAStreamClosedMidRun:
         db = ReporterDB.instances[-1]
         final = db.final()
         assert final["status"] == "succeeded" or final["error_code"] in outcomes.ERROR_CODES
+        assert not any("Traceback" in m for m in db.messages())
+
+    @CLOSES
+    def test_the_worker_finishes_and_reports_its_real_outcome(self, world, close):
+        w = world(heartbeat_interval=0.02)
+        _slow_install(w)
+        asyncio.run(close(w))
+        db = ReporterDB.instances[-1]
+        terminal = [p for p in db.run_patches() if p.get("status") in ("succeeded", "failed")]
+        assert len(terminal) == 1, terminal
+        final = terminal[0]
+        assert (final["status"], final["outcome"]) == ("succeeded", "needs_review")
+        assert final["result"]["reason"] == "fix_loop_disabled"
+        assert db.step_keys() == WAVE_A_STEPS
+        # One claim and one diagnosis: the run disposed once, as it owns the issue.
+        assert [_kinds(b)[0] for b in _bodies(w)] == ["claim", "disposition"]
+
+    @CLOSES
+    def test_the_close_is_noted_by_the_worker_not_terminal(self, world, close):
+        w = world(heartbeat_interval=0.02)
+        _slow_install(w)
+        asyncio.run(close(w))
+        db = ReporterDB.instances[-1]
+        notes = [e for e in db.events() if "invoke stream closed" in e["message"]]
+        assert len(notes) == 1
+        assert notes[0]["level"] == "warn"
+        assert "reports its own outcome" in notes[0]["message"]
+        assert not any(
+            p.get("error_code") in ("GeneratorExit", "CancelledError") for p in db.run_patches()
+        )
+
+    def test_an_uninterrupted_run_has_no_close_note(self, world):
+        w = world()
+        _, _, db = _invoke(w)
+        assert not any("invoke stream closed" in m for m in db.messages())
+
+    @CLOSES
+    def test_a_fault_after_the_close_still_ends_with_its_own_code(self, world, close):
+        def runner(ctx):
+            raise RuntimeError("the fix step broke")
+
+        w = world(heartbeat_interval=0.02, fix_loop=True, fix_runner=runner)
+        _slow_install(w)
+        asyncio.run(close(w))
+        db = ReporterDB.instances[-1]
+        final = db.final()
+        assert (final["status"], final["error_code"]) == ("failed", "UNHANDLED_ERROR")
+        assert final["error_message"] == "UNHANDLED_ERROR: RuntimeError: the fix step broke"
+        assert "outcome" not in final
+        assert db.step_keys() == [*WAVE_A_STEPS, "fix"]
         assert not any("Traceback" in m for m in db.messages())
 
 

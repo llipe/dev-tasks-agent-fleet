@@ -42,11 +42,15 @@ its errors by ``exc.error_code``: ``PermissionMissing`` →
 ``GITHUB_PERMISSION_MISSING``, a mint failure → ``CREDENTIALS_UNAVAILABLE``.
 A refresh failure that a best-effort call swallowed still fails the run.
 
-**Heartbeat and backstop.** The steps run in a worker thread under
-``heartbeat.run_with_heartbeat`` while the entrypoint streams heartbeat
-chunks, so a long install or gate never idles the AgentCore stream (issue
-#98). The SIGTERM backstop runs the disposition (10 s budget) when ownership
-is confirmed, then ``fail()``.
+**Heartbeat, stream close and backstop.** The steps run on a
+:class:`RunWorker` thread while the entrypoint streams heartbeat chunks
+(``heartbeat.run_with_heartbeat`` waits on :meth:`RunWorker.join`), so a long
+install or gate never idles the AgentCore stream (issue #98). The worker owns
+the run's terminal write; the entrypoint only relays. A consumer that closes
+or cancels the stream mid-run ends the relay, not the run: the worker
+finishes, notes the close in a ``run_event`` and reports its real outcome
+(QA-190-01). The SIGTERM backstop runs the disposition (10 s budget) when
+ownership is confirmed, then ``fail()`` with ``SIGNAL_TERMINATION``.
 
 **Metrics** (FR-27): ``runs.metrics`` holds ``issue_number``,
 ``step_timings_ms`` (non-negative integer milliseconds per step) and, after
@@ -65,6 +69,7 @@ a module's scrubbed ``run_event`` call.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
@@ -264,6 +269,8 @@ class RunContext:
     disposition_attempted: bool = False
     timings: dict[str, int] = field(default_factory=dict)
     gates_base: dict[str, dict[str, Any]] | None = None
+    # Called on the worker thread just before the terminal report (RunWorker).
+    on_report: Callable[[], None] | None = field(default=None, repr=False)
 
     def event(self, level: str, message: str, **data: Any) -> None:
         """A scrubbed ``run_event``; a reporting fault never changes the outcome."""
@@ -618,6 +625,11 @@ def _steps(ctx: RunContext) -> RunResult:
 
 
 def _report(ctx: RunContext, result: RunResult) -> None:
+    if ctx.on_report is not None:
+        try:
+            ctx.on_report()
+        except Exception:  # noqa: BLE001 — a note never changes the outcome
+            log.warning("pre-report note failed")
     try:
         result.report(ctx.run, metrics=ctx.metrics())
     except Exception as exc:  # noqa: BLE001 — the terminal chunk still carries it
@@ -634,6 +646,84 @@ def execute(ctx: RunContext) -> RunResult:
         _finally_dispose(ctx, result)
     _report(ctx, result)
     return result
+
+
+class RunWorker:
+    """:func:`execute` on its own thread, started at once (QA-190-01).
+
+    **Why.** AgentCore streams the entrypoint's chunks to the caller, and the
+    caller can go away mid-run: the panel resolves ``invokeAgentRuntime`` once
+    the call is accepted, and the webhook path aborts it on a timeout. The
+    async generator then gets ``GeneratorExit`` (``aclose()``) or
+    ``CancelledError`` at its current ``await``/``yield``. The run's outcome
+    must not depend on that, so ownership is split:
+
+    - **The worker owns the run.** It runs every step, the ``finally``
+      disposition, and the one terminal write (``execute()`` → ``_report``).
+      It starts here, on a plain thread, before the first chunk, so no
+      cancellation can stop it from starting or finishing; a cancelled
+      ``asyncio`` future can only stop *waiting* for a thread, never the
+      thread itself.
+    - **The entrypoint only relays.** :meth:`join` is what
+      ``run_with_heartbeat`` waits on, so the heartbeat keeps the stream
+      alive while the consumer listens. A close or cancel ends the relay
+      only: the entrypoint calls :meth:`stream_closed` and re-raises,
+      without a terminal write.
+    - **Stopping for real** is the SIGTERM backstop's job
+      (``signal_backstop``): ``failed``/``SIGNAL_TERMINATION``, scrubbed,
+      after the disposition when ownership is confirmed (D-81).
+
+    The worker is not a daemon thread: the process doesn't exit under a run
+    that is still reporting. The runtime's lifetime cap and SIGTERM bound it.
+
+    :meth:`stream_closed` only sets a field; the worker writes the
+    ``run_event`` itself before its terminal report, so the reporter is
+    written from one thread (it isn't thread-safe).
+    """
+
+    def __init__(self, ctx: RunContext) -> None:
+        self._ctx = ctx
+        self._done = threading.Event()
+        self._result: RunResult | None = None
+        self._error: BaseException | None = None
+        ctx.on_report = self._note_close
+        self._closed: str | None = None
+        self._thread = threading.Thread(target=self._run, name="bug-fix-run", daemon=False)
+        self._thread.start()
+
+    @property
+    def running(self) -> bool:
+        return not self._done.is_set()
+
+    def stream_closed(self, how: str) -> None:
+        """The consumer went away (``GeneratorExit`` or ``CancelledError``)."""
+        self._closed = how
+
+    def _note_close(self) -> None:
+        if self._closed is not None:
+            self._ctx.event(
+                "warn",
+                f"the invoke stream closed mid-run ({self._closed}); the run finished "
+                "the steps and reports its own outcome",
+            )
+
+    def _run(self) -> None:
+        try:
+            self._result = execute(self._ctx)
+        except BaseException as exc:  # noqa: BLE001 — handed to join()
+            self._error = exc
+        finally:
+            self._done.set()
+
+    def join(self) -> RunResult:
+        """Wait for the run; its result, or what it raised (execute() never
+        raises an ``Exception``; a ``BaseException`` means the process is
+        dying, and is passed on as-is)."""
+        self._done.wait()
+        if self._error is not None:
+            raise self._error
+        assert self._result is not None
+        return self._result
 
 
 # ---------------------------------------------------------------------------
@@ -692,37 +782,68 @@ async def invoke(payload: Any, context: Any) -> AsyncIterator[dict]:
     )
     probe_summary: dict | None = None
     result: RunResult | None = None
-    with run:  # start(): status running (the "started" report)
-        install_termination_backstop(lambda: run, secrets.values, ctx.backstop_disposition)
-        try:
-            if is_probe_request(request):
-                if not probe_allowed():
-                    # D-70: no check runs; the run ends with the reason.
-                    log.warning("%s", PROBE_REFUSED)
-                    run.fail("PROBE_REFUSED", PROBE_REFUSED)
-                    yield _fault_chunk("PROBE_REFUSED", PROBE_REFUSED)
-                    return
-                probe_summary = execute_probe(run, cfg, secrets, supabase_key)
-                run.succeed("not_applicable", result=probe_summary)
-            else:
-                ctx.event("info", f"bug-fix run started for {ctx.owner}/{ctx.repo}")
-                async for item in run_with_heartbeat(
-                    lambda: execute(ctx), interval=ctx.runtime.heartbeat_interval
-                ):
-                    if isinstance(item, HeartbeatResult):
-                        if item.error is not None:
-                            raise item.error
-                        result = item.value
-                    else:
-                        yield item
-        except Exception as exc:  # noqa: BLE001 — reported, scrubbed, never re-raised
-            message = scrub_exception(exc, secrets)
-            log.error("Unhandled error: %s", message)
-            # Report here, scrubbed, so RunReporter.__exit__ never writes the
-            # raw exception text to Supabase.
-            run.fail("UNHANDLED_ERROR", message, metrics=ctx.metrics())
-            yield terminal_chunk(json.dumps(outcomes.failed("UNHANDLED_ERROR", message).terminal()))
-            return
+    worker: RunWorker | None = None
+    # Not ``with run:``. RunReporter.__exit__ marks the run ``failed`` with the
+    # exception's class name and its traceback for *any* exception, including
+    # the GeneratorExit/CancelledError of a consumer that went away while the
+    # worker still runs (QA-190-01). The lifecycle is explicit instead: start()
+    # here, the terminal write by whoever owns the outcome (see RunWorker).
+    run.start()  # status running (the "started" report)
+    install_termination_backstop(lambda: run, secrets.values, ctx.backstop_disposition)
+    try:
+        if is_probe_request(request):
+            if not probe_allowed():
+                # D-70: no check runs; the run ends with the reason.
+                log.warning("%s", PROBE_REFUSED)
+                run.fail("PROBE_REFUSED", PROBE_REFUSED)
+                yield _fault_chunk("PROBE_REFUSED", PROBE_REFUSED)
+                return
+            probe_summary = execute_probe(run, cfg, secrets, supabase_key)
+            run.succeed("not_applicable", result=probe_summary)
+        else:
+            ctx.event("info", f"bug-fix run started for {ctx.owner}/{ctx.repo}")
+            worker = RunWorker(ctx)
+            async for item in run_with_heartbeat(
+                worker.join, interval=ctx.runtime.heartbeat_interval
+            ):
+                if isinstance(item, HeartbeatResult):
+                    if item.error is not None:
+                        raise item.error
+                    result = item.value
+                else:
+                    yield item
+    except (GeneratorExit, asyncio.CancelledError) as exc:
+        # The consumer closed or cancelled the stream. That ends this relay,
+        # not the run: the worker finishes the steps and writes the terminal
+        # result itself, and notes the close in a run_event (QA-190-01).
+        if worker is not None:
+            worker.stream_closed(type(exc).__name__)
+        log.warning(
+            "invoke stream %s; the run %s",
+            type(exc).__name__,
+            "continues and reports its own outcome"
+            if worker is not None and worker.running
+            else "had already reported",
+        )
+        raise
+    except Exception as exc:  # noqa: BLE001 — reported, scrubbed, never re-raised
+        message = scrub_exception(exc, secrets)
+        log.error("Unhandled error: %s", message)
+        # Reported here, scrubbed: no traceback ever reaches run_events.
+        run.fail("UNHANDLED_ERROR", message, metrics=ctx.metrics())
+        yield terminal_chunk(json.dumps(outcomes.failed("UNHANDLED_ERROR", message).terminal()))
+        return
+    except BaseException as exc:
+        # The process is stopping (SystemExit, KeyboardInterrupt, a signal
+        # re-raised): end the run with the closed-set SIGNAL_TERMINATION and a
+        # scrubbed message, unless it is already terminal (the SIGTERM
+        # backstop got there first). fail() is a no-op on a terminal run.
+        run.fail(
+            "SIGNAL_TERMINATION",
+            scrub_all(f"the run stopped on {type(exc).__name__}", secrets),
+            metrics=ctx.metrics(),
+        )
+        raise
 
     if probe_summary is not None:
         out: dict[str, Any] = {
