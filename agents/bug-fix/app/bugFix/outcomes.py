@@ -218,9 +218,9 @@ def exception_code(exc: BaseException) -> str:
 def from_exception(exc: BaseException, secrets: SecretsLike) -> RunResult:
     """A ``failed`` result for ``exc``, its message scrubbed."""
     code = exception_code(exc)
-    detail = scrub_exception(exc, secrets)
-    if code == UNHANDLED_ERROR:
-        detail = f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+    # ``scrub_exception`` is already ``Type: message`` (``Type`` alone for an
+    # empty message), so the type is named once (QA-190-03).
+    detail = scrub_exception(exc, secrets) or type(exc).__name__
     return failed(code, scrub_all(f"{code}: {detail}", secrets))
 
 

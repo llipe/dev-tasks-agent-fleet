@@ -442,14 +442,21 @@ def test_the_outcomes_module_has_no_io():
     assert outcomes.__doc__ and "§8.9" in outcomes.__doc__
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "QA-190-03: from_exception prefixes the type name onto scrub_exception's "
-        "'Type: message', so every UNHANDLED_ERROR summary reads "
-        "'UNHANDLED_ERROR: RuntimeError: RuntimeError: boom'"
-    ),
-)
 def test_an_unhandled_summary_names_the_type_once():
+    """QA-190-03: scrub_exception already gives ``Type: message``."""
     res = outcomes.from_exception(RuntimeError("boom"), [])
     assert res.summary == "UNHANDLED_ERROR: RuntimeError: boom"
+
+
+@pytest.mark.parametrize(
+    ("exc", "summary"),
+    [
+        (RuntimeError(), "UNHANDLED_ERROR: RuntimeError"),
+        (KeyError("k"), "UNHANDLED_ERROR: KeyError: 'k'"),
+        (ValueError("a RuntimeError: inside"), "UNHANDLED_ERROR: ValueError: a RuntimeError: inside"),
+    ],
+)
+def test_an_unhandled_summary_names_each_type_once(exc, summary):
+    res = outcomes.from_exception(exc, [])
+    assert res.summary == summary
+    assert res.summary.count(type(exc).__name__) == 1
