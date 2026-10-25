@@ -15,6 +15,7 @@
 
 | Version | Date       | Summary                                                    | Author           |
 | ------- | ---------- | ---------------------------------------------------------- | ---------------- |
+| 2.0.10 | 2026-10-24 | S-190 (developer): 11.1–11.5, 11.8 and 11.9 checked (test-first; agent gate green, 3020 passed, coverage 97%; image smoke 58/58 on a local arm64 build, no deploy). 11.10 base corrected to `integration/bug-fix-agent-wave-a`. 11.6 (redeploy) and 11.7 (manual invoke) stay with the planner through `/infra-engineer`. Carry-ins done: the one strict run-link validator `run_link.py` (S-188 QA gap 2), `refresh_if_stale` errors mapped by `exc.error_code` (S-185 residual), the `github_client.py` docstring names the race-loss `DELETE` (DF-188-02), RT-07 (moved here), TC-189-08/-21 in `test_main.py` (DF-35 still open: Wave A makes no board call), the sysctl preflight in the `preflight` step (S-189). RT-07 found a new shape for `product-engineer`: a run can own the issue while another run's agent PR is open (the post-check reads claims only, spec §8.6); unreachable in Wave A, pinned as a strict xfail. Draft PR #460 open; `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.9 | 2026-10-24 | S-189 (developer): 10.1 checked as D-112 (OQ-1: a Python `make install` target, else `repo_gate` "missing install target"; confirmed by @llipe 2026-10-24, recorded via the docs write-back PR). 10.11 base corrected to `integration/bug-fix-agent-wave-a`; 10.12, 10.13 and 10.15 reworded to the D-110 uid model (root wrapper, `fixer` 10002, no `wrapper` user). 10.2–10.10 and 10.12–10.19 checked (test-first; agent gate green, 2579 passed, coverage 97.37%; image smoke 53/53 on a local arm64 build, no deploy). Draft PR #458 open; `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.8 | 2026-10-24 | S-188 (developer): 9.1 worded to the single DF-33 open-claim rule confirmed by @llipe 2026-10-24 (no `pr`, `disposition` or `refusal` marker); 9.8 base corrected to `integration/bug-fix-agent-wave-a`. 9.1–9.7 checked (test-first; agent gate green, 2271 passed, coverage 98%). Draft PR #454 open; `verifier` audit and `coverage_gate` left to the planner. Relevant Files updated. | developer |
 | 2.0.7 | 2026-10-24 | S-185 fix round (developer), from the QA gate and the S-185 fidelity report: page caps with pages left raise `GITHUB_UNAVAILABLE` (QA 1); an unknown `v_runs.effective_status` is `SUPABASE_UNAVAILABLE` with a `run_event` warning, and the missing-row warning is a `run_event` too (QA 2, DF-185-03); no request follows a redirect, a 3xx is `GITHUB_REQUEST_REJECTED` (QA 3); the `Link` parser matches `rel` as a whole parameter (QA 4); one 120 s wait budget per logical operation, `Retry-After` honoured up to 60 s (QA 5, DF-185-06); a failed mint is a `CredentialError`, and a refresh re-checks `issues: write` on the new token (QA 6); GraphQL `errors[]` split into transient (retry, then `GITHUB_UNAVAILABLE`) and permanent (`GITHUB_REQUEST_REJECTED`) (DF-185-05); a cross-repo linked PR is named `owner/repo#M` (DF-185-07, CT-33); agent-side CT-34 table (DF-185-08 partial; the L2.5 real-database read remains). No new public error code. DF-185-01/02/04 unchanged. | developer |
@@ -52,14 +53,15 @@
 
 ## Relevant Files
 
-- `agents/bug-fix/agentcore/agentcore.json` - Runtime config: env, `maxLifetime` 3600, `FIX_LOOP_ENABLED`, `PANEL_BASE_URL`
+- `agents/bug-fix/agentcore/agentcore.json` - Runtime config: env, `maxLifetime` 3600, `FIX_LOOP_ENABLED` (`0`, S-190), `PANEL_BASE_URL`
 - `agents/bug-fix/app/bugFix/Dockerfile` - ARM64 image: Python 3.13, Node 26 + pnpm, git, bubblewrap, socat, ripgrep, procps, util-linux (`setpriv`), libnss-myhostname + `/etc/gai.conf` (`localhost` without `/etc/hosts`, D-111), pinned Claude Code and sandbox runtime; the wrapper runs as root, no `sudo` (D-110)
 - `agents/bug-fix/app/bugFix/managed-settings.json` - Managed Claude Code policy, installed at `/etc/claude-code/`
 - `agents/bug-fix/app/bugFix/{Makefile,pyproject.toml}` - Agent quality gates
-- `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended; S-186: `signal_backstop.py` disposition hook with a 10 s budget, `TokenContext.app_id` in `credentials.py`; S-185: `mint_installation`, `TokenContext.permissions` and `has_issues_write` in `credentials.py`)
-- `agents/bug-fix/app/bugFix/config.py` - Typed env config; S-188: optional `PANEL_BASE_URL` (bare `https` origin) and `Config.run_link()`
-- `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration
-- `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9)
+- `agents/bug-fix/app/bugFix/{agent_reporter,heartbeat,signal_backstop,scrubber,credentials}.py` - Copied sibling modules (extended; S-186: `signal_backstop.py` disposition hook with a 10 s budget, `TokenContext.app_id` in `credentials.py`; S-185: `mint_installation`, `TokenContext.permissions` and `has_issues_write` in `credentials.py`; S-190: `GitHubSession` and `resolve_github_session` (keeps the PEM for `refresh_if_stale`), a typed Supabase HTTP error in `credentials.py`)
+- `agents/bug-fix/app/bugFix/config.py` - Typed env config; S-188: optional `PANEL_BASE_URL` (bare `https` origin) and `Config.run_link()`; S-190: `PANEL_BASE_URL` through `run_link.parse_origin`, `run_link()` returns a `RunLink`, `fix_loop_enabled` (`FIX_LOOP_ENABLED`, off when absent)
+- `agents/bug-fix/app/bugFix/main.py` - Entrypoint and step orchestration (S-190): `preflight` → `refuse` → `checkout` → `claim` → `fix` (only with `FIX_LOOP_ENABLED=1`), `Runtime` boundaries, `TokenSource` (refresh errors by `exc.error_code`), `wire_claim`, the ownership-gated `finally` path, heartbeat and backstop, `runs.metrics`
+- `agents/bug-fix/app/bugFix/outcomes.py` - Outcome mapping (spec §8.9; S-190): `RunResult`, closed outcome/reason/code sets, breaker flag, step-result builders
+- `agents/bug-fix/app/bugFix/run_link.py` - The one strict run-link validator: `parse_origin`, `RunLink`, `is_valid_run_link`, `run_ref` (S-190, S-188 QA gap 2)
 - `agents/bug-fix/app/bugFix/sandbox.py` - `fixer` subprocess spawner: `setpriv` drop from the root wrapper, allow-list env, `srt`/CLI sandbox, read-only `localhost` preflight (D-111), timeout, two-pass post-run sweep (S-182, D-110)
 - `agents/bug-fix/app/bugFix/fixer_exec.py` - Runs as `fixer` after `setpriv`; rebuilds the env from the allow-list and refuses to run as root (S-182, D-110)
 - `agents/bug-fix/app/bugFix/probe.py` - Spike probe mode (S-182, D-70, D-105, D-110: `setpriv.*`, `noescalate.*`, `userns.available`)
@@ -69,32 +71,34 @@
 - `agents/bug-fix/app/bugFix/issues.py` - GitHub issue I/O (REST and GraphQL); S-186: comments, reactions, 65,536-unit truncation; S-185: built on `github_client.py`, issue facts (`IssueFacts`), linked PRs (closing references plus `issue/<N>-` heads); S-188: `delete_comment()` (idempotent, a 404 is already gone)
 - `agents/bug-fix/app/bugFix/markers.py` - Claim, disposition, refusal and `pr` markers; leading block, trust, open claims (S-186); S-188: the single DF-33 open-claim rule (`refusal` closes its own run's claim)
 - `agents/bug-fix/app/bugFix/disposition.py` - Idempotent, ownership-gated disposition (S-186)
-- `agents/bug-fix/app/bugFix/refusal.py` - Preflight, refusal checks and the marked reply; `v_runs` reader (S-185); S-188: duplicate refused-set rule removed (DF-185-04), `active_claim_runs(before=, warn=)` shared with the race check; S-189: `post_refusal()`, `repo_gate` items `package.json or Makefile`, `lockfile`, `install`
+- `agents/bug-fix/app/bugFix/refusal.py` - Preflight, refusal checks and the marked reply; `v_runs` reader (S-185); S-188: duplicate refused-set rule removed (DF-185-04), `active_claim_runs(before=, warn=)` shared with the race check; S-189: `post_refusal()`, `repo_gate` items `package.json or Makefile`, `lockfile`, `install`; S-190: `run_preflight()` and `run_refusals()` (the two steps), `CheckOutcome.client`, the run link through `run_link.run_ref`
 - `agents/bug-fix/app/bugFix/claim.py` - Claim comment plus 👀, post-claim race check, withdrawal, ownership gate (S-188)
 - `agents/bug-fix/app/bugFix/github_client.py` - Shared GitHub client: retry policy, typed errors, GraphQL queries, `Link` header parsing (S-185)
 - `agents/bug-fix/app/bugFix/neutralize.py` - Model-text neutralizer (S-186)
 - `agents/bug-fix/app/bugFix/claim.py` - Claim and race check
 - `agents/bug-fix/app/bugFix/toolchain.py` - Stack detection, gate names, static `Makefile` parsing and the repo gate, read through a `RepoReader` (copied from `dependency-update` at ff52835, extended; S-189, D-112)
 - `agents/bug-fix/app/bugFix/safe_git.py` - The wrapper's only git: hardened command shape, the wrapper clone, `materialize()` as `fixer`, `capture()`, `TreeReader` (S-189, D-62)
-- `agents/bug-fix/app/bugFix/checkout.py` - Clone, materialize, repo gate (refusal `repo_gate`), frozen install, base gates, `restore_base()`; `CLONE_FAILED`, `INSTALL_FAILED` (S-189)
+- `agents/bug-fix/app/bugFix/checkout.py` - Clone, materialize, repo gate (refusal `repo_gate`), frozen install, base gates, `restore_base()`; `CLONE_FAILED`, `INSTALL_FAILED` (S-189); S-190: `record_link_protection()`, called by the `preflight` step
+- `agents/bug-fix/app/bugFix/{claim,disposition}.py` - S-190: the run link through `run_link.run_ref` (the loose `https://\S+` checks removed)
+- `agents/bug-fix/app/bugFix/github_client.py` - S-190: the module docstring names the race-loss single-id `DELETE` as the one write retried on a 5xx and a transport error (DF-188-02)
 - `agents/bug-fix/app/bugFix/gates.py` - Gate runner: four gates plus `audit` in `Mode.SCRIPT`, scrubbed tails (S-189)
-- `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions; S-189: wrapper git end to end, TC-189-19
+- `agents/bug-fix/app/bugFix/scripts/image-smoke.sh` - Image assertions; S-189: wrapper git end to end, TC-189-19; S-190: `main.py` (the image `CMD`) imports in the image
 - `agents/bug-fix/app/bugFix/tests/fixtures/repos/**` - S-189 fixture repos (README lists each)
-- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`; S-185: `unit/test_{refusal,github_client,permissions}.py`, `component/test_{refusal,label_invariance}.py`, extended `fake_github.py`, `unit/test_{credentials,comment_bodies_property}.py` and `tests/conftest.py`; S-188: `unit/test_race.py`, `component/test_claim.py`, `DELETE` in `fake_github.py`, extended `unit/test_{markers,markers_property,config,agentcore_config}.py` and `component/test_issues.py`; S-189: `unit/test_{toolchain,safe_git}.py`, `component/{repo_fixtures,test_checkout,test_gates,test_git_confinement,test_safe_git_faults}.py`)
+- `agents/bug-fix/app/bugFix/tests/{unit,component,fixtures}/**` - Agent tests and fixture repos (S-182: `unit/test_{sandbox,probe,probe_inner,image_setpriv,image_localhost,agentcore_config}.py`, `component/test_sandbox_proc.py`; `test_image_sudoers.py` and `sudoers-bug-fix` removed by 3.17; S-184: `unit/test_{params,params_property,payload_contract,no_defaults_in_code}.py`; S-186: `unit/test_{markers,markers_property,markers_contract,neutralize,neutralize_property,comment_bodies_property}.py`, `component/{fake_github,test_issues,test_disposition}.py`, extended `unit/test_{credentials,signal_backstop}.py`; S-185: `unit/test_{refusal,github_client,permissions}.py`, `component/test_{refusal,label_invariance}.py`, extended `fake_github.py`, `unit/test_{credentials,comment_bodies_property}.py` and `tests/conftest.py`; S-188: `unit/test_race.py`, `component/test_claim.py`, `DELETE` in `fake_github.py`, extended `unit/test_{markers,markers_property,config,agentcore_config}.py` and `component/test_issues.py`; S-189: `unit/test_{toolchain,safe_git}.py`, `component/{repo_fixtures,test_checkout,test_gates,test_git_confinement,test_safe_git_faults}.py`; S-190: `unit/test_{outcomes,run_link}.py`, `component/{test_main,test_claim_state_machine}.py`, extended `unit/test_{config,agentcore_config,credentials,github_client,comment_bodies_property,image_smoke_s189,main_stub,probe}.py` and `component/test_s189_fix_round.py`)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/{params_schema,payload.webhook,payload.manual}.json` - Panel → agent contract fixtures; `params_schema.json` is the spec §5.2 v2.0 copy shared with the panel tests (S-184)
 - `agents/bug-fix/app/bugFix/tests/fixtures/contract/markers/{*.md,expected.json,.gitattributes}` - CT-32 golden marker bodies, byte-exact (S-186)
-- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section; S-185: refusal checks section; S-188: claim and race check section, `PANEL_BASE_URL`; S-189: checkout, repo gate and gates section, image and testing notes)
+- `agents/bug-fix/{README.md,AGENTS.md}` - Agent docs (S-186: markers and disposition section; S-185: refusal checks section; S-188: claim and race check section, `PANEL_BASE_URL`; S-189: checkout, repo gate and gates section, image and testing notes; S-190: status, "Run steps and outcomes", `FIX_LOOP_ENABLED`, the run-link validator)
 - `agents/bug-fix/agentcore/{.gitignore,.llm-context/**,cdk/**}` - Generic AgentCore CDK app and schema context, mirrored from the sibling (S-180)
 - `agents/bug-fix/app/bugFix/{.gitignore,.dockerignore,.ca-placeholder}` - Package ignores and the build-time CA placeholder (S-180)
 - `Makefile` - Repo-root `AGENT_DIRS` includes `agents/bug-fix/app/bugFix` (S-180)
 - `.github/workflows/ci.yml` - `python-quality` matrix entry for `bug-fix` (S-180)
-- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186); GraphQL and fault injection in the double, `Link` header at L1, RT-13, no-sleep retry fixture (S-185); comment deletion in the double (S-188); real-git fixture repos, `SpawnSpy`, `StubSandbox`/`LocalSandbox`, and the image-smoke wrapper-git checks (S-189)
+- `TESTING.md` - `bug-fix` package rows and the image-smoke Layer 2 command (S-180); GitHub REST double and marker goldens (S-186); GraphQL and fault injection in the double, `Link` header at L1, RT-13, no-sleep retry fixture (S-185); comment deletion in the double (S-188); real-git fixture repos, `SpawnSpy`, `StubSandbox`/`LocalSandbox`, and the image-smoke wrapper-git checks (S-189); `test_main.py`'s harness, RT-07 and its strict xfails, the SIGTERM technique, the entrypoint smoke check (S-190)
 - `panel/tests/integration/bug-fix-seed.test.ts` - Seed, schema, webhook-resolve check, and the webhook fire at the seeded runtime ARN (S-184)
 - `panel/tests/unit/bug-fix-params-schema.test.ts` - TC-184-07 boundary table through the panel's Ajv (S-184)
 - `panel/tests/fixtures/github/issue_comment.created.json` - `issue_comment.created` payload, modeled on GitHub's documented shape (not recorded) (S-184)
 - `supabase/migrations/20261024130000_seed_bug_fix_agent.sql`, `supabase/seed.sql` (block 4a) - `agents` row (S-184)
 - `infra/changes/<date>-bug-fix-runtime/` - Infra change record
-- `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C); root wrapper + `setpriv` fact and the probe-invocation procedure (3.17)
+- `docs/runbooks/bug-fix-agent.md` - Runbook stub (completed in Wave C); root wrapper + `setpriv` fact and the probe-invocation procedure (3.17); S-190: `FIX_LOOP_ENABLED`, what a Wave A run writes, the 11.7 expected result
 - `docs/runbooks/README.md` - Runbook index row (3.17: probe in the trigger)
 - `workstream/spike-bug-fix-sandbox.md` - Spike report
 - `workstream/decisions-bug-fix-agent.md` - OQ-1 recorded as D-112 by the docs write-back PR (not edited in S-189's PR)
@@ -325,24 +329,26 @@
 
   > Note: `FIX_LOOP_ENABLED=0`, so after a confirmed claim the run disposes with "fix loop not yet enabled". Only `failed` counts toward the breaker (D-20, D-61, D-67).
 
-  - [ ] 11.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_outcomes.py`: one test per Wave A row of spec §8.9 v2.0 (every refusal code, a lost race, the D-67 codes, `GITHUB_PERMISSION_MISSING`); every `needs_review` and `not_applicable` result carries `result.summary`
-  - [ ] 11.2 `[T]` [agents/bug-fix] L2 `tests/component/test_main.py`:
+  - [x] 11.1 `[T]` [agents/bug-fix] L1 `tests/unit/test_outcomes.py`: one test per Wave A row of spec §8.9 v2.0 (every refusal code, a lost race, the D-67 codes, `GITHUB_PERMISSION_MISSING`); every `needs_review` and `not_applicable` result carries `result.summary`
+  - [x] 11.2 `[T]` [agents/bug-fix] L2 `tests/component/test_main.py`:
     - one test per terminal path;
     - SIGTERM during `checkout` → no disposition;
     - SIGTERM after a confirmed claim → disposition;
     - a reporter flush failure never masks the outcome.
-  - [ ] 11.3 `[I]` [agents/bug-fix] `outcomes.py`
-  - [ ] 11.4 `[I]` [agents/bug-fix] `main.py`:
+  - [x] 11.3 `[I]` [agents/bug-fix] `outcomes.py`
+  - [x] 11.4 `[I]` [agents/bug-fix] `main.py`:
     - steps `preflight` → `refuse` → `checkout` → `claim` → `fix` (`fix` only when `FIX_LOOP_ENABLED=1`);
     - `run_steps` and `run_events`;
     - heartbeat and backstop;
     - `runs.metrics.issue_number` and step timings.
-  - [ ] 11.5 `[I]` [agents/bug-fix] `agentcore.json`: `FIX_LOOP_ENABLED=0`
+  - [x] 11.5 `[I]` [agents/bug-fix] `agentcore.json`: `FIX_LOOP_ENABLED=0`
   - [ ] 11.6 [infra] Redeploy through `/infra-engineer`
   - [ ] 11.7 Manual/IC: a manual invoke with an `issue_number` on the fixture repo claims (a marker comment, no reaction) and disposes ("fix loop not yet enabled"); the panel shows the steps and summary
-  - [ ] 11.8 Verify AC (v2.0): AC1 by 11.2; AC2 by 11.1; AC3 by 11.2; AC4 by the metrics assertion; AC5 by 11.7
-  - [ ] 11.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
-  - [ ] 11.10 `verifier` audit; open PR → `integration/bug-fix-agent`; roadmap Wave A row → `In progress` (set by `planner`)
+  - [x] 11.8 Verify AC (v2.0): AC1 by 11.2; AC2 by 11.1; AC3 by 11.2; AC4 by the metrics assertion; AC5 by 11.7
+    > AC1: `test_main.py::TestWaveAHappyPath`, `TestFixStep`, `TestRefusals` (steps and events per path). AC2: `test_outcomes.py` (TC-190-03/-04/-05/-12), `test_main.py::TestFaults`, `test_every_github_call_is_scoped_to_the_one_issue` (TC-190-11/-13). AC3: `test_main.py::TestOwnershipGate` (TC-190-06/-07/-08), `TestReporter` (heartbeat, flush failure), RT-07 (`test_claim_state_machine.py`). AC4: `test_main.py::TestMetrics` (TC-190-09). AC5: open; the planner's 11.6/11.7 through `/infra-engineer` (the runbook's "Wave A run" lists the expected result).
+  - [x] 11.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`
+    > Local run done (2026-10-24, developer): agent gate green (`ruff`, `ruff format --check`, `mypy`, `pytest --cov` 3020 passed, 5 xfailed, coverage 97%: `main.py` 97%, `outcomes.py` 99%, `run_link.py` 94%; `pip-audit` clean), with the known macOS-only `test_sandbox_proc.py::TestTimeoutReal::test_sigterm_ignored_child_is_killed_after_grace` deselected (#447). Image smoke 58/58 on a local arm64 build (not deployed). `coverage_gate` is SKIPPED(no-delegation) here; the planner's `qa-engineer` records it.
+  - [ ] 11.10 `verifier` audit; open PR → `integration/bug-fix-agent-wave-a`; roadmap Wave A row → `In progress` (set by `planner`)
 
 ## Decisions Consumed
 
