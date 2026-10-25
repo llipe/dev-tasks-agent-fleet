@@ -22,8 +22,13 @@ import ast
 import re
 from pathlib import Path
 
-import outcomes
 import pytest
+
+import outcomes
+from checkout import CheckoutResult
+from claim import ClaimOutcome
+from credentials import CredentialError, PermissionMissing
+from github_client import GitHubRequestRejected, GitHubUnavailable
 from outcomes import (
     BREAKER_FREE_STATUSES,
     ERROR_CODES,
@@ -44,11 +49,6 @@ from outcomes import (
     needs_review,
     refused,
 )
-
-from checkout import CheckoutResult
-from claim import ClaimOutcome
-from credentials import CredentialError, PermissionMissing
-from github_client import GitHubRequestRejected, GitHubUnavailable
 from refusal import CheckOutcome, SupabaseUnavailable
 
 PKG = Path(__file__).resolve().parents[2]
@@ -412,9 +412,18 @@ _FORBIDDEN = [
 ]
 
 
+# The one allowed hit: the S-182 spike probe finds its own probe issue
+# ("[probe] bug-fix board probe") by listing issues. Probe mode runs only with
+# ALLOW_PROBE=1 on the runtime and a top-level ``__probe`` (D-70), never on a
+# /bug-fix run, and the runtime no longer sets ALLOW_PROBE (task 3.10).
+_PROBE_ONLY = {("probe.py", "/issues?state=all&per_page=100")}
+
+
 @pytest.mark.parametrize("path", _sources(), ids=lambda p: p.name)
 def test_no_label_route_constant_listing_or_search_in_the_source(path):
     for value in _strings(path):
+        if any(path.name == name and needle in value for name, needle in _PROBE_ONLY):
+            continue
         for pattern, what in _FORBIDDEN:
             assert not pattern.search(value), f"{path.name}: {what} in {value[:80]!r}"
     tree = ast.parse(path.read_text())
