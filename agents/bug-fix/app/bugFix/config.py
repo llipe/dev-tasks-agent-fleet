@@ -53,6 +53,10 @@ SUPABASE_KEY_SECRET_ID: str = os.environ.get(
 # `lifecycleConfiguration`; the seed's `max_runtime_seconds` (S-184) MUST
 # equal MAX_LIFETIME (research Q7). A unit test pins both.
 MAX_LIFETIME: int = 3600
+# The seed's `grace_seconds` (spec §5.1). The run's own deadline is
+# MAX_LIFETIME - RUN_GRACE_SECONDS, so the run ends itself (RUNTIME_TIMEOUT)
+# before the reaper's `started_at + max_runtime + grace` (S-190 fix round 2).
+RUN_GRACE_SECONDS: int = 120
 IDLE_SESSION_TIMEOUT: int = 900
 # Heartbeat cadence for long blocking steps; well below the idle bound.
 HEARTBEAT_INTERVAL: int = 120

@@ -178,6 +178,11 @@ class World:
     backstop: dict[str, Any] = field(default_factory=dict)
     params: dict[str, Any] | None = None
     remote_url: str | None = None  # overrides the fixture remote
+    # True: the real signal_backstop installer, not the recorder (S-190 fix
+    # round 2: at least one L2 path goes through the real install).
+    real_backstop: bool = False
+    clock: Callable[[], float] | None = None
+    run_budget: float | None = None
 
     def __post_init__(self) -> None:
         self.gh.add_issue(ISSUE)
@@ -221,6 +226,8 @@ class World:
             sysctl_base=str(self.proc),
             heartbeat_interval=self.heartbeat_interval,
             fix_runner=self.fix_runner,
+            clock=self.clock or time.monotonic,
+            run_budget=self.run_budget,
         )
 
     def payload(self) -> dict[str, Any]:
@@ -249,7 +256,11 @@ def world(tmp_path, monkeypatch) -> Callable[..., World]:
         made.append(w)
         monkeypatch.setattr(main, "load_config", w.config)
         monkeypatch.setattr(main, "default_runtime", w.runtime)
+        if w.real_backstop:
+            return w
 
+        # Unit isolation: record the getters instead of registering the run
+        # with the process-wide handler. World(real_backstop=True) skips this.
         def install(get_run, get_secrets, get_disposition=None, **_kw):
             w.backstop.update(run=get_run, secrets=get_secrets, disposition=get_disposition)
 

@@ -8,10 +8,13 @@ same time. In production the handler runs on the main thread while the worker
 keeps going. These tests run them concurrently:
 
 - a SIGTERM on the main thread while the worker is mid-step;
-- a SIGTERM inside the worker's own terminal write (strict xfail, a defect);
-- a relay failure while the worker still runs (strict xfail, a defect);
-- the backstop through the AgentCore SDK's real async-generator bridge
-  (strict xfail, a defect);
+- a SIGTERM inside the worker's own terminal write (was a strict xfail; fixed
+  in S-190 fix round 2: the handler waits on the run's write lock);
+- a relay failure while the worker still runs (was a strict xfail; fixed:
+  the entrypoint only logs, the worker writes the terminal row);
+- the backstop through the AgentCore SDK's real async-generator bridge (was
+  a strict xfail; fixed: one handler installed on the main thread at import,
+  resolving the live run through the registry);
 - a stream close after the worker already finished (an untested branch);
 - two invocations in one process, one after the other.
 
@@ -27,8 +30,6 @@ import logging
 import signal
 import threading
 from typing import Any
-
-import pytest
 
 import main
 import signal_backstop
@@ -101,18 +102,6 @@ class TestSigtermConcurrentWithTheWorker:
         blob = json.dumps(db.calls)
         assert SB_KEY not in blob and TOKEN not in blob
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "DEFECT: RunReporter._terminate sets _terminal=True before its flush "
-            "and its runs PATCH. A SIGTERM handled on the main thread inside that "
-            "window sees _terminal, skips fail(), then re-raises SIGTERM with "
-            "SIG_DFL and the process dies before the worker's PATCH lands: zero "
-            "terminal writes, the run stays 'running' until the reaper. Expected: "
-            "the handler waits (bounded) for an in-flight terminal write, or the "
-            "terminal write is serialized under one lock shared with the handler."
-        ),
-    )
     def test_a_sigterm_inside_the_workers_terminal_write_leaves_one_terminal_row(
         self, world, monkeypatch
     ):
@@ -127,7 +116,11 @@ class TestSigtermConcurrentWithTheWorker:
                 and threading.current_thread().name == WORKER
             ):
                 entered.set()  # _terminal is already True; the PATCH is in flight
-                release.wait(10)
+                # An in-flight PATCH that lands after 0.5 s by itself. (QA's
+                # draft held it until after the handler returned; a handler
+                # that waits for the write can't return before it lands, so
+                # that version could only pass with a second terminal write.)
+                release.wait(0.5)
             return real_update(self, table, filt, patch)
 
         monkeypatch.setattr(ReporterDB, "update", update)
@@ -152,6 +145,11 @@ class TestSigtermConcurrentWithTheWorker:
             release.set()
             _join_workers()
         assert len(seen["terminal"]) == 1, seen["terminal"]
+        # The worker's own row, and no second terminal write ever after.
+        terminal = _terminal(ReporterDB.instances[-1])
+        assert [(p["status"], p.get("outcome")) for p in terminal] == [
+            ("succeeded", "needs_review")
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -160,21 +158,6 @@ class TestSigtermConcurrentWithTheWorker:
 
 
 class TestRelayFailure:
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "DEFECT: when the relay (run_with_heartbeat) raises an Exception while "
-            "the worker still runs, invoke()'s `except Exception` calls "
-            "run.fail('UNHANDLED_ERROR') from the entrypoint thread. That is a "
-            "second writer on the non-thread-safe reporter during the run, and it "
-            "takes the terminal write from the worker: the row says failed/"
-            "UNHANDLED_ERROR (counted by the breaker, D-20) while the worker goes "
-            "on to claim and dispose the issue, and its real needs_review report "
-            "is dropped as a no-op. Expected: with worker.running, the entrypoint "
-            "only logs (as on GeneratorExit/CancelledError) and the worker writes "
-            "the one terminal row."
-        ),
-    )
     def test_a_relay_failure_mid_run_leaves_the_terminal_write_to_the_worker(
         self, world, monkeypatch
     ):
@@ -209,21 +192,6 @@ class TestRelayFailure:
 
 
 class TestBackstopUnderTheSdk:
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "DEFECT: bedrock-agentcore 1.22.0 iterates an async-generator "
-            "entrypoint on its daemon 'agentcore-worker-loop' thread "
-            "(BedrockAgentCoreApp._async_gen_to_sync_gen), not the main thread. "
-            "install_termination_backstop() is called inside invoke(), so "
-            "signal.signal raises ValueError and the backstop silently returns: "
-            "in production no SIGTERM handler is installed, no SIGNAL_TERMINATION "
-            "is written and no D-81 disposition runs on SIGTERM. The tests in "
-            "test_main.py replace install_termination_backstop, so they never see "
-            "it. Expected: the handler is installed on the main thread (at import "
-            "or app start) and resolves the live run through a registry."
-        ),
-    )
     def test_a_sigterm_mid_run_under_the_sdk_bridge_ends_signal_termination(
         self, world, monkeypatch
     ):

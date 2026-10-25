@@ -87,10 +87,15 @@ ENTRYPOINT_ERROR_CODES: tuple[str, ...] = (
 )
 
 # Every ``error_code`` a run can end with (spec §8.9, plus the entrypoint's
-# own codes above). ``RUNTIME_TIMEOUT`` is the reaper's, never the agent's.
+# own codes above). ``RUNTIME_TIMEOUT`` is §8.9's reaper code; the run also
+# ends itself ``failed``/``RUNTIME_TIMEOUT`` past its own deadline
+# (``max_runtime_seconds - grace_seconds``, S-190 fix round 2). §8.9 has no
+# agent-side timeout row: TODO(spec §8.9) add one, or name a separate code.
+RUNTIME_TIMEOUT = "RUNTIME_TIMEOUT"
 ERROR_CODES: frozenset[str] = frozenset(
     {
         *ENTRYPOINT_ERROR_CODES,
+        RUNTIME_TIMEOUT,
         "GITHUB_PERMISSION_MISSING",
         "CREDENTIALS_UNAVAILABLE",
         "CLONE_FAILED",
