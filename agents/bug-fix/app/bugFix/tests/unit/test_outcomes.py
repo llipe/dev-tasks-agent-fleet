@@ -440,3 +440,16 @@ def test_the_outcomes_module_has_no_io():
     for name in ("requests", "subprocess", "urllib", "boto3", "socket"):
         assert f"import {name}" not in text
     assert outcomes.__doc__ and "§8.9" in outcomes.__doc__
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "QA-190-03: from_exception prefixes the type name onto scrub_exception's "
+        "'Type: message', so every UNHANDLED_ERROR summary reads "
+        "'UNHANDLED_ERROR: RuntimeError: RuntimeError: boom'"
+    ),
+)
+def test_an_unhandled_summary_names_the_type_once():
+    res = outcomes.from_exception(RuntimeError("boom"), [])
+    assert res.summary == "UNHANDLED_ERROR: RuntimeError: boom"

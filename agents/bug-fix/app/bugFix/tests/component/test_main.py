@@ -37,6 +37,7 @@ import pytest
 
 import agent_reporter
 import main
+import outcomes
 import signal_backstop
 from checkout import WorkPaths
 from config import Config
@@ -994,3 +995,241 @@ class TestTokenSource:
         source, secrets = self._source(lambda c, p, a: replace(c, token=new))
         assert source() == new
         assert new in secrets.values()
+
+
+# ---------------------------------------------------------------------------
+# qa-engineer, S-190 completion gate: the ownership gate at every step
+# boundary, payload shapes, the stream closing mid-run, secrets in the logs
+# ---------------------------------------------------------------------------
+
+
+def _die(w: World) -> None:
+    _sigterm(w)
+    raise Died()
+
+
+def _sigterm_in_step(name: str) -> Callable[[World, pytest.MonkeyPatch], None]:
+    def arm(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main, f"_{name}", lambda ctx: _die(w))
+
+    return arm
+
+
+def _sigterm_on_the_claim_post(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The claim comment landed; the post-check has not run yet.
+    def hook(call: Call) -> None:
+        if call.method == "POST" and call.path.endswith("/comments"):
+            _die(w)
+
+    w.gh.hook = hook
+
+
+def _sigterm_after_the_disposition(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Wave A: the claim step disposed; SIGTERM before the terminal report.
+    monkeypatch.setattr(main, "_report", lambda ctx, result: _die(w))
+
+
+# (arm, fix_loop, the writes that must exist, ownership confirmed)
+_BOUNDARIES: dict[str, tuple[Callable[..., None], bool, list[str], bool]] = {
+    "preflight": (_sigterm_in_step("preflight"), False, [], False),
+    "refuse": (_sigterm_in_step("refuse"), False, [], False),
+    "checkout": (_sigterm_in_step("checkout"), False, [], False),
+    "claim_posted_unconfirmed": (_sigterm_on_the_claim_post, False, ["comment:claim"], False),
+    "fix_start": (
+        _sigterm_in_step("fix"),
+        True,
+        ["comment:claim", "reaction:eyes", "comment:disposition", "reaction:confused"],
+        True,
+    ),
+    "after_disposition": (
+        _sigterm_after_the_disposition,
+        False,
+        ["comment:claim", "reaction:eyes", "comment:disposition", "reaction:confused"],
+        True,
+    ),
+}
+
+
+class TestQAOwnershipAtEveryBoundary:
+    """D-81: nothing is disposed before the post-check confirms ownership, and
+    exactly one disposition exists after it, whoever posts it (the run or the
+    SIGTERM backstop)."""
+
+    @pytest.mark.parametrize("where", sorted(_BOUNDARIES))
+    def test_sigterm_at_a_step_boundary(self, world, monkeypatch, where):
+        arm, fix_loop, expected, owned = _BOUNDARIES[where]
+        w = world(fix_loop=fix_loop)
+        arm(w, monkeypatch)
+        with pytest.raises(Died):
+            _invoke(w)
+        assert [s for _, s in _write_shapes(w)] == expected
+        final = ReporterDB.instances[-1].final()
+        assert (final["status"], final["error_code"]) == ("failed", "SIGNAL_TERMINATION")
+        if owned:
+            assert "ownership was not confirmed" not in final["error_message"]
+        else:
+            assert "ownership was not confirmed" in final["error_message"]
+
+
+def _with_payload(w: World, **changes: Any) -> World:
+    payload = w.payload()
+    for key, value in changes.items():
+        if value is ...:
+            payload.pop(key, None)
+        else:
+            payload[key] = value
+    w.payload = lambda: payload  # type: ignore[method-assign]
+    return w
+
+
+class TestQAPayloadShapes:
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"repository_org": 123},
+            {"repository_name": None},
+            {"base_branch": ["main"]},
+            {"repository_org": "   "},
+        ],
+    )
+    def test_a_wrongly_typed_repository_field_is_invalid_payload(self, world, changes):
+        w = _with_payload(world(), **changes)
+        res, _, db = _invoke(w)
+        assert (res["status"], res["error_code"]) == ("failed", "INVALID_PAYLOAD")
+        assert w.gh.calls == []
+        assert db.step_keys() == ["preflight"]
+
+    @pytest.mark.parametrize("params", [..., [ISSUE], "12", {"trigger_comment_id": TRIGGER}])
+    def test_params_without_a_usable_issue_refuse_with_no_github_write(self, world, params):
+        w = _with_payload(world(), params=params)
+        res, _, _ = _invoke(w)
+        assert (res["status"], res["outcome"], res["reason"]) == (
+            "succeeded",
+            "not_applicable",
+            "invalid_params",
+        )
+        assert w.gh.writes() == []
+
+    def test_a_top_level_issue_number_is_never_read_in_place_of_params(self, world):
+        w = _with_payload(world(), params={"trigger_comment_id": TRIGGER}, issue_number=ISSUE)
+        res, _, db = _invoke(w)
+        assert res["reason"] == "invalid_params"
+        assert "issue_number" in res["summary"]
+        assert w.gh.writes() == []
+        assert db.final()["metrics"]["issue_number"] is None
+
+    def test_an_extra_top_level_field_is_ignored(self, world):
+        w = _with_payload(world(), extra="x")
+        res, _, _ = _invoke(w)
+        assert (res["status"], res["outcome"]) == ("succeeded", "needs_review")
+
+    @pytest.mark.parametrize("value", ["true", 1, "1", {"x": 1}])
+    def test_a_non_boolean_probe_flag_is_a_normal_run(self, world, value):
+        w = _with_payload(world(), __probe=value)
+        res, _, db = _invoke(w)
+        assert res["outcome"] == "needs_review"
+        assert db.step_keys() == WAVE_A_STEPS
+
+    def test_a_prompt_wrapped_probe_is_refused_with_no_github_call(self, world, monkeypatch):
+        monkeypatch.delenv("ALLOW_PROBE", raising=False)
+        w = world()
+        inner = {**w.payload(), "__probe": True}
+        w.payload = lambda: {"prompt": json.dumps(inner)}  # type: ignore[method-assign]
+        res, _, db = _invoke(w)
+        assert (res["status"], res["error_code"]) == ("failed", "PROBE_REFUSED")
+        assert w.gh.calls == []
+        assert db.step_keys() == []
+        assert db.final()["error_code"] == "PROBE_REFUSED"
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "QA-190-02: a run_id that is not a UUID passes unwrap_payload() and then "
+            "raises in refusal.run_preflight (canonical_run_id), so the run ends "
+            "UNHANDLED_ERROR instead of INVALID_PAYLOAD"
+        ),
+    )
+    def test_a_non_uuid_run_id_is_invalid_payload(self, world):
+        w = _with_payload(world(), run_id="not-a-uuid")
+        res, _, _ = _invoke(w)
+        assert w.gh.calls == []
+        assert res["error_code"] == "INVALID_PAYLOAD"
+
+
+def _slow_install(w: World) -> None:
+    def slow(call):
+        time.sleep(0.3)
+        return result(0, "ok")
+
+    w.sandbox.answers[("make", "install")] = slow
+
+
+async def _close_after_first_heartbeat(w: World) -> None:
+    agen = main.invoke(w.payload(), None)
+    first = await agen.__anext__()
+    assert is_heartbeat_chunk(first)
+    await agen.aclose()
+
+
+async def _cancel_the_consumer(w: World) -> None:
+    async def consume() -> list:
+        return [c async for c in main.invoke(w.payload(), None)]
+
+    task = asyncio.ensure_future(consume())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+class TestQAStreamClosedMidRun:
+    """The panel resolves ``invokeAgentRuntime`` once AgentCore accepts the call
+    and the webhook path aborts it on a timeout, so the response stream can close
+    while the steps run. ``asyncio.run`` joins the worker before these asserts."""
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "QA-190-01: closing or cancelling the invoke stream mid-run raises "
+            "GeneratorExit/CancelledError through `with run:`; RunReporter.__exit__ "
+            "then writes failed with error_code 'GeneratorExit'/'CancelledError' "
+            "(outside the closed set, counts toward the breaker) and an unscrubbed "
+            "traceback to run_events, while the worker goes on to claim and dispose"
+        ),
+    )
+    @pytest.mark.parametrize("close", [_close_after_first_heartbeat, _cancel_the_consumer])
+    def test_the_terminal_row_stays_in_the_closed_set(self, world, close):
+        w = world(heartbeat_interval=0.02)
+        _slow_install(w)
+        asyncio.run(close(w))
+        db = ReporterDB.instances[-1]
+        final = db.final()
+        assert final["status"] == "succeeded" or final["error_code"] in outcomes.ERROR_CODES
+        assert not any("Traceback" in m for m in db.messages())
+
+
+class TestQASecretsInLogs:
+    """capture_logging=False: the standard logging stream never reaches
+    run_events, but it reaches CloudWatch, so it is scrubbed too."""
+
+    @pytest.mark.parametrize("scenario", ["happy", "github_fault", "secret_bearing_exception"])
+    def test_no_secret_in_logs_events_result_or_metrics(self, world, caplog, scenario):
+        w = world(fix_loop=scenario == "secret_bearing_exception")
+        if scenario == "github_fault":
+            w.gh.faults["issue"] = [502, 502, 502]
+        if scenario == "secret_bearing_exception":
+
+            def runner(ctx):
+                raise RuntimeError(f"boom {TOKEN} {SB_KEY} {PEM}")
+
+            w.fix_runner = runner
+        with caplog.at_level("DEBUG"):
+            res, chunks, db = _invoke(w)
+        emitted = caplog.text + json.dumps(chunks) + json.dumps(db.calls, default=str)
+        for secret in (TOKEN, SB_KEY, PEM, "MIIfake"):
+            assert secret not in emitted
+        assert res["status"] in ("succeeded", "failed")
+        metrics = db.final()["metrics"]
+        assert set(metrics) <= {"issue_number", "step_timings_ms", "gates_base"}
+        for gate in metrics.get("gates_base", {}).values():
+            assert set(gate) == {"pass", "exit_code"}

@@ -243,3 +243,73 @@ def test_parse_origin_accepts_only_the_strict_grammar(text):
     assert all(0x21 <= ord(c) <= 0x7E for c in origin)
     assert "@" not in origin and "?" not in origin and "#" not in origin
     assert origin.count("/") == 2
+
+
+# qa-engineer, S-190 completion gate: hostile PANEL_BASE_URL shapes the
+# grammar must refuse, and the ones it accepts on purpose.
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://panel.example.",  # trailing dot (FQDN form)
+        "https://" + "a" * 64 + ".example",  # a label over 63
+        "https://" + "a." * 127 + "com",  # a host over 253
+        "https://" + "a" * 100_000,  # very long input
+        "HTTPS://panel.example",  # the scheme is lowercase only
+        "https://panel.example:",  # an empty port
+        "https://[::1]",  # an IP-literal in brackets
+        "https://panel.example\\@evil.example",  # backslash userinfo trick
+        "https://evil.example\\.panel.example",
+        "https://panel.example%2e",  # percent-encoding
+        "https://panel.example;x",
+        "https://panel.example\u200b",  # a zero-width space
+        "https://panel.example\x1b",
+        " javascript:alert(1)",
+        "https://panel.example//",
+    ],
+)
+def test_hostile_origins_are_rejected(raw):
+    with pytest.raises(ValueError):
+        parse_origin(raw)
+    assert make_run_link(raw, RUN) is None
+
+
+def test_a_punycode_host_is_only_ever_the_configured_one():
+    # The grammar is ASCII, so an IDN lookalike can only arrive as punycode,
+    # and only through the operator's own PANEL_BASE_URL. A link built from it
+    # never validates against a different configured origin.
+    lookalike = RunLink("https://xn--dt-agent-fleet-pnel-xyz.fly.dev", RUN)
+    assert is_valid_run_link(lookalike, RUN)
+    assert not is_valid_run_link(lookalike, RUN, origin=PANEL)
+    assert run_ref(lookalike, RUN, origin=PANEL) == f"`{RUN}`"
+
+
+def test_surrounding_whitespace_from_the_env_is_trimmed_not_kept():
+    assert parse_origin("\t" + PANEL + "\r\n") == PANEL
+
+
+def test_a_very_long_origin_is_refused_quickly():
+    import time
+
+    start = time.perf_counter()
+    with pytest.raises(ValueError):
+        parse_origin("https://" + "a-" * 500_000 + "a")
+    assert time.perf_counter() - start < 1.0
+
+
+def test_a_bad_run_id_or_a_bad_configured_origin_never_validates():
+    link = RunLink(PANEL, RUN)
+    assert not is_valid_run_link(link, "not-a-uuid")
+    assert not is_valid_run_link(link, None)
+    assert not is_valid_run_link(link, RUN, origin="http://dt-agent-fleet-panel.fly.dev")
+    assert run_ref(link, "not-a-uuid") == "`unknown run`"
+    assert run_ref(None, "") == "`unknown run`"
+
+
+def test_a_non_canonical_scheme_spelling_is_invalid():
+    # urlsplit lowercases the scheme, so only the exact-text check catches it.
+    forged = str.__new__(RunLink, f"HTTPS://dt-agent-fleet-panel.fly.dev/runs/{RUN}")
+    forged.origin = PANEL  # type: ignore[misc]
+    forged.run_id = RUN  # type: ignore[misc]
+    assert not is_valid_run_link(forged, RUN)

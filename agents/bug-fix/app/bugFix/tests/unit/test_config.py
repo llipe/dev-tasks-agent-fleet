@@ -295,3 +295,18 @@ class TestFixLoopFlag:
 
     def test_it_is_not_required(self):
         assert "FIX_LOOP_ENABLED" not in REQUIRED_VARS
+
+
+class TestFixLoopEnabledQA:
+    """qa-engineer, S-190 gate: empty is off; garbage fails closed (a ConfigError,
+    so no run starts) and never defaults to on."""
+
+    @pytest.mark.parametrize("raw", ["", "   ", "\t\n"])
+    def test_empty_or_blank_is_off(self, raw):
+        assert load_config(_env(FIX_LOOP_ENABLED=raw)).fix_loop_enabled is False
+
+    @pytest.mark.parametrize("raw", ["TRUE", "-1", "1 1", "1\x00", "\u0661", "0x1", "1.0"])
+    def test_garbage_fails_closed(self, raw):
+        with pytest.raises(ConfigError) as info:
+            load_config(_env(FIX_LOOP_ENABLED=raw))
+        assert info.value.variable == "FIX_LOOP_ENABLED"
