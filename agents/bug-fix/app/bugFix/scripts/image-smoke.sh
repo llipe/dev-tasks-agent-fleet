@@ -463,4 +463,50 @@ want_entry="$(printf 'steps=preflight,refuse,checkout,claim,fix\nfix_loop_defaul
 [ "$entry" = "$want_entry" ] || fail "entrypoint: expected '$want_entry', got: $entry"
 ok "main.py (the image CMD) imports with the image's dependencies; steps preflight..fix; fix loop off by default"
 
+# --- S-190 fix round 2: the SIGTERM backstop under the image's server ---------
+# The server main.py starts (uvicorn, through main.serve) with a fake run
+# registered: once it serves /ping, the backstop must be on top of uvicorn's
+# handler; a SIGTERM must fail the run once, and the process must end on
+# SIGTERM (exit 143) although a non-daemon thread like RunWorker still runs.
+set +e
+term_out="$(docker run --rm -i --platform "$PLATFORM" --security-opt no-new-privileges \
+  -w /app --entrypoint python3 "$IMAGE" - 18080 <<'PY'
+import os, signal, sys, threading, time, urllib.request
+sys.path.insert(0, "/app")
+import main, signal_backstop
+
+class Run:
+    _terminal = False
+    def fail(self, **kw):
+        print("FAIL", kw["error_code"], flush=True)
+        self._terminal = True
+
+run = Run()
+
+def fire():
+    for _ in range(400):
+        try:
+            urllib.request.urlopen("http://127.0.0.1:18080/ping", timeout=1)
+            break
+        except Exception:
+            time.sleep(0.05)
+    h = signal.getsignal(signal.SIGTERM)
+    print("ON_TOP", signal_backstop.is_backstop_handler(h), h.previous.__qualname__, flush=True)
+    signal_backstop.install_termination_backstop(lambda: run, list)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+threading.Thread(target=fire, daemon=True).start()
+threading.Thread(target=time.sleep, args=(60,), name="bug-fix-run").start()
+main.serve(18080)
+print("SERVE_RETURNED", flush=True)
+PY
+)"
+term_status=$?
+set -e
+term_lines="$(printf '%s\n' "$term_out" | grep -E '^(ON_TOP|FAIL|SERVE)' || true)"
+want_term="$(printf 'ON_TOP True Server.handle_exit\nFAIL SIGNAL_TERMINATION')"
+[ "$term_lines" = "$want_term" ] || fail "SIGTERM backstop: expected '$want_term', got: $term_out"
+[ "$term_status" = 143 ] || fail "SIGTERM backstop: expected exit 143 (SIGTERM), got $term_status"
+ok "under the image's server, the SIGTERM backstop sits on uvicorn's handler, fails the run once, and the process ends on SIGTERM"
+
 echo "image-smoke: ${pass} checks passed for ${IMAGE}"
