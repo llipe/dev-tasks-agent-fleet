@@ -1084,20 +1084,33 @@ def _with_payload(w: World, **changes: Any) -> World:
 
 class TestQAPayloadShapes:
     @pytest.mark.parametrize(
-        "changes",
+        ("changes", "says"),
         [
-            {"repository_org": 123},
-            {"repository_name": None},
-            {"base_branch": ["main"]},
-            {"repository_org": "   "},
+            ({"repository_org": 123}, "repository_org has the wrong type"),
+            ({"repository_name": None}, "repository_name missing"),
+            ({"base_branch": ["main"]}, "base_branch has the wrong type"),
+            ({"repository_org": "   "}, "repository_org missing"),
+            ({"repository_name": ...}, "repository_name missing"),
+            ({"base_branch": {"name": "main"}}, "base_branch has the wrong type"),
         ],
     )
-    def test_a_wrongly_typed_repository_field_is_invalid_payload(self, world, changes):
+    def test_a_wrongly_typed_repository_field_is_invalid_payload(self, world, changes, says):
         w = _with_payload(world(), **changes)
         res, _, db = _invoke(w)
         assert (res["status"], res["error_code"]) == ("failed", "INVALID_PAYLOAD")
+        assert says in res["summary"]
+        if "wrong type" in says:
+            # QA gap 5: a field that is present but not a string is not "missing".
+            assert "missing" not in res["summary"]
         assert w.gh.calls == []
         assert db.step_keys() == ["preflight"]
+
+    def test_a_missing_and_a_wrongly_typed_field_are_both_named(self, world):
+        w = _with_payload(world(), repository_org=7, base_branch=...)
+        res, _, _ = _invoke(w)
+        assert res["error_code"] == "INVALID_PAYLOAD"
+        assert "base_branch missing" in res["summary"]
+        assert "repository_org has the wrong type" in res["summary"]
 
     @pytest.mark.parametrize("params", [..., [ISSUE], "12", {"trigger_comment_id": TRIGGER}])
     def test_params_without_a_usable_issue_refuse_with_no_github_write(self, world, params):
@@ -1141,19 +1154,19 @@ class TestQAPayloadShapes:
         assert db.step_keys() == []
         assert db.final()["error_code"] == "PROBE_REFUSED"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "QA-190-02: a run_id that is not a UUID passes unwrap_payload() and then "
-            "raises in refusal.run_preflight (canonical_run_id), so the run ends "
-            "UNHANDLED_ERROR instead of INVALID_PAYLOAD"
-        ),
-    )
-    def test_a_non_uuid_run_id_is_invalid_payload(self, world):
-        w = _with_payload(world(), run_id="not-a-uuid")
-        res, _, _ = _invoke(w)
+    @pytest.mark.parametrize("run_id", ["not-a-uuid", "0b9a2f4e", f"{RUN}x", f" {RUN}/.."])
+    def test_a_non_uuid_run_id_is_invalid_payload(self, world, run_id):
+        """QA-190-02: failed/INVALID_PAYLOAD at preflight, with no GitHub call."""
+        w = _with_payload(world(), run_id=run_id)
+        res, _, db = _invoke(w)
         assert w.gh.calls == []
-        assert res["error_code"] == "INVALID_PAYLOAD"
+        assert (res["status"], res["error_code"]) == ("failed", "INVALID_PAYLOAD")
+        assert "run_id is not a UUID" in res["summary"]
+        assert run_id.strip() not in res["summary"]
+        assert db.step_keys() == ["preflight"]
+        final = db.final()
+        assert (final["status"], final["error_code"]) == ("failed", "INVALID_PAYLOAD")
+        assert "outcome" not in final
 
 
 def _slow_install(w: World) -> None:

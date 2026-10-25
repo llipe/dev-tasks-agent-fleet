@@ -90,6 +90,7 @@ from disposition import Diagnosis, Disposer
 from gates import SandboxLike
 from heartbeat import HeartbeatResult, run_with_heartbeat, terminal_chunk
 from issues import IssuesClient
+from markers import canonical_run_id
 from outcomes import RunResult
 from params import ParamsError, parse_params
 from probe import execute as execute_probe
@@ -391,20 +392,39 @@ def _finally_dispose(ctx: RunContext, result: RunResult) -> None:
 # ---------------------------------------------------------------------------
 
 
+_REPOSITORY_FIELDS = ("repository_org", "repository_name", "base_branch")
+
+
+def _payload_problems(request: Mapping[str, Any]) -> list[str]:
+    """What makes the payload unusable, naming fields and never their values.
+
+    ``run_id`` must be a UUID (QA-190-02): every marker and run link is built
+    from it, so a run that can't build them stops here, before any GitHub
+    call. A repository field that is absent, ``null`` or blank is "missing";
+    one that is present but not a string "has the wrong type" (QA gap 5).
+    """
+    problems: list[str] = []
+    try:
+        canonical_run_id(request.get("run_id"))  # type: ignore[arg-type]
+    except ValueError:
+        problems.append("run_id is not a UUID")
+    for name in _REPOSITORY_FIELDS:
+        value = request.get(name)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            problems.append(f"{name} missing from the payload")
+        elif not isinstance(value, str):
+            problems.append(f"{name} has the wrong type (expected a string)")
+    return problems
+
+
 def _preflight(ctx: RunContext) -> RunResult | None:
     rt = ctx.runtime
     record_link_protection(ctx.run, ctx.secrets, rt.sysctl_base)
     raw_params = ctx.request.get("params")
     ctx.issue_number = _issue_of(raw_params)
-    missing = [
-        name
-        for name in ("repository_org", "repository_name", "base_branch")
-        if not isinstance(ctx.request.get(name), str) or not ctx.request[name].strip()
-    ]
-    if missing:
-        return outcomes.failed(
-            "INVALID_PAYLOAD", f"INVALID_PAYLOAD: {', '.join(missing)} missing from the payload"
-        )
+    problems = _payload_problems(ctx.request)
+    if problems:
+        return outcomes.failed("INVALID_PAYLOAD", f"INVALID_PAYLOAD: {'; '.join(problems)}")
 
     def resolve() -> TokenContext:
         session = rt.resolve_github(ctx.owner, ctx.cfg.supabase_url, ctx.supabase_key)
