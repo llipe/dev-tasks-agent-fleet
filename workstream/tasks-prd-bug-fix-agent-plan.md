@@ -137,7 +137,7 @@
   - [ ] 2.3 [infra] Runtime role: `secretsmanager:GetSecretValue` on exactly the Supabase key, App PEM, Anthropic key and Projects token ARNs, with no `bedrock:*` (D-58, D-99)
   - [ ] 2.4 [infra] `agentcore deploy` the 1.0 image. Record the runtime ARN from `agentcore status`
   - [ ] 2.5 [infra] Panel `invoke-runtime` policy: add the runtime ARN and its `runtime-endpoint/DEFAULT` (issue #280) (D-58)
-  - [ ] 2.6 [infra] **Operator action:** GitHub App → **Issues: read and write**, then accept the change on every installation in `github_installations` (D-58)
+  - [x] 2.6 [infra] **Operator action:** GitHub App → **Issues: read and write**, then accept the change on every installation in `github_installations` (D-58)
   - [ ] 2.7 [infra] Verify with `aws iam simulate-principal-policy`: allowed on the three secrets, denied on another secret, denied on `bedrock:InvokeModel`
   - [ ] 2.8 [infra] Verify a token-mint probe shows `permissions.issues == "write"` for each installation. List any installation that hasn't accepted (edge case)
   - [ ] 2.9 [panel] Manual check: invoking the stub from the deployed panel creates a run that ends `succeeded`/`not_applicable`
@@ -325,7 +325,7 @@
   - [x] 10.18 `[I]` [agents/bug-fix] Do this before 10.9. `checkout.py`: install command per detected manager, and `restore_base()` after install and the base gates (capture → restore changed tracked paths as `fixer` through `safe_git.py`) (DF-12, D-63)
   - [x] 10.19 Verify AC: the S-189 v1.2 install and base-restore AC by 10.17 (DF-12, D-63)
 
-- [ ] 11.0 Implement Story S-190 (#372 - https://github.com/llipe/dev-tasks-agent-fleet/issues/372): Orchestration, outcome mapping, and reporting through the claim
+- [x] 11.0 Implement Story S-190 (#372 - https://github.com/llipe/dev-tasks-agent-fleet/issues/372): Orchestration, outcome mapping, and reporting through the claim
 
   > Note: `FIX_LOOP_ENABLED=0`, so after a confirmed claim the run disposes with "fix loop not yet enabled". Only `failed` counts toward the breaker (D-20, D-61, D-67).
 
@@ -342,8 +342,8 @@
     - heartbeat and backstop;
     - `runs.metrics.issue_number` and step timings.
   - [x] 11.5 `[I]` [agents/bug-fix] `agentcore.json`: `FIX_LOOP_ENABLED=0`
-  - [ ] 11.6 [infra] Redeploy through `/infra-engineer`
-  - [ ] 11.7 Manual/IC: a manual invoke with an `issue_number` on the fixture repo claims (a marker comment, no reaction) and disposes ("fix loop not yet enabled"); the panel shows the steps and summary
+  - [x] 11.6 [infra] Redeploy through `/infra-engineer`
+  - [x] 11.7 Manual/IC: a manual invoke with an `issue_number` on the fixture repo claims (a marker comment, no reaction) and disposes ("fix loop not yet enabled"); the panel shows the steps and summary
   - [x] 11.8 Verify AC (v2.0): AC1 by 11.2; AC2 by 11.1; AC3 by 11.2; AC4 by the metrics assertion; AC5 by 11.7
     > AC1: `test_main.py::TestWaveAHappyPath`, `TestFixStep`, `TestRefusals` (steps and events per path). AC2: `test_outcomes.py` (TC-190-03/-04/-05/-12), `test_main.py::TestFaults`, `test_every_github_call_is_scoped_to_the_one_issue` (TC-190-11/-13). AC3: `test_main.py::TestOwnershipGate` (TC-190-06/-07/-08), `TestReporter` (heartbeat, flush failure), RT-07 (`test_claim_state_machine.py`). AC4: `test_main.py::TestMetrics` (TC-190-09). AC5: open; the planner's 11.6/11.7 through `/infra-engineer` (the runbook's "Wave A run" lists the expected result).
   - [x] 11.9 Run tests: `make test`; agent gate; `make validate`; record `coverage_gate`

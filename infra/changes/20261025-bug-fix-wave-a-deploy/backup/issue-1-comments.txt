@@ -1,0 +1,14 @@
+--- id=6404464463 user=devtasks-agent-fleet[bot] type=Bot
+<!-- agent-fleet:bug-fix:claim run_id=a76a6c8c-4720-4580-8c65-520460e647f8 -->
+🔧 Bug-fix run https://dt-agent-fleet-panel.fly.dev/runs/a76a6c8c-4720-4580-8c65-520460e647f8 is working on this issue.
+--- id=6404464630 user=devtasks-agent-fleet[bot] type=Bot
+<!-- agent-fleet:bug-fix:disposition run_id=a76a6c8c-4720-4580-8c65-520460e647f8 -->
+😕 Bug-fix run https://dt-agent-fleet-panel.fly.dev/runs/a76a6c8c-4720-4580-8c65-520460e647f8 stopped without opening a pull request.
+
+**Why it stopped:** fix loop not yet enabled
+
+**What was tried:**
+
+The run checked the issue, cloned the repository, installed its dependencies and ran its base gates. The fix step is switched off on this runtime (FIX_LOOP_ENABLED=0), so no change was attempted.
+
+No labels or assignees were changed, and the issue stays open. Comment `/bug-fix` to try again.
