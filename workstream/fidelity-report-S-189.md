@@ -119,8 +119,22 @@ No randomized or property tactic in the test plan targets S-189 (the plan lists 
 
 **Publication.** Per the caller's read-only constraint, this report is not committed and I posted nothing to #371 or #458. The caller (`planner`) is to post this header and verdict and a link on #371 and PR #458, and to confirm reviewers can reach it.
 
+## 6. Reconciliation
+
+Non-blocking: ran after the #458 merge. Confirmed by @llipe 2026-10-24 (`product-engineer`, `activity-drift-reconciliation`).
+
+| Findings | Where they landed |
+| -------- | ----------------- |
+| DF-189-01 | This write-back: spec v2.6 §8.7 and §12 item 7, the D-62 amendment, stories v2.5 (S-189-AC3, S-193-AC3/AC6), test plan v2.4 (TC-189-18, TC-193-02) |
+| DF-189-02, -03, -06 | Accepted as delivered |
+| DF-189-04, -05, -08, -09 | Fixed in #458 (`211643b`, `17ee3be`); the gate items, reply phrases and makefile order are recorded in spec v2.6 §8.7 and the D-112 amendment |
+| DF-189-07 | This write-back: stories v2.5, test plan v2.4, matrix v2.3, the D-62 amendment |
+
+The S-189 fix-round hardening (work-tree walk, `.git` components, `fsckObjects`, tar caps, link-protection preflight) is recorded in spec v2.6 §8.7, §12 and §16, and in test plan v2.4 (TC-189-22, TC-189-23). Test plan §10.7 holds the full routing.
+
 ## Changelog
 
 | Version | Date | Summary | Author |
 | ------- | ---- | ------- | ------ |
+| 1.1 | 2026-10-24 | Reconciliation section added: DF-189-01/04/05/07/08 and the fix-round hardening routed to spec v2.6, stories v2.5, test plan v2.4 and matrix v2.3; confirmed by @llipe 2026-10-24. | product-engineer |
 | 1.0 | 2026-10-24 | Initial Audit Mode fidelity report for S-189 (#371), PR #458 @ `af142db`. | verifier |
