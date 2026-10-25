@@ -40,6 +40,7 @@
 
 | Version | Date       | Summary                                                                                                   | Author   |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------- | -------- |
+| 2.5 | 2026-10-24 | Drift reconciliation of S-190 audit findings DF-190-01/04/05/06/10 and the stream rule ([`fidelity-report-S-190.md`](fidelity-report-S-190.md), PR #460), confirmed by @llipe 2026-10-24, against spec v2.7 and stories v2.6. DF-190-01 (Major): new TC-194-21 (the §8.6 post-check re-runs `linked_pr`: a linked PR → withdrawal under the DF-38 rules and `not_applicable`/`linked_pr`; a fault fails closed with its D-67 code; ownership only when both reads pass) and TC-194-22 (the pre-push re-check → disposition, `needs_review`/`linked_pr`, no push, no second PR), both owned by S-194-AC9; RT-07's `TestOwnedWhileAPrIsOpen` strict xfail becomes a pass in S-194, and oracle (2) drops its recorded-shape workaround; TC-194-10 adds the flag gate (AC9 green and a wired fix runner, DF-190-04); new EC-56. DF-190-10: TC-180-12 now covers the entrypoint shell only, and the step behaviour points to `test_main.py` (TC-190-01/-02). DF-190-05/06 and the stream rule: TC-190-03 lists the entrypoint codes and the `result.reason` values. New §10.8 routes DF-190-01…12; DF-190-02 stays open. Totals 308 → 310. | product-engineer |
 | 2.4 | 2026-10-24 | Drift reconciliation of S-189 audit findings DF-189-01/04/05/07/08 and the S-189 fix-round hardening ([`fidelity-report-S-189.md`](fidelity-report-S-189.md), PR #458), confirmed by @llipe 2026-10-24, against spec v2.6 and stories v2.5. DF-189-01: TC-189-18 and TC-193-02 assert the raw-blob tar (never `git archive`; `export-*` and eol attributes don't change the copy). Fix-round hardening: new TC-189-22 (the link-free work-tree walk refuses hardlinks, FIFOs, sockets and device nodes, skips the four dependency folders, logs the link-protection sysctls) and TC-189-23 (`fsckObjects`, `.git` components with NTFS/HFS lookalikes, tar caps of 100,000 entries and 2 GiB), both `CLONE_FAILED`; TC-189-19 asserts both sysctls are 1 in image smoke. DF-189-04/05/08: TC-189-04, -07 and -09 cover `lockfile`, yarn/bun (`supported package manager (pnpm or npm)`), `package.json or Makefile`, the fixed reply phrases ("missing install target (the Makefile target `install`)"), GNU make's makefile order and `include` not followed. DF-189-07: S-180-AC5, TC-180-07, -08, TC-189-01, -02, -19, S-193-AC6, TC-193-14, TC-194-13, SC-IC-08, SC-IC-13 and EC-19 drop the `wrapper` user (D-110). New §10.7 routes DF-189-01…09. Counted tests 306 → 308. | product-engineer |
 | 2.3 | 2026-10-24 | D-112 / OQ-1 and drift reconciliation of DF-38 (race-loss part) and S-188 audit findings DF-188-01/02/05 ([`fidelity-report-S-188.md`](fidelity-report-S-188.md)), confirmed by @llipe 2026-10-24, against spec v2.5 and stories v2.4. D-112 / OQ-1: TC-189-07 gains the `py-no-install` case ("missing install target" → `repo_gate`, `not_applicable`), TC-189-10 records D-112, and TC-189-14 asserts the Python `make install` argv. DF-38 race-loss part resolved: TC-185-14's best-effort list states that a 404 on the race-loss `DELETE` is "already gone" and any other fault ends `failed` with its D-67 code, no disposition, no board call; the DF-38 row keeps the 🚀/`pr` comment (S-194) and diagnosis comment (S-186) parts open. DF-188-01: TC-186-06 and TC-188-16 name both halves of the open-claim rule (`markers.open_claims()` and `refusal.active_claim_runs()`); TC-186-06's status cases are tested in `test_race.py`. DF-188-02: TC-185-14 carves out the single-id race-loss `DELETE`, retried on a 5xx or a transport error. DF-188-05: RT-07 moves from S-188 to S-190 (§9.2, §11 steps 7 and 9, §12.1). New §10.6 routes the S-188 findings. Counted tests unchanged (306). | product-engineer |
 | 2.2 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07 ([`fidelity-report-S-185.md`](fidelity-report-S-185.md)), confirmed by @llipe 2026-10-24, against spec v2.4 and stories v2.3. DF-33 is resolved: one open-claim definition (no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs`; no row counts as finished with a warning; an unknown status fails closed as `SUPABASE_UNAVAILABLE`) in `markers.open_claims()`. TC-185-20, TC-186-06, TC-188-16 and RT-02 oracles (3) and (6) assert it; the DF-33 row is kept and marked resolved. DF-185-01/02/05/06/07: TC-185-11, -14, -19 and -21, CT-13, CT-33, CT-34 and EC-14 state the GitHub client semantics (read/write retry split, 3 attempts in total, 120 s budget, `Retry-After` up to 60 s, redirects never followed, page cap is a fault, GraphQL error classes, cross-repo `owner/repo#M`). CT-13, CT-33 and CT-34 point at the files that cover them; CT-34's real-database L2.5 read stays a residual (DF-185-08). New §10.5 routes the S-185 findings. | product-engineer |
@@ -134,7 +135,7 @@ Agent tests live under `A/tests/{unit,component,fixtures}`, as in the siblings. 
 | AC-17  | *Removed in v2.0 (label parameters, D-93). Tests retired.*                                                       | —                  | —                                  |
 | AC-18  | *Removed in v2.0 (label check, D-93). Tests retired.*                                                            | —                  | —                                  |
 | AC-19  | A panel invoke with `issue_number` and no `trigger_comment_id` runs the same flow, posting comments but no reactions. **(v2.0, new)** | FR-1, FR-7, D-93   | S-188, S-190, S-198                |
-| AC-20  | Two `/bug-fix` comments moments apart → one claim and one refusal (or one race-loss withdrawal), never two Draft PRs. **(v2.0, new)** | D-54, D-92         | S-185, S-188, S-198 (DF-29, DF-32) |
+| AC-20  | Two `/bug-fix` comments moments apart → one claim and one refusal (or one race-loss withdrawal), never two Draft PRs. **(v2.0, new)** | D-54, D-92         | S-185, S-188, S-194 (DF-190-01, **v2.5**), S-198 (DF-29, DF-32) |
 | AC-21  | One linked board: the card is `In progress` after the claim, `In review` after the Draft PR, `Ready` after a disposition. An issue with no card is added. **(v2.0, new)** | D-102, D-103       | S-199, S-198                       |
 | AC-22  | No linked board → no board call beyond detection. Several boards and no `project` param → no card moves, and a `run_event` asks for the override. **(v2.0, new)** | D-102              | S-199                              |
 | AC-23  | The Projects token missing or invalid, or a status name not on the board → the run outcome equals the same run without a board, and the problem is a `run_event`. **(v2.0, new)** | D-99, D-103        | S-199, S-198                       |
@@ -144,7 +145,7 @@ Business rules pinned by tests **(v2.0)**:
 - The issue is the whole task: the run reads and writes issue N only (one shot): TC-190-13.
 - Labels have no effect, and the agent never reads or writes labels or assignees: TC-185-25, TC-188-09, TC-190-12, TC-194-08, RT-13.
 - Who may trigger is decided by the webhook rule alone; the agent checks nothing about the commenter: CT-25, TC-185-24.
-- One bug-fix run per issue at a time: TC-185-20, TC-188-13, RT-07.
+- One bug-fix run per issue at a time: TC-185-20, TC-188-13, TC-194-21, TC-194-22, RT-07.
 - The agent never merges, and the PR stays Draft: TC-194-09.
 - `github-ops` conventions apply: TC-194-01, TC-194-02.
 - The board is never needed for the agent to work: TC-199-11, TC-199-12, TC-199-13, TC-199-19.
@@ -181,7 +182,7 @@ Every story section lists its numbered ACs (`S-<id>-AC<n>`, numbered as in stori
 | TC-180-09 | AC6 | S    | `/etc/claude-code/managed-settings.json` is `root:root` with mode `0644`. As `fixer`, appending to it fails, and the directory is not writable.                                                              | L2    | `A/scripts/image-smoke.sh` · 1.9                     |
 | TC-180-10 | AC6 | P    | Policy content: the sandbox is enabled and not escapable. The network allow-list is **exactly** {`registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`}. The deny rules include `Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch` and `WebSearch`, plus Read and Edit on `/proc/**`, `/etc/claude-code/**` and `/work/secrets/**`. | L1    | `A/tests/unit/test_managed_policy.py` **(new)** · 1.8 |
 | TC-180-11 | AC6 | N    | The allow-list has no wildcard host, no `github.com` or `api.github.com`, no `*.amazonaws.com`, and no `169.254.*` or other link-local entry. After S-182, the key names match the spike report (re-run).     | L1    | `A/tests/unit/test_managed_policy.py` **(new)**      |
-| TC-180-12 | AC7 | P    | The entrypoint reports `started`, then `succeeded`/`not_applicable` with summary "not yet implemented", and returns cleanly.                                                                                 | L1    | `A/tests/unit/test_main_stub.py` · 1.2               |
+| TC-180-12 | AC7 | P    | The entrypoint shell, around a fake `execute()`: it reports `started`, returns the terminal chunk of whatever result `execute()` gives, and returns cleanly. Superseded in scope by S-190 (DF-190-10): "not yet implemented" is gone, and the step behaviour (`preflight` → `refuse` → `checkout` → `claim`, the Wave A disposition) is covered by `A/tests/component/test_main.py` (TC-190-01, TC-190-02). **(v2.5)** | L1    | `A/tests/unit/test_main_stub.py` · 1.2               |
 | TC-180-13 | —   | P    | `config.py` reads `MODEL_ID`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID`, `PROJECTS_TOKEN_SECRET_ID` and `BOARD_UPDATES_ENABLED` (`1` or `0`; any other value → typed error). Task 1.1 doesn't yet name the last two (DF-37). **(v2.0)** | L1    | `A/tests/unit/test_config.py` · 1.1                  |
 | TC-180-14 | —   | E    | Each missing **required** env var (`MODEL_ID`, `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID`) raises a typed `ConfigError` naming the variable. Sentinel values set on the other vars never appear in the message or the traceback. A missing `PROJECTS_TOKEN_SECRET_ID` is pinned per DF-36 (recommended: the board is disabled with a `run_event`, not a `ConfigError`, because board work is best effort, FR-34). **(v2.0)** | L1    | `A/tests/unit/test_config.py` · 1.1, 1.10            |
 | TC-180-15 | —   | S    | The scrubber redacts the Anthropic key (`sk-ant-api03-…` sentinel), the App PEM (multi-line), the installation token (`ghs_…`) and the Projects PAT (`ghp_` + 36 characters) in plain strings, exception messages, nested dicts and gate-output tails (D-99, FR-34). **(v2.0)** | L1    | `A/tests/unit/test_scrubber.py` · 1.1, 1.4           |
@@ -490,7 +491,7 @@ Every story section lists its numbered ACs (`S-<id>-AC<n>`, numbered as in stori
 | --------- | --- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------- |
 | TC-190-01 | AC1 | P    | The `run_steps` names, in order, are `preflight`, `refuse`, `checkout`, `claim` (Wave A, `FIX_LOOP_ENABLED=0`). Each step emits at least one `run_event` at its decision. **(v2.0)** | L2    | `A/tests/component/test_main.py` · 11.2     |
 | TC-190-02 | AC1 | N    | `FIX_LOOP_ENABLED=0` → no `fix` step, then the disposition "fix loop not yet enabled" (a diagnosis comment, and 😕 when `trigger_comment_id` is set) → `succeeded`/`needs_review`. **(v2.0)** | L2    | `A/tests/component/test_main.py` · 11.2     |
-| TC-190-03 | AC2 | P    | Outcome table, one test per Wave A row of §8.9 v2.0: `not_applicable` for each of `pull_request`, `closed`, `linked_pr`, `active_run`, `repo_gate`, `invalid_params` and the lost race; `needs_review` for "fix loop not yet enabled"; `failed` with `GITHUB_PERMISSION_MISSING`, `CREDENTIALS_UNAVAILABLE`, `CLONE_FAILED`, `INSTALL_FAILED`, `GITHUB_UNAVAILABLE`, `GITHUB_REQUEST_REJECTED`, `SUPABASE_UNAVAILABLE` and `UNHANDLED_ERROR`. **(v2.0)** | L1    | `A/tests/unit/test_outcomes.py` · 11.1 |
+| TC-190-03 | AC2 | P    | Outcome table, one test per Wave A row of §8.9 v2.0: `not_applicable` for each of `pull_request`, `closed`, `linked_pr`, `active_run`, `repo_gate`, `invalid_params` and the lost race; `needs_review` for "fix loop not yet enabled"; `failed` with `GITHUB_PERMISSION_MISSING`, `CREDENTIALS_UNAVAILABLE`, `CLONE_FAILED`, `INSTALL_FAILED`, `GITHUB_UNAVAILABLE`, `GITHUB_REQUEST_REJECTED`, `SUPABASE_UNAVAILABLE` and `UNHANDLED_ERROR`. **v2.5** (spec v2.7 §8.9, DF-190-04/05/06): also `failed` with the entrypoint codes `CONFIG_INVALID`, `INVALID_PAYLOAD` (a non-UUID `run_id` included, no GitHub call), `PROBE_REFUSED` and `SIGNAL_TERMINATION`, each counted by the breaker and with no outcome (a `failed` result never carries `outcome: not_applicable`); `needs_review` with `result.reason` `fix_loop_disabled` and `fix_unavailable`. A closed or cancelled invoke stream never changes the reported result (QA-190-01). **(v2.0)** | L1    | `A/tests/unit/test_outcomes.py` · 11.1 |
 | TC-190-04 | AC2 | N    | Every `needs_review` and `not_applicable` result has a non-empty `result.summary` containing the reason. An empty reason is rejected by the result builder.                                                            | L1    | `A/tests/unit/test_outcomes.py` · 11.1      |
 | TC-190-05 | AC2 | P    | Breaker flag: `counts_toward_breaker` is false for every `succeeded/*` row and true for every `failed` row (FR-26, agent side). Whether the webhook rule's breaker reads run outcomes at all is DF-30; this test pins only the agent's classification. **(v2.0)** | L1    | `A/tests/unit/test_outcomes.py` · 11.1 |
 | TC-190-06 | AC3 | P    | SIGTERM after the post-check confirmed ownership → the disposition is applied, then `fail()` (D-81). **(v2.0)** | L2    | `A/tests/component/test_main.py` · 11.2     |
@@ -610,8 +611,9 @@ Every story section lists its numbered ACs (`S-<id>-AC<n>`, numbered as in stori
 - **AC4:** body sections.
 - **AC5:** artifact recorded, `fixed`.
 - **AC6:** after the PR, 🚀 on `trigger_comment_id` (when present) and a comment with a `pr` marker linking the PR; labels and assignees unchanged; the PR stays Draft (D-93). **(v2.0)**
-- **AC7:** `FIX_LOOP_ENABLED=1`, deployed.
+- **AC7:** `FIX_LOOP_ENABLED=1`, deployed, only after AC9 passes and `Runtime.fix_runner` is wired (DF-190-01, DF-190-04). **(v2.5)**
 - **AC8:** a push or PR failure → disposition, then `PR_CREATE_FAILED`.
+- **AC9:** never two Draft PRs: the post-check re-runs `linked_pr` (withdraw, `not_applicable`/`linked_pr`; a fault fails closed; ownership only when both reads pass), and a pre-push re-check takes the disposition path (`needs_review`, no second PR) (DF-190-01, spec v2.7 §8.6). **(v2.5, new)**
 
 | ID        | AC  | Type | Assertion                                                                                                                                                                                                                         | Layer | File · task                                          |
 | --------- | --- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------------------------------------------- |
@@ -624,7 +626,7 @@ Every story section lists its numbered ACs (`S-<id>-AC<n>`, numbered as in stori
 | TC-194-07 | AC5 | P    | `run.artifact('pull_request', url, title, metadata)` is recorded once, and the run ends `succeeded`/`fixed`. (FR-21, AC-10)                                                                                                       | L2    | `A/tests/component/test_pull_request.py`             |
 | TC-194-08 | AC6 | P    | No `/labels` or `/assignees` call on the PR path. The issue's labels and assignees equal their pre-run state (D-93). **(v2.0)** | L2    | `A/tests/component/test_pull_request.py`             |
 | TC-194-09 | AC6 | S    | No `gh pr ready`, `gh pr merge`, or GitHub merge or auto-merge API call appears anywhere on the PR path (asserted on the recorded calls). (D-13)                                                                                  | L2    | `A/tests/component/test_pull_request.py`             |
-| TC-194-10 | AC7 | P    | `agentcore.json` has `FIX_LOOP_ENABLED=1`; deployment evidence comes from SC-LIVE-02.                                                                                                                                            | L1    | `A/tests/unit/test_agentcore_config.py`              |
+| TC-194-10 | AC7 | P    | `agentcore.json` has `FIX_LOOP_ENABLED=1`; deployment evidence comes from SC-LIVE-02. **v2.5** gate (DF-190-01, DF-190-04): the flip lands only with TC-194-21 and TC-194-22 green, and `main.default_runtime()` wires a `Runtime.fix_runner`; image smoke asserts that a build with the flag at `1` has a runner, so no deployed run ends `needs_review`/`fix_unavailable`. **(v2.5)** | L1    | `A/tests/unit/test_agentcore_config.py`, `A/scripts/image-smoke.sh` |
 | TC-194-11 | AC8 | N    | A push rejection and a PR API 5xx each → disposition (😕, diagnosis, board `Ready`), then `failed`/`PR_CREATE_FAILED`, with the token absent from `error_message`. **(v2.0)** | L2    | `A/tests/component/test_pull_request.py`             |
 | TC-194-12 | —   | E    | A branch that already exists on the remote → a fault with a pinned code. No force-push.                                                                                                                                         | L2    | `A/tests/component/test_pull_request.py`             |
 | TC-194-13 | AC2 | S    | A fixer `.git/config` in `/work/repo` with `url.https://evil.invalid/.insteadOf=https://github.com/`, an extra `credential.helper=!cat >/work/out/tok`, and a `pre-push` hook: the push runs from the wrapper clone, `/work/out/tok` doesn't exist, no request reaches `evil.invalid`, and no hook runs in the root wrapper's git (D-110). Expected to **pass** against the D-62 design (resolves DF-02). **(v1.1)** | L2    | `A/tests/component/test_git_confinement.py` **(new)** |
@@ -635,6 +637,8 @@ Every story section lists its numbered ACs (`S-<id>-AC<n>`, numbered as in stori
 | TC-194-18 | AC2 | S    | Host scoping of the push credential: with the wrapper's push configuration, `git credential fill` for `https://evil.invalid` and for `https://github.com.evil.invalid` returns no password, and for `https://github.com` returns the token. No plain `credential.helper` key is set, and after the push the token is in neither the wrapper clone's `.git/config` nor any process argv (D-62). **(v1.1, new)** | L2    | `A/tests/component/test_git_confinement.py`          |
 | TC-194-19 | AC6 | P    | After the PR, in order: the `pull_request` artifact, then 🚀 (`rocket`) on `trigger_comment_id`, then one comment whose leading block is the `pr` marker and which links the PR URL, then the board `In review`. Without `trigger_comment_id`, the comment is posted with no reaction (AC-19). A 4xx on 🚀 or on the `pr` comment after the PR exists never turns `fixed` into `failed`; pinned per DF-38 (D-93). **(v2.0, new)** | L2    | `A/tests/component/test_pull_request.py`             |
 | TC-194-20 | —   | E    | After a successful run (Draft PR open on `issue/N-…`), a new `/bug-fix` on issue N is refused `linked_pr` naming the PR, not `active_run`. No second branch or PR is created. **(v2.0, new)** | L2    | `A/tests/component/test_main.py` **(new)**           |
+| TC-194-21 | AC9 | N/E  | **Post-check `linked_pr` re-check** (DF-190-01, spec v2.7 §8.6 step 2). Runs A and B pass refusal (c) and (d); B is still in `checkout`; A claims, wins, opens its Draft PR and posts its `pr` marker (closing A's claim, DF-33). B then claims: the open-claim read finds no open claim, the re-check finds A's PR, and B deletes only its own claim comment and ends `succeeded`/`not_applicable`, reason `linked_pr`, with no disposition, no board call, no branch and no PR. Withdrawal faults follow DF-38: a 404 → still `not_applicable`/`linked_pr`; a non-404 `DELETE` fault → `failed` with its D-67 code. A fault on the re-check (5xx or transport retries exhausted, a 4xx, a GraphQL `errors[]`, a page cap with pages left) → `failed` with its D-67 code, the claim comment kept, no disposition: never "no linked PR". Ownership is confirmed only when both reads pass (the backstop gets no disposition action before that). RT-07's `TestOwnedWhileAPrIsOpen` is no longer a strict xfail. **(v2.5, new)** | L2    | `A/tests/component/test_claim.py`, `A/tests/component/test_claim_state_machine.py` **(new)** |
+| TC-194-22 | AC9 | N/E  | **Pre-push `linked_pr` re-check** (DF-190-01, defense in depth). With ownership confirmed and validation and red-to-green passed, an open closing-reference PR or an `issue/<N>-` PR appears before `open_pr`: the run makes no `git push` and no `gh pr create` (argv spy), applies the disposition (😕, diagnosis "another bug-fix PR was opened for this issue while this run worked", board `Ready`), and ends `succeeded`/`needs_review`, reason `linked_pr`. A fault on that read → `failed` with its D-67 code, after the disposition, and still no push. **(v2.5, new)** | L2    | `A/tests/component/test_pull_request.py`, `A/tests/component/test_main.py` **(new)** |
 
 ### 4.16 S-195 (#377) — In-container confinement tests (AC-5, AC-6)
 
@@ -1370,6 +1374,7 @@ All nine categories are evaluated. Each entry points to the counted test that pi
 | EC-53 | Auth & permissions    | AC-2, AC-3         | An issue title or body crafted to inject into the agent's reply                                                  | Refusal and claim comments are fixed text, with no issue bytes **(v2.0, new)** | Phishing links or mentions in the App's voice | TC-185-17, RT-15 |
 | EC-54 | State transitions     | AC-20              | A race loser whose trigger comment is its own (not shared)                                                        | Pinned: its 👀 stays and it posts no reply (spec §8.6); recorded as DF-32 **(v2.0, new)** | A 👀 that never resolves | TC-188-13, RT-07 |
 | EC-55 | State transitions     | AC-10, AC-2        | `/bug-fix` again on an issue whose bug-fix Draft PR is open                                                      | Refusal `linked_pr` naming the PR **(v2.0, new)** | A second PR for the same bug | TC-194-20 |
+| EC-56 | Timing & concurrency  | AC-20              | A run still in `checkout` while another run claims, wins and opens its Draft PR (its `pr` marker closes its claim) | The late run's post-check re-check finds the PR and withdraws, `not_applicable`/`linked_pr`; a PR that appears later still is caught before push (`needs_review`, no second PR) (DF-190-01) **(v2.5, new)** | Two Draft PRs for one issue | TC-194-21, TC-194-22, RT-07 |
 
 **ACs with few meaningful edge cases:**
 - **S-181:** infra verification. The edge cases are the installations that haven't accepted the permission (TC-181-09) and the PAT scope (TC-181-13).
@@ -1500,7 +1505,7 @@ All nine categories are evaluated. Each entry points to the counted test that pi
 | **Owner story**        | S-190 (#372), moved from S-188 (DF-188-05, **v2.3**): it wires the claim into `main.py`, and invariants (2), (3) and (7) need the PR and disposition states |
 | **Tactic type**        | stateful random walk (`hypothesis.stateful.RuleBasedStateMachine`) |
 | **Input surface**      | Rules: a trigger arrives (with its own comment id, or a manual invoke); refusal checks run; a run claims; a concurrent run claims; the post-check runs (success, or a Supabase failure); a losing run fails to delete its comment; a run opens a PR; a run disposes; a run becomes terminal with a random status; the reaper marks a run `timed_out`; SIGTERM arrives at a random point; a human posts a forged marker of any kind; a human adds or removes random labels; the PR is closed unmerged. GitHub is an in-memory store of comments, reactions, labels and PRs, with no filtering logic, so it doesn't reimplement production behaviour (TESTING.md). |
-| **Property / Oracle**  | Invariants after every step: (1) at most one non-terminal run per issue has passed the ownership gate; (2) at most one open agent Draft PR per issue; (3) at most one disposition marker per `run_id`; (4) refusal paths add no reaction and no claim marker; (5) the agent never writes labels or assignees; (6) once every open trusted claim is terminal and no agent PR is open, the next trigger proceeds, so there is no stranded state (replacing the sweep's recovery, D-94); (7) every trigger comment carrying the App's 👀 eventually also carries 🚀 or 😕, unless its run was killed outright; (8) board mutations happen only after the ownership gate. **Expected counterexample for (7):** a race loser with its own trigger comment keeps 👀 with no answer (DF-32). Its minimized sequence goes into DF-32, and that shape is marked expected-fail until DF-32 is reconciled. |
+| **Property / Oracle**  | Invariants after every step: (1) at most one non-terminal run per issue has passed the ownership gate; (2) at most one open agent Draft PR per issue; (3) at most one disposition marker per `run_id`; (4) refusal paths add no reaction and no claim marker; (5) the agent never writes labels or assignees; (6) once every open trusted claim is terminal and no agent PR is open, the next trigger proceeds, so there is no stranded state (replacing the sweep's recovery, D-94); (7) every trigger comment carrying the App's 👀 eventually also carries 🚀 or 😕, unless its run was killed outright; (8) board mutations happen only after the ownership gate. **Expected counterexample for (7):** a race loser with its own trigger comment keeps 👀 with no answer (DF-32). Its minimized sequence goes into DF-32, and that shape is marked expected-fail until DF-32 is reconciled. **v2.5 (DF-190-01):** the S-190 run pinned a counterexample to (2), `TestOwnedWhileAPrIsOpen` (a strict xfail; five steps: two triggers, A claims and wins, A opens a PR, B claims and wins). S-194-AC9 adds the `linked_pr` re-checks, and in S-194 that test becomes a **pass**: drop the strict xfail and the "record the shape" workaround on invariant (2). The post-check fault that leaves 👀 unanswered (DF-190-02) is a third exemption to (7) in the code, open with DF-32. |
 | **Iterations**         | 200 walks × 30 steps |
 | **Seed**               | `walk-AC20-<ts>-<hex>` |
 | **Replay instruction** | `make test PYTEST_ADDOPTS="--hypothesis-seed=<seed> -k test_claim_state_machine"` |
@@ -1749,6 +1754,26 @@ The S-189 audit ([`fidelity-report-S-189.md`](fidelity-report-S-189.md)) raised 
 
 The S-189 fix-round hardening (QA-189-01…04: the work-tree walk, `.git` components, `fsckObjects`, the tar caps, the link-protection preflight) is recorded in spec v2.6 §8.7, §12 item 7 and §16, and tested by the new TC-189-22 and TC-189-23.
 
+### 10.8 S-190 audit findings **(v2.5)**
+
+The S-190 audit (`fidelity-report-S-190.md`, which arrives with PR #460) raised DF-190-01…12: one Major (DF-190-01, latent until S-194 opens PRs), the rest Minor. All are non-blocking. @llipe confirmed the write-back on 2026-10-24.
+
+| ID | Decision | Landed in | Tests now |
+| -- | -------- | --------- | --------- |
+| DF-190-01 | **Major.** The post-check re-runs refusal (c) `linked_pr`: a linked PR → withdraw under the DF-38 rules, `not_applicable`/`linked_pr`; a fault fails closed with its D-67 code; ownership only when both reads pass. S-194 re-checks before push (`needs_review`, no second PR). Gates `FIX_LOOP_ENABLED=1`. The DF-33 rule that a `pr` marker closes a claim is kept | This write-back: spec v2.7 §4, §6, §8.2, §8.6, §8.9, §18; D-54 amendment; S-188 technical note, S-194-AC7 and new AC9; implemented in S-194 (#376) | TC-194-10, TC-194-21, TC-194-22, EC-56, RT-07 (`TestOwnedWhileAPrIsOpen` → pass in S-194) |
+| DF-190-02 | **Open.** A post-check fault leaves an unanswered 👀. Not decided here: product-engineer reconciles it together with DF-32 (remove our own 👀, or add it only after the post-check) | — | RT-07 oracle (7), pinned by design |
+| DF-190-03 | Roadmap Wave A row stale | Roadmap; the planner updates it in the consolidated PR | — |
+| DF-190-04 | `FIX_LOOP_ENABLED=1` with no fix runner → disposition "the fix step is not available in this build", `needs_review`/`fix_unavailable`; a Wave B story wires the runner before the flag flips | This write-back: spec v2.7 §8.9; S-191 and S-194 technical notes, S-194-AC7 | TC-190-03, TC-194-10 |
+| DF-190-05 | Entrypoint codes `CONFIG_INVALID`, `INVALID_PAYLOAD` (payload fields at preflight, no GitHub call; a non-UUID `run_id` included), `PROBE_REFUSED`, `SIGNAL_TERMINATION`: each `failed`, counted by the breaker, with no `not_applicable` form; a `failed` result never carries `outcome: not_applicable` | This write-back: spec v2.7 §8.9 (entrypoint rows, result shape), §13 | TC-190-03 |
+| DF-190-06 | `result.reason` on `needs_review`: `fix_loop_disabled`, `fix_unavailable` (plus `linked_pr` from S-194 and the Wave B reasons) | This write-back: spec v2.7 §8.9 result shape, §13 | TC-190-03, TC-190-04 |
+| DF-190-07 | Accepted: the reporter's `capture_logging=False` is deliberate scrubbing hardening | — | — |
+| DF-190-08 | Foundation docs still describe the stub | technical-writer, after 11.7 | — |
+| DF-190-09 | Runbook "Wave A run" gaps (fixture repo name, `last_verified`, index row) | Runbook, after 11.7 | — |
+| DF-190-10 | TC-180-12 now covers the entrypoint shell; the step behaviour is in `test_main.py` | This write-back: TC-180-12 | TC-180-12, TC-190-01, TC-190-02 |
+| DF-190-11 | Accepted: some coverage tests followed the implementation; process note for the planner | — | — |
+| DF-190-12 | The run-link host check held by convention | Fixed in the S-190 fix round | — |
+| Stream rule | A closed or cancelled invoke stream never decides the run outcome; the worker reports its own terminal result (QA-190-01) | This write-back: spec v2.7 §8.9, §13; fixed in the S-190 fix round | TC-190-03 |
+
 ---
 
 ## 11. Execution checklist (test-first order) **(v2.0)**
@@ -1777,7 +1802,7 @@ Write each `[T]` row before its `[I]` task. The order follows task list v2.0 (1.
     - S-191: TC-191-*, CT-14…18, RT-04.
     - S-192: TC-192-*, RT-01, RT-08. D-83 and D-84 are decided, so TC-192-16, -18 and -20 assert them.
     - S-193: TC-193-*, RT-05.
-    - S-194: TC-194-* (including the new TC-194-19 and -20), RT-09. DF-38 pins TC-194-19.
+    - S-194: TC-194-* (including the new TC-194-19 and -20, and TC-194-21 and -22 from DF-190-01, **v2.5**), RT-09. DF-38 pins TC-194-19. Remove the strict xfail on RT-07's `TestOwnedWhileAPrIsOpen`. TC-194-21 and -22 must be green, and `Runtime.fix_runner` wired, before TC-194-10's flag flip (DF-190-01, DF-190-04).
     - S-195: SC-IC-07 (v2.0), SC-IC-08, SC-IC-10.
 11. **Wave C:**
     - **S-199:** TC-199-*, CT-30, CT-31, RT-16. Decide DF-35 and DF-36 first; they pin TC-199-11 and TC-199-14.
@@ -1790,26 +1815,26 @@ Write each `[T]` row before its `[I]` task. The order follows task list v2.0 (1.
 
 Counted families: TC, SC, CT, RT. Rows whose TC is only a pointer (`→ SC-…`/`→ CT-…`) are **not** counted again. **Retired (v2.0)** rows are not counted. Both kinds appear in the matrix for traceability.
 
-| Layer     | TC  | SC | CT | RT | Total v2.4 | Total v1.2 | Δ       | Retired | New | Changed |
+| Layer     | TC  | SC | CT | RT | Total v2.5 | Total v1.2 | Δ       | Retired | New | Changed |
 | --------- | --- | -- | -- | -- | ---------- | ---------- | ------- | ------- | --- | ------- |
 | L1        | 79  | 0  | 18 | 10 | 107        | 103        | +4      | 18      | 22  | 30      |
-| L2        | 133 | 0  | 1  | 3  | 137        | 143        | −6      | 41      | 35  | 37      |
+| L2        | 135 | 0  | 1  | 3  | 139        | 143        | −4      | 41      | 37  | 37      |
 | L2.5      | 6   | 0  | 10 | 0  | 16         | 19         | −3      | 8       | 5   | 7       |
 | E2E       | 0   | 0  | 0  | 0  | 0          | 5          | −5      | 5       | 0   | 0       |
 | IC        | 0   | 14 | 0  | 0  | 14         | 10         | +4      | 0       | 4   | 1       |
 | Live      | 11  | 12 | 0  | 0  | 23         | 16         | +7      | 3       | 10  | 8       |
 | MR        | 11  | 0  | 0  | 0  | 11         | 10         | +1      | 1       | 2   | 3       |
-| **Total** | 240 | 26 | 29 | 13 | **308**    | **306**    | **+2**  | **76**  | **78** | **86** |
+| **Total** | 242 | 26 | 29 | 13 | **310**    | **306**    | **+4**  | **76**  | **80** | **86** |
 
-- **By family, v1.2 → v2.0:** TC 250 → 238 (60 retired, 48 new); SC 22 → 26 (8 retired, 12 new); CT 22 → 29 (5 retired, 12 new); RT 12 → 13 (3 retired, 4 new). The v2.0 totals were equal by coincidence (76 retired, 76 new). v2.4 adds TC-189-22 and TC-189-23 (L2, the S-189 fix round): TC 240, total 308.
+- **By family, v1.2 → v2.0:** TC 250 → 238 (60 retired, 48 new); SC 22 → 26 (8 retired, 12 new); CT 22 → 29 (5 retired, 12 new); RT 12 → 13 (3 retired, 4 new). The v2.0 totals were equal by coincidence (76 retired, 76 new). v2.4 adds TC-189-22 and TC-189-23 (L2, the S-189 fix round): TC 240, total 308. v2.5 adds TC-194-21 and TC-194-22 (L2, DF-190-01): TC 242, total 310.
 - **Retired (76 counted, plus 5 pointer rows):** all of S-183 (16 + 1 pointer), S-187 (16) and S-196 (17 + 1 pointer); TC-184-09; TC-185-03…08 and -15; TC-188-01 and -11; TC-197-06 (+ pointer TC-197-04); pointers TC-198-03 and -04; SC-E2E-01…05; SC-LIVE-04, -05 and -07; CT-05, -09, -10, -11 and -20; RT-03, -10 and -11.
-- **New (78):**
-  - TC-181-12, -13; TC-182-15, -16; TC-184-17; TC-185-16…25; TC-186-15…17; TC-188-13…16; TC-189-21; TC-189-22, -23 (v2.4); TC-190-12, -13; TC-194-19, -20; TC-197-11; TC-199-01…20.
+- **New (80):**
+  - TC-181-12, -13; TC-182-15, -16; TC-184-17; TC-185-16…25; TC-186-15…17; TC-188-13…16; TC-189-21; TC-189-22, -23 (v2.4); TC-190-12, -13; TC-194-19, -20; TC-194-21, -22 (v2.5); TC-197-11; TC-199-01…20.
   - SC-IC-11…14; SC-LIVE-08…15.
   - CT-23…34.
   - RT-13…16.
 - **Changed (86):** 68 TC, 5 SC (SC-IC-07, SC-LIVE-01, -02, -03, -06), 7 CT (CT-01…04, -06, -21, -22) and 6 RT (RT-01, -02, -06, -07, -08, -12).
-- **Automated:** 260 of the 308 (L1 + L2 + L2.5) run in `make test` or the panel Vitest suites.
+- **Automated:** 262 of the 310 (L1 + L2 + L2.5) run in `make test` or the panel Vitest suites.
 - **Deployed:** 37 (IC + Live) need a deployed runtime, the fixture repo or real AWS.
 - **Manual or review:** 11 are MR.
 - **Pointers:** 22 further TC rows only point to SC or CT entries, and are not counted twice.
@@ -1835,20 +1860,20 @@ Counted tests owned by each story: its TC rows, plus the SC, CT and RT entries i
 | S-191 | #373 | 22 | L1 9, L2 13 | 20 / 2 / 0 / 0 |
 | S-192 | #374 | 22 | L1 6, L2 16 | 16 / 6 / 0 / 0 |
 | S-193 | #375 | 18 | L1 5, L2 13 | 17 / 1 / 0 / 0 |
-| S-194 | #376 | 21 | L1 8, L2 13 | 14 / 5 / 2 / 0 |
+| S-194 | #376 | 23 | L1 8, L2 15 | 14 / 5 / 4 / 0 |
 | S-195 | #377 | 3 | IC 3 | 2 / 1 / 0 / 0 |
 | S-196 | #378 (closed) | 0 | — | 0 / 0 / 0 / 20 |
 | S-197 | #379 | 15 | L1 6, L2.5 4, Live 3, MR 2 | 2 / 5 / 8 / 1 |
 | S-198 | #380 | 11 | Live 10, MR 1 | 0 / 4 / 7 / 2 |
 | S-199 | new (pending) | 23 | L1 8, L2 15 | 0 / 0 / 23 / 0 |
-| **Total** | | **308** | | 144 / 86 / 78 / 76 |
+| **Total** | | **310** | | 144 / 86 / 80 / 76 |
 
 ## 13. Output contract **(v2.0)**
 
 - **Mode and phase:** Design. Test design refreshed to v2.0 (issue mode).
 - **Artifacts:** this plan, and [`traceability-matrix-prd-bug-fix-agent.md`](traceability-matrix-prd-bug-fix-agent.md) v2.0.
 - **AC coverage:**
-  - 108 of 108 active story ACs (stories v2.0) map to at least one active test.
+  - 109 of 109 active story ACs (stories v2.6, with S-194-AC9) map to at least one active test.
   - 20 of 20 v2.0 PRD ACs have at least one positive and one negative or edge test.
   - Every v2.0 FR maps to at least one active test.
 - **Gaps:** see matrix §D:
