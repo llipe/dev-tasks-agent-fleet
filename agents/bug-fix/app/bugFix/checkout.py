@@ -3,6 +3,10 @@ The ``checkout`` step: clone, repo gate, install, base gates, base restore
 (spec §8.7; S-189; FR-5, FR-6; D-06, D-14, D-19, D-62, D-63, D-83, D-92,
 D-110, D-112).
 
+The link-protection sysctls (QA-189-01) are recorded by
+:func:`record_link_protection`, which the run's ``preflight`` step calls
+(S-190), not by this step.
+
 Runs after the refusal checks pass and **before** the claim, so a repository
 the agent can't work in gets only a refusal reply (FR-5(e), AC-4). No issue is
 changed before the repo gate passes; the refusal reply is the only GitHub
@@ -83,6 +87,7 @@ __all__ = [
     "CheckoutResult",
     "WorkPaths",
     "github_url",
+    "record_link_protection",
     "run_checkout",
 ]
 
@@ -172,6 +177,28 @@ def _restore_paths(git: SafeGit, work_tree: str, changed: list[Any]) -> None:
         git.materialize(git.base_sha, work_tree, paths=in_base, fresh=False)
 
 
+def record_link_protection(
+    run: Any, secrets: SecretsLike, base: str | None = None
+) -> dict[str, str]:
+    """Record ``fs.protected_hardlinks`` and ``fs.protected_symlinks`` (QA-189-01).
+
+    The run's ``preflight`` step calls it (S-190), before any clone. Evidence
+    only: ``check_work_tree`` refuses hardlinks whatever the sysctls say, and
+    local Docker may differ from AgentCore (the live value is probe #446's). A
+    value other than ``1`` is a ``warn`` event, never a failure.
+    """
+    lp = link_protection(base)
+    _event(
+        run,
+        "info" if all(v == "1" for v in lp.values()) else "warn",
+        "preflight: fs.protected_hardlinks={protected_hardlinks} "
+        "fs.protected_symlinks={protected_symlinks}".format(**lp),
+        secrets,
+        **lp,
+    )
+    return lp
+
+
 def restore_base(git: SafeGit, work_tree: str, *, rounds: int = RESTORE_ROUNDS) -> int:
     """Undo every edit install and the base runs made to the tree (D-63).
 
@@ -221,19 +248,6 @@ def run_checkout(
     scrub = [*(secrets.values() if hasattr(secrets, "values") else secrets)]
     if token:
         scrub.append(token)
-
-    # 0. Preflight: record the link-protection sysctls (QA-189-01). Evidence
-    # only: check_work_tree refuses hardlinks whatever they say, and local
-    # Docker may differ from AgentCore (the live value is probe #446's).
-    lp = link_protection()
-    _event(
-        run,
-        "info" if all(v == "1" for v in lp.values()) else "warn",
-        "preflight: fs.protected_hardlinks={protected_hardlinks} "
-        "fs.protected_symlinks={protected_symlinks}".format(**lp),
-        scrub,
-        **lp,
-    )
 
     # 1. Clone into the wrapper clone (D-62).
     try:

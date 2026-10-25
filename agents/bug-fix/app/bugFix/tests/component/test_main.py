@@ -485,7 +485,7 @@ class TestRefusals:
         (marker,) = parse_block(body)
         assert (marker.kind, marker.reason) == ("refusal", "repo_gate")
         assert w.gh.reactions == []
-        assert "claim" not in "".join(_kinds(b) for b in _bodies(w))
+        assert all("claim" not in _kinds(b) for b in _bodies(w))
         assert item in res["summary"]
         assert w.gh.projects_calls() == []
         # D-112: a Python repo without `make install` never runs an install.
@@ -885,3 +885,112 @@ def test_every_github_call_is_scoped_to_the_one_issue(world, scenario):
             assert (call.json or {}).get("variables", {}).get("number") == ISSUE
     assert 555 not in [cid for cid, _ in w.gh.reactions]
     assert not any(c.path.endswith(f"/issues/{ISSUE + 1}/comments") for c in w.gh.calls)
+
+
+# ---------------------------------------------------------------------------
+# Edges of the ownership gate and the token source
+# ---------------------------------------------------------------------------
+
+
+def _fault_disposition_post(w: World, status: int = 502) -> None:
+    """From the post-check's comment listing on, the next comment POST fails."""
+    state = {"gets": 0}
+
+    def hook(call: Call) -> None:
+        claimed = any("claim" in s for _, s in _write_shapes(w))
+        if claimed and call.method == "GET" and call.path.endswith("/comments"):
+            state["gets"] += 1
+            if state["gets"] == 1:  # the post-check
+                w.gh.faults["comments_post"] = [status]
+
+    w.gh.hook = hook
+
+
+class TestEdges:
+    def test_a_refresh_error_a_best_effort_reply_swallowed_still_fails_the_run(self, world):
+        calls = {"n": 0}
+
+        def refresh(ctx, pem, app_id):
+            calls["n"] += 1
+            if calls["n"] >= 2:  # GET issue works; the refusal reply's POST doesn't
+                raise PermissionMissing("the refreshed installation token lacks issues: write")
+            return ctx
+
+        w = world(refresh=refresh)
+        w.gh.add_issue(ISSUE, state="closed")
+        res, _, db = _invoke(w)
+        assert (res["status"], res["error_code"]) == ("failed", "GITHUB_PERMISSION_MISSING")
+        assert w.gh.writes() == []
+        assert db.step_updates()[-1]["status"] == "failed"
+
+    def test_a_fault_on_the_disposition_post_is_failed_and_never_retried(self, world):
+        w = world()
+        _fault_disposition_post(w)
+        res, _, _ = _invoke(w)
+        assert (res["status"], res["error_code"]) == ("failed", "GITHUB_UNAVAILABLE")
+        posts = [c for c in w.gh.calls if c.method == "POST" and c.path.endswith("/comments")]
+        assert len(posts) == 2  # the claim, and one disposition attempt
+
+    def test_a_failing_finally_disposition_keeps_the_original_fault(self, world):
+        def runner(ctx):
+            raise RuntimeError("the fix step exploded")
+
+        w = world(fix_loop=True, fix_runner=runner)
+        _fault_disposition_post(w)
+        res, _, db = _invoke(w)
+        assert res["error_code"] == "UNHANDLED_ERROR"
+        assert any("disposition after the fault failed" in m for m in db.messages())
+
+    def test_a_fix_runner_without_a_result_still_disposes(self, world):
+        w = world(fix_loop=True, fix_runner=lambda ctx: None)
+        res, _, _ = _invoke(w)
+        assert (res["outcome"], res["reason"]) == ("needs_review", "fix_unavailable")
+        assert _kinds(_bodies(w)[-1]) == ["disposition"]
+
+    @pytest.mark.parametrize("key", ["repository_org", "repository_name", "base_branch"])
+    def test_a_payload_without_a_repository_field_is_invalid_payload(self, world, key):
+        w = world()
+        payload = w.payload()
+        del payload[key]
+        w.payload = lambda: payload  # type: ignore[method-assign]
+        res, _, db = _invoke(w)
+        assert (res["status"], res["error_code"]) == ("failed", "INVALID_PAYLOAD")
+        assert key in res["summary"]
+        assert w.gh.calls == []
+        assert db.step_keys() == ["preflight"]
+
+
+class TestTokenSource:
+    def _source(self, refresh, ctx=None):
+        from scrubber import SecretSet
+
+        secrets = SecretSet()
+        return main.TokenSource(GitHubSession(ctx or _token(), PEM), refresh, secrets), secrets
+
+    def test_a_refresh_error_is_kept_and_raised_on_every_later_use(self):
+        exc = PermissionMissing("lost issues: write")
+        calls = {"n": 0}
+
+        def refresh(ctx, pem, app_id):
+            calls["n"] += 1
+            raise exc
+
+        source, _ = self._source(refresh)
+        for _ in range(2):
+            with pytest.raises(PermissionMissing):
+                source()
+        assert calls["n"] == 1
+        assert source.failure is exc
+
+    def test_a_context_without_an_app_id_fails_closed(self):
+        ctx = TokenContext(token=TOKEN, issued_at=0.0, installation_id=1, permissions={})
+        source, _ = self._source(lambda c, p, a: c, ctx)
+        with pytest.raises(CredentialError) as info:
+            source()
+        assert info.value.error_code == "CREDENTIALS_UNAVAILABLE"
+
+    def test_a_new_token_is_registered_with_the_scrubber(self):
+        new = "ghs_" + "Z" * 36
+        source, secrets = self._source(lambda c, p, a: replace(c, token=new))
+        assert source() == new
+        assert new in secrets.values()

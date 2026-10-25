@@ -1,9 +1,13 @@
-"""L1 tests for the minimal entrypoint (TC-180-12, S-180 AC7).
+"""L1 tests for the entrypoint shell (TC-180-12, S-180 AC7; S-190).
 
-The stub reports ``started`` through ``agent_reporter``, then ends
-``succeeded``/``not_applicable`` with the summary "not yet implemented", and
-returns a terminal chunk. Supabase is faked at the reporter's HTTP client, so
-the real ``RunReporter`` lifecycle is exercised.
+S-180 shipped a stub that ended "not yet implemented". S-190 replaced it with
+the step orchestration, which ``tests/component/test_main.py`` covers end to
+end. These tests keep the shell around it: config, payload and credential
+faults, the reporter lifecycle, the backstop, and scrubbing. The normal path
+here is :func:`main.execute` replaced by a recording fake that ends with
+:data:`NORMAL_PATH`, so the shell's own behaviour is what is asserted.
+Supabase is faked at the reporter's HTTP client, so the real ``RunReporter``
+lifecycle is exercised.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ import main
 from config import Config, ConfigError
 from credentials import CredentialError
 from heartbeat import read_terminal_payload
+from outcomes import needs_review
 
 SUPABASE_KEY = "supabase-service-role-sentinel-value"
 RUN_ID = "11111111-2222-3333-4444-555555555555"
@@ -71,6 +76,18 @@ class FakeSupabase:
         return msgs
 
 
+# The normal path's fake result (the real one is tests/component/test_main.py).
+NORMAL_SUMMARY = "normal path (orchestration replaced by a test fake)"
+NORMAL_PATH = needs_review("normal_path", NORMAL_SUMMARY)
+NORMAL_CALLS: list[Any] = []
+
+
+def _fake_execute(ctx):
+    NORMAL_CALLS.append(ctx)
+    NORMAL_PATH.report(ctx.run, metrics=ctx.metrics())
+    return NORMAL_PATH
+
+
 CONFIG = Config(
     supabase_url="https://example.supabase.co",
     supabase_key_secret_id="agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY",
@@ -101,30 +118,31 @@ def _fakes(monkeypatch):
     monkeypatch.setattr(agent_reporter, "_SupabaseClient", FakeSupabase)
     monkeypatch.setattr(main, "load_config", lambda: CONFIG)
     monkeypatch.setattr(main, "fetch_supabase_key", lambda secret_id: SUPABASE_KEY)
-    monkeypatch.setattr(main, "install_termination_backstop", lambda get_run, get_secrets: None)
+    monkeypatch.setattr(
+        main, "install_termination_backstop", lambda get_run, get_secrets, get_disposition: None
+    )
+    monkeypatch.setattr(main, "execute", _fake_execute)
+    NORMAL_CALLS.clear()
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
 
 
 class TestHappyStub:
-    def test_reports_started_then_not_applicable(self):
+    def test_reports_started_then_the_normal_path_result(self):
         chunks = _drain(main.invoke(dict(PAYLOAD), None))
 
         assert len(FakeSupabase.instances) == 1
+        assert len(NORMAL_CALLS) == 1
         db = FakeSupabase.instances[0]
         patches = db.run_patches()
         assert patches[0]["status"] == "running"  # started
         assert "started_at" in patches[0]
         final = patches[-1]
         assert final["status"] == "succeeded"
-        assert final["outcome"] == "not_applicable"
-        assert final["result"] == {"summary": "not yet implemented"}
+        assert final["outcome"] == "needs_review"
+        assert final["result"] == {"summary": NORMAL_SUMMARY, "reason": "normal_path"}
 
         result = _result(chunks)
-        assert result == {
-            "status": "succeeded",
-            "outcome": "not_applicable",
-            "summary": "not yet implemented",
-        }
+        assert result == NORMAL_PATH.terminal()
 
     def test_reporter_uses_resolved_key_and_url(self):
         _drain(main.invoke(dict(PAYLOAD), None))
@@ -146,19 +164,29 @@ class TestHappyStub:
 
     def test_prompt_wrapped_payload_is_unwrapped(self):
         chunks = _drain(main.invoke({"prompt": json.dumps(PAYLOAD)}, None))
-        assert _result(chunks)["outcome"] == "not_applicable"
+        assert _result(chunks)["outcome"] == "needs_review"
+        assert NORMAL_CALLS[0].run_id == RUN_ID
+
+    def test_the_context_carries_the_payload(self):
+        _drain(main.invoke(dict(PAYLOAD), None))
+        ctx = NORMAL_CALLS[0]
+        assert (ctx.owner, ctx.repo, ctx.base_branch) == ("llipe", "dev-tasks", "main")
+        assert ctx.run_link is None  # CONFIG has no PANEL_BASE_URL
 
     def test_backstop_is_installed(self, monkeypatch):
         seen: dict[str, Any] = {}
 
-        def _install(get_run, get_secrets):
+        def _install(get_run, get_secrets, get_disposition):
             seen["run"] = get_run
             seen["secrets"] = get_secrets
+            seen["disposition"] = get_disposition
 
         monkeypatch.setattr(main, "install_termination_backstop", _install)
         _drain(main.invoke(dict(PAYLOAD), None))
         assert seen["run"]() is not None
         assert SUPABASE_KEY in seen["secrets"]()
+        # No claim was made, so the backstop has nothing to dispose (D-81).
+        assert seen["disposition"]() is None
 
 
 class TestFailurePaths:
@@ -232,10 +260,10 @@ class TestFailurePaths:
         assert result["error_code"] == "CREDENTIALS_UNAVAILABLE"
 
     def test_unhandled_error_is_reported_scrubbed(self, monkeypatch):
-        def _boom(run):
+        def _boom(ctx):
             raise RuntimeError(f"exploded with {SUPABASE_KEY}")
 
-        monkeypatch.setattr(main, "_run_steps", _boom)
+        monkeypatch.setattr(main, "execute", _boom)
         result = _result(_drain(main.invoke(dict(PAYLOAD), None)))
         assert result["status"] == "failed"
         assert result["error_code"] == "UNHANDLED_ERROR"
