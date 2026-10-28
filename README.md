@@ -36,7 +36,7 @@ The project is delivered in phases:
   [`docs/requirements/prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md)
   and [`agents/security-analyst/README.md`](agents/security-analyst/README.md).
 - **Phase 5 — Bug Fix Agent (Wave A delivered, verified live):** the fleet's third agent,
-  `agents/bug-fix/`, triggered by a `/bug-fix` comment on a GitHub issue. Wave A (S-185–S-190) is
+  `agents/bug-fix/`, triggered by a `/bug-fix` comment on a GitHub issue. Wave A (S-180–S-190) is
   complete and verified live on runtime v7, delivering the orchestration pipeline (`preflight` →
   `refuse` → `checkout` → `claim` → `disposition`), the sandbox security model, and the run
   lifecycle with a `FIX_LOOP_ENABLED=0` gate that disposes "fix loop not yet enabled" (Wave B).
