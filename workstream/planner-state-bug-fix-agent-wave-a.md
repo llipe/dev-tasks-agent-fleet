@@ -9,7 +9,7 @@
 - Test plan: `workstream/test-plan-prd-bug-fix-agent.md` (v2.0)
 - Decision log: `workstream/decisions-bug-fix-agent.md`
 - Started: 2026-10-23
-- Last updated: 2026-10-24 (after S-190 merge; 11.6/11.7 pending)
+- Last updated: 2026-10-27 (Phase 5: consolidated PR to main)
 
 ## Story Status
 
@@ -23,11 +23,11 @@
 | 6 | S-185 | #367 | ✅ Merged | #453 | story/S-185-refusal-checks |
 | 7 | S-188 | #370 | ✅ Merged | #454 | story/S-188-claim-race |
 | 8 | S-189 | #371 | ✅ Merged | #458 | story/S-189-checkout-gates |
-| 9 | S-190 | #372 | ✅ Merged (11.6 redeploy + 11.7 IC pending) | #460 | story/S-190-orchestration |
+| 9 | S-190 | #372 | ✅ Merged | #460 | story/S-190-orchestration |
 
 ## Current Position
 
-- Next: 11.6 redeploy and 11.7 live invoke on `llipe/bug-fix-smoke` via /infra-engineer, then the Phase 5 consolidated PR
+- Next: @llipe reviews and merges the consolidated PR `integration/bug-fix-agent-wave-a` → `main`; then the story issues #362–#364, #366–#368, #370–#372 close
 - Last merged PR: #460 (`28b4973`)
 - Integration branch HEAD: `28b4973`
 
@@ -56,3 +56,5 @@
 
   Sibling agents tracked in #466. Open: a `RUNTIME_TIMEOUT` §8.9 row (agent-side deadline) for the write-back. AgentCore SIGTERM/PID 1 behaviour is unverified until IC. Memo: developer entries written.
 - 2026-10-24: The fixture repo `llipe/bug-fix-smoke` was created (private, by planner with @llipe's approval). The initial push was blocked by git-guard, so @llipe pushes it. The App installation is done by @llipe.
+- 2026-10-25: 11.6/11.7 done through infra-engineer (change record `20261025-bug-fix-wave-a-deploy`, verified, PR #467). Runtime v7 (image `dac1d525`, `FIX_LOOP_ENABLED=0`, `PANEL_BASE_URL`). Live run `a76a6c8c` on the private fixture `llipe/bug-fix-smoke#1` (created this run; @llipe pushed it after git-guard blocked the planner's push to `main`, and installed the App): `succeeded`/`needs_review` `fix_loop_disabled`, 2 bot comments, `fs.protected_hardlinks=1`/`protected_symlinks=1` on AgentCore (#446).
+- 2026-10-27: Closeout PR #468 merged: roadmap Wave A `Done`, spec v2.8 (§8.9 run-deadline row), foundation docs, runbook and README updated by technical-writer. CI green on 9 jobs. memo_run_outcome: written(bd282041-df1f-4403-90a3-b123529a5b4f).
