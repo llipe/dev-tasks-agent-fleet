@@ -1,8 +1,8 @@
 ---
 name: runbook-bug-fix-agent
-trigger: Deploying or redeploying the bug-fix AgentCore runtime, running its sandbox probe, rotating its Anthropic key or Projects token, or checking its permissions
+trigger: Deploying or redeploying the bug-fix AgentCore runtime, running its sandbox probe, rotating its Anthropic key or Projects token, checking its permissions, or verifying a Wave A run
 owner: operator
-last_verified: 2026-10-24
+last_verified: 2026-10-25
 related: ["agents/bug-fix/agentcore/agentcore.json", "infra/changes/20261023-bug-fix-runtime/", "infra/changes/20261024-bug-fix-spike-probe/", "infra/agentcore-invoke-policy.json", "infra/environments.yaml", "agents/bug-fix/app/bugFix/probe.py"]
 ---
 
@@ -124,7 +124,7 @@ The fleet App (`4687256`, installation `156226839`) needs **Issues: read and wri
 - **Permissions:** `aws iam simulate-principal-policy --policy-source-arn arn:aws:iam::755641879575:role/agent-fleet-bug-fix-runtime --action-names secretsmanager:GetSecretValue bedrock:InvokeModel --resource-arns <the 4 secret ARNs> <a Sonnet foundation-model ARN>` shows the four secrets `allowed` and Bedrock `implicitDeny`. The reference evidence is `infra/changes/20261023-bug-fix-runtime/backup/simulation-8a.json`.
 - **Panel invoke:** simulating `bedrock-agentcore:InvokeAgentRuntime` for role `panel-agentcore-invoke` on the bug-fix runtime ARN is `allowed`, and still `allowed` for both sibling runtimes.
 - **Smoke invoke:** `aws bedrock-agentcore invoke-agent-runtime --region us-east-1 --agent-runtime-arn arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/bugfix_bug_fix-BiuPsdGSPK --runtime-session-id <≥33 chars> --payload "$(printf '{"run_id":"<uuid>","repository_org":"llipe","repository_name":"bug-fix-smoke","base_branch":"main","params":{"issue_number":<N>}}' | base64)" out.json` returns HTTP 200. A direct invoke has no `runs` row (the panel inserts it), so the reporter warns that `start()` found 0 rows and the run is not visible in the panel; prefer the panel's manual invoke below for evidence.
-- **Wave A run (S-190, task 11.7).** From the panel, `/agents/bug-fix/invoke`, on the fixture repo with the `issue_number` of an open issue that has no linked PR and no other active bug-fix run. The fixture repo must pass the repo gate: `.claude/agents/developer.md`, the four gates, and a lockfile (JS) or a `make install` target (Python), and its install must succeed in the sandbox. Expected:
+- **Wave A run (S-190; Wave A S-180–S-190 delivered, verified live on runtime v7).** Fixture: `llipe/bug-fix-smoke` (private, App installed), issue #1. Verified live with run `a76a6c8c` on 2026-10-25. From the panel, `/agents/bug-fix/invoke`, on the fixture repo with the `issue_number` of an open issue that has no linked PR and no other active bug-fix run. The fixture repo must pass the repo gate: `.claude/agents/developer.md`, the four gates, and a lockfile (JS) or a `make install` target (Python), and its install must succeed in the sandbox. Expected:
   - the run's steps are `preflight`, `refuse`, `checkout`, `claim`, each with events, and no `fix` step. The first `checkout` event is `link protection: fs.protected_hardlinks=1 fs.protected_symlinks=1` (`warn` if either is not 1; evidence for #446, never a failure);
   - the panel's call can return before the run ends. If its stream closes mid-run, the run keeps going and still ends as below; it adds one `warn` event, "the invoke stream closed mid-run (…); the run finished the steps and reports its own outcome". A `failed` run whose `error_code` is `GeneratorExit` or `CancelledError` means an image older than the S-190 fix round;
   - the runtime's logs show `SIGTERM backstop installed at app start, chaining to Server.handle_exit` once at startup. A run `error` event "the SIGTERM backstop is not installed: …", or a log ERROR `SIGTERM backstop not installed`, means a SIGTERM would leave the run `running` until the reaper: don't use that image;

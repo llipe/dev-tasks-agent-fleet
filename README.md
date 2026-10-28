@@ -35,12 +35,12 @@ The project is delivered in phases:
   real `fix` run that opened a PR, per
   [`docs/requirements/prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md)
   and [`agents/security-analyst/README.md`](agents/security-analyst/README.md).
-- **Phase 5 — Bug Fix Agent (scaffold, S-180):** the fleet's third agent, `agents/bug-fix/`,
-  triggered by a `/bug-fix` comment on a GitHub issue. The agent scaffold includes configuration,
-  entrypoint stub, Docker image with toolchain, and managed Claude Code policy. The agent validates
-  its config at startup and reports success with a "not yet implemented" summary. Pipeline
-  implementation (reproduce, test, fix, validate, Draft PR) is planned for later Wave A–C stories
-  (S-181–S-200). Not yet deployed. See
+- **Phase 5 — Bug Fix Agent (Wave A delivered, verified live):** the fleet's third agent,
+  `agents/bug-fix/`, triggered by a `/bug-fix` comment on a GitHub issue. Wave A (S-180–S-190) is
+  complete and verified live on runtime v7, delivering the orchestration pipeline (`preflight` →
+  `refuse` → `checkout` → `claim` → `disposition`), the sandbox security model, and the run
+  lifecycle with a `FIX_LOOP_ENABLED=0` gate that disposes "fix loop not yet enabled" (Wave B).
+  Waves B–C (S-191–S-200) ship the fix loop, validation, and Draft PR. See
   [`docs/requirements/prd-bug-fix-agent.md`](docs/requirements/prd-bug-fix-agent.md) and
   [`agents/bug-fix/README.md`](agents/bug-fix/README.md).
 
@@ -84,7 +84,7 @@ The project is delivered in phases:
 │   │   └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
 │   ├── code-review/   # Code Review agent (Python) — Wave A delivered, not deployed (Wave B pending)
 │   │   └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml (no agentcore/ config yet)
-│   └── bug-fix/            # Phase 5 agent (Python, AgentCore Container) — Wave A in progress (S-180–S-184)
+│   └── bug-fix/            # Phase 5 agent (Python, AgentCore Container) — Wave A delivered, verified live (S-180–S-190)
 │       ├── agentcore/       # Runtime config + CDK infra
 │       ├── app/bugFix/      # Agent source, tests, Makefile, pyproject.toml, image
 │       └── README.md        # Agent-specific docs (status, layout, configuration, testing)
