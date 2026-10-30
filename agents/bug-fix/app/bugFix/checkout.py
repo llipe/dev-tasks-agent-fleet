@@ -302,14 +302,29 @@ def run_checkout(
         )
     toolchain = gate.toolchain
     assert toolchain is not None
-    _event(run, "info", gate.summary, scrub, stack=str(toolchain.stack), manager=toolchain.manager)
+    _event(
+        run,
+        "info",
+        gate.summary,
+        scrub,
+        stack=str(toolchain.stack),
+        manager=toolchain.manager,
+        node=toolchain.node_version,
+        node_source=toolchain.node.source if toolchain.node is not None else None,
+    )
     known = replace(cloned, toolchain=toolchain, repo_gate=gate)
 
     # 4. Install, frozen, in the script sandbox as fixer (D-63, D-112).
     argv = toolchain.install_argv
     command = " ".join(argv)
     try:
-        res = sandbox.run(argv, cwd=paths.repo_dir, timeout=install_timeout, mode=Mode.SCRIPT)
+        res = sandbox.run(
+            argv,
+            cwd=paths.repo_dir,
+            timeout=install_timeout,
+            mode=Mode.SCRIPT,
+            node=toolchain.node_version,
+        )
     except SandboxError as exc:
         return _failed(INSTALL_FAILED, f"{command}: {exc}", scrub, run, known)
     if not res.ok:

@@ -342,6 +342,11 @@ class TestRepoGate:
             ("js-no-scripts", "test", "missing script test"),
             ("py-no-install", "install", "missing install target"),
             ("none", "package.json or Makefile", "missing package.json or Makefile"),
+            (
+                "js-node-unsupported",
+                "supported Node.js version",
+                "missing supported Node.js version",
+            ),
         ],
     )
     def test_a_missing_item_is_refusal_repo_gate_naming_it(
@@ -420,6 +425,26 @@ class TestInstall:
         assert sb.argvs()[0] == argv
         assert sb.calls[0].cwd == str(env.work)
         assert sb.calls[0].anthropic_api_key is None
+
+    def test_install_and_gates_run_on_the_repos_node(self, tmp_path):
+        """The failing run: ``engines.node: ">=24.21.0 <25"`` on a Node 26
+        default. Install and every gate get the shipped Node 24."""
+        from node import NODE_VERSIONS
+
+        env = Env(tmp_path, "js-node-24")
+        sb = StubSandbox()
+        out = env.checkout(sb)
+        assert out.status == "proceed", out.summary
+        assert out.toolchain.node_version == NODE_VERSIONS[1]
+        assert sb.calls and {c.node for c in sb.calls} == {NODE_VERSIONS[1]}
+        assert any(f"node {NODE_VERSIONS[1]}" in m for m in env.run.messages())
+
+    def test_python_install_and_gates_get_no_node(self, tmp_path):
+        env = Env(tmp_path, "py-make-ok")
+        sb = StubSandbox()
+        out = env.checkout(sb)
+        assert out.status == "proceed", out.summary
+        assert sb.calls and {c.node for c in sb.calls} == {None}
 
     def test_install_failure_is_install_failed_with_no_issue_write(self, tmp_path):
         env = Env(tmp_path, "js-npm-ok")

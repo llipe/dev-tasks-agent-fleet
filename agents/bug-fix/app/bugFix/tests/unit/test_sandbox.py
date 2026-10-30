@@ -313,6 +313,73 @@ class TestFixerExecEnv:
         assert set(fixer_exec.ALLOWED) == EXPECTED_NAMES == set(sandbox.ALLOWED_ENV)
 
 
+class TestNodePath:
+    """The repo's Node major goes first on PATH, from a closed set only."""
+
+    def test_node_path_puts_the_major_bin_first(self):
+        assert sandbox.node_path("24.22.2") == "/opt/node/24/bin:" + sandbox.FIXER_PATH
+
+    def test_node_path_refuses_an_unshipped_version(self):
+        with pytest.raises(ValueError):
+            sandbox.node_path("18.20.0")
+
+    def test_allowed_paths_are_the_base_plus_one_per_shipped_version(self):
+        import node
+
+        assert (
+            sandbox.FIXER_PATH,
+            *(sandbox.node_path(v) for v in node.NODE_VERSIONS),
+        ) == sandbox.ALLOWED_PATHS
+
+    def test_build_env_with_node(self):
+        env = build_env(None, node="22.23.4")
+        assert env["PATH"] == "/opt/node/22/bin:" + sandbox.FIXER_PATH
+        assert set(env) == {"PATH", "HOME", "LANG", "CI"}
+
+    def test_build_env_refuses_an_unshipped_node(self):
+        with pytest.raises(ValueError):
+            build_env(None, node="/tmp/evil")
+
+    def test_run_passes_the_node_path(self, paths):
+        clock = FakeClock()
+        sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
+        sb.run(["true"], cwd="/work/repo", timeout=60, node="24.22.2")
+        assert rec.calls[0][1]["env"]["PATH"] == "/opt/node/24/bin:" + sandbox.FIXER_PATH
+
+    def test_run_without_node_keeps_the_base_path(self, paths):
+        clock = FakeClock()
+        sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
+        sb.run(["true"], cwd="/work/repo", timeout=60)
+        assert rec.calls[0][1]["env"]["PATH"] == sandbox.FIXER_PATH
+
+    def test_run_with_an_unshipped_node_spawns_nothing(self, paths):
+        clock = FakeClock()
+        sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
+        with pytest.raises(ValueError):
+            sb.run(["true"], cwd="/work/repo", timeout=60, node="99.0.0")
+        assert rec.calls == []
+
+    def test_fixer_exec_allowed_paths_equal_the_wrappers(self):
+        assert fixer_exec.ALLOWED_PATHS == sandbox.ALLOWED_PATHS
+
+    @pytest.mark.parametrize("path", sandbox.ALLOWED_PATHS)
+    def test_fixer_exec_keeps_an_allowed_path(self, path):
+        assert fixer_exec.build_env({"PATH": path})["PATH"] == path
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/tmp/bin:/usr/local/bin:/usr/bin:/bin",
+            "/opt/node/24/bin:/tmp:/usr/local/bin:/usr/bin:/bin",
+            "/opt/node/18/bin:/usr/local/bin:/usr/bin:/bin",
+            "/opt/node/24/bin",
+            "",
+        ],
+    )
+    def test_fixer_exec_resets_any_other_path(self, path):
+        assert fixer_exec.build_env({"PATH": path})["PATH"] == fixer_exec.FIXER_PATH
+
+
 # ---------------------------------------------------------------------------
 # TC-182-02: uid switch and sandbox wrapper
 # ---------------------------------------------------------------------------

@@ -14,6 +14,8 @@ it with real `git`, and clones it from a local bare remote
 | `js-no-scripts` | `package.json` with no `scripts` |
 | `js-monorepo` | root scripts and lockfile, plus a workspace package |
 | `js-autofix-lint` | `lint` rewrites a tracked file, adds an untracked one and fills `node_modules/` (TC-189-15) |
+| `js-node-24` | `js-pnpm-ok` with `engines.node: ">=24.21.0 <25"`, which only the image's Node 24 satisfies |
+| `js-node-unsupported` | `js-pnpm-ok` with `engines.node: ">=30"`, which no Node in the image satisfies |
 | `py-make-ok` | `Makefile` targets `install`, `test`, `lint`, `format-check`, `typecheck`, `audit` |
 | `py-no-developer-md` | every target, no `.claude/agents/developer.md` |
 | `py-format-underscore` | `format_check` instead of `format-check` |

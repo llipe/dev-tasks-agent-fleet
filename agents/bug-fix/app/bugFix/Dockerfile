@@ -2,8 +2,9 @@
 # fallback, so `make image` builds with --platform linux/arm64.
 #
 # Layout (spec §7, §12; D-05, D-18, D-51):
-#   - Python 3.13 for the wrapper; Node 26 + pnpm and Python for target repos
-#     (JS/TS and Python stacks in v1, D-18).
+#   - Python 3.13 for the wrapper; Node 22, 24 and 26 (one per repo, picked
+#     from engines.node, node.py) + pnpm and Python for target repos (JS/TS
+#     and Python stacks in v1, D-18).
 #   - git, bubblewrap, socat and ripgrep: the Claude Code Bash sandbox runtime
 #     on Linux (bwrap + a proxy for the registry-only network policy).
 #   - A pinned @anthropic-ai/claude-code CLI (headless `claude -p`, D-05) and a
@@ -51,13 +52,14 @@ RUN if [ -s /usr/local/share/ca-certificates/extra-ca.crt ]; then \
 # and by repo scripts; make runs Python repos' gate targets (D-19); util-linux
 # provides setpriv, the root -> fixer drop (D-110); procps provides
 # /usr/bin/kill and /usr/bin/pkill for the post-run sweep of every fixer
-# process (D-62); libnss-myhostname resolves `localhost` (see below). The
+# process (D-62); libnss-myhostname resolves `localhost` (see below);
+# libatomic1 is the one shared library the nodejs.org Node binaries need. The
 # build fails if setpriv is missing or sudo is present.
 # safe_git.py (S-189, D-62) needs git >= 2.40 for `--attr-source` (the wrapper
 # reads no attributes from a fixer-written .gitattributes), and spawns
 # /usr/bin/tar and /usr/bin/rm as fixer; the build fails without them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bubblewrap ca-certificates curl git gnupg libnss-myhostname make procps ripgrep \
+      bubblewrap ca-certificates curl git gnupg libatomic1 libnss-myhostname make procps ripgrep \
       socat util-linux && \
     rm -rf /var/lib/apt/lists/* && \
     command -v setpriv && \
@@ -78,20 +80,51 @@ RUN sed -i -E 's/^hosts:.*/hosts:          files myhostname dns/' /etc/nsswitch.
       '# bug-fix image (S-182 fix round 3): prefer 127.0.0.1 over ::1 for localhost.' \
       'precedence ::ffff:0:0/96 100' > /etc/gai.conf
 
-# Node.js 26 (NodeSource, same mechanism as the sibling image).
-ARG NODE_MAJOR=26
-RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
-    rm -rf /var/lib/apt/lists/*
+# Node.js, one per supported major, side by side under /opt/node/<major>
+# (node.py). A target repo pins its Node with engines.node, and pnpm refuses a
+# frozen install on any other (ERR_PNPM_UNSUPPORTED_ENGINE), so the wrapper
+# picks one per repo and puts /opt/node/<major>/bin first on fixer's PATH.
+# NODE_VERSIONS must equal node.NODE_VERSIONS (a unit test pins both, and the
+# SHA-256 below for each). Official linux-arm64 tarballs from nodejs.org, each
+# checked before it is unpacked. NODE_DEFAULT is /usr/bin/node: the wrapper's
+# own tools, and a repo that pins nothing.
+ARG NODE_VERSIONS="22.23.4 24.22.2 26.12.1"
+ARG NODE_DEFAULT=26.12.1
+RUN set -eu; \
+    cd /tmp; \
+    printf '%s\n' \
+      'f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9  node-v22.23.4-linux-arm64.tar.gz' \
+      '95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2  node-v24.22.2-linux-arm64.tar.gz' \
+      'a6c01af459dd8972ab3fb08ee5da81244d26ba8c4944a62d5bbba8c597ae154f  node-v26.12.1-linux-arm64.tar.gz' \
+      > node-sha256.txt; \
+    for v in ${NODE_VERSIONS}; do \
+      curl -fsSLO "https://nodejs.org/dist/v${v}/node-v${v}-linux-arm64.tar.gz"; \
+    done; \
+    sha256sum -c node-sha256.txt; \
+    for v in ${NODE_VERSIONS}; do \
+      dir="/opt/node/${v%%.*}"; \
+      install -d -o root -g root -m 0755 "$dir"; \
+      tar -xzf "node-v${v}-linux-arm64.tar.gz" -C "$dir" --strip-components=1 --no-same-owner; \
+      test "$("$dir/bin/node" --version)" = "v${v}"; \
+    done; \
+    rm -f node-v*-linux-arm64.tar.gz node-sha256.txt; \
+    chmod -R go-w /opt/node; \
+    for tool in node npm npx; do \
+      ln -s "/opt/node/${NODE_DEFAULT%%.*}/bin/${tool}" "/usr/bin/${tool}"; \
+    done; \
+    test "$(node --version)" = "v${NODE_DEFAULT}"
 
 # pnpm, the Claude Code CLI and the sandbox runtime, all pinned. Node >= 25 no
-# longer bundles corepack, so pnpm is installed directly. Everything is
-# installed root-owned, so fixer can't modify or update it; the auto-updater is
-# off.
+# longer bundles corepack, so pnpm is installed directly. --prefix /usr keeps
+# them at /usr/bin (sandbox.SandboxPaths), outside every /opt/node tree. They
+# are `#!/usr/bin/env node` scripts, so each runs on the repo's Node when its
+# bin is first on PATH; all three accept every shipped major (>=22.12).
+# Everything is installed root-owned, so fixer can't modify or update it; the
+# auto-updater is off.
 ARG PNPM_VERSION=10.11.0
 ARG CLAUDE_CODE_VERSION=2.1.309
 ARG SANDBOX_RUNTIME_VERSION=0.0.81
-RUN npm install -g --no-fund --no-audit \
+RUN npm install -g --prefix /usr --no-fund --no-audit \
       "pnpm@${PNPM_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
       "@anthropic-ai/sandbox-runtime@${SANDBOX_RUNTIME_VERSION}" && \

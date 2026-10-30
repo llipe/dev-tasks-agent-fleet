@@ -22,7 +22,9 @@ must name pnpm or npm and have that manager's lockfile (``pnpm-lock.yaml`` or
 ``package-lock.json``; else the ``lockfile`` miss). Without the field it is
 ``pnpm-lock.yaml``, then ``package-lock.json``. yarn and bun (a
 ``packageManager: yarn@…`` or ``bun@…``, or only a ``yarn.lock``, ``bun.lockb``
-or ``bun.lock``) are the :data:`UNSUPPORTED_PM_ITEM` miss (QA-189-04). Gates
+or ``bun.lock``) are the :data:`UNSUPPORTED_PM_ITEM` miss (QA-189-04). The
+Node version comes from ``engines.node`` and ``.nvmrc`` (``node.py``); a range
+no shipped Node satisfies is the :data:`NODE_ITEM` miss. Gates
 are root ``package.json`` scripts, run as ``<pm> run <name>``. Install is
 frozen: ``pnpm install --frozen-lockfile`` or ``npm ci`` (D-63). A monorepo is
 handled at its root: the root scripts and the root lockfile.
@@ -57,6 +59,8 @@ import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
+
+from node import NodeChoice, select_node
 
 DEVELOPER_MD = ".claude/agents/developer.md"
 PACKAGE_JSON = "package.json"
@@ -102,12 +106,14 @@ INSTALL_ARGV: Mapping[str, tuple[str, ...]] = {
 MANIFEST_ITEM = "package.json or Makefile"
 LOCKFILE_ITEM = "lockfile"
 UNSUPPORTED_PM_ITEM = "supported package manager (pnpm or npm)"
+NODE_ITEM = "supported Node.js version"
 # Every item a miss can name. refusal.REPO_GATE_ITEMS must contain all of them.
 MISS_ITEMS: tuple[str, ...] = (
     DEVELOPER_MD,
     MANIFEST_ITEM,
     LOCKFILE_ITEM,
     UNSUPPORTED_PM_ITEM,
+    NODE_ITEM,
     *dict.fromkeys([*JS_GATE_NAMES.values(), *PY_GATE_NAMES.values()]),
     PY_INSTALL_TARGET,
 )
@@ -371,8 +377,8 @@ def parse_make_targets(text: str) -> frozenset[str]:
 @dataclass(frozen=True)
 class GateMiss:
     """One missing repo-gate item: ``item`` (from :data:`MISS_ITEMS`) and its
-    ``kind``: ``file``, ``manifest``, ``lockfile``, ``manager``, ``script`` or
-    ``target``."""
+    ``kind``: ``file``, ``manifest``, ``lockfile``, ``manager``, ``node``,
+    ``script`` or ``target``."""
 
     item: str
     kind: str
@@ -393,6 +399,12 @@ class Toolchain:
     manager: str  # "pnpm", "npm" or "make"
     gates: Mapping[str, str]  # logical -> script or target name
     audit: str | None
+    node: NodeChoice | None = None  # JS only: the shipped Node it runs on
+
+    @property
+    def node_version(self) -> str | None:
+        """The ``node=`` for ``sandbox.run``: install and gates run on it."""
+        return self.node.version if self.node is not None else None
 
     @property
     def install_argv(self) -> list[str]:
@@ -431,8 +443,10 @@ class RepoGate:
     @property
     def summary(self) -> str:
         if self.ok:
-            assert self.toolchain is not None
-            return f"repo gate passed ({self.toolchain.stack}, {self.toolchain.manager})"
+            tc = self.toolchain
+            assert tc is not None
+            node = f", node {tc.node.version}" if tc.node is not None else ""
+            return f"repo gate passed ({tc.stack}, {tc.manager}{node})"
         return "repo gate: " + "; ".join(m.describe() for m in self.missing)
 
 
@@ -461,7 +475,8 @@ def check_repo_gate(reader: RepoReader) -> RepoGate:
     """FR-6: ``developer.md`` plus the four gates (and Python's ``install``).
 
     Misses come in a fixed order: ``developer.md``, the manifest, the
-    lockfile, the gates (test, lint, format, typecheck), then ``install``.
+    lockfile, Node (JS: ``engines.node`` accepts no shipped version), the
+    gates (test, lint, format, typecheck), then ``install``.
     """
     missing: list[GateMiss] = []
     if reader.read_text(DEVELOPER_MD) is None:
@@ -483,13 +498,16 @@ def check_repo_gate(reader: RepoReader) -> RepoGate:
                 missing.append(GateMiss(UNSUPPORTED_PM_ITEM, "manager"))
             else:
                 missing.append(GateMiss(LOCKFILE_ITEM, "lockfile"))
+        node = select_node(reader)
+        if node is None:
+            missing.append(GateMiss(NODE_ITEM, "node"))
         for logical in GATE_ORDER:
             if JS_GATE_NAMES[logical] not in scripts:
                 missing.append(GateMiss(JS_GATE_NAMES[logical], "script"))
         audit = AUDIT if AUDIT in scripts else None
         toolchain = (
-            Toolchain(Stack.JS, manager, dict(JS_GATE_NAMES), audit)
-            if manager is not None
+            Toolchain(Stack.JS, manager, dict(JS_GATE_NAMES), audit, node)
+            if manager is not None and node is not None
             else None
         )
     else:

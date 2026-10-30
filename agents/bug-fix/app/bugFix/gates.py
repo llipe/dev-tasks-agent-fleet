@@ -47,6 +47,7 @@ class SandboxLike(Protocol):
         timeout: float,
         mode: Mode = ...,
         anthropic_api_key: str | None = ...,
+        node: str | None = ...,
     ) -> SandboxResult: ...
 
 
@@ -126,7 +127,9 @@ def _run_one(
     argv = toolchain.gate_argv(name)
     command = " ".join(argv)
     try:
-        res = sandbox.run(argv, cwd=work_tree, timeout=timeout, mode=Mode.SCRIPT)
+        res = sandbox.run(
+            argv, cwd=work_tree, timeout=timeout, mode=Mode.SCRIPT, node=toolchain.node_version
+        )
     except SandboxError as exc:
         return GateResult(
             name, command, False, None, tail(str(exc), secrets, tail_chars), "unavailable"

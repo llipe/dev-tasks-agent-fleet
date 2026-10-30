@@ -4,7 +4,8 @@
 # Usage: scripts/image-smoke.sh [image]     (default: bug-fix:local)
 #
 # Runs throwaway containers from the image and asserts:
-#   - toolchain: Python 3.13.x, Node v26.x, pnpm, git, bwrap, socat, and
+#   - toolchain: Python 3.13.x, Node (the pinned default, and each pinned
+#     /opt/node/<major> runnable as fixer with pnpm), pnpm, git, bwrap, socat, and
 #     `claude --version` (run as fixer through setpriv + fixer_exec.py, under
 #     no-new-privileges) equal to the version pinned in the Dockerfile;
 #   - users: the default user is root (the wrapper, D-110); `fixer` is uid
@@ -90,9 +91,24 @@ py="$(as_root 'python --version')"
 echo "$py" | grep -qE '^Python 3\.13\.' || fail "expected Python 3.13.x, got: $py"
 ok "$py"
 
+node_default="$(sed -n 's/^ARG NODE_DEFAULT=//p' "$DOCKERFILE")"
+node_versions="$(sed -n 's/^ARG NODE_VERSIONS="\(.*\)"$/\1/p' "$DOCKERFILE")"
+[ -n "$node_default" ] && [ -n "$node_versions" ] || fail "no ARG NODE_DEFAULT/NODE_VERSIONS in the Dockerfile"
 node="$(as_root 'node --version')"
-echo "$node" | grep -qE '^v26\.' || fail "expected Node v26.x, got: $node"
-ok "node $node"
+[ "$node" = "v$node_default" ] || fail "expected default Node v$node_default, got: $node"
+ok "node $node (default)"
+for v in $node_versions; do
+  major="${v%%.*}"
+  got="$(as_root "/opt/node/$major/bin/node --version")"
+  [ "$got" = "v$v" ] || fail "/opt/node/$major is $got, expected v$v"
+  # As install and the gates run it: fixer, fixer_exec.py, the repo's Node first.
+  got="$(as_agentcore "env PATH=/opt/node/$major/bin:/usr/local/bin:/usr/bin:/bin $FIXER_EXEC /bin/sh -c 'node --version && pnpm --version >/dev/null && echo ok'")"
+  [ "$got" = "$(printf 'v%s\nok' "$v")" ] || fail "Node $v + pnpm as fixer: '$got'"
+  ok "node v$v at /opt/node/$major (fixer, pnpm runs on it)"
+done
+as_agentcore "test -z \"\$(find /opt/node -perm /022 ! -type l | head -1)\"" \
+  || fail "/opt/node has a group- or world-writable entry"
+ok "/opt/node is not writable by fixer"
 
 as_root 'pnpm --version' >/dev/null || fail "pnpm not runnable"
 ok "pnpm $(as_root 'pnpm --version')"
