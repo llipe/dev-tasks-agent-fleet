@@ -208,6 +208,7 @@ aggregate fails if either branch fails. `make validate` = `validate-py` +
 
 - **`security-analyst`:** pytest-cov, branch coverage on, `fail_under = 90` enforced by `make test-cov`/`make validate` and CI (set at PRD close, 2026-09-17, after porting the sibling's `credentials`/`signal_backstop`/`scrubber` tests; measured 97%, 712 tests). `main.py` and `agent_reporter.py` are coverage-omitted as in the sibling.
 - **`code-review`:** pytest-cov, branch coverage on, `fail_under = 90` enforced by `make test-cov`/`make validate` and CI from the scaffold story (S-204). Only `agent_reporter.py` (vendored, byte-identical to the sibling) is coverage-omitted; `main.py` is measured. Baseline at S-204: **98%** (356 tests, 2 skipped until `agentcore.json` lands with S-214). Wave A PRD-level gate (2026-10-23, `integration/code-review-agent` @ `9e1d73e` plus `tests/integration/test_cross_story_joins.py`): **99.51%** (4,104 statements, 1,154 branches; 3,115 passed, 2 skipped, 2 strict xfails pinning QA-PRD-01/02). After the Wave A QA fix (`fix/S-213-wave-a-qa`): **99.64%**, 3,160 passed, 2 skipped, 0 xfails; every module 100% except `pipeline.py` 97% and `main.py` 98% (defensive failure-path branches). Detail: `workstream/coverage-report-prd-code-review-agent.md`.
+- **`bug-fix`:** pytest-cov, branch coverage on, `fail_under = 90` enforced by `make test-cov`/`make validate` and CI from the first story (S-180 measured 97%). Only `agent_reporter.py` (vendored) is coverage-omitted; `main.py` is measured. #471 (per-repo Node selection): **98%** (4,607 statements, 1,222 branches; 3,350 passed, 1 skipped, 5 strict xfails); `node.py` 99%, its one miss is an unreachable comparator-regex branch.
 - **`dependency-update`:** pytest-cov 7.1.0, branch coverage on, config in `pyproject.toml`. No hard `fail_under` floor yet — coverage is measured and reported on every `make test-cov`/`make validate` run. Baseline: high (~90%+) on the implemented pipeline modules; `credentials.py` **100%** (as of #106/#108/#109); `main.py` and `agent_reporter.py` remain coverage-excluded/untested (see gap table in `docs/technical-guidelines.md` §11/§18 and the archived per-issue fidelity reports for the full per-module figures).
 - **`panel`:** `@vitest/coverage-v8` is configured (`vitest.config.ts` declares the provider; `test:coverage` is a real, runnable script) and reachable from CI (`panel-quality` job runs `test:coverage`, not just `test`). **No repo-level numeric coverage baseline has been recorded for `panel` as a whole** — individual stories have recorded per-module coverage figures in their own fidelity reports (see `workstream/fidelity-report-S-*.md`), but no aggregate `panel`-wide percentage has been captured and committed here. This is a tracked gap, not a `SKIPPED` provider situation — the tooling exists and runs; only the aggregate number has never been pulled and recorded in this file.
 - **`agentcore-cdk-app`:** no coverage tooling configured (out of scope — IaC synth smoke test only).
@@ -305,7 +306,9 @@ and the marker is removed in the same change.
 Hostile-input suites for repository-controlled text (S-208:
 `tests/unit/test_verifier_hostile.py`, `tests/unit/test_repo_conventions_hostile.py`;
 S-209: `tests/unit/test_prompt.py::test_hostile_content_builds_quickly` and
-`tests/unit/test_prompt_hostile.py::test_megabyte_hostile_inputs_build_in_linear_time`)
+`tests/unit/test_prompt_hostile.py::test_megabyte_hostile_inputs_build_in_linear_time`;
+`bug-fix` #471: `tests/unit/test_node_hostile.py`, megabyte `engines.node` and
+`.nvmrc` inputs)
 are the one sanctioned Layer 1 use of `time.perf_counter`: a regex-cost or
 quadratic-scan test may assert an elapsed bound on a 100k+ line input. The bound
 must hold with at least 3x margin under `make test-cov` (coverage tracing), and
@@ -404,7 +407,8 @@ Strict `xfail`s in the `bug-fix` suite, by status (S-190 fix rounds 1 and 2):
   are possible in Wave B; waits on a spec §8.6 decision and S-194); the S-182
   QA gap in `tests/unit/test_sandbox.py::TestNsswitchActionBlocks` (three
   cases: a spaced or multi-action `[..=return]` nsswitch block isn't
-  detected). `tests/unit/test_agentcore_config.py::TestRuntime::test_probe_flag_is_never_committed`
+  detected).
+  `tests/unit/test_agentcore_config.py::TestRuntime::test_probe_flag_is_never_committed`
   is a conditional strict `xfail` that applies only while `ALLOW_PROBE` is
   committed (the S-182 spike window); it is inactive today.
 

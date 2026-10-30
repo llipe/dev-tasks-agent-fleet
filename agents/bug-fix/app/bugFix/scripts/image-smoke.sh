@@ -5,7 +5,7 @@
 #
 # Runs throwaway containers from the image and asserts:
 #   - toolchain: Python 3.13.x, Node (the pinned default, and each pinned
-#     /opt/node/<major> runnable as fixer with pnpm), pnpm, git, bwrap, socat, and
+#     /opt/node/<major> runnable as fixer with pnpm, claude and srt), pnpm, git, bwrap, socat, and
 #     `claude --version` (run as fixer through setpriv + fixer_exec.py, under
 #     no-new-privileges) equal to the version pinned in the Dockerfile;
 #   - users: the default user is root (the wrapper, D-110); `fixer` is uid
@@ -102,9 +102,9 @@ for v in $node_versions; do
   got="$(as_root "/opt/node/$major/bin/node --version")"
   [ "$got" = "v$v" ] || fail "/opt/node/$major is $got, expected v$v"
   # As install and the gates run it: fixer, fixer_exec.py, the repo's Node first.
-  got="$(as_agentcore "env PATH=/opt/node/$major/bin:/usr/local/bin:/usr/bin:/bin $FIXER_EXEC /bin/sh -c 'node --version && pnpm --version >/dev/null && echo ok'")"
-  [ "$got" = "$(printf 'v%s\nok' "$v")" ] || fail "Node $v + pnpm as fixer: '$got'"
-  ok "node v$v at /opt/node/$major (fixer, pnpm runs on it)"
+  got="$(as_agentcore "env PATH=/opt/node/$major/bin:/usr/local/bin:/usr/bin:/bin $FIXER_EXEC /bin/sh -c 'node --version && pnpm --version >/dev/null && claude --version >/dev/null && srt --version >/dev/null && echo ok'")"
+  [ "$got" = "$(printf 'v%s\nok' "$v")" ] || fail "Node $v + pnpm/claude/srt as fixer: '$got'"
+  ok "node v$v at /opt/node/$major (fixer; pnpm, claude and srt run on it)"
 done
 as_agentcore "test -z \"\$(find /opt/node -perm /022 ! -type l | head -1)\"" \
   || fail "/opt/node has a group- or world-writable entry"

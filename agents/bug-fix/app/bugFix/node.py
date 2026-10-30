@@ -107,7 +107,10 @@ def _parse_partial(text: str) -> tuple[int | None, int | None, int | None, int]:
     m = _PARTIAL.fullmatch(text)
     if m is None:
         raise RangeError("not a version")
-    major, minor, patch = _num(m["M"]), _num(m["m"]), _num(m["p"])
+    try:
+        major, minor, patch = _num(m["M"]), _num(m["m"]), _num(m["p"])
+    except ValueError:  # past CPython's int digit limit
+        raise RangeError("version part too long") from None
     # Once a part is a wildcard, the parts after it are too (24.x.3 is 24.x).
     if major is None:
         minor = patch = None
@@ -213,7 +216,10 @@ def _engines_node(reader: RepoReader) -> str | None:
 def _file_major(reader: RepoReader, name: str) -> int | None:
     text = reader.read_text(name)
     m = _FILE_MAJOR.fullmatch(text.strip()) if text is not None else None
-    return int(m[1]) if m else None
+    try:
+        return int(m[1]) if m else None
+    except ValueError:  # past CPython's int digit limit
+        return None
 
 
 def select_node(reader: RepoReader) -> NodeChoice | None:
