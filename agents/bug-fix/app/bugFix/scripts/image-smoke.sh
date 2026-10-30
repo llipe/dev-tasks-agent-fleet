@@ -108,7 +108,11 @@ for v in $node_versions; do
 done
 as_agentcore "test -z \"\$(find /opt/node -perm /022 ! -type l | head -1)\"" \
   || fail "/opt/node has a group- or world-writable entry"
-ok "/opt/node is not writable by fixer"
+as_agentcore "test -z \"\$(find /opt/node ! -user root | head -1)\"" \
+  || fail "/opt/node has an entry not owned by root"
+as_agentcore "$SETPRIV sh -c 'test -z \"\$(find /opt/node -writable ! -type l | head -1)\"'" \
+  || fail "fixer can write somewhere under /opt/node"
+ok "/opt/node is root-owned and not writable by fixer"
 
 as_root 'pnpm --version' >/dev/null || fail "pnpm not runnable"
 ok "pnpm $(as_root 'pnpm --version')"
@@ -234,7 +238,7 @@ ok "fixer_exec.py refuses to exec as root (exit 3)"
 # sandbox.py's own paths and prefix, as the wrapper uses them.
 as_agentcore "cd /app && python3 -c 'from sandbox import Sandbox, Mode; s = Sandbox(); s.check_available(Mode.SCRIPT); s.check_available(Mode.CLI)'" \
   || fail "sandbox.py DEFAULT_PATHS don't match the image"
-ok "sandbox.py DEFAULT_PATHS exist in the image (setpriv, python, fixer_exec, srt, settings, claude)"
+ok "sandbox.py DEFAULT_PATHS exist in the image (setpriv, python, fixer_exec, node, srt, settings, claude)"
 switched="$(as_agentcore "cd /app && python3 -c 'import subprocess; from sandbox import DEFAULT_PATHS, build_env, fixer_prefix; \
 print(subprocess.run([*fixer_prefix(DEFAULT_PATHS), \"/usr/bin/id\", \"-u\"], env=build_env(None), capture_output=True, text=True).stdout.strip())'")"
 [ "$switched" = "10002" ] || fail "sandbox.fixer_prefix ran 'id -u' as '$switched', expected 10002"

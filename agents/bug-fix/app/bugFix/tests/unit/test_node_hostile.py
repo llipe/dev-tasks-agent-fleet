@@ -117,7 +117,17 @@ def test_a_megabyte_package_json_with_a_non_string_engines_is_the_default():
 
 versions = st.sampled_from(NODE_VERSIONS)
 _part = st.one_of(st.integers(0, 40).map(str), st.sampled_from(["x", "X", "*"]))
-partials = st.lists(_part, min_size=1, max_size=3).map(".".join)
+
+
+# node-semver's grammar: once a part is a wildcard, the rest are too (no 24.x.3).
+def _well_formed(parts: list[str]) -> list[str]:
+    for i, part in enumerate(parts):
+        if not part.isdigit():
+            return parts[:i] + ["x"] * (len(parts) - i)
+    return parts
+
+
+partials = st.lists(_part, min_size=1, max_size=3).map(_well_formed).map(".".join)
 ops = st.sampled_from(["", "=", "<", "<=", ">", ">=", "~", "~>", "^"])
 comparators = st.builds(lambda o, p: o + p, ops, partials)
 sets = st.lists(comparators, min_size=1, max_size=4).map(" ".join)

@@ -22,9 +22,11 @@ equal :data:`NODE_VERSIONS` (a unit test pins both).
 3. Otherwise :data:`DEFAULT_NODE` when it is a candidate, else the highest.
 
 The wrapper then puts the choice's ``bin`` first on ``fixer``'s PATH
-(``sandbox.node_path``), for install and every gate. ``pnpm``, ``claude``
-and ``srt`` are ``#!/usr/bin/env node`` scripts, so they run on the same
-Node; all three accept every shipped major (``>=22.12``).
+(``sandbox.node_path``), for install and every gate. ``pnpm`` and ``claude``
+are ``#!/usr/bin/env node`` scripts, so they run on the same Node; both
+accept every shipped major. ``srt`` does not: the sandbox runs it as
+``/usr/bin/node /usr/bin/srt``, on the default Node its confinement was
+checked on (``sandbox.SandboxPaths.node``).
 
 **Ranges** (:func:`satisfies`) follow node-semver's grammar: ``||`` unions,
 space-separated comparators (``<``, ``<=``, ``>``, ``>=``, ``=``), bare and
@@ -111,11 +113,9 @@ def _parse_partial(text: str) -> tuple[int | None, int | None, int | None, int]:
         major, minor, patch = _num(m["M"]), _num(m["m"]), _num(m["p"])
     except ValueError:  # past CPython's int digit limit
         raise RangeError("version part too long") from None
-    # Once a part is a wildcard, the parts after it are too (24.x.3 is 24.x).
-    if major is None:
-        minor = patch = None
-    elif minor is None:
-        patch = None
+    # After a wildcard only wildcards may follow: node-semver rejects 24.x.3.
+    if (major is None and (minor, patch) != (None, None)) or (minor is None and patch is not None):
+        raise RangeError("a number after a wildcard")
     return major, minor, patch, 0 if m["pre"] else 1
 
 

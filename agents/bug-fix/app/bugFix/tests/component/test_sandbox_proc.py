@@ -89,6 +89,7 @@ def chain(tmp_path: Path, marker: str):
         setpriv=fake_setpriv,
         python=sys.executable,
         fixer_exec=str(PKG / "fixer_exec.py"),
+        node=sys.executable,  # runs the Python fake-srt, as /usr/bin/node runs srt
         srt=fake_srt,
         srt_settings=str(settings),
         claude=str(tmp_path / "claude"),

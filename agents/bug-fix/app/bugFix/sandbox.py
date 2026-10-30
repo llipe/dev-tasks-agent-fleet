@@ -201,6 +201,9 @@ class SandboxPaths(NamedTuple):
     setpriv: str = "/usr/bin/setpriv"
     python: str = "/usr/local/bin/python3"
     fixer_exec: str = "/app/fixer_exec.py"
+    # srt is a Node script; it runs on the image's default Node, not the repo's
+    # (#471), so its proxy is the one the S-182 confinement checks ran on.
+    node: str = "/usr/bin/node"
     srt: str = "/usr/bin/srt"
     srt_settings: str = "/etc/bug-fix/srt-settings.json"
     claude: str = "/usr/bin/claude"
@@ -418,7 +421,12 @@ class Sandbox:
             ("fixer_exec", p.fixer_exec, False),
         ]
         if mode is Mode.SCRIPT:
-            return [*common, ("srt", p.srt, True), ("srt_settings", p.srt_settings, False)]
+            return [
+                *common,
+                ("node", p.node, True),
+                ("srt", p.srt, True),
+                ("srt_settings", p.srt_settings, False),
+            ]
         return [*common, ("claude", p.claude, True)]
 
     def check_available(self, mode: Mode) -> None:
@@ -435,7 +443,8 @@ class Sandbox:
             raise ValueError("empty command")
         prefix = fixer_prefix(self.paths)
         if mode is Mode.SCRIPT:
-            return [*prefix, self.paths.srt, "--settings", self.paths.srt_settings, "--", *argv]
+            srt = [self.paths.node, self.paths.srt, "--settings", self.paths.srt_settings]
+            return [*prefix, *srt, "--", *argv]
         if argv[0] != self.paths.claude:
             raise ValueError("CLI mode runs only the pinned claude binary")
         rest = list(argv[1:])

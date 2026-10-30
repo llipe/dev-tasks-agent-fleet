@@ -160,7 +160,22 @@ class TestSatisfies:
 
     @pytest.mark.parametrize(
         "spec",
-        ["latest", "lts/*", "node", ">=abc", "24.a", ">>24", "1.2.3.4", "24 -"],
+        [
+            "latest",
+            "lts/*",
+            "node",
+            ">=abc",
+            "24.a",
+            ">>24",
+            "1.2.3.4",
+            "24 -",
+            # node-semver rejects a number after a wildcard (DF-471-03)
+            "24.x.3",
+            "x.30",
+            "*.1.2",
+            "30.x.1",
+            ">=24.x.0",
+        ],
     )
     def test_unparseable_raises(self, spec):
         with pytest.raises(RangeError):
@@ -203,6 +218,13 @@ class TestSelectNode:
     def test_an_unparseable_range_falls_back_to_the_default(self):
         choice = select_node(repo("lts/*"))
         assert choice == NodeChoice(DEFAULT_NODE, "default (engines.node not parsed)")
+
+    def test_an_unparseable_range_still_lets_a_version_file_choose(self):
+        # Unparsed engines.node is treated like no engines.node: every shipped
+        # version stays a candidate, so .nvmrc narrows as it would without it.
+        reader = repo("lts/*")
+        reader.files[".nvmrc"] = "22"
+        assert select_node(reader) == NodeChoice(V22, ".nvmrc")
 
     def test_malformed_package_json_is_the_default(self):
         assert select_node(MapReader({"package.json": "{"})).version == DEFAULT_NODE
