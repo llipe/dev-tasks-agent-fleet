@@ -77,6 +77,7 @@ def paths(tmp_path: Path) -> SandboxPaths:
         setpriv=_exe("setpriv"),
         python=_exe("python3"),
         fixer_exec=_exe("fixer_exec.py"),
+        node=_exe("node"),
         srt=_exe("srt"),
         srt_settings=_exe("srt-settings.json"),
         claude=_exe("claude"),
@@ -313,6 +314,73 @@ class TestFixerExecEnv:
         assert set(fixer_exec.ALLOWED) == EXPECTED_NAMES == set(sandbox.ALLOWED_ENV)
 
 
+class TestNodePath:
+    """The repo's Node major goes first on PATH, from a closed set only."""
+
+    def test_node_path_puts_the_major_bin_first(self):
+        assert sandbox.node_path("24.22.2") == "/opt/node/24/bin:" + sandbox.FIXER_PATH
+
+    def test_node_path_refuses_an_unshipped_version(self):
+        with pytest.raises(ValueError):
+            sandbox.node_path("18.20.0")
+
+    def test_allowed_paths_are_the_base_plus_one_per_shipped_version(self):
+        import node
+
+        assert (
+            sandbox.FIXER_PATH,
+            *(sandbox.node_path(v) for v in node.NODE_VERSIONS),
+        ) == sandbox.ALLOWED_PATHS
+
+    def test_build_env_with_node(self):
+        env = build_env(None, node="22.23.4")
+        assert env["PATH"] == "/opt/node/22/bin:" + sandbox.FIXER_PATH
+        assert set(env) == {"PATH", "HOME", "LANG", "CI"}
+
+    def test_build_env_refuses_an_unshipped_node(self):
+        with pytest.raises(ValueError):
+            build_env(None, node="/tmp/evil")
+
+    def test_run_passes_the_node_path(self, paths):
+        clock = FakeClock()
+        sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
+        sb.run(["true"], cwd="/work/repo", timeout=60, node="24.22.2")
+        assert rec.calls[0][1]["env"]["PATH"] == "/opt/node/24/bin:" + sandbox.FIXER_PATH
+
+    def test_run_without_node_keeps_the_base_path(self, paths):
+        clock = FakeClock()
+        sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
+        sb.run(["true"], cwd="/work/repo", timeout=60)
+        assert rec.calls[0][1]["env"]["PATH"] == sandbox.FIXER_PATH
+
+    def test_run_with_an_unshipped_node_spawns_nothing(self, paths):
+        clock = FakeClock()
+        sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
+        with pytest.raises(ValueError):
+            sb.run(["true"], cwd="/work/repo", timeout=60, node="99.0.0")
+        assert rec.calls == []
+
+    def test_fixer_exec_allowed_paths_equal_the_wrappers(self):
+        assert fixer_exec.ALLOWED_PATHS == sandbox.ALLOWED_PATHS
+
+    @pytest.mark.parametrize("path", sandbox.ALLOWED_PATHS)
+    def test_fixer_exec_keeps_an_allowed_path(self, path):
+        assert fixer_exec.build_env({"PATH": path})["PATH"] == path
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/tmp/bin:/usr/local/bin:/usr/bin:/bin",
+            "/opt/node/24/bin:/tmp:/usr/local/bin:/usr/bin:/bin",
+            "/opt/node/18/bin:/usr/local/bin:/usr/bin:/bin",
+            "/opt/node/24/bin",
+            "",
+        ],
+    )
+    def test_fixer_exec_resets_any_other_path(self, path):
+        assert fixer_exec.build_env({"PATH": path})["PATH"] == fixer_exec.FIXER_PATH
+
+
 # ---------------------------------------------------------------------------
 # TC-182-02: uid switch and sandbox wrapper
 # ---------------------------------------------------------------------------
@@ -336,9 +404,16 @@ class TestCommandShape:
         assert cmd[:7] == [paths.setpriv, *self.SETPRIV_FLAGS, "--"]
         assert cmd[7:10] == [paths.python, "-I", paths.fixer_exec]
         rest = cmd[10:]
-        assert rest[:3] == [paths.srt, "--settings", paths.srt_settings]
-        assert rest[3] == "--"
-        assert rest[4:] == ["npm", "test"]
+        assert rest[:4] == [paths.node, paths.srt, "--settings", paths.srt_settings]
+        assert rest[4] == "--"
+        assert rest[5:] == ["npm", "test"]
+
+    def test_srt_runs_on_the_image_default_node_not_the_repos(self, paths):
+        # #471: PATH may put a repo's Node first; srt and its proxy stay on
+        # the default Node the S-182 confinement checks ran on.
+        assert sandbox.DEFAULT_PATHS.node == "/usr/bin/node"
+        cmd = Sandbox(paths).build_command(Mode.SCRIPT, ["true"])
+        assert cmd[cmd.index(paths.srt) - 1] == paths.node
 
     def test_cli_mode_runs_only_the_claude_binary(self, paths):
         cmd = Sandbox(paths).build_command(Mode.CLI, [paths.claude, "-p"])
@@ -371,7 +446,7 @@ class TestCommandShape:
         assert cmd[0] == paths.setpriv
         assert "--reuid=10002" in cmd and "--no-new-privs" in cmd
         runtime = cmd[cmd.index("--") + 4]
-        assert runtime in (paths.srt, paths.claude)
+        assert runtime in (paths.node, paths.claude)
 
     def test_popen_runs_in_new_session_with_cwd_and_closed_fds(self, paths):
         clock = FakeClock()
@@ -553,6 +628,13 @@ class TestUnavailable:
         with pytest.raises(SandboxUnavailable) as exc:
             Sandbox(broken).check_available(mode)
         assert "setpriv" in str(exc.value)
+
+    def test_missing_default_node_in_script_mode_names_it(self, paths, tmp_path):
+        broken = paths._replace(node=str(tmp_path / "nope" / "node"))
+        with pytest.raises(SandboxUnavailable) as exc:
+            Sandbox(broken).check_available(Mode.SCRIPT)
+        assert "node" in str(exc.value)
+        Sandbox(broken).check_available(Mode.CLI)  # the CLI runs on PATH's Node
 
     def test_cli_mode_does_not_need_srt(self, paths, tmp_path):
         no_srt = paths._replace(srt=str(tmp_path / "nope" / "srt"))

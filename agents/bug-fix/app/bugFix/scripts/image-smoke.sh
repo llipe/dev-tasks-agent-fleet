@@ -4,7 +4,8 @@
 # Usage: scripts/image-smoke.sh [image]     (default: bug-fix:local)
 #
 # Runs throwaway containers from the image and asserts:
-#   - toolchain: Python 3.13.x, Node v26.x, pnpm, git, bwrap, socat, and
+#   - toolchain: Python 3.13.x, Node (the pinned default, and each pinned
+#     /opt/node/<major> runnable as fixer with pnpm, claude and srt), pnpm, git, bwrap, socat, and
 #     `claude --version` (run as fixer through setpriv + fixer_exec.py, under
 #     no-new-privileges) equal to the version pinned in the Dockerfile;
 #   - users: the default user is root (the wrapper, D-110); `fixer` is uid
@@ -90,9 +91,28 @@ py="$(as_root 'python --version')"
 echo "$py" | grep -qE '^Python 3\.13\.' || fail "expected Python 3.13.x, got: $py"
 ok "$py"
 
+node_default="$(sed -n 's/^ARG NODE_DEFAULT=//p' "$DOCKERFILE")"
+node_versions="$(sed -n 's/^ARG NODE_VERSIONS="\(.*\)"$/\1/p' "$DOCKERFILE")"
+[ -n "$node_default" ] && [ -n "$node_versions" ] || fail "no ARG NODE_DEFAULT/NODE_VERSIONS in the Dockerfile"
 node="$(as_root 'node --version')"
-echo "$node" | grep -qE '^v26\.' || fail "expected Node v26.x, got: $node"
-ok "node $node"
+[ "$node" = "v$node_default" ] || fail "expected default Node v$node_default, got: $node"
+ok "node $node (default)"
+for v in $node_versions; do
+  major="${v%%.*}"
+  got="$(as_root "/opt/node/$major/bin/node --version")"
+  [ "$got" = "v$v" ] || fail "/opt/node/$major is $got, expected v$v"
+  # As install and the gates run it: fixer, fixer_exec.py, the repo's Node first.
+  got="$(as_agentcore "env PATH=/opt/node/$major/bin:/usr/local/bin:/usr/bin:/bin $FIXER_EXEC /bin/sh -c 'node --version && pnpm --version >/dev/null && claude --version >/dev/null && srt --version >/dev/null && echo ok'")"
+  [ "$got" = "$(printf 'v%s\nok' "$v")" ] || fail "Node $v + pnpm/claude/srt as fixer: '$got'"
+  ok "node v$v at /opt/node/$major (fixer; pnpm, claude and srt run on it)"
+done
+as_agentcore "test -z \"\$(find /opt/node -perm /022 ! -type l | head -1)\"" \
+  || fail "/opt/node has a group- or world-writable entry"
+as_agentcore "test -z \"\$(find /opt/node ! -user root | head -1)\"" \
+  || fail "/opt/node has an entry not owned by root"
+as_agentcore "$SETPRIV sh -c 'test -z \"\$(find /opt/node -writable ! -type l | head -1)\"'" \
+  || fail "fixer can write somewhere under /opt/node"
+ok "/opt/node is root-owned and not writable by fixer"
 
 as_root 'pnpm --version' >/dev/null || fail "pnpm not runnable"
 ok "pnpm $(as_root 'pnpm --version')"
@@ -218,7 +238,7 @@ ok "fixer_exec.py refuses to exec as root (exit 3)"
 # sandbox.py's own paths and prefix, as the wrapper uses them.
 as_agentcore "cd /app && python3 -c 'from sandbox import Sandbox, Mode; s = Sandbox(); s.check_available(Mode.SCRIPT); s.check_available(Mode.CLI)'" \
   || fail "sandbox.py DEFAULT_PATHS don't match the image"
-ok "sandbox.py DEFAULT_PATHS exist in the image (setpriv, python, fixer_exec, srt, settings, claude)"
+ok "sandbox.py DEFAULT_PATHS exist in the image (setpriv, python, fixer_exec, node, srt, settings, claude)"
 switched="$(as_agentcore "cd /app && python3 -c 'import subprocess; from sandbox import DEFAULT_PATHS, build_env, fixer_prefix; \
 print(subprocess.run([*fixer_prefix(DEFAULT_PATHS), \"/usr/bin/id\", \"-u\"], env=build_env(None), capture_output=True, text=True).stdout.strip())'")"
 [ "$switched" = "10002" ] || fail "sandbox.fixer_prefix ran 'id -u' as '$switched', expected 10002"
