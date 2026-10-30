@@ -1,0 +1,12 @@
+{
+  "name": "js-autofix-lint",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "echo test ok",
+    "lint": "printf 'export const rewritten = 1;\\n' > src/add.js && echo new > untracked.txt && mkdir -p node_modules/x && echo keep > node_modules/x/keep.txt",
+    "format:check": "echo format ok",
+    "typecheck": "echo typecheck ok",
+    "audit": "echo audit ok"
+  }
+}

@@ -1,0 +1,14 @@
+{
+    "v": "6",
+    "s": "READY",
+    "role": "arn:aws:iam::755641879575:role/agent-fleet-bug-fix-runtime",
+    "img": "755641879575.dkr.ecr.us-east-1.amazonaws.com/bugfix/bug_fix:5b24b169e3bdb6b18d5d1e986eb5a2550a109a32a849d9cda4dc541d4cfb44d3",
+    "env": [
+        "ANTHROPIC_KEY_SECRET_ID",
+        "BOARD_UPDATES_ENABLED",
+        "MODEL_ID",
+        "PROJECTS_TOKEN_SECRET_ID",
+        "SUPABASE_KEY_SECRET_ID",
+        "SUPABASE_URL"
+    ]
+}

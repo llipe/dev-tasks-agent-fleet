@@ -211,8 +211,13 @@ def row(request) -> dict:
 
 
 def test_migration_file_name_sorts_after_existing_migrations():
-    names = sorted(p.name for p in MIGRATIONS.glob("*.sql"))
-    assert names[-1] == _migration().name
+    # The seed must run after every schema migration it inserts into. Another
+    # agent's data-only seed (e.g. bug-fix's S-184 migration) may sort after
+    # it: such a seed is independent of this row, so only a non-seed (schema)
+    # migration sorting later would break the guarantee.
+    mine = _migration().name
+    later = sorted(p.name for p in MIGRATIONS.glob("*.sql") if p.name > mine)
+    assert all(re.fullmatch(r"\d+_seed_[a-z0-9_]+_agent\.sql", n) for n in later), later
 
 
 def test_params_schema_equals_spec_5_1(row):

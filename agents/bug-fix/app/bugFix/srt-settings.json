@@ -1,0 +1,20 @@
+{
+  "network": {
+    "allowedDomains": [
+      "registry.npmjs.org",
+      "registry.yarnpkg.com",
+      "pypi.org",
+      "files.pythonhosted.org"
+    ],
+    "deniedDomains": [],
+    "allowLocalBinding": false
+  },
+  "filesystem": {
+    "denyRead": ["/work/secrets", "/work/wrapper", "/home/wrapper"],
+    "allowRead": [],
+    "allowWrite": ["/work/repo", "/work/out", "/home/fixer", "/tmp"],
+    "denyWrite": ["/etc/claude-code", "/etc/bug-fix"]
+  },
+  "enableWeakerNestedSandbox": false,
+  "allowNestedUserNamespaces": false
+}

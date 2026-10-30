@@ -27,6 +27,14 @@ environments:
             project_dir: agents/security-analyst
             runtime_id: securityanalyst_security_analyst-w6CpbYHRE0
             ecr_repository: securityanalyst/security_analyst
+          bug-fix:
+            project_dir: agents/bug-fix
+            runtime_id: bugfix_bug_fix-BiuPsdGSPK
+            ecr_repository: bugfix/bug_fix
+            stack: AgentCore-bugfix-default
+            # Imported execution role (agentcore.json executionRoleArn): no Bedrock grant (D-50, DF-180-04).
+            # Change record: infra/changes/20261023-bug-fix-runtime/
+            execution_role: agent-fleet-bug-fix-runtime
       secrets_prefix: agent-fleet/prod/ # Secrets Manager, referenced by name only
 
     fly:

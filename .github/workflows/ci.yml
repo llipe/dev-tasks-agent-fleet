@@ -24,7 +24,9 @@ jobs:
         # One gate per Python agent. security-analyst was added at its PRD
         # close (S-141): its 700+ tests were previously unreachable from CI.
         # code-review joined at its scaffold (S-204), so it is gated from day one.
-        agent: [dependency-update, security-analyst, code-review]
+        # bug-fix was added with its scaffold (S-180), so its gate runs in CI
+        # from its first story rather than at PRD close.
+        agent: [dependency-update, security-analyst, code-review, bug-fix]
         include:
           - agent: dependency-update
             package-dir: agents/dependency-update/app/dependencyUpdate
@@ -32,6 +34,8 @@ jobs:
             package-dir: agents/security-analyst/app/securityAnalyst
           - agent: code-review
             package-dir: agents/code-review/app/codeReview
+          - agent: bug-fix
+            package-dir: agents/bug-fix/app/bugFix
     defaults:
       run:
         working-directory: ${{ matrix.package-dir }}
@@ -44,6 +48,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: ${{ matrix.package-dir }}/pyproject.toml
+
+      # bug-fix's checkout tests run the real `pnpm install --frozen-lockfile`
+      # and skip when pnpm is absent (DF-189-09). Same pin as the panel job
+      # and the image.
+      - name: Install pnpm (bug-fix)
+        if: matrix.agent == 'bug-fix'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
 
       - name: Install package with dev dependencies
         run: pip install -e '.[dev]'

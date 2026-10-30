@@ -9,6 +9,11 @@
 
 | Version | Date       | Summary                                                  | Author           |
 | ------- | ---------- | -------------------------------------------------------- | ---------------- |
+| 2.6 | 2026-10-24 | Drift reconciliation of S-190 audit findings DF-190-01/04/05/06/10 and the stream rule ([`fidelity-report-S-190.md`](fidelity-report-S-190.md), PR #460), confirmed by @llipe 2026-10-24, against spec v2.7. DF-190-01 (Major): new S-194-AC9, the two linked-PR re-checks (the §8.6 post-check re-runs refusal (c) `linked_pr` and withdraws under the DF-38 rules, `not_applicable`/`linked_pr`, a fault fails closed with its D-67 code, ownership confirmed only when both reads pass; and a pre-push re-check that takes the disposition path, `needs_review`, with no second PR); S-194-AC7 now gates `FIX_LOOP_ENABLED=1` on AC9 and on a wired fix runner; the S-188 technical note points to S-194. DF-190-04: S-191 and S-194 technical notes say a Wave B story must wire `Runtime.fix_runner` before the flag flips (`FIX_LOOP_ENABLED=1` with no runner disposes `needs_review`/`fix_unavailable`). DF-190-05/06 and the stream rule are spec-only (§8.9 entrypoint rows, result shape, `result.reason` on `needs_review`, stream close); S-190's context names them. DF-190-10 is a test-plan change only. AC numbering is unchanged; AC9 is appended. | product-engineer |
+| 2.5 | 2026-10-24 | Drift reconciliation of S-189 audit findings DF-189-01/04/05/07/08 and the S-189 fix-round hardening ([`fidelity-report-S-189.md`](fidelity-report-S-189.md), PR #458), confirmed by @llipe 2026-10-24, against spec v2.6. DF-189-01: S-189-AC3 and S-193-AC3/AC6 use the raw-blob tar, not `git archive`. Fix-round hardening: S-189-AC1 adds `fsckObjects`; S-189-AC3 adds the `.git` component check and the tar caps; S-189-AC3 also records the link-free work-tree walk (hardlinks, FIFOs, sockets, device nodes), the link-protection `run_event` and image-smoke assertion, and `CLONE_FAILED`. DF-189-04/05/08: S-189-AC4 and AC5 name the repo-gate items and fixed reply phrases (`lockfile`, `supported package manager (pnpm or npm)`, `package.json or Makefile`, "missing install target (the Makefile target `install`)"), GNU make's makefile order and `include` not followed; the edge-case matrix gains these cases. DF-189-07: S-180-AC5, S-189-AC1/AC3 and S-193-AC6 drop the `wrapper` user (D-110). | product-engineer |
+| 2.4 | 2026-10-24 | D-112 / OQ-1 and drift reconciliation of DF-38 (race-loss part) and S-188 audit findings DF-188-01/02/05, confirmed by @llipe 2026-10-24, against spec v2.5. D-112 / OQ-1: S-189's "OQ-1 resolved" AC, context, technical notes, edge-case matrix and steps now state the rule: a Python repo must provide `make install`, run in the sandbox; without it, refusal `repo_gate` "missing install target", `not_applicable`, before any issue change (FR-5); JS unchanged. DF-188-01: the S-188 technical note names both halves of the open-claim rule, `markers.open_claims()` (markers) and `refusal.active_claim_runs()` (`v_runs` status), shared by refusal (d) and the race check. DF-38 (race-loss part) and DF-188-02: S-188 gains a business rule for withdrawal faults (a non-404 `DELETE` fault → `failed` with its D-67 code, no disposition, no board call; a 404 → `not_applicable`/`active_run`; the single-id `DELETE` is retried on a 5xx). DF-188-05 is a test-plan change only. | product-engineer |
+| 2.3 | 2026-10-24 | Drift reconciliation of DF-33 and S-185 audit findings DF-185-01/02/03/05/06/07, confirmed by @llipe 2026-10-24. DF-33: S-185-AC2 and S-188-AC2 use one open-claim definition (spec v2.4 §8.2): a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`; no row counts as finished with a warning, and an unknown status fails closed as `SUPABASE_UNAVAILABLE`. It lives in `markers.open_claims()`, which S-188 takes over. DF-185-01/02/03/05/06/07: S-185-AC3 names a cross-repo linked PR `owner/repo#M`; S-185-AC5 states the GitHub client's retry and fault semantics (spec v2.4 §8.9, §9); the S-185 edge-case matrix gains the cross-repo, missing-row and unknown-status cases. | product-engineer |
+| 2.2 | 2026-10-24 | Drift reconciliation of S-186 audit findings DF-186-01 and DF-186-02, confirmed by @llipe 2026-10-24. DF-186-01: S-186-AC4 and S-194-AC3 now state `(ref <reference as written>)`, with `#N` → `(ref #N)` unchanged (D-65 amendment). DF-186-02: S-185, S-188 and S-199 L2 tests name the in-repo GitHub double instead of `responses`; S-185 adds a parser-level `Link`-header unit test. | product-engineer |
 | 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (D-107, D-108): new S-200 (trigger guardrail scope and blocked 👎 reaction) in Wave C. | product-engineer |
 | 2.0 | 2026-10-22 | Issue-mode rewrite (PRD v2.0, spec v2.0, D-88–D-106). Removed: S-183, S-187, S-196. Rewritten: S-184, S-185 (refusal checks and reply), S-186, S-188, S-190, S-197, S-198. Small updates: S-180, S-181, S-182 (board probe), S-189, S-194. New: S-199 (Projects v2 board updates). Wave B is unchanged except S-194. | product-engineer |
 | 1.5 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). Stories S-180–S-198 replace the superseded S-180–S-203 (issues #326–#349, closed). | product-engineer |
@@ -50,7 +55,7 @@ This story only builds the skeleton. It establishes the sibling module set (D-03
 - [ ] Copied sibling modules: `agent_reporter.py`, `heartbeat.py`, `signal_backstop.py`, `scrubber.py`, `credentials.py`. Each carries a header comment naming its source and source commit.
 - [ ] `agentcore.json`: runtime `bug_fix`, `Container`, `PUBLIC` network, `maxLifetime: 3600`, `envVars` `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `ANTHROPIC_KEY_SECRET_ID` (`agent-fleet/prod/ANTHROPIC_API_KEY`), `PROJECTS_TOKEN_SECRET_ID` (`agent-fleet/prod/GITHUB_PROJECTS_TOKEN`), `BOARD_UPDATES_ENABLED=1`, and `MODEL_ID` (a Sonnet id on the Anthropic API). No Bedrock reference (D-50).
 - [ ] The Dockerfile builds on ARM64 with Python 3.13, Node 26 + pnpm, git, `bubblewrap`, `socat`, and a pinned `@anthropic-ai/claude-code` version.
-- [ ] Users `wrapper` and `fixer` exist with different uids. `/work/repo` and `/work/out` are owned by `fixer`. `/home/fixer` exists.
+- [ ] User `fixer` exists, and the wrapper runs as root: there is no `wrapper` user (D-110, superseding D-109). `/work/repo` and `/work/out` are owned by `fixer`. `/home/fixer` exists.
 - [ ] `/etc/claude-code/managed-settings.json` is root-owned with mode 0644. It enables the sandbox, has the registry-only network allow-list, and denies `Bash(git push:*)`, `Bash(gh:*)`, `Bash(curl:*)`, `Bash(wget:*)`, `WebFetch`, `WebSearch`, and Read/Edit of `/proc/**`, `/etc/claude-code/**`, `/work/secrets/**` (spec §12). Key names are provisional until S-182.
 - [ ] The minimal entrypoint reports through `agent_reporter` and exits cleanly.
 
@@ -325,12 +330,18 @@ This story covers D-92 and D-104, spec §8.2, and PRD FR-5. It replaces the labe
   - `pull_request`: the issue payload has `pull_request`;
   - `closed`: `state != open`;
   - `linked_pr`: an open closing-reference PR, or an open PR with head ref `issue/<N>-…` (D-55);
-  - `active_run`: a trusted claim marker with no `pr`, `disposition` or `refusal` marker for its run, whose run is non-terminal in `v_runs`.
+  - `active_run`: an **open claim** for another run (spec §8.2, DF-33). A claim is open for run R when a trusted claim marker for R exists, no trusted `pr`, `disposition` or `refusal` marker for R exists, and R is not terminal in `v_runs.effective_status`. A claimed R with no `v_runs` row counts as finished, with a `run_event` warning (CT-34). An unknown `effective_status` fails closed as `failed`/`SUPABASE_UNAVAILABLE`.
   
   The `repo_gate` refusal comes from S-189.
-- [ ] **Reply:** each refusal posts exactly one comment. Its first line is `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->`, followed by the fixed text for that code and the run link. It contains no model text and adds **no** reaction (D-104).
+- [ ] **Reply:** each refusal posts exactly one comment. Its first line is `<!-- agent-fleet:bug-fix:refusal run_id=<uuid> reason=<code> -->`, followed by the fixed text for that code and the run link. It contains no model text and adds **no** reaction (D-104). A linked PR in this repository is named `#M`; one in another repository is named `owner/repo#M`. When several match, a same-repo PR is named first, then the lowest `(owner, repo, number)` (DF-185-07).
 - [ ] A refusal ends `succeeded`/`not_applicable` with `result.reason = <code>`. It makes no claim and no board call (D-92, D-102).
-- [ ] A failure to post the reply is logged and the outcome is unchanged. Exhausted GitHub retries end `failed`/`GITHUB_UNAVAILABLE`; a Supabase read failure in `active_run` ends `failed`/`SUPABASE_UNAVAILABLE` (D-67).
+- [ ] A failure to post the reply is logged and the outcome is unchanged. Exhausted GitHub retries end `failed`/`GITHUB_UNAVAILABLE`; a Supabase read failure in `active_run` ends `failed`/`SUPABASE_UNAVAILABLE` (D-67). GitHub client semantics (spec §8.9, §9; DF-185-01/02/05/06):
+  - reads retry 5xx and transport errors; writes retry **only** rate limits, never a 5xx or a transport error;
+  - 3 attempts in total, inside a 120 s monotonic budget per logical operation; `Retry-After` is honoured up to 60 s, and a secondary limit with no header waits 60 s; a wait past the budget is `GITHUB_UNAVAILABLE`;
+  - a 3xx is never followed: `GITHUB_REQUEST_REJECTED` (`SUPABASE_UNAVAILABLE` on the `v_runs` read), and a redirected POST is never reported as posted;
+  - a page cap reached with pages left is `GITHUB_UNAVAILABLE`, never "no match";
+  - GraphQL `errors[]` of a transient type are retried, then `GITHUB_UNAVAILABLE`; any other is `GITHUB_REQUEST_REJECTED`;
+  - a token mint failure is `CREDENTIALS_UNAVAILABLE`; a refreshed token without `issues: write` is `GITHUB_PERMISSION_MISSING`.
 
 #### Business Rules
 
@@ -342,10 +353,10 @@ This story covers D-92 and D-104, spec §8.2, and PRD FR-5. It replaces the labe
 
 #### Testing Requirements
 
-- **Unit Tests:** refusal decision table; fixed text per code (snapshot); a refusal marker never counts as a claim.
-- **Integration Tests:** L2 with `responses`: each code posts one marked reply and makes zero claim or board calls; the happy path proceeds; a reply-post failure is logged and the outcome is unchanged.
+- **Unit Tests:** refusal decision table; fixed text per code (snapshot); a refusal marker never counts as a claim; `github_client.py` parses a real `Link` header (pagination), which the L2 double does not exercise (DF-186-02).
+- **Integration Tests:** L2 with the in-repo GitHub double (`tests/component/fake_github.py`, DF-186-02): each code posts one marked reply and makes zero claim or board calls; the happy path proceeds; a reply-post failure is logged and the outcome is unchanged.
 - **Manual/UI Testing:** `/bug-fix` on a PR, on a closed issue, and twice in quick succession on a fixture repo.
-- **Edge-Case Matrix:** an issue that is both closed and a PR (the first code wins); a linked PR from a fork; an `active_run` marker from an untrusted author (ignored); a terminal claim (proceeds).
+- **Edge-Case Matrix:** an issue that is both closed and a PR (the first code wins); a linked PR from a fork; a cross-repo closing PR (named `owner/repo#M`); an `active_run` marker from an untrusted author (ignored); a terminal claim (proceeds); a claim with no `v_runs` row (proceeds, with a warning); an unknown `effective_status` (`SUPABASE_UNAVAILABLE`).
 - **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/unit/test_refusal.py`, `tests/component/test_refusal.py`.
 - **Execution Commands:** `make test`.
 
@@ -388,7 +399,7 @@ This story covers D-53, D-80, D-93, D-104, D-65 and D-85, and spec §8.3 and §8
 - [ ] `markers.py` builds and parses `claim`, `disposition`, `refusal` (with `reason=`) and `pr` markers, reading the **leading marker block** from line 1 (D-80, D-104).
 - [ ] A marker is trusted only if `performed_via_github_app.id` equals the fleet App ID and `user.type == "Bot"`.
 - [ ] `issues.py` adds reactions (`eyes`, `rocket`, `confused`) to a comment id. A missing `trigger_comment_id` skips the reaction silently (D-93).
-- [ ] `neutralize.py` implements D-65 (closing keyword + reference → `(ref #N)`, `@` → `@` + U+200B).
+- [ ] `neutralize.py` implements D-65 as amended by DF-186-01 (closing keyword + reference → `(ref <reference as written>)`, so `#N` → `(ref #N)` and `o/r#1` → `(ref o/r#1)`; `@` → `@` + U+200B).
 - [ ] `disposition.py` posts the diagnosis comment (what was tried, why it stopped, the diffstat when a cap was hit) with a `disposition` marker and model text neutralized (D-85), and adds 😕. It changes **no** labels or assignee. It is a no-op when a trusted disposition for this `run_id` exists.
 - [ ] `signal_backstop.py` calls the disposition with a 10-second budget before `fail()`, but only when the claim's ownership is confirmed (D-81).
 
@@ -452,7 +463,7 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 #### Acceptance Criteria
 
 - [ ] **Claim:** post the claim marker comment with the run link, then add 👀 to `trigger_comment_id` when it's present. No label or assignee changes (FR-7, FR-8).
-- [ ] **Post-check:** if a trusted claim with a lower comment id and no `pr` or `disposition` marker belongs to another non-terminal run, this run deletes its own comment and ends `not_applicable`, reason `active_run`. It makes no board call.
+- [ ] **Post-check:** if an **open claim** (spec §8.2, DF-33: a trusted claim for run R with no trusted `pr`, `disposition` or `refusal` marker for R, and R not terminal in `v_runs.effective_status`) with a lower comment id belongs to another run, this run deletes its own comment and ends `not_applicable`, reason `active_run`. It makes no board call. A claim with no `v_runs` row counts as finished, with a warning; an unknown `effective_status` is a post-check failure (`SUPABASE_UNAVAILABLE`, next AC).
 - [ ] **Ownership gate:** only a confirmed claim enables the disposition and board updates. If the post-check fails (`SUPABASE_UNAVAILABLE`), the run keeps its comment, applies nothing else and ends `failed` (D-81).
 - [ ] PRD AC-3: after a claim, the trigger comment has 👀, the issue has a claim comment with the run link and marker, and labels and assignees are unchanged.
 - [ ] PRD AC-20: two claims a moment apart produce one owner and one withdrawal.
@@ -460,15 +471,18 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 #### Business Rules
 
 - The claim never assigns anyone (FR-8).
+- **Withdrawal faults** (DF-38 race-loss part, decided by @llipe 2026-10-24; D-54 amendment; spec v2.5 §8.6, §8.9). The loser's `DELETE` of its own claim comment is retried on a 5xx or a transport error, because it is idempotent (DF-188-02, D-67 amendment). A 404 means the comment is already gone, and the run ends `not_applicable`/`active_run`. Any other fault ends `failed` with its D-67 code (`GITHUB_UNAVAILABLE` or `GITHUB_REQUEST_REJECTED`), with no disposition and no board call. The stranded comment stops counting once the run is terminal and can never outrank the winner.
 
 #### Technical Notes
 
 - `PANEL_BASE_URL` in `config.py` and `agentcore.json` builds the run link.
+- **One open-claim definition (DF-33), in two shared halves (DF-188-01, v2.4).** The marker half is `markers.open_claims()`: trusted claims not closed by a trusted `pr`, `disposition` or `refusal` marker for the same run, with no I/O. The `v_runs` status half is `refusal.active_claim_runs()`, which resolves those runs (no row = finished with a warning; unknown status = `SUPABASE_UNAVAILABLE`). Refusal (d) and the race post-check both call `active_claim_runs()`, the race check with `before` = this run's claim comment id, so neither half is duplicated. S-188 removed the duplicate `refusal` rule from `refusal.py` and corrected the `markers.py` docstring ("a `refusal` never opens or closes a claim" became "never opens; a trusted one closes its own run's claim").
+- **Linked-PR re-check (DF-190-01, spec v2.7 §8.6 step 2).** The post-check delivered here reads open claims only. Because a trusted `pr` marker closes a claim (DF-33), a run that was still in `checkout` when another run opened its Draft PR can own the issue. The fix, a `linked_pr` re-check in the post-check plus a pre-push re-check, lives in `claim.py` but is S-194's work (S-194-AC9), and it gates `FIX_LOOP_ENABLED=1`. AC-20 is fully met only once S-194 lands.
 
 #### Testing Requirements
 
 - **Unit Tests:** race verdicts (an earlier terminal claim is ignored; an earlier active claim means this run lost).
-- **Integration Tests:** L2: a happy claim; a lost race withdraws only its own comment; a crash after the comment leaves the issue retryable once the run is terminal; a post-check failure applies no disposition.
+- **Integration Tests:** L2 with the in-repo GitHub double (DF-186-02): a happy claim; a lost race withdraws only its own comment; a crash after the comment leaves the issue retryable once the run is terminal; a post-check failure applies no disposition.
 - **Edge-Case Matrix:** two comments in the same second (comment-id order decides); the other run already terminal; a reaction 422 (logged, not fatal).
 - **Acceptance-Criteria Mapping:** AC1–AC5 → `tests/component/test_claim.py`.
 - **Execution Commands:** `make test`.
@@ -485,7 +499,7 @@ The claim is a 👀 reaction plus a marker comment, with no labels and no assign
 
 #### Files to Create/Modify
 
-- `claim.py`, `config.py`, `agentcore/agentcore.json`, `tests/component/test_claim.py`.
+- `claim.py`, `markers.py`, `refusal.py`, `config.py`, `agentcore/agentcore.json`, `tests/component/test_claim.py`, `tests/unit/test_markers.py`.
 
 #### Definition of Done Checklist
 
@@ -504,18 +518,18 @@ So that the agent only works where it can prove a fix (FR-5, FR-6).
 
 #### Context
 
-This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It also resolves spec OQ-1 (the Python install contract).
+This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It also implements D-112, which resolved spec OQ-1 (the Python install contract).
 
 #### Acceptance Criteria
 
-- [ ] The wrapper shallow-clones `base_branch` into its own clone `/work/wrapper/repo` (uid `wrapper`, mode 0700) and records the base SHA. Its `info/exclude` lists only `node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/` (D-62, D-83).
+- [ ] The wrapper shallow-clones `base_branch` into its own clone `/work/wrapper/repo` (under `/work/wrapper`, `root:root`, mode 0700; the wrapper runs as root, D-110) and records the base SHA. The clone runs with `transfer`/`fetch`/`receive.fsckObjects=true` (`zeroPaddedFilemode` ignored). Its `info/exclude` lists only `node_modules/`, `.venv/`, `.pnpm-store/`, `__pycache__/` (D-62, D-83).
 - [ ] `safe_git.py`: every wrapper git call runs with `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and never sets `safe.directory=*`. No wrapper git call targets a `fixer`-writable `.git` (D-62, DF-02).
-- [ ] The base tree is materialized into a fresh `/work/repo` with `git archive <base>` piped into `tar -x` **running as `fixer`**. A planted `.git/hooks/*` or `core.fsmonitor` in `/work/repo` never runs as `wrapper` (TC-193-14 shape, applied at checkout) (D-62).
-- [ ] `toolchain.py` (copied from `dependency-update`, extended) detects JS/TS (pnpm or npm) or Python (`Makefile`).
-- [ ] The repo gate requires `.claude/agents/developer.md` plus `test`, `lint`, `format:check`, `typecheck` (JS scripts) or `test`, `lint`, `format-check`, `typecheck` (Make targets). A missing item ends with refusal `repo_gate` (a marked reply via S-185, D-92), naming it, before the claim (AC-4).
-- [ ] **OQ-1 resolved and recorded in the PR:**
-  - the proposal is a `make install` target for Python, otherwise `not_applicable`;
-  - the decision is appended to the decision log as a new `D-NN`.
+- [ ] The base tree is materialized into a fresh `/work/repo` as a tar the wrapper builds from the base commit's raw blobs (not `git archive`, which applies the repo's `export-ignore`/`export-subst`; DF-189-01), streamed into `tar -x` **running as `fixer`**, with no `.git`. Any `.git` path component (any case, NTFS/HFS lookalikes) is refused, and the tar is capped at 100,000 entries and 2 GiB. A planted `.git/hooks/*` or `core.fsmonitor` in `/work/repo` never runs in the root wrapper's git (TC-193-14 shape, applied at checkout) (D-62, D-110). Before any root git call reads `/work/repo`, a walk that never follows links refuses regular files with `st_nlink > 1` and FIFOs, sockets and device nodes, skipping `node_modules/`, `.venv/`, `.pnpm-store/` and `__pycache__/`. The runtime logs `fs.protected_hardlinks`/`protected_symlinks` as a `run_event`, and image smoke asserts both are 1. Each of these faults ends `failed`/`CLONE_FAILED` (S-189 fix round).
+- [ ] `toolchain.py` (copied from `dependency-update`, extended) detects JS/TS (pnpm or npm; a root `package.json` wins over a Makefile) or Python (a Makefile: the first of `GNUmakefile`, `makefile`, `Makefile`, GNU make's order). `include` is not followed, so a Makefile that needs it is refused.
+- [ ] The repo gate requires `.claude/agents/developer.md`, a root `package.json` or Makefile, plus `test`, `lint`, `format:check`, `typecheck` (JS scripts, with a supported package manager, pnpm or npm, and its lockfile) or `test`, `lint`, `format-check`, `typecheck`, `install` (Make targets). A missing item ends with refusal `repo_gate` (a marked reply via S-185, D-92), naming the first item with its fixed reply phrase, before the claim (AC-4). The items include `lockfile` (a `packageManager` field without that manager's lockfile, or a JS repo with no lockfile), `supported package manager (pnpm or npm)` (yarn or bun), `package.json or Makefile`, and `install`, phrased "missing install target (the Makefile target `install`)" (spec v2.6 §8.7; D-112 amendment).
+- [ ] **OQ-1 resolved as D-112** (confirmed by @llipe 2026-10-24; already recorded in the decision log, cited in the PR):
+  - a Python repo must provide a `make install` target, and the wrapper runs it in the sandbox;
+  - with no such target, the run ends `not_applicable` through the `repo_gate` refusal, naming "missing install target", before any issue change (FR-5).
 - [ ] `gates.py` runs the four gates and `audit` through `sandbox.py` and returns per-gate `{pass, exit_code, tail}`, with the tail scrubbed.
 - [ ] Base-tree gate results are recorded in `run_events` and kept for the PR body. They never block.
 - [ ] Install uses `pnpm install --frozen-lockfile` (pnpm) or `npm ci` (npm). A lockfile mismatch fails with `INSTALL_FAILED` and never rewrites the lockfile. After install and the base gates, any changed tracked path is restored to base as `fixer`, with a `run_event`, so the CLI starts from an exact base tree (TC-189-14, TC-189-15) (D-63, DF-12).
@@ -527,13 +541,14 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 #### Technical Notes
 
 - JS install: `pnpm install --frozen-lockfile` or `npm ci` in the sandbox, with registry-only network (D-63).
+- Python install (D-112): `make install` in the sandbox, with registry-only network. The `install` target is checked with the other Make targets in the repo gate. The wrapper never falls back to pip, uv or poetry.
 
 #### Testing Requirements
 
 - **Unit Tests:** stack detection table (pnpm, npm, Makefile, none), gate-name resolution, and `Makefile` target parsing.
 - **Integration Tests:** L2 with real `git` on fixture repos: `js-pnpm-ok`, `js-missing-typecheck`, `py-make-ok`, `py-no-developer-md`. The gate runner runs against a stub sandbox.
 - **Manual/UI Testing:** none.
-- **Edge-Case Matrix:** a `Makefile` with `format_check` instead of `format-check` (counts as missing); a `package.json` with no `scripts`; a monorepo with a root `package.json`; a clone failure → `failed` / `CLONE_FAILED`; an install failure → `failed` / `INSTALL_FAILED`.
+- **Edge-Case Matrix:** a Python `Makefile` with the four gate targets but no `install` (refusal `repo_gate` "missing install target", D-112); a `packageManager: pnpm@…` field with no `pnpm-lock.yaml` (`lockfile`); a yarn or bun repo (`supported package manager (pnpm or npm)`); a `GNUmakefile` beside a `Makefile` (the `GNUmakefile` is judged); a Makefile whose targets come from an `include` (refused); a hardlink, FIFO or `.git` component in the work tree (`CLONE_FAILED`); a `Makefile` with `format_check` instead of `format-check` (counts as missing); a `package.json` with no `scripts`; a monorepo with a root `package.json`; a clone failure → `failed` / `CLONE_FAILED`; an install failure → `failed` / `INSTALL_FAILED`.
 - **Acceptance-Criteria Mapping:** AC1–AC6 → `test_toolchain.py`, `tests/component/test_checkout.py`, `tests/component/test_gates.py`.
 - **Execution Commands:** `make test`.
 
@@ -547,15 +562,15 @@ This story covers D-06, D-14, D-17, D-18 and D-19, and spec §8.7 `checkout`. It
 2. Toolchain tests, then the implementation.
 3. Checkout.
 4. Gates.
-5. The OQ-1 decision.
+5. The D-112 Python install (`make install` target check and run).
 
 #### Files to Create/Modify
 
-- `toolchain.py`, `checkout.py`, `gates.py`, `tests/fixtures/repos/*`, tests; `workstream/decisions-bug-fix-agent.md` (append).
+- `toolchain.py`, `checkout.py`, `gates.py`, `tests/fixtures/repos/*`, tests. D-112 is already in `workstream/decisions-bug-fix-agent.md`.
 
 #### Definition of Done Checklist
 
-- [ ] Tests passing · [ ] Agent gate green · [ ] OQ-1 decision recorded · [ ] AC mapped · [ ] PR merged
+- [ ] Tests passing · [ ] Agent gate green · [ ] OQ-1 decision recorded (D-112) · [ ] AC mapped · [ ] PR merged
 
 ---
 
@@ -571,7 +586,7 @@ So that I can trigger the agent end to end and see each decision in the panel.
 
 #### Context
 
-This story covers FR-25, FR-26, D-20, D-61 and D-67, and spec §8.9. The fix loop isn't built yet, so with `FIX_LOOP_ENABLED=0` the run applies the disposition after the claim, with the reason "fix loop not yet enabled".
+This story covers FR-25, FR-26, D-20, D-61 and D-67, and spec §8.9. The fix loop isn't built yet, so with `FIX_LOOP_ENABLED=0` the run applies the disposition after the claim, with the reason "fix loop not yet enabled" (`result.reason` `fix_loop_disabled`). Spec v2.7 §8.9 records what S-190 delivered beyond the v2.0 table (DF-190-04/05/06): the entrypoint codes `CONFIG_INVALID`, `INVALID_PAYLOAD`, `PROBE_REFUSED` and `SIGNAL_TERMINATION` (all `failed`, counted by the breaker, never with an outcome); `needs_review`/`fix_unavailable` when `FIX_LOOP_ENABLED=1` has no fix runner; and the rule that a closed or cancelled invoke stream never decides the run outcome.
 
 #### Acceptance Criteria
 
@@ -657,6 +672,7 @@ This story covers FR-9 to FR-12, D-04, D-05, D-11, D-22, D-50, D-51 and D-61, an
 #### Technical Notes
 
 - The `--allowedTools` list starts from the spike report and is kept in `config.py`.
+- **Wire the runner (DF-190-04, spec v2.7 §8.9).** S-190's `main.default_runtime()` returns `Runtime()` with `fix_runner=None`, and `FIX_LOOP_ENABLED=1` without a runner disposes "the fix step is not available in this build", `needs_review`/`fix_unavailable`, on every run. S-191 provides the runner; S-194 must have it wired into `default_runtime()` before the flag flips (S-194-AC7).
 
 #### Testing Requirements
 
@@ -772,10 +788,10 @@ This story covers D-56 and spec §8.7 `red_to_green`.
 
 - [ ] Test files are the diff paths that D-52 classifies as test.
 - [ ] Before applying any tree, the wrapper `lstat`s every changed path's parent chain in `/work/repo`; a symlink component leads to disposition (D-83).
-- [ ] The captured change is committed in the wrapper clone as the final tree. The red tree (base, plus the final test files) is applied to `/work/repo` by file operations running as `fixer`: a `git archive` of the base versions of the changed non-test paths, piped to `tar -x` as `fixer`, then `rm` as `fixer` of the non-test paths the fix added. No `git checkout <base> -- <added path>` (D-62, resolves DF-03).
+- [ ] The captured change is committed in the wrapper clone as the final tree. The red tree (base, plus the final test files) is applied to `/work/repo` by file operations running as `fixer`: the raw-blob tar of the base versions of the changed non-test paths (`SafeGit.materialize(paths=…)`, not `git archive`, DF-189-01), piped to `tar -x` as `fixer`, then `rm` as `fixer` of the non-test paths the fix added. No `git checkout <base> -- <added path>` (D-62, resolves DF-03).
 - [ ] The tests run in the sandbox: JS `<pm> test -- <paths>`; Python `python -m pytest <paths>`. A missing pytest leads to disposition "red-to-green needs pytest".
 - [ ] Red requires a non-zero exit **and** either at least one collected test, or a collection or module-load error on base that the final tree clears by collecting at least one passing test (D-64). Otherwise zero collected leads to disposition "tests did not run on base".
-- [ ] The final tree is restored the same way (`git archive` piped to `tar -x` as `fixer`), then re-run. All tests must pass, otherwise the result is disposition. A fixer-planted hook or `core.fsmonitor` never runs as `wrapper` (TC-193-14).
+- [ ] The final tree is restored the same way (the raw-blob tar piped to `tar -x` as `fixer`), then re-run. All tests must pass, otherwise the result is disposition. A fixer-planted hook or `core.fsmonitor` never runs in the root wrapper's git (TC-193-14, D-110).
 - [ ] Both scrubbed outputs are kept for the PR body. PRD AC-8: tests that pass on base lead to disposition.
 
 #### Business Rules
@@ -833,7 +849,7 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
 
 - [ ] Branch `issue/<N>-<slug>` with a Conventional Commit, using `report.json.commit_message` when it validates (`fix(...)` format) and a fallback otherwise.
 - [ ] The wrapper pushes **from its own clone** to the explicit URL `https://github.com/<o>/<r>.git`, using a credential helper scoped as `credential.https://github.com.helper`. The sibling any-host helper is not copied. Then it runs `gh pr create --draft --body-file` against the default branch. A planted `url.*.insteadOf`, extra `credential.helper` or `pre-push` hook has no effect (TC-194-13) (D-62, DF-02).
-- [ ] All model-written text (rationale, summary, commit message) passes the neutralizer first: closing keyword + reference → `(ref #N)`, and `@` → `@` + U+200B. Only the wrapper writes `Fixes #N` (D-65).
+- [ ] All model-written text (rationale, summary, commit message) passes the neutralizer first: closing keyword + reference → `(ref <reference as written>)` (`#N` → `(ref #N)`), and `@` → `@` + U+200B. Only the wrapper writes `Fixes #N` (D-65, amended by DF-186-01).
 - [ ] The body includes:
   - `Fixes #N`;
   - the per-file rationale;
@@ -844,8 +860,12 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
   - `coverage_gate: SKIPPED(no-delegation)`.
 - [ ] A `pull_request` artifact is recorded (`run.artifact('pull_request', url, title, metadata)`), (D-21). The run ends `succeeded` / `fixed`.
 - [ ] After the PR, the wrapper adds 🚀 to `trigger_comment_id` (when present) and posts a comment with a `pr` marker linking the PR. Labels and assignees are unchanged, and the PR stays Draft (D-93).
-- [ ] `FIX_LOOP_ENABLED=1` in `agentcore.json`, and deployed.
+- [ ] `FIX_LOOP_ENABLED=1` in `agentcore.json`, and deployed. **Gate:** the flag flips only after AC9 passes (DF-190-01) and the production `Runtime.fix_runner` is wired in `main.default_runtime()`, with an image-smoke check that a build with the flag at `1` has a runner (DF-190-04). Until then, `FIX_LOOP_ENABLED=1` disposes `needs_review`/`fix_unavailable`.
 - [ ] A push or PR API failure leads to disposition, then `failed` / `PR_CREATE_FAILED`.
+- [ ] **Never two Draft PRs (DF-190-01, spec v2.7 §8.6 step 2, decided by @llipe 2026-10-24).** Two `linked_pr` re-checks, using the refusal (c) detection (D-55):
+  - **Post-check:** after the open-claim read, the race post-check re-runs `linked_pr`. A linked PR → the run withdraws its own claim comment under the DF-38 withdrawal rules (a 404 is "already gone"; any other `DELETE` fault → `failed` with its D-67 code) and ends `succeeded`/`not_applicable`, reason `linked_pr`, with no disposition and no board call. A fault on the read fails closed with its D-67 code. Ownership counts as confirmed only when both reads pass.
+  - **Pre-push:** the same check runs just before `git push` and `gh pr create`. A PR found there → the disposition path, `succeeded`/`needs_review`, reason `linked_pr`; nothing is pushed and no second PR is created.
+  - A trusted `pr` marker still closes its run's claim (DF-33). RT-07's `TestOwnedWhileAPrIsOpen` turns from a strict xfail into a passing test.
 
 #### Business Rules
 
@@ -854,6 +874,8 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
 #### Technical Notes
 
 - Spec §6 and §8.6. The slug comes from the issue title: lowercase, ASCII, at most 40 characters.
+- **AC9 code location.** The post-check re-check goes into `claim.py` (S-188's module) next to `refusal.active_claim_runs()`, reusing the refusal (c) detection from `refusal.py`, not a copy of it. The pre-push re-check runs in the PR step before any push. S-198 (live AC-20) is the end-to-end check.
+- **Flag-flip order (DF-190-01, DF-190-04).** (1) AC9 green, with `TestOwnedWhileAPrIsOpen` passing; (2) `Runtime.fix_runner` wired in `default_runtime()`, with the image-smoke assertion; (3) only then `FIX_LOOP_ENABLED=1`.
 
 #### Testing Requirements
 
@@ -861,7 +883,7 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
 - **Integration Tests:** L2 with `git` against a local bare remote and `gh` mocked: the PR is created, the artifact recorded, and the labels untouched.
 - **Manual/UI Testing:** in S-198.
 - **Edge-Case Matrix:** the branch already exists on the remote (fault; the D-55 skip should prevent it); a non-ASCII issue title; an oversized body (tails truncated to fit GitHub's 65,536-character limit).
-- **Acceptance-Criteria Mapping:** AC1–AC7 → `test_pr_body.py`, `tests/component/test_pull_request.py`.
+- **Acceptance-Criteria Mapping:** AC1–AC8 → `test_pr_body.py`, `tests/component/test_pull_request.py`; AC9 → `tests/component/test_claim.py`, `tests/component/test_main.py`, RT-07 `tests/component/test_claim_state_machine.py::TestOwnedWhileAPrIsOpen` (TC-194-21, TC-194-22).
 - **Execution Commands:** `make test`.
 
 #### Migration Requirements
@@ -870,18 +892,19 @@ This story covers D-12, D-13 and D-21. `pull_request.py` is adapted from `securi
 
 #### Implementation Steps
 
-1. Body tests.
-2. Adapt `pull_request.py`.
-3. Wire `main.py`.
-4. Flip the flag.
+1. Body tests, and the AC9 tests (TC-194-21, TC-194-22; drop the strict xfail on `TestOwnedWhileAPrIsOpen`).
+2. Adapt `pull_request.py`, with the pre-push `linked_pr` re-check.
+3. The post-check `linked_pr` re-check in `claim.py`.
+4. Wire `main.py`, including `Runtime.fix_runner` in `default_runtime()`, plus the image-smoke assertion.
+5. Flip the flag (AC7 gate).
 
 #### Files to Create/Modify
 
-- `pull_request.py`, `main.py`, `agentcore/agentcore.json`, tests.
+- `pull_request.py`, `main.py`, `claim.py`, `agentcore/agentcore.json`, `scripts/image-smoke.sh`, tests.
 
 #### Definition of Done Checklist
 
-- [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] Roadmap Wave B row → In progress · [ ] PR merged
+- [ ] Tests passing · [ ] Agent gate green · [ ] AC mapped · [ ] AC9 green before the flag flips · [ ] Roadmap Wave B row → In progress · [ ] PR merged
 
 ---
 
@@ -1056,7 +1079,7 @@ This story covers D-97 to D-103 and D-105, and spec §8.10. Board work is best e
 #### Testing Requirements
 
 - **Unit Tests:** option resolution (case-insensitive, missing option); the `project` param parse.
-- **Integration Tests:** L2 with the Projects GraphQL mocked: one board, none, several, a missing field or option, a 401 on the PAT, a timeout. Each asserts the transitions and an unchanged outcome.
+- **Integration Tests:** L2 with the Projects GraphQL served by the in-repo GitHub double, extended for GraphQL (DF-186-02): one board, none, several, a missing field or option, a 401 on the PAT, a timeout. Each asserts the transitions and an unchanged outcome.
 - **Manual/UI Testing:** in S-198, the live card moves on board #5.
 - **Edge-Case Matrix:** an issue already on the board in another status; an org-owned `project` override; a board with a renamed `Status` field.
 - **Acceptance-Criteria Mapping:** AC1–AC6 → `tests/unit/test_projects.py`, `tests/component/test_projects.py`; PRD AC-21, AC-22, AC-23.

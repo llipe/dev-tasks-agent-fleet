@@ -5,7 +5,8 @@
 
 AGENT_DIRS := agents/dependency-update/app/dependencyUpdate \
 	agents/security-analyst/app/securityAnalyst \
-	agents/code-review/app/codeReview
+	agents/code-review/app/codeReview \
+	agents/bug-fix/app/bugFix
 
 .PHONY: install lint format format-check typecheck test test-cov audit validate \
 	install-py lint-py format-py format-check-py typecheck-py test-py test-cov-py audit-py validate-py \

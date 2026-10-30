@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "bugfix",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "bugfix"
+  },
+  "runtimes": [
+    {
+      "name": "bug_fix",
+      "build": "Container",
+      "entrypoint": "main.py",
+      "codeLocation": "app/bugFix/",
+      "runtimeVersion": "PYTHON_3_13",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "executionRoleArn": "arn:aws:iam::755641879575:role/agent-fleet-bug-fix-runtime",
+      "envVars": [
+        { "name": "SUPABASE_URL", "value": "https://hegxeycmbmjfgzqpdiik.supabase.co" },
+        { "name": "SUPABASE_KEY_SECRET_ID", "value": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY" },
+        { "name": "ANTHROPIC_KEY_SECRET_ID", "value": "agent-fleet/prod/ANTHROPIC_API_KEY" },
+        { "name": "PROJECTS_TOKEN_SECRET_ID", "value": "agent-fleet/prod/GITHUB_PROJECTS_TOKEN" },
+        { "name": "BOARD_UPDATES_ENABLED", "value": "1" },
+        { "name": "MODEL_ID", "value": "claude-sonnet-5-5" },
+        { "name": "PANEL_BASE_URL", "value": "https://dt-agent-fleet-panel.fly.dev" },
+        { "name": "FIX_LOOP_ENABLED", "value": "0" }
+      ],
+      "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 3600
+      }
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "payments": []
+}

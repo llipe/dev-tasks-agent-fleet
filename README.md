@@ -11,7 +11,7 @@ See [`docs/product-context.md`](docs/product-context.md) for the full problem st
 
 ## Delivery phases
 
-The project is delivered in three phases:
+The project is delivered in phases:
 
 - **Phase 1 — Backend + Agent (done):** the Supabase schema (applied via Supabase CLI
   migrations), and the `dependency-update` agent that runs on AgentCore, authenticates to
@@ -35,6 +35,14 @@ The project is delivered in three phases:
   real `fix` run that opened a PR, per
   [`docs/requirements/prd-security-analyst-agent.md`](docs/requirements/prd-security-analyst-agent.md)
   and [`agents/security-analyst/README.md`](agents/security-analyst/README.md).
+- **Phase 5 — Bug Fix Agent (Wave A delivered, verified live):** the fleet's third agent,
+  `agents/bug-fix/`, triggered by a `/bug-fix` comment on a GitHub issue. Wave A (S-180–S-190) is
+  complete and verified live on runtime v7, delivering the orchestration pipeline (`preflight` →
+  `refuse` → `checkout` → `claim` → `disposition`), the sandbox security model, and the run
+  lifecycle with a `FIX_LOOP_ENABLED=0` gate that disposes "fix loop not yet enabled" (Wave B).
+  Waves B–C (S-191–S-200) ship the fix loop, validation, and Draft PR. See
+  [`docs/requirements/prd-bug-fix-agent.md`](docs/requirements/prd-bug-fix-agent.md) and
+  [`agents/bug-fix/README.md`](agents/bug-fix/README.md).
 
 ## Repository layout
 
@@ -74,8 +82,12 @@ The project is delivered in three phases:
 │   │   ├── agentcore/       # Runtime config + CDK infra
 │   │   ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
 │   │   └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
-│   └── code-review/   # Code Review agent (Python) — Wave A delivered, not deployed (Wave B pending)
-│       └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml (no agentcore/ config yet)
+│   ├── code-review/   # Code Review agent (Python) — Wave A delivered, not deployed (Wave B pending)
+│   │   └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml (no agentcore/ config yet)
+│   └── bug-fix/            # Phase 5 agent (Python, AgentCore Container) — Wave A delivered, verified live (S-180–S-190)
+│       ├── agentcore/       # Runtime config + CDK infra
+│       ├── app/bugFix/      # Agent source, tests, Makefile, pyproject.toml, image
+│       └── README.md        # Agent-specific docs (status, layout, configuration, testing)
 └── workstream/              # Task lists, specs, test plans, fidelity reports; archive/ holds completed work
 ```
 

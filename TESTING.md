@@ -40,8 +40,10 @@ project, not a Node package): `agents/dependency-update/app/dependencyUpdate`
 — the `dependency-update` agent (the original, and still active, codebase) —
 `agents/security-analyst/app/securityAnalyst` — the `security-analyst`
 agent (S-125–S-141), which mirrors the sibling's layout, Makefile, and
-`pyproject.toml` conventions — and `agents/code-review/app/codeReview` — the
-`code-review` agent (S-204 onward), which mirrors `security-analyst`.
+`pyproject.toml` conventions — `agents/code-review/app/codeReview` — the
+`code-review` agent (S-204 onward), which mirrors `security-analyst` — and
+`agents/bug-fix/app/bugFix` — the `bug-fix` agent (scaffold since S-180),
+which mirrors the same conventions.
 
 Root `package.json` (`private: true`, `packageManager: pnpm@10.11.0`,
 `engines.node: ">=24 <27"`) declares thin aggregate scripts that all delegate
@@ -103,6 +105,7 @@ can no longer pass CI vacuously.
 | `dependency-update` (`agents/dependency-update/app/dependencyUpdate/`) | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; all external I/O (boto3, `requests`, `jwt`, `subprocess`) mocked                                    | pytest-cov 7.1.0, branch coverage on; `[tool.coverage]` config; `coverage_gate` MEASURED (no `fail_under` floor yet) |
 | `security-analyst` (`agents/security-analyst/app/securityAnalyst/`)     | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; scanner binaries (`semgrep`, `gitleaks`, `trivy`, `checkov`, `codeql`) are NEVER invoked — every runner mocks `subprocess.run` against checked-in JSON/SARIF fixtures in `tests/fixtures/`; `boto3`/`requests`/`jwt` mocked as in the sibling | pytest-cov, branch coverage on; `[tool.coverage]` config with **`fail_under = 90`** (set at PRD close; measured 97%) |
 | `code-review` (`agents/code-review/app/codeReview/`)                   | Python `>=3.13`                  | pytest 8.x                            | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network. `tests/unit/` (Layer 1, `unit` marker) and `tests/integration/` (Layer 2, `integration` marker: `invoke` against a reporter sink that replaces only the vendored reporter's HTTP layer, `requests` transport stubbed to refuse every call; context-assembly tests drive the real `GitHubClient` over `StubTransport` and compare against a checked-in golden file such as `tests/fixtures/github/sample-pr/expanded_diff.golden`). `tests/fixtures/params_cases.json` is shared with the panel (CT-01). GitHub calls are stubbed by `tests/helpers/github_stub.py` (`StubTransport`, recorded `tests/fixtures/github/`) | pytest-cov, branch coverage on; **`fail_under = 90`** from the first story (`main.py` is not omitted) |
+| `bug-fix` (`agents/bug-fix/app/bugFix/`)     | Python `>=3.13`                  | pytest 8.x + hypothesis (property tests)                           | `python -m pytest` (`testpaths=["tests"]`); via `make test` from the package dir or `make test-py` from repo root | Local CPython process, no DB/network; Supabase faked at `agent_reporter._SupabaseClient`, `boto3`/`requests`/`jwt` mocked as in the siblings; GitHub REST and GraphQL faked at the `requests.Session` boundary by `tests/component/fake_github.py` (S-186, extended in S-185 with issue facts, open pulls, the closing-reference query and fault injection, and in S-188 with comment deletion; no extra HTTP-mock dependency; real `Link` header parsing covered at L1 by `tests/unit/test_github_client.py`); Supabase `v_runs` reads faked by a PostgREST double in `tests/component/test_refusal.py` (reused by `test_claim.py`); marker grammar pinned by golden bodies in `tests/fixtures/contract/markers/`. S-189: real `git` at Layer 2 on fixture repos in `tests/fixtures/repos/`, served from a local bare remote by `tests/component/repo_fixtures.py`, whose `SpawnSpy` checks the production `setpriv` prefix on every `fixer` spawn and runs it as the current user; `StubSandbox` for gate/install argv, `LocalSandbox` for real offline `npm ci`/`pnpm install --frozen-lockfile`/`make` (skipped when the binary is missing). Layer 2 process checks: `tests/component/test_sandbox_proc.py` runs `sandbox.py`'s real command chain with real processes (exec-through `setpriv`/`srt` shims, sweep scoped to a per-test marker). Layer 2 image checks: `make image-smoke` (Docker, ARM64) runs `scripts/image-smoke.sh` against the built image. S-190: `tests/component/test_main.py` drives `main.invoke()` end to end with those doubles, the real `RunReporter` over a recording Supabase client and a real-git checkout, its boundaries supplied as a `main.Runtime` through `main.default_runtime` | pytest-cov, branch coverage on; `[tool.coverage]` config with **`fail_under = 90`** from the first story (S-180 measured 97%) |
 | `agentcore-cdk-app` (`agents/dependency-update/agentcore/cdk/`)        | TypeScript                        | jest 29 (ts-jest)                    | `pnpm test` (→ `jest`), run from the package dir; not reached by the repo-root aggregate                  | Node (jest default); CDK `Template` synth assertions                                                                                       | none configured                                                                                              |
 | `panel` (`panel/`)     | TypeScript (Next.js 15, React 19) | Vitest 3.2.x (`unit`/`component`/`integration` projects) + Playwright | `pnpm --filter panel run test` (→ `vitest run`, all three projects); `test:unit` / `test:integration` (`--passWithNoTests`) run one project; `test:e2e` (→ `playwright test`) gated separately; reachable from repo-root `make validate`/`pnpm run validate` | Node (unit + integration), jsdom (component, `setupFiles: tests/setup.ts`); `integration` project pinned `singleFork`/sequential (shared local Postgres — avoids the cross-file `reap_stale_runs()` race) | `@vitest/coverage-v8` (`pnpm --filter panel run test:coverage`) |
 
@@ -181,6 +184,8 @@ thin `pnpm --filter panel run <script>` wrappers, so `pnpm run test` /
 | `security-analyst`  | All of the above              | Identical `Makefile` targets (`make test`, `test-unit`, `test-component`, `lint`, `format-check`, `typecheck`, `test-cov`, `audit`, `validate`) run from `agents/security-analyst/app/securityAnalyst/` |
 | `code-review`       | All of the above              | Same targets run from `agents/code-review/app/codeReview/`, with `test-integration` (`python -m pytest -m integration`) in place of `test-component`; `make audit` is plain `pip-audit . --strict` (no exception) |
 | `security-analyst`  | Audit                         | `make audit` → `pip-audit . --strict`, no ignored vulnerabilities. `semgrep` is installed in its own venv in the Dockerfile, not in `pyproject.toml`, so its exact `mcp`/`opentelemetry-api` pins stay out of the audited tree (#360). `tests/unit/test_semgrep_isolation.py` pins this |
+| `bug-fix`           | All of the above              | Identical `Makefile` targets run from `agents/bug-fix/app/bugFix/`; `make audit` → `pip-audit . --strict` |
+| `bug-fix`           | Image (Layer 2, Docker)       | `make image` → `docker build --platform linux/arm64 -t bug-fix:local .`; `make image-smoke` → build, then `scripts/image-smoke.sh` (privilege checks under `--security-opt no-new-privileges` to emulate AgentCore; toolchain versions incl. pinned `claude`/`srt`; the D-110 root wrapper and `setpriv` drop: default user root, no `sudo`, uid/gid 10002 with no groups, no capabilities and `NoNewPrivs` 1, no way back to root, root `/proc/<pid>/environ`/`mem` unreadable, `fixer_exec.py` env and root refusal, `Sandbox().sweep()`; `localhost` through nss-myhostname, `127.0.0.1` first, with an empty read-only `/etc/hosts` mounted (D-111); dir owners; managed-policy and `srt-settings.json` ownership; S-189: git `--attr-source`, `safe_git` end to end as root under `no_new_privs`, fixer-owned materialized files, planted hooks never run in the wrapper's capture, `/work/wrapper/repo/.git/config` unreadable as `fixer`; S-189 fix round: `fs.protected_hardlinks` and `fs.protected_symlinks` are 1, the image's tar is GNU tar, the clone's `fsckObjects` refuses a symlink-plus-directory tree, and with fsck off `materialize` writes nothing through the link; S-190: `main.py`, the image `CMD`, imports with the image's interpreter and dependencies, its steps are `preflight` … `fix`, and the fix loop is off by default; S-190 fix round 2: under the image's own server (`main.serve`, uvicorn, as PID 1) the SIGTERM backstop sits on uvicorn's handler, fails a registered run once, and the process exits 143 although a non-daemon thread still runs). Not part of `validate`: it needs Docker |
 | `agentcore-cdk-app` | Run test / build / format     | `pnpm test` (→ `jest`) / `pnpm run build` (→ `tsc`) / `pnpm run format:check` (from its own package dir) |
 
 ### Repo-root aggregate (`Makefile`)
@@ -193,9 +198,9 @@ aggregate fails if either branch fails. `make validate` = `validate-py` +
 
 ### Gate reachability
 
-- **Aggregate test command:** `make test` (repo root) reaches `dependency-update`, `security-analyst`, and `code-review` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
-- **CI gate:** `.github/workflows/ci.yml` runs two jobs on every push/PR to `main`: `python-quality` (3.13 + 3.14 matrix — lint → format-check → typecheck → `pytest --cov` → `make audit`, so each agent's Makefile is the single source of its `pip-audit` flags) and `panel-quality` (Node 22 — boots the Supabase stack with `REQUIRE_LOCAL_DB=1`, lint → format:check → typecheck → the S-122 auth-gate parser test + shellcheck → `test:coverage` (incl. gated Layer 2.5) → Playwright E2E → audit). Neither job has a `paths:` filter excluding its package.
-- **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); `dependency-update` and `security-analyst` deploy via the AgentCore CLI/CDK; `code-review` is not deployed yet (its runtime lands with S-214). None invokes the aggregate gate automatically.
+- **Aggregate test command:** `make test` (repo root) reaches `dependency-update`, `security-analyst`, `code-review`, and `bug-fix` (Python) and `panel` (JS/TS, all three Vitest projects). It does not reach `agentcore-cdk-app` (tested via its own `pnpm test`, not folded into the root aggregate).
+- **CI gate:** `.github/workflows/ci.yml` runs two jobs on every push/PR to `main` and to `integration/**` branches: `python-quality` (one entry per agent — `dependency-update`, `security-analyst`, `code-review`, `bug-fix` — on a 3.13 + 3.14 matrix — lint → format-check → typecheck → `pytest --cov` → `make audit`, so each agent's Makefile is the single source of its `pip-audit` flags; the `bug-fix` legs also install pnpm 10.11.0 with `pnpm/action-setup`, so its real `pnpm install --frozen-lockfile` test runs instead of skipping, DF-189-09) and `panel-quality` (Node 22 — boots the Supabase stack with `REQUIRE_LOCAL_DB=1`, lint → format:check → typecheck → the S-122 auth-gate parser test + shellcheck → `test:coverage` (incl. gated Layer 2.5) → Playwright E2E → audit). Neither job has a `paths:` filter excluding its package.
+- **Deploy gate:** none. `panel` deploys to Fly.io as a documented operator runbook (`docs/technical-guidelines.md` §13, `docs/runbooks/panel-deployment.md`); `dependency-update`, `security-analyst`, and `bug-fix` deploy via the AgentCore CLI/CDK (`bug-fix` since S-181, `docs/runbooks/bug-fix-agent.md`); `code-review` is not deployed yet (its runtime lands with S-214). None invokes the aggregate gate automatically.
 
 ## Coverage
 
@@ -314,6 +319,94 @@ nonce forged through every `ContextInputs` field, near-miss markers, hostile
 paths under `str.splitlines`, the retry loop, failure paths and the sink,
 `rubric.md` from a copied package dir run with `python -I`, schema key order;
 property tactic `tactic_seed(411, 4)`) build on the same helpers.
+
+**`bug-fix`.** GitHub REST is faked at the `requests.Session` boundary by
+`tests/component/fake_github.py` (see the Packages row). Property tactics run
+at the test plan's budgets in the default profile, with no Hypothesis profile
+switch: RT-02 (`tests/unit/test_markers_property.py`) at 1000 examples per
+property, RT-12 (`tests/unit/test_neutralize_property.py`) at 2000 examples
+with inputs of 0–20,000 characters (long inputs repeat drawn pieces and are
+cut at 20,000, which avoids Hypothesis' buffer limit), RT-15 at 1000 (disposition
+and refusal bodies), and RT-13 (`tests/component/test_label_invariance.py`) at
+200, and RT-07 (`tests/component/test_claim_state_machine.py`, S-190) at 200
+walks of 30 steps, a `hypothesis.stateful` machine over the claim, race, PR
+and disposition states through `main.wire_claim()`. Its kill and SIGTERM
+rules act one time in four so walks reach the race and the PR. Two shapes
+the spec doesn't yet rule out are strict `xfail`s next to it (DF-32, and the
+S-190 finding that a run can own the issue while another run's agent PR is
+open), so a fix turns them into a failing `xfail` to remove. The shared GitHub client's retry waits never sleep in tests: an autouse
+fixture in `tests/conftest.py` replaces `github_client._sleep` and
+`github_client._monotonic` with one `FakeClock` that a wait advances, so the
+per-operation wait budget (120 s) runs for real with no real sleep. The tests
+that assert the waits or the budget pass their own `sleep` and `clock`
+(`tests.conftest.FakeClock`). `fake_github.py` records the `allow_redirects`
+each request sent and can answer a 3xx (`redirect()`); the `v_runs` double
+records it too. CT-34's agent side (claims resolved by
+`v_runs.effective_status`: active, terminal, missing, unknown) runs against the
+PostgREST double in `tests/component/test_refusal.py`; the real-database read
+at L2.5 is not covered yet.
+Raising them added about 13 s to `make test` (S-186 fix round, DF-186-03;
+the whole local suite went from 43 s to 60 s with that round's other tests), so
+a profile is only worth adding if that grows past about 60 s.
+`test_neutralize.py::test_a_long_glued_chain_is_linear_not_quadratic` is a
+sanctioned `time.perf_counter` bound (2 s on a 65,536-character chain that
+took 14 s when quadratic). The SIGTERM-backstop tests in
+`tests/component/test_s186_security_negative.py` send a real SIGTERM to the
+pytest process with `signal.raise_signal` patched and the previous handler
+restored, so the handler runs on the suspended main thread as in production.
+The S-190 orchestration tests (`tests/component/test_main.py`) instead call
+`signal_backstop.handle_termination()` with the getters `main` installed, from
+inside the running step (a sandbox answer or a GitHub-double hook), then raise
+a `BaseException` as the dying process would; `main.execute()` catches only
+`Exception`, so nothing after the signal runs. For that, the `world` fixture
+replaces `main.install_termination_backstop` with a recorder of the getters
+(unit isolation). The real install path is covered too (S-190 fix round 2):
+`World(real_backstop=True)` keeps the real installer;
+`tests/component/test_s190_run_ownership.py` runs the handler on the main
+thread while the worker runs, including through the SDK's own
+`BedrockAgentCoreApp._async_gen_to_sync_gen` bridge (the entrypoint on the
+`agentcore-worker-loop` thread); and
+`tests/component/test_s190_fix_round2.py::TestUnderUvicorn` starts the real
+server (`main.serve`) in a subprocess, sends it SIGTERM, and checks one
+terminal write and a SIGTERM exit. That file also covers the busy `/ping`
+while the worker runs, the run deadline (`RUNTIME_TIMEOUT`: between steps,
+after a confirmed claim, a worker stuck in a step), the stop flag on
+`SystemExit`/`KeyboardInterrupt`, and the reporter write lock (a control test
+shows the vendored reporter alone lets writers overlap). Its waits are real
+and short (at most 0.3 s per step, a 0.1 s overdue slack patched in).
+The stream-close tests (`TestQAStreamClosedMidRun`) close the `invoke`
+generator with `aclose()` after the first heartbeat, or cancel the task
+consuming it, during a slow install. `asyncio.run` joins the default executor
+on exit, and with it `main.RunWorker`'s thread, so the asserts see the worker's
+own terminal row.
+Strict `xfail`s in the `bug-fix` suite, by status (S-190 fix rounds 1 and 2):
+
+- **Fixed, marker removed:** QA-190-01 (a closed or cancelled stream ended the
+  run `failed`/`GeneratorExit` or `CancelledError` with a traceback; now the
+  worker reports its real outcome), QA-190-02 (a non-UUID `run_id` ended
+  `UNHANDLED_ERROR`; now `failed`/`INVALID_PAYLOAD` at preflight with no GitHub
+  call), QA-190-03 (an `UNHANDLED_ERROR` summary named the exception type
+  twice). S-190 fix round 2, in `tests/component/test_s190_run_ownership.py`:
+  the SIGTERM backstop under the SDK bridge (it was never installed in
+  production: `signal.signal` raised off the main thread and the error was
+  swallowed; now one handler is installed on the main thread and resolves the
+  live run through a registry), a SIGTERM inside the worker's terminal write
+  (zero terminal rows; now the handler waits on the run's write lock), and a
+  relay failure mid-run (the entrypoint wrote `UNHANDLED_ERROR`; now it only
+  logs and the worker writes the row). The terminal-write test's in-flight
+  PATCH now lands by itself after 0.5 s: QA's draft held it until after the
+  handler returned, which a handler that waits for the write can only meet
+  with a second terminal write.
+- **Still open, pinned:** DF-32 (`test_claim_state_machine.py::TestUnansweredEyes::test_a_race_loser_with_its_own_trigger_gets_an_answer`,
+  a race loser's own 👀 gets no answer); DF-190-01 / RT-07
+  (`TestOwnedWhileAPrIsOpen::test_a_claim_after_another_runs_pr_does_not_win`,
+  a late claim can win while another run's Draft PR is open, so two Draft PRs
+  are possible in Wave B; waits on a spec §8.6 decision and S-194); the S-182
+  QA gap in `tests/unit/test_sandbox.py::TestNsswitchActionBlocks` (three
+  cases: a spaced or multi-action `[..=return]` nsswitch block isn't
+  detected). `tests/unit/test_agentcore_config.py::TestRuntime::test_probe_flag_is_never_committed`
+  is a conditional strict `xfail` that applies only while `ALLOW_PROBE` is
+  committed (the S-182 spike window); it is inactive today.
 
 **`panel`.** Component tests (jsdom) mock external providers (Supabase client,
 `EventSource`, fetch) at the module boundary; integration tests use a real
