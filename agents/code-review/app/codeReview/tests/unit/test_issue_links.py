@@ -102,6 +102,60 @@ def test_cross_repo_reference_is_ignored_next_to_a_same_repo_link():
     assert linked_issue_numbers("Fixes acme/other#4 and closes #5", "main") == (5,)
 
 
+# -- D-58: non-closing references (`Refs #N`, github-ops convention) ---------
+
+
+@pytest.mark.parametrize("keyword", ["ref", "refs", "reference", "references", "REFS", "Refs:"])
+def test_every_reference_keyword_links(keyword):
+    assert linked_issue_numbers(f"{keyword} #7", "main") == (7,)
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("Refs #741, #738, #740", (741, 738, 740)),
+        ("Refs #741,#738", (741, 738)),
+        ("Refs #741 and #738", (741, 738)),
+        ("Refs: #1, #2 and #3.", (1, 2, 3)),
+        ("Refs #1, acme/other#2, #3", (1,)),
+        ("Refs #1, #2abc", (1,)),
+        ("Refs #1,\n#2", (1,)),
+    ],
+)
+def test_a_reference_list_links_every_same_repo_number(body, expected):
+    assert linked_issue_numbers(body, "main") == expected
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "prefs #4",
+        "refs#5",
+        "refs # 6",
+        "refs acme/other#7",
+        "Refs 7bb26a4",
+        "refs #0",
+        "refs/heads/main #8",
+    ],
+)
+def test_reference_non_links_are_ignored(body):
+    assert linked_issue_numbers(body, "main") == ()
+
+
+def test_closing_links_and_branch_come_before_references():
+    body = "Refs #9, #8\n\nCloses #3"
+    assert linked_issue_numbers(body, "issue/2-x") == (3, 2, 9, 8)
+
+
+def test_references_fill_only_the_slots_closing_links_leave():
+    body = "Refs #20, #21, #22\n" + " ".join(f"closes #{n}" for n in (10, 11, 12, 13))
+    assert linked_issue_numbers(body, "main") == (10, 11, 12, 13, 20)
+
+
+def test_a_reference_already_closed_is_not_repeated():
+    assert linked_issue_numbers("Closes #741\nRefs #741, #738", "main") == (741, 738)
+
+
 def test_issue_numbers_the_client_would_refuse_are_dropped():
     body = "closes #12345678901 closes #" + "9" * 5000 + " closes #3"
     assert linked_issue_numbers(body, "main") == (3,)
