@@ -53,6 +53,17 @@ Sibling agents recorded their status changes in `docs/technical-guidelines.md`'s
 - Wave B (S-214, S-215, issues #416–#417): deploy the runtime, add `agents/code-review/agentcore/agentcore.json` (its `maxLifetime` must equal the seed's `max_runtime_seconds`, 1800), write the runbook required by FR-49a, add the `/review` webhook rule, run the 5-PR smoke, and confirm or change the default `MODEL_ID`. Then update `docs/technical-guidelines.md` §9 and the status lines in `docs/product-context.md`, `README.md`, and `docs/roadmap.md` (planner-owned).
 - Re-check this ADR's Decision 2 after the Layer 3 evaluation or the smoke, if the default model changes.
 
+## Addendum (2026-11-02): context selection call
+
+PRD v1.4, D-59–D-64. Decisions 1 and 4 above change as follows; everything else stands.
+
+- **Decision 1 gains one constrained call.** Before the review, the wrapper may make one Bedrock Converse **selection** call (`context_selection = llm`, the default) on `SELECTION_MODEL_ID` (default `MODEL_ID`). It has no tools and does not count toward `MAX_CALLS`. The model sees a numbered list of candidate documents the wrapper built (paths and sizes under `context_folders`) and returns indexes, roles and a ranking of the changed files against a forced schema. It never names a path: an index outside the list is discarded. The wrapper reads the picked files with the existing contents read, at the head SHA, inside the configured folders only. Any failure falls back to the rule-based lookup; the review never fails because selection did.
+- **Decision 4 gains one read.** The allowlist adds `GET /repos/{owner}/{repo}/git/trees/{sha}?recursive=1`, bound to the invoked repository and the PR's head SHA. It is read-only; the agent still has exactly one write.
+
+**Why the model only picks by index.** The selection prompt contains the PR body and issue text, which anyone who can open a PR or edit an issue controls. If the model could name paths, a hostile body could steer a read of any file the installation token can see, and its content would reach the review prompt. Restricting the answer to indexes of a list the wrapper built from `context_folders` bounds the worst case to "a less useful document from those folders".
+
+**Consequences.** One more model call per review (a few thousand input tokens; its tokens and cost are recorded separately). Selection is non-deterministic, so the comment names what was picked (FR-34). `context_selection = rules` turns it off per webhook rule.
+
 ## Related
 
 - Requirements: [`docs/requirements/prd-code-review-agent.md`](../requirements/prd-code-review-agent.md) (v1.2), [`docs/requirements/prd-webhook-triggers.md`](../requirements/prd-webhook-triggers.md) (trigger mechanism)
