@@ -40,6 +40,8 @@ __all__ = [
     "DRIFT_SECTION_TOKEN_CAP",
     "DRIFT_UNINTENDED_RE",
     "ISSUE_LINK_RE",
+    "ISSUE_REF_NUMBER_RE",
+    "ISSUE_REF_RE",
     "ISSUE_TOKEN_CAP",
     "MAX_ISSUE_NUMBER",
     "LINE_END_RE",
@@ -76,6 +78,20 @@ ISSUE_LINK_RE = re.compile(
     r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)(?:\s*:\s+|\s+)#(\d+)\b",
     re.IGNORECASE | re.ASCII,
 )
+# Non-closing references (D-58): ``ref``/``refs``/``reference``/``references``
+# then a list of same-repository numbers on one line, separated by ``,`` or
+# ``and`` (``Refs #741, #738 and #740``), the github-ops ``Refs #N`` form. Same
+# keyword-to-``#`` rule as ISSUE_LINK_RE. The list stops at the first item that
+# is not ``#<digits>`` (a cross-repository ``owner/repo#N`` ends it). Each
+# repetition starts with ``,`` or ``and`` after spaces or tabs only, so a long
+# blank run is scanned once per list end, not once per position.
+ISSUE_REF_RE = re.compile(
+    r"\b(?:refs?|references?)(?:\s*:\s+|\s+)"
+    r"(#\d+\b(?:[ \t]*,[ \t]*#\d+\b|[ \t]+and[ \t]+#\d+\b)*)",
+    re.IGNORECASE | re.ASCII,
+)
+# The numbers inside one ISSUE_REF_RE list.
+ISSUE_REF_NUMBER_RE = re.compile(r"#(\d+)", re.ASCII)
 # Over the head ref, case-sensitive.
 BRANCH_ISSUE_RE = re.compile(r"^issue/(\d+)-", re.ASCII)
 MAX_LINKED_ISSUES = 5

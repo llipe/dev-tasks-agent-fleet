@@ -34,6 +34,8 @@ from typing import Any
 from context.conventions import (
     BRANCH_ISSUE_RE,
     ISSUE_LINK_RE,
+    ISSUE_REF_NUMBER_RE,
+    ISSUE_REF_RE,
     ISSUE_TOKEN_CAP,
     LINE_END_RE,
     MAX_ISSUE_NUMBER,
@@ -125,7 +127,11 @@ def _to_number(digits: str) -> int | None:
 
 
 def linked_issue_numbers(body: str, head_ref: str) -> tuple[int, ...]:
-    """Body links in order, then the branch number; deduped; first 5."""
+    """Closing links in body order, the branch number, then ``Refs`` lists; deduped; first 5.
+
+    Closing links and the branch name the work the PR does, so they take the
+    cap's slots before plain references (D-58).
+    """
     found: list[int] = []
     for match in ISSUE_LINK_RE.finditer(body):
         number = _to_number(match.group(3))
@@ -136,6 +142,11 @@ def linked_issue_numbers(body: str, head_ref: str) -> tuple[int, ...]:
         number = _to_number(branch.group(1))
         if number is not None:
             found.append(number)
+    for match in ISSUE_REF_RE.finditer(body):
+        for digits in ISSUE_REF_NUMBER_RE.findall(match.group(1)):
+            number = _to_number(digits)
+            if number is not None:
+                found.append(number)
     return tuple(dict.fromkeys(found))[:MAX_LINKED_ISSUES]
 
 
