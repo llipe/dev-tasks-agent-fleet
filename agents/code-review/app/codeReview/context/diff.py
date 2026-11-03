@@ -122,8 +122,8 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 # case-insensitively on the last path segment.
 DOC_EXTENSIONS = (".md", ".mdx", ".markdown", ".rst", ".txt", ".adoc")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
-# Full-file tiers (FR-5, D-61): dropped documentation first, then tests, then
-# source last.
+# File tiers (FR-5, D-61, D-67): a documentation file gets no full copy; of the
+# full code files, tests are dropped before source.
 TIER_SOURCE = 0
 TIER_TEST = 1
 TIER_DOC = 2

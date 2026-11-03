@@ -20,7 +20,7 @@
 | 1.5     | 2026-11-03 | FR-5 amended (D-67): only code files (source and tests) get a full post-change copy; a documentation file reaches the model as its ±50-line diff only. Full code files are filled before the spec and the conventions, so a large spec is trimmed before a complete code file is dropped. Requested by Llipe on 2026-11-03 ("more context on code files only, the complete file, not only the diff"). | developer |
 | 1.4     | 2026-11-02 | Context the reviewer could not find, seen on `llipe/riel#889` ("no verifier report" while `audit-gift-card-compensation-gc08.md` was in the PR; full source files dropped before docs). Adds the LLM-assisted context selection call over a wrapper-built candidate list (FR-32–FR-34, D-59), `context_folders` and `context_selection` params (FR-1, FR-36, D-60), tier-ordered full-file drops (FR-5, D-61), the docs-only skip (FR-35, D-62), one Git tree read (D-63), and broadened report names (FR-9, D-64). Amends D-07 and ADR-010 (addendum). Requested by Llipe on 2026-11-02. | product-engineer |
 
-**Status: APPROVED v1.0 (2026-10-21); amended v1.4 (2026-11-02), v1.5 (2026-11-03).** Open questions resolved by Llipe; see §18 and decisions D-15–D-18. v1.2 amends FR-9, FR-20, and FR-24 per D-49, D-53, and D-54; v1.3 amends FR-7 per D-58; v1.4 amends FR-1, FR-5, FR-8, FR-9, FR-18 and adds FR-32–FR-36 per D-59–D-64 (`workstream/decisions-code-review-agent.md`).
+**Status: APPROVED v1.0 (2026-10-21); amended v1.4 (2026-11-02), v1.5 (2026-11-03).** Open questions resolved by Llipe; see §18 and decisions D-15–D-18. v1.2 amends FR-9, FR-20, and FR-24 per D-49, D-53, and D-54; v1.3 amends FR-7 per D-58; v1.4 amends FR-1, FR-5, FR-8, FR-9, FR-18 and adds FR-32–FR-36 per D-59–D-64; v1.5 amends FR-5 per D-67 (`workstream/decisions-code-review-agent.md`).
 
 ---
 
@@ -234,7 +234,7 @@ flowchart LR
 - **AC-1 (trigger).** A `/review` comment from a collaborator on an open PR in an allowlisted repo produces a `code-review` run with that `pr_number` and, on success, one comment on that PR.
 - **AC-2 (authorization).** A `/review` from a user with `author_association` `NONE` or `CONTRIBUTOR`, and a `/review` on a plain issue, produce no run (recorded `no_match` in the delivery log).
 - **AC-3 (no loop).** The agent's own comment, even if it contains `/review`, produces no run.
-- **AC-4 (expanded diff).** A prompt-capture test shows ±50 lines of context per hunk, full content of touched files within budget, lockfiles listed by name only, and full files dropped largest-first when over budget.
+- **AC-4 (expanded diff).** A prompt-capture test shows ±50 lines of context per hunk, full content of touched code files within budget (documentation files diff-only, D-67), lockfiles listed by name only, and full files dropped tests first, then source, largest-first within each, when over budget (D-61).
 - **AC-5 (budget).** A PR with 2,001 changed code lines gets the budget comment and ends `not_applicable`, with no model call.
 - **AC-6 (issues and spec).** For a PR closing an issue titled `[PRD-webhook-triggers] Story S-170: …`, the prompt contains that issue and `workstream/specification-prd-webhook-triggers.md`; for a PR with no linked issue, the comment says "no spec found".
 - **AC-7 (verifier boundary).** Given a fidelity report with one `Critical`+`Unintended` and one `Major`+`Unintended` drift item, the comment lists only the first under "Verifier", verbatim, with a count for the rest, and the verdict is `blocking`. No finding in the reviewer's own sections restates either item.
@@ -318,10 +318,11 @@ None open. Resolved 2026-10-21 by Llipe:
 | D-58 | FR-7 also resolves `Refs #N` lists, after closing links and the branch. |
 | D-59 | One extra Converse call selects context documents by index from a wrapper-built list; it fails open to the rules. |
 | D-60 | `context_folders` (comma-separated string, default `docs,workstream`) and `context_selection` (`llm` \| `rules`). |
-| D-61 | Full-file drop order: docs, then tests, then source; selection ranking within a tier, else largest first. |
+| D-61 | Full-file drop order: docs, then tests, then source; selection ranking within a tier, else largest first. Amended by D-67 (docs get no full copy). |
 | D-62 | Docs-only PRs (by file extension) get a note and no model call. |
 | D-63 | One read-only Git tree read per run builds the candidate list. |
 | D-64 | Report names accept a `-<slug>` suffix and non-`S` story IDs (`GC-08`). |
+| D-67 | Full copies for code files only; full code files filled before the spec and conventions (FR-5). |
 
 ## Delivery
 

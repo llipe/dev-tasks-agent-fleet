@@ -325,9 +325,10 @@ class _Filler:
 
 
 def full_file_order(pieces: Sequence[Piece], priority: Sequence[str] = ()) -> tuple[Piece, ...]:
-    """The full-file fill order (g): tier, then rank, then smallest first.
+    """The full-file fill order (e): tier, then rank, then smallest first.
 
-    The reverse is the drop order: documentation first, source last (D-61).
+    Only code files reach it (D-67), so the reverse is the drop order tests
+    first, source last (D-61).
     """
     rank = {ref: k for k, ref in enumerate(dict.fromkeys(priority))}
     unranked = len(rank)
@@ -423,7 +424,8 @@ class ContextData:
     did not (budget) and S-211 counts them as not checked, so they block
     (spec §8.4 step 5, §8.7, D-37). Together they are every candidate, in order.
     Files: ``full_files_included`` and ``full_files_dropped`` are in
-    ``full_file_order``; together they are every reviewed, non-removed file.
+    ``full_file_order``; together they are every reviewed, non-removed code file
+    (documentation files are diff-only, D-67).
     Paths here are raw repository text: render them neutralized (S-212).
     """
 
