@@ -2,7 +2,7 @@
 name: runbook-code-review-deployment
 trigger: Deploying or redeploying the code-review agent, changing its model, setting up the `/review` PR-comment trigger, rotating its secrets, or a code-review run that fails or does nothing
 owner: operator (repository owner)
-last_verified: 2026-10-24 — first live deploy (ChangeId 20261024-code-review-runtime). Panel run db46270a reviewed a scratch PR on DeepSeek V3.2; webhook run c36deb30 fired from a `/code-review` comment with `pr_number` taken from the payload
+last_verified: 2026-11-03 — redeploy to version 4 with `main` d20d73a (PRD v1.4 context selection, #473, #474), ChangeId 20261103-code-review-redeploy-v14. First live deploy 2026-10-24 (ChangeId 20261024-code-review-runtime)
 related: ["infra/changes/20261024-code-review-runtime/", "agents/code-review/agentcore/agentcore.json", "agents/code-review/agentcore/cdk/test/code-review-runtime.test.ts", "infra/agentcore-invoke-policy.json", "supabase/migrations/20261022120000_seed_code_review_agent.sql", "docs/runbooks/webhook-rules.md", "docs/runbooks/webhook-deployment.md"]
 ---
 
@@ -49,6 +49,14 @@ construct then imports it read-only and attaches nothing. Without it, the constr
   "What is deployed"): CloudFormation applies the whole template, including a different role or model.
 
 ## 1. Deploy or redeploy the runtime
+
+**Deploy source while this branch is unmerged.** The agent's app code is on `main`, but
+`agents/code-review/agentcore/` and the `20261024-code-review-runtime` change record (read by the
+CDK role-policy test) exist only on `integration/code-review-agent-wave-b`. Deploy from a checkout
+of `main` with those two paths taken from this branch
+(`git checkout origin/integration/code-review-agent-wave-b -- agents/code-review/agentcore infra/changes/20261024-code-review-runtime`),
+so `agentcore.json` equals what is live and only the image changes. Commit the updated
+`.cli/deployed-state.json` here. Example: ChangeId `20261103-code-review-redeploy-v14`.
 
 1. Run the CDK tests. They pin the role policy and the runtime config. `test/setup-project-root.ts`
    pins the AgentCore project root, so they run from the `cdk` directory or from the repo root:
