@@ -9,8 +9,9 @@ fixer_exec — rebuild the environment from the allow-list, then exec (S-182, D-
 ``setpriv`` passes the spawn env through unchanged, and the wrapper already
 builds that env from the allow-list. This shim runs as ``fixer`` and rebuilds
 it once more (defence in depth: whatever else arrives is dropped), so the
-command sees ``ANTHROPIC_API_KEY`` (when the wrapper passed it), ``PATH``,
-``HOME=/home/fixer``, ``LANG`` and ``CI=1``, and nothing else.
+command sees ``ANTHROPIC_API_KEY`` (when the wrapper passed it), ``PATH``
+(one of :data:`ALLOWED_PATHS`, else the base), ``HOME=/home/fixer``, ``LANG``
+and ``CI=1``, and nothing else.
 
 It also refuses to exec while its real or effective uid is still 0: if the
 drop did not happen, nothing runs as root (exit :data:`EXIT_STILL_ROOT`).
@@ -27,11 +28,20 @@ import os
 import sys
 from collections.abc import Mapping, Sequence
 
-# Must equal sandbox.ALLOWED_ENV / sandbox.FIXER_PATH; a unit test pins both.
+# Must equal sandbox.ALLOWED_ENV / sandbox.FIXER_PATH / sandbox.ALLOWED_PATHS;
+# a unit test pins all three. ``-I`` keeps /app off sys.path, so this file
+# can't import node.py: the shipped Node bins are spelled out.
 ALLOWED: tuple[str, ...] = ("ANTHROPIC_API_KEY", "PATH", "HOME", "LANG", "CI")
 FIXER_PATH = "/usr/local/bin:/usr/bin:/bin"
+ALLOWED_PATHS: tuple[str, ...] = (
+    FIXER_PATH,
+    f"/opt/node/22/bin:{FIXER_PATH}",
+    f"/opt/node/24/bin:{FIXER_PATH}",
+    f"/opt/node/26/bin:{FIXER_PATH}",
+)
 FIXER_HOME = "/home/fixer"
-# Copied from the incoming env when present; PATH and HOME are always fixed.
+# Copied from the incoming env when present; HOME is always fixed, and PATH is
+# kept only when it is one of ALLOWED_PATHS.
 _PASSED_THROUGH: tuple[str, ...] = ("ANTHROPIC_API_KEY", "LANG", "CI")
 EXIT_STILL_ROOT = 3
 
@@ -39,7 +49,8 @@ EXIT_STILL_ROOT = 3
 def build_env(environ: Mapping[str, str]) -> dict[str, str]:
     """The exact environment for the command: the allow-list, nothing else."""
     env = {name: environ[name] for name in _PASSED_THROUGH if environ.get(name)}
-    env["PATH"] = FIXER_PATH
+    path = environ.get("PATH")
+    env["PATH"] = path if path in ALLOWED_PATHS else FIXER_PATH
     env["HOME"] = FIXER_HOME
     env.setdefault("LANG", "C.UTF-8")
     env["CI"] = "1"

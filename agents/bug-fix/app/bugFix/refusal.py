@@ -107,8 +107,9 @@ REPLY_TEXT: Mapping[str, str] = {
 INVALID_PARAMS_KEYS: tuple[str, ...] = (*SCHEMA_KEYS, "params")
 # S-189 adds the items ``toolchain.MISS_ITEMS`` can name: no manifest at all,
 # no lockfile for a frozen install (D-63), Python's ``install`` target
-# (D-112), and (fix round, QA-189-04) a manager other than pnpm or npm. A unit
-# test pins MISS_ITEMS ⊆ REPO_GATE_ITEMS.
+# (D-112), (fix round, QA-189-04) a manager other than pnpm or npm, and an
+# ``engines.node`` no shipped Node satisfies (node.py). A unit test pins
+# MISS_ITEMS ⊆ REPO_GATE_ITEMS.
 REPO_GATE_ITEMS: tuple[str, ...] = (
     ".claude/agents/developer.md",
     "package.json",
@@ -122,6 +123,7 @@ REPO_GATE_ITEMS: tuple[str, ...] = (
     "lockfile",
     "install",
     "supported package manager (pnpm or npm)",
+    "supported Node.js version",
 )
 # The fixed phrase each item renders as (DF-189-05): it says what kind of
 # thing is missing. ``install`` keeps D-112's wording, "missing install
@@ -145,6 +147,9 @@ REPO_GATE_PHRASES: Mapping[str, str] = {
     "install": "missing install target (the Makefile target `install`)",
     "supported package manager (pnpm or npm)": (
         "missing a supported package manager (pnpm or npm; yarn and bun are not supported)"
+    ),
+    "supported Node.js version": (
+        "missing a supported Node.js version (`engines.node` must accept Node 22, 24 or 26)"
     ),
 }
 _DETAIL_SETS: Mapping[str, tuple[str, ...]] = {

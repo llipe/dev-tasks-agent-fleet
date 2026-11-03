@@ -1,8 +1,8 @@
 ---
 name: runbook-bug-fix-agent
-trigger: Deploying or redeploying the bug-fix AgentCore runtime, running its sandbox probe, rotating its Anthropic key or Projects token, checking its permissions, or verifying a Wave A run
+trigger: Deploying or redeploying the bug-fix AgentCore runtime, running its sandbox probe, rotating its Anthropic key or Projects token, checking its permissions, verifying a Wave A run, or adding or bumping a Node.js version in its image
 owner: operator
-last_verified: 2026-10-25
+last_verified: 2026-10-30
 related: ["agents/bug-fix/agentcore/agentcore.json", "infra/changes/20261023-bug-fix-runtime/", "infra/changes/20261024-bug-fix-spike-probe/", "infra/agentcore-invoke-policy.json", "infra/environments.yaml", "agents/bug-fix/app/bugFix/probe.py"]
 ---
 
@@ -41,6 +41,7 @@ How to deploy and verify the `bug-fix` AgentCore runtime (`bugfix_bug_fix-BiuPsd
 - **The wrapper runs as root and drops to `fixer` with `setpriv` (D-110).** AgentCore runs the container with `no_new_privs` set, so setuid `sudo` can't run. Probe run 1 failed 22 checks on exactly this ("The 'no new privileges' flag is set, which prevents sudo from running as root"). The image has no `sudo`. `main.py` runs as root and starts every process that runs model output or repo code through `setpriv --reuid=10002 --regid=10002 --clear-groups --inh-caps=-all --no-new-privs`, which works under `no_new_privs`. Only wrapper code runs as root. If the runtime ever stops running the image as root, or drops `CAP_SETUID`/`CAP_SETGID`, every sandboxed step fails with a `setpriv` error. The probe's `setpriv.wrapper.root` check shows it.
 - **`localhost` resolves through NSS in the image, not through `/etc/hosts` (D-111).** srt and the CLI's Bash sandbox reach their filtering proxy as `localhost` (hard-coded), and the sandbox's network namespace has no DNS. On AgentCore `/etc/hosts` is empty **and read-only** (re-probe 2c), so nothing can add an entry. The image installs `libnss-myhostname` with `hosts: files myhostname dns` in `/etc/nsswitch.conf`, and `/etc/gai.conf` (`precedence ::ffff:0:0/96 100`) puts `127.0.0.1` before `::1`. Before every sandboxed run the wrapper checks, read-only, that `localhost` resolves through `/etc/hosts` or NSS. If neither works, the run fails with `SandboxUnavailable: sandbox cannot resolve localhost: …`, naming both reasons. Without this, `npm`/`pip` fail with `getaddrinfo EAI_AGAIN localhost` (re-probe 2b). Don't remove `libnss-myhostname`, the nsswitch line or `gai.conf` from the Dockerfile. `scripts/image-smoke.sh` checks all three with an empty, read-only `/etc/hosts` mounted.
 
+- **One Node.js per major, picked per repo.** The image ships Node 22, 24 and 26 under `/opt/node/<major>` (default 26 at `/usr/bin/node`). The repo gate picks one from the base commit's `engines.node` (then `.nvmrc`/`.node-version`), and install and gates run with its `bin` first on `PATH`. Before this, the image had only Node 26, and a repo with `engines.node: ">=24.21.0 <25"` and `engine-strict` ended `failed`/`INSTALL_FAILED` with `ERR_PNPM_UNSUPPORTED_ENGINE … Expected version: >=24.21.0 <25 Got: v26.12.1` (run `fb717a51`, 2026-10-30). A range no shipped Node satisfies is now refusal `repo_gate` naming `supported Node.js version`.
 - **`FIX_LOOP_ENABLED` gates the fix step (S-190).** `agentcore.json` ships it as `0`. Absent or `0`: a run that wins its claim disposes "fix loop not yet enabled" (the diagnosis comment, and 😕 when the run came from a `/bug-fix` comment) and ends `succeeded`/`needs_review`. `1` adds the `fix` step, but this build has no fix runner, so the step disposes "the fix step is not available in this build". Don't set it to `1` before Wave B ships a fix runner. Any value other than `0` or `1` fails every run `CONFIG_INVALID`.
 - **The SIGTERM backstop lives on the main thread (S-190 fix round 2).** The SDK runs the entrypoint on its `agentcore-worker-loop` thread, where no signal handler can be installed. `main.py` installs it at import and again at app start, on top of uvicorn's own handler, and chains to it; the process then exits 143. As PID 1 (the exec-form `CMD`), the kernel ignores a re-raised SIGTERM, so the handler exits with `os._exit(143)`. Keep the `CMD` and `main.serve()`; `make image-smoke` checks this under the image's server.
 - **What a deployed run writes on the issue.** Before the repo gate passes, at most one refusal reply. After it, the claim comment (and 👀 on the trigger comment), then the diagnosis. Never a label, an assignee, an issue edit, or a board change (Wave A has no board client).
@@ -102,6 +103,19 @@ Reading the result:
   - If `net.localhost` fails, every `net.*`, `cli.*` and sandboxed check fails with it: fix this one first. `via=none` with a changed `nsswitch` line means the runtime replaced the image's `/etc/nsswitch.conf`. `::1` first means `/etc/gai.conf` is missing.
 - Each check carries its own reason in `detail`.
 
+### Add or bump a Node.js version in the image
+
+The shipped set is spelled out in four places that must agree; `make test` fails if they don't.
+
+1. Pick the release from `https://nodejs.org/dist/index.json`, and take its `linux-arm64.tar.gz` SHA-256 from `https://nodejs.org/dist/v<version>/SHASUMS256.txt`.
+2. `agents/bug-fix/app/bugFix/Dockerfile`: update `ARG NODE_VERSIONS` (one per major, ascending), the matching line in `node-sha256.txt`, and `ARG NODE_DEFAULT` if the default changes.
+3. `node.py`: `NODE_VERSIONS` and `DEFAULT_NODE`. A new or dropped **major** also changes `fixer_exec.py` `ALLOWED_PATHS` (one `/opt/node/<major>/bin` entry per major) and the `supported Node.js version` phrase in `refusal.py`.
+4. Check that the pinned `pnpm`, `@anthropic-ai/claude-code` and `@anthropic-ai/sandbox-runtime` accept the new major (`npm view <pkg>@<version> engines`): they run on the repo's Node.
+5. `cd agents/bug-fix/app/bugFix && make validate && make image-smoke`. The smoke test runs each `/opt/node/<major>/bin/node` and `pnpm` on it as `fixer`, under `no_new_privs`.
+6. Deploy as above.
+
+Rollback: revert the commit and redeploy. A repo that only the removed version satisfied goes back to refusal `repo_gate` (or, for the old single-Node image, `INSTALL_FAILED`).
+
 ### Set or rotate the Anthropic key (`agent-fleet/prod/ANTHROPIC_API_KEY`)
 
 1. At console.anthropic.com, create a **dedicated** key with a **spend limit** (currently $30 USD/month).
@@ -134,7 +148,7 @@ The fleet App (`4687256`, installation `156226839`) needs **Issues: read and wri
   - the issue gets exactly two new comments: the claim (`<!-- agent-fleet:bug-fix:claim run_id=<uuid> -->`, then "🔧 Bug-fix run <panel link> is working on this issue.") and the diagnosis (`<!-- agent-fleet:bug-fix:disposition run_id=<uuid> -->`, "Why it stopped: fix loop not yet enabled");
   - **no reaction**, because a manual invoke has no `trigger_comment_id`; no label, assignee or board change;
   - the run ends `succeeded` / `needs_review`, `result = {"summary": "fix loop not yet enabled", "reason": "fix_loop_disabled"}`, and `runs.metrics` has `issue_number` and `step_timings_ms` for the four steps.
-  - If it ends `not_applicable` / `repo_gate`, the fixture repo is missing the item the reply names. `failed` / `INSTALL_FAILED` means its install failed in the sandbox. `failed` / `INVALID_PAYLOAD` in `preflight`, with no comment on the issue, means the payload's `run_id` is not a UUID or a repository field is missing or has the wrong type; the summary names which. A `failed` run never has an `outcome`.
+  - If it ends `not_applicable` / `repo_gate`, the fixture repo is missing the item the reply names. `failed` / `INSTALL_FAILED` means its install failed in the sandbox. The `checkout` event `repo gate passed (js, pnpm, node <version>)` names the Node it ran on, with `node_source` (`engines.node`, `.nvmrc`, `.node-version` or `default`). `failed` / `INVALID_PAYLOAD` in `preflight`, with no comment on the issue, means the payload's `run_id` is not a UUID or a repository field is missing or has the wrong type; the summary names which. A `failed` run never has an `outcome`.
 - **App token:** minting an installation token shows `permissions.issues == "write"` (see `result.md`, step 10b). Print only the permissions, never the token.
 
 ## Rollback
