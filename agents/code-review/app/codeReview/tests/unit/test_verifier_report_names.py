@@ -128,3 +128,24 @@ def test_selected_reports_without_linked_issues():
     ctx = verifier_candidates(client, [], HEAD, extra_paths=(audit,))
     assert [r.path for r in ctx.reports] == [audit]
     assert ctx.reports[0].issue == 0
+
+
+def test_with_a_tree_a_bare_id_counts_only_when_its_report_is_listed():
+    # Verifier DR-02: "UTF-8" and "SHA-256" must not crowd out "GC-08".
+    title = "Story S-170: fix UTF-8 and SHA-256 for GC-08"
+    tree = {"workstream/fidelity-report-GC-08-gift.md"}
+    assert title_story_ids(title, tree) == ("S-170", "GC-08")
+    assert report_paths(_issue(5, title), tree) == (
+        "workstream/fidelity-report-S-170.md",
+        "workstream/fidelity-report-GC-08.md",
+        "workstream/fidelity-report-GC-08-gift.md",
+        "workstream/fidelity-report-issue-5.md",
+    )
+
+
+def test_with_an_empty_listing_only_story_titles_count():
+    assert title_story_ids("Story S-1: GC-08 UTF-8", frozenset()) == ("S-1",)
+
+
+def test_without_a_tree_every_id_is_read_blind():
+    assert title_story_ids("GC-08 UTF-8") == ("GC-08", "UTF-8")

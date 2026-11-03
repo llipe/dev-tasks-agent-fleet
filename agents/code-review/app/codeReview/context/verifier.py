@@ -176,11 +176,24 @@ class VerifierContext:
 # ---------------------------------------------------------------------------
 
 
-def title_story_ids(title: str) -> tuple[str, ...]:
-    """Story IDs in ``title``: ``Story S-<id>`` first, then ``STORY_ID_RE``; deduped, capped."""
-    ids = [m.group(1) for m in STORY_TITLE_RE.finditer(title)]
-    ids += [m.group(1) for m in STORY_ID_RE.finditer(title)]
-    return tuple(dict.fromkeys(ids))[:MAX_TITLE_IDS]
+def _listed(story_id: str, names: Collection[str]) -> bool:
+    """The listing has ``fidelity-report-<ID>.md`` or a ``-<slug>`` form of it."""
+    exact = story_report_path(story_id)
+    return exact in names or bool(_suffixed(exact, names))
+
+
+def title_story_ids(title: str, names: Collection[str] | None = None) -> tuple[str, ...]:
+    """Story IDs in ``title``: ``Story S-<id>`` first, then ``STORY_ID_RE``; deduped, capped.
+
+    With ``names`` (the tree's report names), a bare ID counts only when its
+    report is listed, so ``UTF-8`` or ``SHA-256`` cannot take a slot (verifier
+    DR-02); without a listing every ID is read blind, up to the cap.
+    """
+    story = [m.group(1) for m in STORY_TITLE_RE.finditer(title)]
+    bare = [m.group(1) for m in STORY_ID_RE.finditer(title)]
+    if names is not None:
+        bare = [i for i in bare if i in story or _listed(i, names)]
+    return tuple(dict.fromkeys(story + bare))[:MAX_TITLE_IDS]
 
 
 def _suffixed(exact: str, tree_paths: Collection[str]) -> list[str]:
@@ -198,7 +211,7 @@ def _suffixed(exact: str, tree_paths: Collection[str]) -> list[str]:
 
 def report_paths(issue: LinkedIssue, tree_paths: Collection[str] | None = None) -> tuple[str, ...]:
     """The story reports, then the issue report; each followed by its listed suffixed names."""
-    exact = [story_report_path(i) for i in title_story_ids(issue.title)]
+    exact = [story_report_path(i) for i in title_story_ids(issue.title, tree_paths)]
     exact.append(issue_report_path(issue.number))
     paths: list[str] = []
     for name in exact:

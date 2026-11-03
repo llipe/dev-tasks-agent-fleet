@@ -692,3 +692,25 @@ def test_selection_prices_apply_to_the_review_model_only(env, expected):
     settings = load_settings({**base, **env})
     assert settings.selection_prices == expected
     assert settings.selection_model == env.get("SELECTION_MODEL_ID", "m")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "workstream/tasks-prd-x.md",
+        "workstream/planner-state-wave-a.md",
+        "workstream/decisions-code-review-agent.md",
+        "workstream/research-routing.md",
+        "workstream/fidelity-report-prd-x-rollup.md",
+        "docs/reports/fidelity-report-S-1-rollup.md",
+    ],
+)
+def test_excluded_and_rollup_files_are_never_candidates(path):
+    """PRD FR-10 holds for the selection too (verifier DR-01, DR-13)."""
+    out = build_candidates([_blob(path), _blob("workstream/spec.md")], ("docs", "workstream"))
+    assert [c.path for c in out.candidates] == ["workstream/spec.md"]
+
+
+def test_the_selection_prompt_does_not_ask_for_plans():
+    req = build_request(_inputs(), model_id="m", nonce_factory=lambda: NONCE)
+    assert " plan" not in req["system"][0]["text"]

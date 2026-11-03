@@ -9,9 +9,12 @@ fill (FR-5).
 - **Candidates** (``build_candidates``): the blobs of the head's recursive
   Git tree (one read, ``GitHubClient.get_tree``) that sit under one of the
   ``context_folders`` and have a documentation extension, in tree order, at
-  most ``MAX_CANDIDATES``. A path the client could not read safely (a
-  backslash, a control character, an empty or dot segment, over
-  ``CANDIDATE_PATH_MAX_CHARS``) is never a candidate.
+  most ``MAX_CANDIDATES``. PRD FR-10's excluded workstream files (task lists,
+  planner state, decisions, research) and ``*-rollup.md`` reports are never
+  candidates: the model can only pick candidates, so they are never read. A
+  path the client could not read safely (a backslash, a control character,
+  an empty or dot segment, over ``CANDIDATE_PATH_MAX_CHARS``) is never a
+  candidate either.
 - **The call** (``select_context``): on ``model_id`` (``SELECTION_MODEL_ID``,
   default ``MODEL_ID``), with the forced ``select_context`` schema and no
   other tool. Its input is the PR title, head branch and body, the linked
@@ -60,7 +63,7 @@ from context.conventions import (
     CONTEXT_FOLDERS_PATTERN,
     MAX_CONTEXT_FOLDERS,
 )
-from context.diff import escape_path, is_doc_path
+from context.diff import escape_path, is_doc_path, path_reason
 from context.issues import LinkedIssue, strip_task_checklist
 from context.tokens import truncate
 from github_client import TreeEntry
@@ -221,6 +224,8 @@ def build_candidates(entries: Iterable[TreeEntry], folders: Sequence[str]) -> Ca
             continue
         if not is_doc_path(entry.path) or not _readable(entry.path):
             continue
+        if path_reason(entry.path) == "excluded" or entry.path.endswith("-rollup.md"):
+            continue  # FR-10; rollups are never read (D-25)
         if len(out) == MAX_CANDIDATES:
             return CandidateList(tuple(out), True)
         out.append(DocCandidate(len(out) + 1, entry.path, entry.size))
@@ -285,8 +290,8 @@ and a numbered list of candidate documents from the repository. Call \
 - `documents`: at most {MAX_PICKS} candidate documents, each by its number in \
 the candidate list, with a `role` and a one-sentence `reason` (at most \
 {REASON_MAX_CHARS} characters):
-  - `{ROLE_SPEC}`: a specification, requirement, design or plan that says what \
-this change should do;
+  - `{ROLE_SPEC}`: a specification, requirement or design document that says \
+what this change should do;
   - `{ROLE_VERIFIER}`: a verification, audit or fidelity report about this \
 change, its issue or its story (it usually holds a drift catalog).
   Pick only documents that clearly relate to this change. An empty list is a \
