@@ -1,0 +1,21 @@
+Stack AgentCore-codereview-default
+Resources
+[~] AWS::CloudFormation::CustomResource Application/AgentCodeReview/ContainerImageBuilder/ContainerBuildTrigger ApplicationAgentCodeReviewContainerImageBuilderContainerBuildTrigger6DE1DE2E may be replaced
+ ├─ [~] ImageUri (may cause replacement)
+ │   └─ [~] .Fn::Join:
+ │       └─ @@ -42,6 +42,6 @@
+ │          [ ]     {
+ │          [ ]       "Ref": "ApplicationAgentCodeReviewAgentEcrRepository14AB9A5A"
+ │          [ ]     },
+ │          [-]     ":7881c60ef4445c3878d272a3ef99bc3cdf4c79ca4901ffb97f8dd30c046652a8"
+ │          [+]     ":3ad57df7dc991331d87565d5164f8641191ea503e73310ca605805acf4ab2399"
+ │          [ ]   ]
+ │          [ ] ]
+ ├─ [~] SourceHash (may cause replacement)
+ │   ├─ [-] 7881c60ef4445c3878d272a3ef99bc3cdf4c79ca4901ffb97f8dd30c046652a8
+ │   └─ [+] 3ad57df7dc991331d87565d5164f8641191ea503e73310ca605805acf4ab2399
+ └─ [~] SourceKey (may cause replacement)
+     ├─ [-] 7881c60ef4445c3878d272a3ef99bc3cdf4c79ca4901ffb97f8dd30c046652a8.zip
+     └─ [+] 3ad57df7dc991331d87565d5164f8641191ea503e73310ca605805acf4ab2399.zip
+✨ Number of stacks with differences: 1
+{"success":true,"targetName":"default","stackName":"AgentCore-codereview-default","logPath":"agentcore/.cli/logs/deploy/deploy-20261103-173323.log","dependencySyncResult":{"outcome":"check-only","optedOut":false,"checkOnly":true,"migratedFromCaret":false,"reinstalled":false,"skewWarning":false,"changes":[],"restored":[],"skipped":[],"warnings":[],"notice":null}}
