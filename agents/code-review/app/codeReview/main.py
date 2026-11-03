@@ -174,6 +174,13 @@ def _check_property(name: str, prop: dict[str, Any], value: Any) -> None:
             raise InvalidParams(field, "must be a string")
         if "enum" in prop and value not in prop["enum"]:
             raise InvalidParams(field, f"must be one of {', '.join(prop['enum'])}")
+        if "maxLength" in prop and len(value) > prop["maxLength"]:
+            raise InvalidParams(field, f"must be at most {prop['maxLength']} characters")
+        # Patterns are written anchored (``^…$``). ``fullmatch``, not ``search``:
+        # Python's ``$`` also matches before a final newline, JavaScript's (Ajv,
+        # the panel) does not, and the CT-01 cases pin the two to one verdict.
+        if "pattern" in prop and re.fullmatch(prop["pattern"], value) is None:
+            raise InvalidParams(field, "does not match the required form")
     else:  # pragma: no cover - guarded by test_seed_contract (schema equals spec §5.1)
         raise InvalidParams(field, f"unsupported schema type {kind!r}")
 

@@ -99,6 +99,7 @@ SPEC_6_2 = (
     ("GET", "/repos/{o}/{r}/contents/{path}"),
     ("GET", "/repos/{o}/{r}/contents/{dir}"),
     ("GET", "/repos/{o}/{r}/issues/{m}"),
+    ("GET", "/repos/{o}/{r}/git/trees/{sha}"),  # PRD v1.4, D-63
     ("POST", "/repos/{o}/{r}/issues/{n}/comments"),
 )
 

@@ -84,8 +84,8 @@ from budget import (
     Placed,
     assert_within_budget,
     fill,
+    full_file_order,
     prompt_tokens,
-    smallest_first,
 )
 from context.diff import OVER_TOKENS, DiffContext, OverBudget, escape_path
 from context.tokens import estimate, estimate_len, truncate
@@ -558,6 +558,7 @@ def _pieces(inputs: ContextInputs, include_full_files: bool) -> _Pieces:
         specs=tuple(spec_pieces),
         conventions=conventions,
         files=files if include_full_files else (),
+        file_priority=inputs.file_priority,
     )
     return _Pieces(groups, specs, candidates, () if include_full_files else files)
 
@@ -844,11 +845,10 @@ def _context_data(
         for p in result.placed
         if p.piece.block == BLOCK_FILE and p.piece.ref is not None
     )
-    # Smallest first either way: the fill's own drops, or every file the caller
+    # Fill order either way: the fill's own drops, or every file the caller
     # left out, in the order the fill would have tried them.
-    dropped_files = tuple(
-        p.ref for p in result.dropped_files + smallest_first(pieces.left_out) if p.ref is not None
-    )
+    left_out = full_file_order(pieces.left_out, inputs.file_priority)
+    dropped_files = tuple(p.ref for p in result.dropped_files + left_out if p.ref is not None)
     issues = inputs.issues
     verifier = inputs.verifier
     return ContextData(

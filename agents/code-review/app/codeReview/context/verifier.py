@@ -1,12 +1,18 @@
 """
 Verifier drift candidates (S-208; spec §8.3 step 4, §8.4 b/d, §8.7; D-25, D-33, D-38).
 
-Lookup (``report_paths``), per linked issue in issue order: the story report
-``workstream/fidelity-report-S-<id>.md`` (the first ``Story S-<id>`` in the
-title), then ``workstream/fidelity-report-issue-<N>.md``. Rollups are never
-requested. Paths are deduped across issues, so two issues sharing a story ID
-read that report once (attributed to the first issue). Every read is at
-``head_sha``. A 404 means "no such report" (state ``none``, no warning: most PRs
+Lookup (``report_paths``), per linked issue in issue order: for each story ID
+in the title (``title_story_ids``: ``Story S-<id>`` first, then any
+``[A-Z]{1,4}-\\d+`` such as riel's ``GC-08``; D-64) the story report
+``workstream/fidelity-report-<ID>.md``, then
+``workstream/fidelity-report-issue-<N>.md``. Each exact name is followed by
+the suffixed names (``<name>-<slug>.md``) the head tree lists, when the caller
+passes ``tree_paths``, so a suffix costs no blind read. Documents the
+selection call picked as ``verifier_report`` (``extra_paths``, PRD FR-32) are
+read last. Rollups are never requested. Paths are deduped across issues, so
+two issues sharing a story ID read that report once (attributed to the first
+issue; a selected report with no rule-based match is attributed to issue 0).
+Every read is at ``head_sha``. A 404 means "no such report" (state ``none``, no warning: most PRs
 have none). A 403 is skipped with a ``warn`` and sets ``unavailable``, like an
 issue 403 in S-207; 401, rate limits and 5xx propagate unchanged.
 
@@ -47,7 +53,7 @@ and a fixed reason, never report text.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 from context.conventions import (
@@ -57,6 +63,11 @@ from context.conventions import (
     DRIFT_SECTION_TOKEN_CAP,
     DRIFT_UNINTENDED_RE,
     LINE_END_RE,
+    MAX_REPORT_SUFFIXES,
+    MAX_TITLE_IDS,
+    REPORT_DIR,
+    REPORT_SLUG_RE,
+    STORY_ID_RE,
     STORY_TITLE_RE,
     issue_report_path,
     story_report_path,
@@ -81,6 +92,7 @@ __all__ = [
     "parse_drift",
     "report_paths",
     "split_cells",
+    "title_story_ids",
     "verifier_candidates",
 ]
 
@@ -164,14 +176,44 @@ class VerifierContext:
 # ---------------------------------------------------------------------------
 
 
-def report_paths(issue: LinkedIssue) -> tuple[str, ...]:
-    """The story report (when the title names a story), then the issue report."""
+def title_story_ids(title: str) -> tuple[str, ...]:
+    """Story IDs in ``title``: ``Story S-<id>`` first, then ``STORY_ID_RE``; deduped, capped."""
+    ids = [m.group(1) for m in STORY_TITLE_RE.finditer(title)]
+    ids += [m.group(1) for m in STORY_ID_RE.finditer(title)]
+    return tuple(dict.fromkeys(ids))[:MAX_TITLE_IDS]
+
+
+def _suffixed(exact: str, tree_paths: Collection[str]) -> list[str]:
+    """``<exact stem>-<slug>.md`` names directly under ``workstream/`` that ``tree_paths`` lists."""
+    stem = exact[: -len(".md")] + "-"
+    found = []
+    for path in tree_paths:
+        if not (path.startswith(stem) and path.endswith(".md")):
+            continue
+        slug = path[len(stem) : -len(".md")]
+        if slug != "rollup" and REPORT_SLUG_RE.fullmatch(slug):
+            found.append(path)
+    return sorted(found)[:MAX_REPORT_SUFFIXES]
+
+
+def report_paths(issue: LinkedIssue, tree_paths: Collection[str] | None = None) -> tuple[str, ...]:
+    """The story reports, then the issue report; each followed by its listed suffixed names."""
+    exact = [story_report_path(i) for i in title_story_ids(issue.title)]
+    exact.append(issue_report_path(issue.number))
     paths: list[str] = []
-    story = STORY_TITLE_RE.search(issue.title)
-    if story is not None:
-        paths.append(story_report_path(story.group(1)))
-    paths.append(issue_report_path(issue.number))
-    return tuple(paths)
+    for name in exact:
+        paths.append(name)
+        if tree_paths:
+            paths.extend(_suffixed(name, tree_paths))
+    return tuple(dict.fromkeys(paths))
+
+
+def _report_names(tree_paths: Iterable[str]) -> frozenset[str]:
+    """The tree's report-shaped names directly under ``workstream/``: one pass over the tree."""
+    prefix = f"{REPORT_DIR}/fidelity-report-"
+    return frozenset(
+        p for p in tree_paths if p.startswith(prefix) and "/" not in p[len(REPORT_DIR) + 1 :]
+    )
 
 
 def verifier_candidates(
@@ -180,27 +222,33 @@ def verifier_candidates(
     head_sha: str,
     *,
     warn: Warn | None = None,
+    tree_paths: Iterable[str] | None = None,
+    extra_paths: Sequence[str] = (),
 ) -> VerifierContext:
-    """Read each linked issue's reports at ``head_sha`` once, then parse them."""
+    """Read each linked issue's reports, then the selected ones, at ``head_sha`` once; parse."""
+    names = _report_names(tree_paths) if tree_paths is not None else None
+    wanted: list[tuple[str, int]] = []
+    for issue in issues:
+        wanted.extend((path, issue.number) for path in report_paths(issue, names))
+    wanted.extend((path, 0) for path in extra_paths)
     reads: list[ReportRead] = []
     seen: set[str] = set()
     unavailable = False
-    for issue in issues:
-        for path in report_paths(issue):
-            if path in seen:
-                continue
-            seen.add(path)
-            content: str | None
-            try:
-                content = client.get_content_raw(path, head_sha)
-            except GitHubPermissionDenied as exc:
-                if exc.status != 403:
-                    raise
-                content = None
-                unavailable = True
-                if warn is not None:
-                    warn("verifier report unavailable", path=path, reason="permission")
-            reads.append((path, issue.number, content))
+    for path, number in wanted:
+        if path in seen:
+            continue
+        seen.add(path)
+        content: str | None
+        try:
+            content = client.get_content_raw(path, head_sha)
+        except GitHubPermissionDenied as exc:
+            if exc.status != 403:
+                raise
+            content = None
+            unavailable = True
+            if warn is not None:
+                warn("verifier report unavailable", path=path, reason="permission")
+        reads.append((path, number, content))
     return build_verifier_context(reads, unavailable=unavailable, warn=warn)
 
 

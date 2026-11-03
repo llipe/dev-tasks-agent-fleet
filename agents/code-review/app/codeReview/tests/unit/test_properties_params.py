@@ -17,6 +17,7 @@ import os
 import random
 
 from config import PARAMS_SCHEMA
+from context.selection import InvalidFolders, parse_context_folders
 from main import InvalidParams, apply_defaults, validate_payload
 
 SEED = int(os.environ.get("PRNG_SEED", "406001"))
@@ -26,6 +27,7 @@ ONLY_ITER = os.environ.get("PRNG_ITER")
 RUN_ID = "3f2b8c1e-5d4a-4f6b-9a7c-2e1d0b9a8c7f"
 PROPS = PARAMS_SCHEMA["properties"]
 INT_KEYS = [k for k, v in PROPS.items() if v["type"] == "integer"]
+FOLDER_VALUES = ["docs", "docs,workstream", "", "a/b, c", "..", "/x", "x/", "a,,b", "d\n", "."]
 
 
 def _near(rng: random.Random, key: str) -> int:
@@ -39,6 +41,8 @@ def _value(rng: random.Random, key: str | None, depth: int = 0) -> object:
         # Plausible value: near a bound for integers, near the enum for strings.
         if key in INT_KEYS:
             return _near(rng, key)
+        if key == "context_folders":
+            return rng.choice(FOLDER_VALUES)
         return rng.choice([*PROPS[key]["enum"], "HIGH", "max", ""])
     kind = rng.randrange(10)
     if kind == 3:
@@ -76,6 +80,11 @@ def _within_bounds(params: dict) -> bool:
             if not isinstance(value, int) or isinstance(value, bool):
                 return False
             if value < prop.get("minimum", value) or value > prop.get("maximum", value):
+                return False
+        elif prop["type"] == "string" and key == "context_folders":
+            try:
+                parse_context_folders(value)
+            except InvalidFolders:
                 return False
         elif prop["type"] == "string" and value not in prop["enum"]:
             return False

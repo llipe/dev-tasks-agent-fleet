@@ -159,6 +159,7 @@ __all__ = [
     "ModelOutputInvalid",
     "ReviewResult",
     "Warn",
+    "aws_error_name",
     "call_timeouts",
     "classify_validation_message",
     "validation_kinds",
@@ -166,8 +167,10 @@ __all__ = [
     "make_client",
     "read_timeout_for",
     "request_tokens",
+    "response_usage",
     "review",
     "tool_config",
+    "usage_cost",
 ]
 
 # The ``additionalModelRequestFields`` key for the effort (D-35). The name is
@@ -281,10 +284,18 @@ class ConverseClient(Protocol):
 
 
 class ClientFactory(Protocol):
-    """``make_client``'s shape: called once per Converse call with that call's timeouts."""
+    """``make_client``'s shape: called once per Converse call with that call's timeouts.
+
+    Only the selection call passes ``max_attempts`` (1: one long attempt, PRD
+    v1.4 FR-33); the review's calls keep botocore's ``MAX_ATTEMPTS``.
+    """
 
     def __call__(
-        self, *, read_timeout_seconds: float, connect_timeout_seconds: float
+        self,
+        *,
+        read_timeout_seconds: float,
+        connect_timeout_seconds: float,
+        max_attempts: int = ...,
     ) -> ConverseClient: ...
 
 
@@ -529,8 +540,11 @@ def make_client(
     read_timeout_seconds: float,
     connect_timeout_seconds: float = CONNECT_TIMEOUT_SECONDS,
     region_name: str | None = None,
+    max_attempts: int = MAX_ATTEMPTS,
 ) -> ConverseClient:
     """A ``bedrock-runtime`` client: standard retries, 3 attempts, the given timeouts.
+
+    ``max_attempts=1`` turns retries off (the selection call, PRD v1.4).
 
     ``review(client_factory=make_client)`` builds one per call, sized by
     ``call_timeouts`` from the time left (QA defect 1).
@@ -543,7 +557,7 @@ def make_client(
     config = Config(
         # ``total_max_attempts`` counts the first try; ``max_attempts`` in a
         # client Config counts retries only and would give 4 HTTP attempts.
-        retries={"mode": "standard", "total_max_attempts": MAX_ATTEMPTS},
+        retries={"mode": "standard", "total_max_attempts": max_attempts},
         read_timeout=read_timeout_seconds,
         connect_timeout=connect_timeout_seconds,
     )
@@ -716,6 +730,23 @@ def _count(value: Any) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_USAGE_TOKENS:
         return value
     return None
+
+
+def response_usage(response: Any) -> tuple[int, int] | None:
+    """``(input, output)`` tokens of a Converse response, ``None`` when absent or malformed."""
+    return _usage(response)
+
+
+def usage_cost(tokens: tuple[int, int] | None, prices: tuple[float, float] | None) -> float | None:
+    """USD for ``tokens`` at ``(input, output)`` per-million prices; ``None`` if one is unknown."""
+    if tokens is None or prices is None:
+        return None
+    return _cost(tokens, prices[0], prices[1])
+
+
+def aws_error_name(exc: ClientError) -> str:
+    """The ADR-009 allowlisted error code of ``exc`` (never its message)."""
+    return _aws_error(exc).name
 
 
 def _cost(tokens: tuple[int, int], price_in: float, price_out: float) -> float | None:

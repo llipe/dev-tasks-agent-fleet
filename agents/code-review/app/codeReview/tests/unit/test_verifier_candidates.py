@@ -132,7 +132,6 @@ def test_report_lookup_title_without_story_reads_only_the_issue_report():
 @pytest.mark.parametrize(
     "title",
     [
-        "story S-170: lowercase",
         "Story S170: no hyphen",
         "Story S-: no digits",
         "StoryS-170: no space",
@@ -144,9 +143,21 @@ def test_report_lookup_near_miss_titles_read_only_the_issue_report(title):
     assert report_paths(_issue(9, title)) == ("workstream/fidelity-report-issue-9.md",)
 
 
-def test_report_lookup_uses_the_first_story_id_in_the_title():
+def test_report_lookup_uses_every_story_id_in_the_title():
+    # PRD v1.4 D-64 supersedes S-208's "first ``Story S-<id>`` only": every
+    # ``[A-Z]{1,4}-<digits>`` ID counts, up to three, ``Story S-<id>`` first.
     assert report_paths(_issue(9, "Story S-12 and Story S-13")) == (
         "workstream/fidelity-report-S-12.md",
+        "workstream/fidelity-report-S-13.md",
+        "workstream/fidelity-report-issue-9.md",
+    )
+
+
+def test_report_lookup_reads_a_bare_story_id():
+    # D-64: "story S-170: lowercase" was a near miss under S-208; riel titles
+    # read "GC-08: ...", with no "Story" word at all.
+    assert report_paths(_issue(9, "story S-170: lowercase")) == (
+        "workstream/fidelity-report-S-170.md",
         "workstream/fidelity-report-issue-9.md",
     )
 

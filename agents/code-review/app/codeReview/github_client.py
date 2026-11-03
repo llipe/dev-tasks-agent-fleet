@@ -3,10 +3,11 @@ GitHub REST client with a write allowlist (S-205, spec §6.2, §9, §12, §13).
 
 Every GitHub call the agent makes goes through ``GitHubClient``. Before a
 request is sent, its method and path are checked against ``ALLOWLIST``, the
-seven (method, template) pairs of spec §6.2, bound to the constructor's
+eight (method, template) pairs of spec §6.2, bound to the constructor's
 ``org``, ``repo``, and ``pr_number``. Anything else raises ``ForbiddenCall``
 and the transport is never touched. The only write is ``post_pr_comment``, a
-comment on the invoked PR (PRD FR-27, AC-10).
+comment on the invoked PR (PRD FR-27, AC-10). The Git tree read (PRD v1.4,
+D-63) is also bound to the PR's head SHA, once ``bind_head_sha`` has set it.
 
 Retries (spec §9): GETs are retried twice (3 attempts) on 5xx, connection
 errors or timeouts, and rate limits (403/429 with ``retry-after``, a "rate
@@ -51,11 +52,13 @@ __all__ = [
     "GitHubMalformedResponse",
     "GitHubNotFound",
     "GitHubPermissionDenied",
+    "GitTree",
     "Issue",
     "PostedComment",
     "PullFile",
     "PullFiles",
     "PullRequest",
+    "TreeEntry",
 ]
 
 API_BASE = "https://api.github.com"
@@ -149,6 +152,8 @@ ALLOWLIST: tuple[AllowedCall, ...] = (
     AllowedCall("file_content", "GET", "/repos/{o}/{r}/contents/{path}", frozenset({"ref"})),
     AllowedCall("directory_listing", "GET", "/repos/{o}/{r}/contents/{dir}", frozenset({"ref"})),
     AllowedCall("linked_issue", "GET", "/repos/{o}/{r}/issues/{m}"),
+    # PRD v1.4, D-63: the head's recursive tree, for the selection candidates.
+    AllowedCall("git_tree", "GET", "/repos/{o}/{r}/git/trees/{sha}", frozenset({"recursive"})),
     AllowedCall("post_comment", "POST", "/repos/{o}/{r}/issues/{n}/comments"),
 )
 
@@ -165,6 +170,8 @@ _MAX_QUERY_INT = 10_000
 def _fits(placeholder: str, segment: str, bound: Mapping[str, str]) -> bool:
     if placeholder in bound:
         return segment == bound[placeholder]
+    if placeholder == "sha":
+        return False  # the tree read before ``bind_head_sha``
     if placeholder == "m":
         return bool(_NUMBER_RE.fullmatch(segment))
     if placeholder == "base_sha...head_sha":
@@ -247,6 +254,21 @@ class DirEntry:
     name: str
     path: str
     type: str
+
+
+@dataclass(frozen=True)
+class TreeEntry:
+    """One entry of a Git tree: ``type`` is ``blob``, ``tree`` or ``commit``."""
+
+    path: str
+    type: str
+    size: int | None  # bytes, for a blob; ``None`` when absent or malformed
+
+
+@dataclass(frozen=True)
+class GitTree:
+    entries: tuple[TreeEntry, ...]
+    truncated: bool  # GitHub's cap was hit: ``entries`` is what it sent
 
 
 @dataclass(frozen=True)
@@ -377,6 +399,28 @@ def _parse_dir(data: Any) -> list[DirEntry]:
             DirEntry(_str(d, "name", "entry"), _str(d, "path", "entry"), _str(d, "type", "entry"))
         )
     return entries
+
+
+def _size(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def _parse_tree(data: Any) -> GitTree:
+    d = _obj(data, "tree")
+    items = d.get("tree")
+    if not isinstance(items, list):
+        raise _Malformed("tree.tree")
+    entries = []
+    for item in items:
+        e = _obj(item, "tree_entry")
+        entries.append(
+            TreeEntry(
+                _str(e, "path", "tree_entry"), _str(e, "type", "tree_entry"), _size(e.get("size"))
+            )
+        )
+    return GitTree(tuple(entries), _bool(d, "truncated", "tree", default=False))
 
 
 def _parse_comment(data: Any) -> PostedComment:
@@ -597,6 +641,23 @@ class GitHubClient:
         if resp is None:
             return []
         return self._parse(resp, _parse_dir)
+
+    def bind_head_sha(self, sha: str) -> None:
+        """Bind the Git tree read to the PR's head ``sha`` (once; full hex only)."""
+        if not isinstance(sha, str) or not _SHA_RE.fullmatch(sha):
+            raise ForbiddenCall("the head must be a full hex commit SHA")
+        if self._bound.get("sha", sha) != sha:
+            raise ForbiddenCall("the head SHA is already bound")
+        self._bound["sha"] = sha
+
+    def get_tree(self, sha: str) -> GitTree:
+        """The recursive tree at ``sha``, the bound head (D-63). Truncated: as sent."""
+        if not isinstance(sha, str) or not _SHA_RE.fullmatch(sha):
+            raise ForbiddenCall("the tree read requires a full hex commit SHA")
+        resp = self._request(
+            "GET", f"{self._prefix}/git/trees/{sha}", params={"recursive": 1}, not_found="raise"
+        )
+        return self._parse(resp, _parse_tree)
 
     def get_issue(self, number: int) -> Issue:
         """Issue ``number`` in the bound repo. 404 -> ``GitHubNotFound``."""

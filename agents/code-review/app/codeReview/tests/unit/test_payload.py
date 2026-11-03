@@ -96,6 +96,8 @@ class TestDefaults:
             "max_suggestions": 5,
             "run_timeout_seconds": 900,
             "reasoning_effort": "high",
+            "context_folders": "docs,workstream",
+            "context_selection": "llm",
         }
 
     def test_explicit_values_are_kept(self):
@@ -106,6 +108,8 @@ class TestDefaults:
             "max_suggestions": 0,
             "run_timeout_seconds": 120,
             "reasoning_effort": "low",
+            "context_folders": "",
+            "context_selection": "rules",
         }
         assert apply_defaults(params) == params
 

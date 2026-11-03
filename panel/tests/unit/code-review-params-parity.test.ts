@@ -36,12 +36,13 @@ function codeReviewSchema(sql: string, source: string): Record<string, unknown> 
   return JSON.parse(match![1]) as Record<string, unknown>;
 }
 
+/** The newest code-review seed migration: each is a whole upsert (PRD v1.4 added one). */
 function migrationPath(): string {
-  const found = readdirSync(MIGRATIONS_DIR).filter((f) =>
-    f.endsWith("_seed_code_review_agent.sql"),
-  );
-  expect(found).toHaveLength(1);
-  return `${MIGRATIONS_DIR}/${found[0]}`;
+  const found = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith("_seed_code_review_agent.sql"))
+    .sort();
+  expect(found.length).toBeGreaterThanOrEqual(1);
+  return `${MIGRATIONS_DIR}/${found[found.length - 1]}`;
 }
 
 const cases = (JSON.parse(readFileSync(CASES_PATH, "utf8")) as { cases: ParamsCase[] }).cases;
