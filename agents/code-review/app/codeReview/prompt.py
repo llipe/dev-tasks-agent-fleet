@@ -87,7 +87,7 @@ from budget import (
     full_file_order,
     prompt_tokens,
 )
-from context.diff import OVER_TOKENS, DiffContext, OverBudget, escape_path
+from context.diff import OVER_TOKENS, TIER_DOC, DiffContext, OverBudget, escape_path, file_tier
 from context.tokens import estimate, estimate_len, truncate
 from context.verifier import REPORT_NONE, REPORT_NOT_PARSEABLE, REPORT_PARSED, Candidate
 from findings_schema import CATEGORIES, MAX_FINDINGS, SUBMIT_REVIEW_SCHEMA, SUBMIT_REVIEW_TOOL
@@ -531,10 +531,12 @@ def _pieces(inputs: ContextInputs, include_full_files: bool) -> _Pieces:
             )
         )
 
+    # Full copies are for code files only: a documentation file reaches the
+    # model as its diff (PRD v1.5 FR-5, D-67).
     heads = [
         (k, f.filename, f.head_content)
         for k, f in enumerate(inputs.diff.files)
-        if f.head_content is not None
+        if f.head_content is not None and file_tier(f.filename) != TIER_DOC
     ]
     files = tuple(
         add(

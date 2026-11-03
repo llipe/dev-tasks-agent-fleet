@@ -27,18 +27,20 @@ Let ``B = max_context_tokens``. Every token here is ``context/tokens.estimate``
      issues, with no redistribution of a short issue's unused share;
    - d. drift sections: ``min(4,000 x n, 10% of R)`` split equally among the
      ``n`` parsed reports (the spec's "4,000 per report, 10% of R");
-   - e. specs: 30% of ``B`` split equally (``context.spec.spec_cap``);
-   - f. conventions: 10% of ``B`` (``context.repo_conventions.conventions_cap``);
-   - g. full files: whole, in ``full_file_order``; each that fits is placed,
-     each that does not is dropped and the next is tried (PRD v1.4 FR-5,
-     D-61). The order is source, then tests, then documentation
-     (``context.diff.file_tier``); within a tier, the files the selection call
-     ranked (``FillGroups.file_priority``) in rank order, then the rest
-     smallest rendered cost first (ties in files-list order). Every file is
-     tried before any file after it is placed, so a file is never dropped to
-     make room for one later in the order: documentation goes first and source
-     last, and within a tier an unranked file is dropped largest first. A
-     smaller file after a dropped one still gets the room it fits in.
+   - e. full code files: whole, in ``full_file_order``; each that fits is
+     placed, each that does not is dropped and the next is tried (PRD v1.4
+     FR-5, D-61). Only source and test files have a full copy: the prompt
+     builder gives documentation files (``context.diff.file_tier``) their
+     diff only (PRD v1.5 FR-5, D-67). Source comes before tests; within a
+     tier, the files the selection call ranked (``FillGroups.file_priority``)
+     in rank order, then the rest smallest rendered cost first (ties in
+     files-list order). Every file is tried before any file after it is
+     placed, so a file is never dropped to make room for one later in the
+     order, and a smaller file after a dropped one still gets the room it
+     fits in. Full code files come before the spec and the conventions
+     (D-67): a large spec is trimmed before a complete code file is dropped;
+   - f. specs: 30% of ``B`` split equally (``context.spec.spec_cap``);
+   - g. conventions: 10% of ``B`` (``context.repo_conventions.conventions_cap``).
 
 3. **Invariant** (``assert_within_budget``): the caller measures the final
    prompt, ``estimate(fallback system) + estimate(user message)``, and this
@@ -120,9 +122,9 @@ FILL_ORDER = (
     BLOCK_CANDIDATE,
     BLOCK_ISSUE,
     BLOCK_VERIFIER,
+    BLOCK_FILE,  # before the spec and conventions (PRD v1.5 FR-5, D-67)
     BLOCK_SPEC,
     BLOCK_CONVENTIONS,
-    BLOCK_FILE,
 )
 
 PR_TOKEN_CAP = 4_000
@@ -363,10 +365,10 @@ def fill(groups: FillGroups, *, max_context_tokens: int, mandatory_tokens: int) 
             remaining * DRIFT_SHARE_NUMERATOR // DRIFT_SHARE_DENOMINATOR,
         ),
     )
-    f.shared(groups.specs, spec_cap(max_context_tokens))  # e
+    dropped_files = f.each_that_fits(full_file_order(groups.files, groups.file_priority))  # e
+    f.shared(groups.specs, spec_cap(max_context_tokens))  # f
     if groups.conventions is not None:
-        f.capped(groups.conventions, conventions_cap(max_context_tokens))  # f
-    dropped_files = f.each_that_fits(full_file_order(groups.files, groups.file_priority))  # g
+        f.capped(groups.conventions, conventions_cap(max_context_tokens))  # g
     return Fill(
         remaining=remaining,
         unallocated=f.left,
