@@ -29,9 +29,16 @@ Let ``B = max_context_tokens``. Every token here is ``context/tokens.estimate``
      ``n`` parsed reports (the spec's "4,000 per report, 10% of R");
    - e. specs: 30% of ``B`` split equally (``context.spec.spec_cap``);
    - f. conventions: 10% of ``B`` (``context.repo_conventions.conventions_cap``);
-   - g. full files: whole, smallest rendered cost first (ties in files-list
-     order), while they fit; the rest are dropped. This is the set PRD FR-5's
-     "drop largest-first" gives.
+   - g. full files: whole, in ``full_file_order``; each that fits is placed,
+     each that does not is dropped and the next is tried (PRD v1.4 FR-5,
+     D-61). The order is source, then tests, then documentation
+     (``context.diff.file_tier``); within a tier, the files the selection call
+     ranked (``FillGroups.file_priority``) in rank order, then the rest
+     smallest rendered cost first (ties in files-list order). Every file is
+     tried before any file after it is placed, so a file is never dropped to
+     make room for one later in the order: documentation goes first and source
+     last, and within a tier an unranked file is dropped largest first. A
+     smaller file after a dropped one still gets the room it fits in.
 
 3. **Invariant** (``assert_within_budget``): the caller measures the final
    prompt, ``estimate(fallback system) + estimate(user message)``, and this
@@ -53,7 +60,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from context.conventions import DRIFT_SECTION_TOKEN_CAP, ISSUE_TOKEN_CAP
-from context.diff import DiffContext
+from context.diff import DiffContext, file_tier
 from context.issues import IssuesContext
 from context.repo_conventions import ConventionsContext, conventions_cap
 from context.spec import SpecContext, spec_cap
@@ -93,8 +100,8 @@ __all__ = [
     "estimate",
     "estimate_len",
     "fill",
+    "full_file_order",
     "prompt_tokens",
-    "smallest_first",
 ]
 
 # Block kinds, as they appear in the nonce markers (spec §8.5).
@@ -179,6 +186,9 @@ class ContextInputs:
     spec: SpecContext | None = None
     verifier: VerifierContext | None = None
     conventions: ConventionsContext | None = None
+    # Changed-file paths the selection call ranked, most important first
+    # (PRD v1.4 FR-5, FR-32); orders the full files within a tier.
+    file_priority: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -219,6 +229,7 @@ class FillGroups:
     specs: Sequence[Piece] = ()
     conventions: Piece | None = None
     files: Sequence[Piece] = ()
+    file_priority: Sequence[str] = ()  # ranked file refs (``full_file_order``)
 
 
 @dataclass(frozen=True)
@@ -287,6 +298,16 @@ class _Filler:
             self._place(piece, piece.content, False, None)
         return ()
 
+    def each_that_fits(self, pieces: Sequence[Piece]) -> tuple[Piece, ...]:
+        """Place each whole piece that fits, in order; return the dropped ones."""
+        dropped: list[Piece] = []
+        for piece in pieces:
+            if _cost(piece.overhead, len(piece.content)) > self.left:
+                dropped.append(piece)
+            else:
+                self._place(piece, piece.content, False, None)
+        return tuple(dropped)
+
     def shared(self, pieces: Sequence[Piece], total_cap: int) -> None:
         """Split ``total_cap`` equally; each piece then gets ``min(share, R_left)``."""
         if not pieces:
@@ -301,9 +322,23 @@ class _Filler:
         self.placed.append(Placed(piece, content, cut, reason, tokens))
 
 
-def smallest_first(pieces: Sequence[Piece]) -> tuple[Piece, ...]:
-    """Pieces by rendered cost, ties in source order: the full-file order (g)."""
-    return tuple(sorted(pieces, key=lambda p: (_cost(p.overhead, len(p.content)), p.index)))
+def full_file_order(pieces: Sequence[Piece], priority: Sequence[str] = ()) -> tuple[Piece, ...]:
+    """The full-file fill order (g): tier, then rank, then smallest first.
+
+    The reverse is the drop order: documentation first, source last (D-61).
+    """
+    rank = {ref: k for k, ref in enumerate(dict.fromkeys(priority))}
+    unranked = len(rank)
+
+    def key(p: Piece) -> tuple[int, int, int, int]:
+        return (
+            file_tier(p.ref or ""),
+            rank.get(p.ref or "", unranked),
+            _cost(p.overhead, len(p.content)),
+            p.index,
+        )
+
+    return tuple(sorted(pieces, key=key))
 
 
 def fill(groups: FillGroups, *, max_context_tokens: int, mandatory_tokens: int) -> Fill:
@@ -331,7 +366,7 @@ def fill(groups: FillGroups, *, max_context_tokens: int, mandatory_tokens: int) 
     f.shared(groups.specs, spec_cap(max_context_tokens))  # e
     if groups.conventions is not None:
         f.capped(groups.conventions, conventions_cap(max_context_tokens))  # f
-    dropped_files = f.whole_prefix(smallest_first(groups.files))  # g
+    dropped_files = f.each_that_fits(full_file_order(groups.files, groups.file_priority))  # g
     return Fill(
         remaining=remaining,
         unallocated=f.left,
@@ -386,7 +421,7 @@ class ContextData:
     did not (budget) and S-211 counts them as not checked, so they block
     (spec §8.4 step 5, §8.7, D-37). Together they are every candidate, in order.
     Files: ``full_files_included`` and ``full_files_dropped`` are in
-    smallest-first order; together they are every reviewed, non-removed file.
+    ``full_file_order``; together they are every reviewed, non-removed file.
     Paths here are raw repository text: render them neutralized (S-212).
     """
 

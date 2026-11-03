@@ -11,10 +11,13 @@ spec file names) is a one-file change pinned by the L1 tests:
 - spec resolution: explicit path, ``[PRD-<name>]`` title, ``prd:<name>`` label
   (D-24), and ``Spec §<n>`` citations used to trim the spec;
 - the story ID in a story issue title (``Story S-<id>``; S-208 reuses it);
-- verifier fidelity-report names, the drift heading (D-44), and the candidate
+- verifier fidelity-report names, broadened to suffixed names and any story ID
+  in a linked issue title (D-64), the drift heading (D-44), and the candidate
   words (D-25, D-33; S-208);
 - the repository conventions sources: ``AGENTS.md``/``CLAUDE.md`` and the ADR
-  title and ``Status`` line forms (PRD FR-11; S-208).
+  title and ``Status`` line forms (PRD FR-11; S-208);
+- the ``context_folders`` param's form (PRD v1.4 FR-36, D-60), shared by the
+  params schema and the selection module.
 
 Name groups are restricted to ``[A-Za-z0-9._-]``, so no extracted name can
 contain ``/`` and every derived path stays one file directly under
@@ -34,7 +37,10 @@ __all__ = [
     "CANDIDATE_TOKEN_CAP",
     "CONVENTIONS_SHARE_DENOMINATOR",
     "CONVENTIONS_SHARE_NUMERATOR",
+    "CONTEXT_FOLDERS_MAX_CHARS",
+    "CONTEXT_FOLDERS_PATTERN",
     "CONVENTION_FILES",
+    "DEFAULT_CONTEXT_FOLDERS",
     "DRIFT_CRITICAL_RE",
     "DRIFT_HEADING_RE",
     "DRIFT_SECTION_TOKEN_CAP",
@@ -48,14 +54,20 @@ __all__ = [
     "MAX_ADRS",
     "MAX_ADR_BYTES",
     "MAX_ADR_FIELD_CHARS",
+    "MAX_CONTEXT_FOLDERS",
     "MAX_LINKED_ISSUES",
+    "MAX_REPORT_SUFFIXES",
     "MAX_SPEC_CITATIONS",
+    "MAX_TITLE_IDS",
     "PRD_LABEL_RE",
     "PRD_TITLE_RE",
+    "REPORT_DIR",
+    "REPORT_SLUG_RE",
     "SPEC_CITATION_RE",
     "SPEC_PATH_RE",
     "SPEC_SHARE_DENOMINATOR",
     "SPEC_SHARE_NUMERATOR",
+    "STORY_ID_RE",
     "STORY_TITLE_RE",
     "SETEXT_UNDERLINE_RE",
     "TASK_CHECKLIST_RE",
@@ -142,10 +154,21 @@ def spec_path_for_prd(name: str) -> str:
 
 # -- verifier reports (spec §8.3 step 4, D-25, D-33, D-38) --------------------
 
-# Per linked issue: ``fidelity-report-S-<id>.md`` (``<id>`` from
-# ``STORY_TITLE_RE``, so ``S-`` plus ASCII digits) and
-# ``fidelity-report-issue-<N>.md`` (``<N>`` the issue number). Rollups
-# (``*-rollup.md``) are never built, so never requested.
+# Per linked issue: ``fidelity-report-<ID>.md`` for each story ID in the title
+# (``STORY_TITLE_RE`` first, then ``STORY_ID_RE``: ``S-170``, ``GC-08``; D-64)
+# and ``fidelity-report-issue-<N>.md`` (``<N>`` the issue number). With the
+# head tree listed, ``fidelity-report-<ID>-<slug>.md`` and
+# ``fidelity-report-issue-<N>-<slug>.md`` directly under ``workstream/`` count
+# too, at most ``MAX_REPORT_SUFFIXES`` per name in path order (D-64). Rollups
+# (``*-rollup.md``) are never requested.
+REPORT_DIR = "workstream"
+# Any story ID in a title: 1-4 capital ASCII letters, a hyphen, digits, as a
+# whole word. The first ``MAX_TITLE_IDS`` distinct IDs count.
+STORY_ID_RE = re.compile(r"\b([A-Z]{1,4}-\d+)\b", re.ASCII)
+MAX_TITLE_IDS = 3
+# The ``<slug>`` of a suffixed report name; ``rollup`` is never one.
+REPORT_SLUG_RE = re.compile(r"[A-Za-z0-9._-]+", re.ASCII)
+MAX_REPORT_SUFFIXES = 3
 
 
 def story_report_path(story_id: str) -> str:
@@ -206,3 +229,18 @@ ADR_STATUS_HEADING_RE = re.compile(r"[ \t]{0,3}#{1,6}[ \t]+Status[ \t]*(?:#+[ \t
 # The conventions block's share of ``max_context_tokens``: 10% (spec §8.3, §8.4 f).
 CONVENTIONS_SHARE_NUMERATOR = 1
 CONVENTIONS_SHARE_DENOMINATOR = 10
+
+# -- context folders (PRD v1.4 FR-1, FR-36; D-60) ------------------------------
+
+# A comma-separated string, because webhook rules cannot fill list params.
+# Each folder is ``[A-Za-z0-9._-]`` segments joined by ``/``: no empty, ``.``
+# or ``..`` segment, no leading ``/``; spaces only around commas; at most
+# ``MAX_CONTEXT_FOLDERS``. The empty string is valid and means no candidates.
+# One pattern, in the subset of syntax Python ``re`` and the panel's Ajv
+# (JavaScript ``u`` regex) read the same way: the shared params cases pin it.
+MAX_CONTEXT_FOLDERS = 10
+CONTEXT_FOLDERS_MAX_CHARS = 1_000
+DEFAULT_CONTEXT_FOLDERS = "docs,workstream"
+_FOLDER_SEGMENT = r"(?!\.\.?(?:[/, ]|$))[A-Za-z0-9._-]+"
+_FOLDER = rf"{_FOLDER_SEGMENT}(?:/{_FOLDER_SEGMENT})*"
+CONTEXT_FOLDERS_PATTERN = rf"^(?:{_FOLDER}(?: *, *{_FOLDER}){{0,{MAX_CONTEXT_FOLDERS - 1}}})?$"

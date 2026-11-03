@@ -208,7 +208,8 @@ on conflict (slug) do update
 
 -- ---------------------------------------------------------------------
 -- 4a. code-review agent (S-204, spec §5.1)
---    Mirrored by migrations/20261022120000_seed_code_review_agent.sql (prod).
+--    Mirrored by the newest migrations/*_seed_code_review_agent.sql (prod):
+--    20261103120000 (PRD v1.4: context_folders, context_selection).
 --    runtime_arn is a placeholder until the first `agentcore deploy` (Wave B,
 --    S-214) sets it. It is deliberately NOT in the `do update` list, so
 --    re-running this seed never overwrites a deployed ARN with the placeholder.
@@ -242,11 +243,13 @@ values (
   1800,  -- 30 min: MUST equal maxLifetime in agentcore.json
   120,   -- grace_seconds
   300,   -- start_timeout_seconds: queue clock (D9), NOT idleRuntimeSessionTimeout
-  '{"max_diff_lines":2000,"max_context_tokens":150000,"max_suggestions":5,"run_timeout_seconds":900,"reasoning_effort":"high"}'::jsonb,
+  '{"max_diff_lines":2000,"max_context_tokens":150000,"max_suggestions":5,"run_timeout_seconds":900,"reasoning_effort":"high","context_folders":"docs,workstream","context_selection":"llm"}'::jsonb,
   $json${
     "type": "object",
     "additionalProperties": false,
-    "required": ["pr_number"],
+    "required": [
+      "pr_number"
+    ],
     "properties": {
       "pr_number": {
         "type": "integer",
@@ -279,8 +282,26 @@ values (
       },
       "reasoning_effort": {
         "type": "string",
-        "enum": ["low", "medium", "high"],
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
         "default": "high"
+      },
+      "context_folders": {
+        "type": "string",
+        "maxLength": 1000,
+        "pattern": "^(?:(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+(?:/(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+)*(?: *, *(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+(?:/(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+)*){0,9})?$",
+        "default": "docs,workstream"
+      },
+      "context_selection": {
+        "type": "string",
+        "enum": [
+          "llm",
+          "rules"
+        ],
+        "default": "llm"
       }
     }
   }$json$::jsonb

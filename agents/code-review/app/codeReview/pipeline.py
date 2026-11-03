@@ -12,13 +12,19 @@ spec §8.1 steps (``STEPS``), and always ends the run:
    comment (FR-4: drafts are reviewed; CI status is never read).
 2. ``context`` — changed files, classification and ``check_size`` before any
    content fetch; the expanded diff (a client per worker thread from
-   ``client_factory``); linked issues, specs, verifier candidates and
-   conventions, each with the ``warn`` callback; then ``build_prompt``, which
-   fits the budget. Over the line budget (``check_size``) or the token budget
-   (``build_prompt``) the run posts the budget comment; with no reviewed file
-   (a lockfile-only PR, DF-16) it posts the "nothing to review" note. Both
-   happen in a ``post`` step, end ``succeeded``/``not_applicable``, make no
-   Converse call and write no ``audit_report`` (EC-21).
+   ``client_factory``); linked issues; the head's Git tree (one read, bound to
+   the head SHA) and the context selection call (PRD v1.4 FR-32–FR-34,
+   ``context.selection``: fails open, never counts toward the review's calls);
+   specs and verifier candidates, each with the selection's picks after the
+   rule-based ones; conventions; each with the ``warn`` callback; then
+   ``build_prompt``, which fits the budget, ordering full files by tier and the
+   selection's ranking (FR-5). A PR whose every changed file is documentation
+   or an image (FR-35) posts the docs-only note before anything is fetched.
+   Over the line budget (``check_size``) or the token budget (``build_prompt``)
+   the run posts the budget comment; with no reviewed file (a lockfile-only PR,
+   DF-16) it posts the "nothing to review" note. All three happen in a
+   ``post`` step, end ``succeeded``/``not_applicable``, make no Converse call
+   and write no ``audit_report`` (EC-21).
 3. ``review`` — ``bedrock_adapter.review`` with the production client factory,
    the run deadline and the clock.
 4. ``validate`` — ``validate_result`` with the same ``DiffContext`` that built
@@ -62,7 +68,9 @@ with the token and the Supabase key. Model and repository text in the
 the same scope as ``input_tokens`` (the sum of every call's usage), so the two
 compare directly for the D-27 recalibration; ``estimated_first_call_tokens``
 is the first prompt's budget estimate. ``context_tokens`` is per block of the
-accepted call's prompt.
+accepted call's prompt. The selection call's tokens, cost and duration are the
+``selection_*`` keys (FR-34): never part of the review's ``input_tokens``,
+``bedrock_calls`` or ``estimated_input_tokens``.
 """
 
 from __future__ import annotations
@@ -77,6 +85,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from bedrock_adapter import (
+    MAX_ATTEMPTS,
     BedrockAdapterError,
     CallMetrics,
     ClientFactory,
@@ -96,17 +105,34 @@ from context.diff import (
     check_size,
     classify,
     expanded_diff,
+    is_docs_only,
 )
-from context.issues import linked_issues
+from context.issues import LinkedIssue, linked_issues
 from context.repo_conventions import repo_conventions
+from context.selection import (
+    MAX_CANDIDATES,
+    SKIP_NO_FOLDERS,
+    SKIP_RULES,
+    SKIP_TREE_UNAVAILABLE,
+    ChangedFile,
+    Selection,
+    SelectionInputs,
+    build_candidates,
+    parse_context_folders,
+    select_context,
+    skipped,
+)
 from context.spec import resolve_specs
 from context.verifier import REPORT_NONE, Candidate, VerifierContext, verifier_candidates
 from github_client import (
+    ForbiddenCall,
     GitHubClient,
     GitHubError,
     GitHubMalformedResponse,
     GitHubNotFound,
     GitHubPermissionDenied,
+    GitTree,
+    PullFile,
     PullRequest,
 )
 from heartbeat import HeartbeatResult, run_with_heartbeat
@@ -117,6 +143,7 @@ from render import (
     comment_size,
     neutralize,
     render_budget,
+    render_docs_only,
     render_failure,
     render_nothing_to_review,
     render_review,
@@ -155,6 +182,8 @@ STATUS_FAILED = "failed"
 OUTCOME_NO_FINDINGS = "no_findings"
 OUTCOME_NEEDS_REVIEW = "needs_review"
 OUTCOME_NOT_APPLICABLE = "not_applicable"
+
+CONTEXT_SELECTION_RULES = "rules"
 
 # The post phase inside the 60 s reserve (QA residual 2). The run ends at
 # ``start + run_timeout_seconds``. The review or note POST gets at most half of
@@ -455,6 +484,21 @@ def _scrub_render_inputs(
     return clean_context, clean_diff, clean_verifier
 
 
+def _scrub_selection(selection: Selection | None, secrets: Sequence[str]) -> Selection | None:
+    """The picks' paths and the model's reasons, scrubbed before rendering or the artifact."""
+    if selection is None:
+        return None
+    sec = list(secrets)
+    return dataclasses.replace(
+        selection,
+        picks=tuple(
+            dataclasses.replace(p, path=_scrub_text(p.path, sec), reason=_scrub_text(p.reason, sec))
+            for p in selection.picks
+        ),
+        file_priority=tuple(_scrub_text(p, sec) for p in selection.file_priority),
+    )
+
+
 def _rendered_forms(secrets: Sequence[str]) -> list[str]:
     """Each secret as written and as the renderer would escape it (text and code span)."""
     forms: list[str] = []
@@ -501,6 +545,7 @@ def audit_metadata(
     diff: DiffContext,
     model_id: str,
     reasoning_effort: str,
+    selection: Selection | None = None,
 ) -> dict[str, Any]:
     """The ``audit_report`` metadata (spec §5.2), before scrubbing."""
     ctx = result.context
@@ -550,6 +595,17 @@ def audit_metadata(
             for c in validation.candidates
         ],
         "dropped": [d.as_artifact() for d in validation.dropped],
+        "selection": None
+        if selection is None
+        else {
+            "status": selection.status,
+            "reason": selection.reason,
+            "candidates": selection.candidates,
+            "picks": [
+                {"path": p.path, "role": p.role, "reason": p.reason} for p in selection.picks
+            ],
+            "file_priority": list(selection.file_priority),
+        },
     }
 
 
@@ -577,6 +633,16 @@ def _empty_metrics() -> dict[str, Any]:
         "verifier_confirmed": 0,
         "comment_chars": 0,
         "comment_truncated": False,
+        # The selection call (FR-34): "nothing happened" until the context step runs it.
+        "selection_status": None,
+        "selection_reason": None,
+        "selection_candidates": 0,
+        "selection_picks": 0,
+        "selection_discarded": 0,
+        "selection_input_tokens": None,
+        "selection_output_tokens": None,
+        "selection_cost_usd": None,
+        "selection_ms": 0,
     }
 
 
@@ -642,11 +708,13 @@ class _Gathered:
 
     over: OverBudget | None = None
     nothing: bool = False
+    docs_only: bool = False  # FR-35: every changed file is documentation or an image
     name_only: tuple[NameOnlyFile, ...] = ()
     diff: DiffContext | None = None
     inputs: ContextInputs | None = None
     prompt: Prompt | None = None
     counts: dict[str, Any] = field(default_factory=dict)
+    selection: Selection | None = None
 
 
 @dataclass(frozen=True)
@@ -884,9 +952,11 @@ class Pipeline:
                 yield chunk
             gathered: _Gathered = box.value
             self._counts.update(gathered.counts)
+            if gathered.selection is not None:
+                self._metrics.update(gathered.selection.as_metrics())
             self._log_context(gathered)
 
-        if gathered.over is not None or gathered.nothing:
+        if gathered.over is not None or gathered.nothing or gathered.docs_only:
             yield self._post_note(gathered)
             return
         assert gathered.prompt is not None and gathered.inputs is not None
@@ -983,6 +1053,8 @@ class Pipeline:
             files_name_only=len(classification.name_only),
             files_listing_truncated=files.truncated,
         )
+        if not files.truncated and is_docs_only(f.filename for f in files.files):
+            return _Gathered(counts=counts, docs_only=True)  # FR-35, before any fetch
         over = check_size(classification, max_lines, truncated=files.truncated)
         if over is not None:
             return _Gathered(counts=counts, over=over, name_only=classification.name_only)
@@ -995,6 +1067,8 @@ class Pipeline:
             return _Gathered(counts=counts, nothing=True, name_only=diff.name_only, diff=diff)
 
         issues = linked_issues(client, pull, warn=warn)
+        tree = self._read_tree(client, pull, warn)
+        selection = self._select(pull, classification.reviewed, issues.issues, tree, gate)
         specs = resolve_specs(
             client,
             issues.issues,
@@ -1002,8 +1076,16 @@ class Pipeline:
             reviewed_paths=[f.filename for f in diff.files],
             max_context_tokens=budget,
             warn=warn,
+            extra_paths=selection.spec_paths,
         )
-        verifier = verifier_candidates(client, issues.issues, pull.head_sha, warn=warn)
+        verifier = verifier_candidates(
+            client,
+            issues.issues,
+            pull.head_sha,
+            warn=warn,
+            tree_paths=None if tree is None else (e.path for e in tree.entries),
+            extra_paths=selection.report_paths,
+        )
         conventions = repo_conventions(client, pull.head_sha, max_context_tokens=budget, warn=warn)
         inputs = ContextInputs(
             pr_number=self.params["pr_number"],
@@ -1015,6 +1097,7 @@ class Pipeline:
             spec=specs,
             verifier=verifier,
             conventions=conventions,
+            file_priority=selection.file_priority,
         )
         counts.update(
             issues_linked=len(issues.issues),
@@ -1031,11 +1114,90 @@ class Pipeline:
         )
         if isinstance(built, OverBudget):
             return _Gathered(
-                counts=counts, over=built, name_only=diff.name_only, diff=diff, inputs=inputs
+                counts=counts,
+                over=built,
+                name_only=diff.name_only,
+                diff=diff,
+                inputs=inputs,
+                selection=selection,
             )
         return _Gathered(
-            counts=counts, diff=diff, inputs=inputs, prompt=built, name_only=diff.name_only
+            counts=counts,
+            diff=diff,
+            inputs=inputs,
+            prompt=built,
+            name_only=diff.name_only,
+            selection=selection,
         )
+
+    def _read_tree(
+        self, client: GitHubClient, pull: PullRequest, warn: Callable[..., None]
+    ) -> GitTree | None:
+        """The head's Git tree (D-63); ``None`` with a warning when it cannot be read."""
+        try:
+            client.bind_head_sha(pull.head_sha)
+            tree = client.get_tree(pull.head_sha)
+        except (GitHubError, ForbiddenCall) as exc:
+            warn("repository tree unavailable", error=type(exc).__name__, status=_status(exc))
+            return None
+        if tree.truncated:
+            warn("repository tree truncated", entries=len(tree.entries))
+        return tree
+
+    def _select(
+        self,
+        pull: PullRequest,
+        reviewed: Sequence[PullFile],
+        issues: Sequence[LinkedIssue],
+        tree: GitTree | None,
+        gate: _Gate,
+    ) -> Selection:
+        """The context selection (FR-32–FR-34), or why it was not made. Never raises."""
+        warn = self._events.warner(gate)
+        if self.params.get("context_selection") == CONTEXT_SELECTION_RULES:
+            selection = skipped(SKIP_RULES)
+        elif not (folders := parse_context_folders(self.params.get("context_folders", ""))):
+            selection = skipped(SKIP_NO_FOLDERS)
+        elif tree is None:
+            selection = skipped(SKIP_TREE_UNAVAILABLE)
+        else:
+            found = build_candidates(tree.entries, folders)
+            if found.capped:
+                warn("context selection candidates capped", candidates=MAX_CANDIDATES)
+            selection = select_context(
+                SelectionInputs(
+                    pr_title=pull.title,
+                    pr_body=pull.body,
+                    head_ref=pull.head_ref,
+                    issues=issues,
+                    changed=tuple(
+                        ChangedFile(f.filename, f.additions, f.deletions) for f in reviewed
+                    ),
+                    candidates=found.candidates,
+                ),
+                client_factory=self.deps.bedrock_factory,
+                model_id=self.settings.selection_model,
+                prices=self.settings.selection_prices,
+                clock=self.deps.clock,
+                deadline=self._deadline,
+                nonce_factory=self.deps.nonce_factory,
+                warn=warn,
+            )
+        m = selection.as_metrics()
+        self._events.log(
+            "info",
+            "context selection done",
+            gate=gate,
+            status=selection.status,
+            reason=selection.reason,
+            candidates=selection.candidates,
+            picks=len(selection.picks),
+            ranked_files=len(selection.file_priority),
+            input_tokens=m["selection_input_tokens"],
+            output_tokens=m["selection_output_tokens"],
+            ms=m["selection_ms"],
+        )
+        return selection
 
     def _converse(self, gathered: _Gathered, gate: _Gate) -> ReviewResult:
         assert gathered.prompt is not None and gathered.inputs is not None
@@ -1054,11 +1216,18 @@ class Pipeline:
         )
 
     def _bedrock_client(
-        self, *, read_timeout_seconds: float, connect_timeout_seconds: float
+        self,
+        *,
+        read_timeout_seconds: float,
+        connect_timeout_seconds: float,
+        max_attempts: int = MAX_ATTEMPTS,
     ) -> ConverseClient:
+        """The review's client, counted (DR-11). The selection call does not come here."""
+        extra = {} if max_attempts == MAX_ATTEMPTS else {"max_attempts": max_attempts}
         inner = self.deps.bedrock_factory(
             read_timeout_seconds=read_timeout_seconds,
             connect_timeout_seconds=connect_timeout_seconds,
+            **extra,
         )
         return _CountingClient(inner, self)
 
@@ -1074,6 +1243,8 @@ class Pipeline:
             data["over_budget"] = g.over.reason
         if g.nothing:
             data["nothing_to_review"] = True
+        if g.docs_only:
+            data["docs_only"] = True
         if g.inputs is not None:
             for k in ("issues_linked", "issues_skipped", "specs", "verifier_reports"):
                 data[k] = self._counts.get(k, 0)
@@ -1140,6 +1311,11 @@ class Pipeline:
                     g.over, run_id=run_id, panel_base_url=panel, name_only=name_only
                 )
                 kind = "budget comment"
+            elif g.docs_only:
+                body = render_docs_only(
+                    self._counts.get("files_changed", 0), run_id=run_id, panel_base_url=panel
+                )
+                kind = "docs-only note"
             else:
                 body = render_nothing_to_review(name_only, run_id=run_id, panel_base_url=panel)
                 kind = "nothing-to-review note"
@@ -1158,6 +1334,7 @@ class Pipeline:
         context, diff, verifier = _scrub_render_inputs(
             result.context, g.diff, g.inputs.verifier, self.secrets
         )
+        selection = _scrub_selection(g.selection, self.secrets)
         rendered = render_review(
             clean,
             context=context,
@@ -1168,6 +1345,7 @@ class Pipeline:
             model_id=self.settings.model_id,
             rubric_version=result.prompt.rubric_version,
             panel_base_url=self.settings.panel_base_url,
+            selection=selection,
         )
         body = self._scrub_body(rendered.body)
         # The posted body, after the scrub, as on the note path (spec §5.3; QA-PRD-01).
@@ -1190,6 +1368,7 @@ class Pipeline:
                 diff=g.diff,
                 model_id=self.settings.model_id,
                 reasoning_effort=self.params["reasoning_effort"],
+                selection=selection,
             ),
             self.secrets,
         )

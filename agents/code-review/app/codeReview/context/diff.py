@@ -63,11 +63,16 @@ from github_client import (
 
 __all__ = [
     "CONTEXT_LINES",
+    "DOC_EXTENSIONS",
+    "IMAGE_EXTENSIONS",
     "LOCKFILE_NAMES",
     "MAX_WORKERS",
     "NUL_SCAN_BYTES",
     "OVER_LINES",
     "OVER_TOKENS",
+    "TIER_DOC",
+    "TIER_SOURCE",
+    "TIER_TEST",
     "Classification",
     "DiffContext",
     "FileDiff",
@@ -81,6 +86,9 @@ __all__ = [
     "diff_context",
     "escape_path",
     "expanded_diff",
+    "file_tier",
+    "is_doc_path",
+    "is_docs_only",
     "path_reason",
     "split_lines",
     "unified_diff",
@@ -109,6 +117,18 @@ GENERATED_SUFFIXES = (".min.js", ".min.css", ".map", ".snap")
 EXCLUDED_WORKSTREAM = re.compile(r"workstream/(?:tasks|planner-state|decisions|research)-[^/]*\.md")
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+
+# PRD v1.4 (D-61, D-62, D-63): documentation and image extensions, matched
+# case-insensitively on the last path segment.
+DOC_EXTENSIONS = (".md", ".mdx", ".markdown", ".rst", ".txt", ".adoc")
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
+# Full-file tiers (FR-5, D-61): dropped documentation first, then tests, then
+# source last.
+TIER_SOURCE = 0
+TIER_TEST = 1
+TIER_DOC = 2
+TEST_DIRS = frozenset({"test", "tests", "__tests__"})
+_TEST_NAME_RE = re.compile(r".+\.(?:test|spec)\..+|test_.+\.py|.+_test\.go", re.ASCII)
 
 # ``OverBudget.reason``: over ``max_diff_lines`` here (S-206), or the
 # instructions plus the expanded diff over ``max_context_tokens`` (S-209).
@@ -236,6 +256,43 @@ def path_reason(path: str) -> str | None:
     if any(d in GENERATED_DIRS for d in dirs) or base.endswith(GENERATED_SUFFIXES):
         return "generated"
     return None
+
+
+def _suffix(path: str) -> str:
+    """The last segment, lowercased: what the extension checks look at."""
+    return path.rsplit("/", 1)[-1].lower()
+
+
+def is_doc_path(path: str) -> bool:
+    """A documentation extension (``DOC_EXTENSIONS``), any case."""
+    return _suffix(path).endswith(DOC_EXTENSIONS)
+
+
+def is_docs_only(paths: Iterable[str]) -> bool:
+    """FR-35 (D-62): at least one path, and every one documentation or an image.
+
+    By extension only: a shell script next to the docs makes the PR reviewable.
+    """
+    seen = False
+    for path in paths:
+        seen = True
+        if not _suffix(path).endswith(DOC_EXTENSIONS + IMAGE_EXTENSIONS):
+            return False
+    return seen
+
+
+def file_tier(path: str) -> int:
+    """``TIER_DOC`` (a doc extension, or under ``docs/``), ``TIER_TEST``, else ``TIER_SOURCE``.
+
+    A test is a file under a ``test``, ``tests`` or ``__tests__`` directory, or
+    named ``*.test.*``, ``*.spec.*``, ``test_*.py`` or ``*_test.go`` (FR-5).
+    """
+    if is_doc_path(path) or path.startswith("docs/"):
+        return TIER_DOC
+    *dirs, base = path.split("/")
+    if any(d in TEST_DIRS for d in dirs) or _TEST_NAME_RE.fullmatch(base):
+        return TIER_TEST
+    return TIER_SOURCE
 
 
 def base_withheld_reason(f: PullFile) -> str | None:

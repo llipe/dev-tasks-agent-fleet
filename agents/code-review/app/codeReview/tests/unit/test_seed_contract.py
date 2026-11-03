@@ -26,6 +26,10 @@ SEED = REPO / "supabase" / "seed.sql"
 MIGRATIONS = REPO / "supabase" / "migrations"
 AGENTCORE_JSON = PKG.parents[1] / "agentcore" / "agentcore.json"
 
+# One folder segment: [A-Za-z0-9._-]+, never "." or ".."; at most 10 folders.
+_SEG = r"(?!\.\.?(?:[/, ]|$))[A-Za-z0-9._-]+"
+CONTEXT_FOLDERS_PATTERN = rf"^(?:{_SEG}(?:/{_SEG})*(?: *, *{_SEG}(?:/{_SEG})*){{0,9}})?$"
+
 # Spec §5.1, verbatim.
 SPEC_SCHEMA = {
     "type": "object",
@@ -47,6 +51,14 @@ SPEC_SCHEMA = {
             "enum": ["low", "medium", "high"],
             "default": "high",
         },
+        # PRD v1.4 FR-1, FR-36 (D-60).
+        "context_folders": {
+            "type": "string",
+            "maxLength": 1000,
+            "pattern": CONTEXT_FOLDERS_PATTERN,
+            "default": "docs,workstream",
+        },
+        "context_selection": {"type": "string", "enum": ["llm", "rules"], "default": "llm"},
     },
 }
 
@@ -190,9 +202,14 @@ def agent_rows(path: Path) -> dict[str, dict]:
 
 
 def _migration() -> Path:
+    """The newest ``*_seed_code_review_agent.sql``: the row prod ends up with.
+
+    Each one is a whole, idempotent upsert, so the newest alone defines the
+    contract columns; older ones stay as applied history (PRD v1.4 re-seed).
+    """
     found = sorted(MIGRATIONS.glob("*_seed_code_review_agent.sql"))
-    assert len(found) == 1, f"expected one *_seed_code_review_agent.sql, found {found}"
-    return found[0]
+    assert found, "no *_seed_code_review_agent.sql"
+    return found[-1]
 
 
 SOURCES = {"seed.sql": lambda: SEED, "migration": _migration}

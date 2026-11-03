@@ -11,8 +11,10 @@ Resolution, per linked issue, first hit wins (``spec_candidates``):
 (b) and (c) map to ``workstream/specification-prd-<name>.md``. Each path is
 read at ``head_sha``; a 404 (``None``) falls through to the next rule and logs
 a ``warn``. Paths are cached, so each is requested at most once per run, and a
-spec two issues resolve to is included once. No hit for any issue means no
-spec (``SpecContext.spec is None``, "no spec found").
+spec two issues resolve to is included once. Spec documents the selection
+call picked (``extra_paths``, PRD FR-8/FR-32) are read after the rules, with
+the same cache and the same 404 warning, and attributed to issue 0. No hit at
+all means no spec (``SpecContext.spec is None``, "no spec found").
 
 Several distinct specs (DF-20, pinned here): all are kept, in issue order, and
 the spec block's 30% share of ``max_context_tokens`` is split equally among
@@ -83,7 +85,7 @@ class ResolvedSpec:
     trimmed: bool
     truncated: bool
     tokens: int  # estimate of the spec as read, before trimming
-    issue: int  # the linked issue that resolved it first
+    issue: int  # the linked issue that resolved it first; 0 for a selected document
 
 
 @dataclass(frozen=True)
@@ -154,8 +156,9 @@ def resolve_specs(
     reviewed_paths: Iterable[str],
     max_context_tokens: int,
     warn: Warn | None = None,
+    extra_paths: Sequence[str] = (),
 ) -> SpecContext:
-    """Resolve, fetch once, dedupe, and trim the specs of the linked issues."""
+    """Resolve, fetch once, dedupe, and trim the linked issues' specs, then the selected ones."""
     reviewed = tuple(p for p in reviewed_paths if p)
     distinct = _distinct_citations(issues)
     citations = distinct[:MAX_SPEC_CITATIONS]
@@ -163,18 +166,26 @@ def resolve_specs(
     cache: dict[str, str | None] = {}
     misses: list[str] = []
     found: dict[str, tuple[str, int]] = {}  # path -> (content, issue number)
+
+    def read(path: str) -> str | None:
+        if path not in cache:
+            cache[path] = client.get_content_raw(path, head_sha)
+            if cache[path] is None:
+                misses.append(path)
+                if warn is not None:
+                    warn("spec not found", path=path)
+        return cache[path]
+
     for issue in issues:
         for path in spec_candidates(issue):
-            if path not in cache:
-                cache[path] = client.get_content_raw(path, head_sha)
-                if cache[path] is None:
-                    misses.append(path)
-                    if warn is not None:
-                        warn("spec not found", path=path)
-            content = cache[path]
+            content = read(path)
             if content is not None:
                 found.setdefault(path, (content, issue.number))
                 break
+    for path in extra_paths:
+        content = read(path)
+        if content is not None:
+            found.setdefault(path, (content, 0))
     share = spec_cap(max_context_tokens) // max(1, len(found))
     specs = []
     for path, (content, number) in found.items():

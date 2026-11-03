@@ -9,6 +9,7 @@
 | 1.2     | 2026-10-22 | D-39 write-back (S-204 follow-up #428, verifier F1): the `agents` row is seeded disabled with a placeholder ARN; S-214 sets `runtime_arn` and `is_enabled = true` together (§5.1, §15).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | product-engineer |
 | 1.3     | 2026-10-23 | Wave A drift write-back from the S-204–S-213 fidelity reports and the planner's spec write-back backlog, human-confirmed by Llipe on 2026-10-23 (batch approved for the consolidated PR). States the delivered contract: §5.1–§5.3 seed columns, artifact and metrics keys (S-210 DR-9, S-211 DR-6–DR-8, S-213 DR-7); §6.1–§6.3 return chunk, not-found result, GitHub timeouts, retry rules, strict JSON, the repair call, OpenAI-ID detection, and D-47's per-call bound; §8.1–§8.9 per story (S-205 D2/D3; S-206 D1–D5, D8, D9 with D-42; S-207 DR-1, DR-2, DR-4–DR-8 with D-43; S-208 DR-1, DR-3–DR-8, DR-11, DR-12 with D-44, D-45, D-49; S-209 DR-1–DR-7 with D-46–D-48; S-210 DR-1–DR-9; S-211 DR-1–DR-8 with D-50–D-52; S-212 DR-1–DR-7 and the fc12bb7 fixes for DR-4, DR-9 with D-53, D-54; S-213 DR-1–DR-4, DR-6–DR-8 with D-55); §13 code mapping, the failure-comment rules, the paths that post nothing, the D-55 known limit; §16 R3, R4 (D-48), D-47 limits, R8, R9; §17 adds the Wave B live checks. Closes test-plan DF-01, DF-05, DF-07, DF-08, DF-09 (seed half), DF-12, DF-13 (issue half), DF-14, DF-16, DF-18, DF-19, DF-20, DF-21, DF-22. | product-engineer |
 | 1.4     | 2026-11-02 | §8.3 step 2 adds non-closing references (`Refs #N`, lists with `,`/`and`) after closing links and the branch, within the cap of 5 (D-58, PRD v1.3 FR-7). | product-engineer |
+| 1.5     | 2026-11-03 | PRD v1.4 delivered (D-59–D-64; `llipe/riel#889`): §5.1 `context_folders` and `context_selection` params, in a second idempotent re-seed migration (§5.4); §5.2 the artifact's `selection` block; §5.3 `selection_*` metrics; §6.2 the Git tree read, bound to the head SHA (eight templates); §6.3 the selection call; §8.1 and §8.2 the docs-only skip (FR-35); §8.3 new step 2a (Git tree and context selection) and the readers' selected paths, step 4 broadened report names (D-64, superseding "the first `Story S-<id>`"); §8.4 g tiered full-file order with greedy placement (D-61); verifier DR-01/DR-02/DR-13 fixes (excluded files and rollups are never candidates; bare title IDs need a listed report); §8.8 the context line's selection clause and the docs-only note; §8.9 the selection timeout; §9 `SELECTION_MODEL_ID`; §18 D-59–D-64. Existing §8.3 step numbers are unchanged. | developer |
 
 ---
 
@@ -200,12 +201,23 @@ Added to `supabase/seed.sql` (local) and a data migration `supabase/migrations/<
       "type": "string",
       "enum": ["low", "medium", "high"],
       "default": "high"
+    },
+    "context_folders": {
+      "type": "string",
+      "maxLength": 1000,
+      "pattern": "^(?:(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+(?:/(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+)*(?: *, *(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+(?:/(?!\\.\\.?(?:[/, ]|$))[A-Za-z0-9._-]+)*){0,9})?$",
+      "default": "docs,workstream"
+    },
+    "context_selection": {
+      "type": "string",
+      "enum": ["llm", "rules"],
+      "default": "llm"
     }
   }
 }
 ```
 
-`default_params` mirrors the defaults without `pr_number`. `run_timeout_seconds` is capped at 900 by the clock invariant (§8.9, D-32). The `max_context_tokens` maximum of 400,000 holds only if `B` + 16,000 output tokens fit the model's context window; S-215 checks this at deploy and lowers the maximum if the window requires it (D-47).
+`default_params` mirrors the defaults without `pr_number`. **`context_folders` (PRD v1.4 FR-1, FR-36, D-60)** is a string because webhook rules cannot fill list params: up to 10 comma-separated folders (spaces allowed around commas), each `[A-Za-z0-9._-]` segments joined by `/`, with no empty, `.` or `..` segment and no leading `/`; the empty string means no candidates and no selection call. The pattern is the whole rule, so the panel's Ajv and the runtime reach the same verdict: the runtime applies it with `re.fullmatch` (Python's `$` also matches before a final newline; JavaScript's does not), and the shared CT-01 cases pin both sides. It is defined once in `context/conventions.py` (`CONTEXT_FOLDERS_PATTERN`). **`context_selection`** is `llm` (the selection call, §6.3) or `rules` (no call). `run_timeout_seconds` is capped at 900 by the clock invariant (§8.9, D-32). The `max_context_tokens` maximum of 400,000 holds only if `B` + 16,000 output tokens fit the model's context window; S-215 checks this at deploy and lowers the maximum if the window requires it (D-47).
 
 ### 5.2 `audit_report` artifact metadata
 
@@ -247,6 +259,13 @@ One artifact per posted review (D-12, PRD FR-30). The budget and nothing-to-revi
     }
   ],
   "dropped": [{ "reason": "no_consequence", "title": "…" }],
+  "selection": {
+    "status": "picked",
+    "reason": null,
+    "candidates": 37,
+    "picks": [{ "path": "…", "role": "spec", "reason": "…" }],
+    "file_priority": ["modules/offer/src/offer.facade.ts"]
+  },
   "comment_id": 123
 }
 ```
@@ -258,6 +277,7 @@ The full metadata is scrubbed (`scrubber.py`) before insert. The delivered value
 - `dropped[].reason`: `not_reviewed`, `no_consequence`, or `cap` (§8.6).
 - `context.spec` is the first of `context.specs`; `full_files_included` and `full_files_dropped` are counts from the accepted call's context; `listed_by_name` lists the name-only files.
 - After a 2xx with an unreadable body, `url` is the PR URL and `comment_id` is null (§13).
+- `selection` (PRD v1.4 FR-34): `status` is `picked`, `empty`, `skipped` or `failed`; `reason` is the skip reason (`rules`, `no_folders`, `no_candidates`, `no_time`, `tree_unavailable`) or the failure kind (`invalid_output`, `timeout`, `bedrock_error`, `prompt`, `error`); `picks[].reason` is the model's text cut to 200, scrubbed, and shown nowhere else.
 
 ### 5.3 `runs.metrics`
 
@@ -272,10 +292,13 @@ Every base key listed above is always present; when nothing happened the value i
 - **Context counts** (added): `changed_lines`, `files_changed`, `files_reviewed`, `files_name_only`, `issues_linked`, `issues_skipped`, `specs`, `verifier_reports`.
 - **Comment.** `comment_chars` is `comment_size` of the posted body (§8.8); `comment_truncated` is true when any size stage ran.
 - On a failed run, the partial adapter metrics already spent (tokens, `bedrock_ms`) are kept.
+- **Selection (PRD v1.4 FR-34).** Always present: `selection_status`, `selection_reason`, `selection_candidates`, `selection_picks`, `selection_discarded`, `selection_input_tokens`, `selection_output_tokens`, `selection_cost_usd`, `selection_ms` (`None`/`0` until the context step runs the selection). The selection call is never part of `input_tokens`, `output_tokens`, `cost_usd`, `bedrock_ms`, `bedrock_calls` or `estimated_input_tokens`. `selection_cost_usd` uses `PRICE_*` only when the selection model is `MODEL_ID`, else `None`.
 
 ### 5.4 Migration strategy
 
 One data-only migration (the `agents` row). Reversible by `delete from agents where slug = 'code-review'` when no `runs` reference it; otherwise disable (`is_enabled = false`).
+
+PRD v1.4 adds `20261103120000_seed_code_review_agent.sql`: the same idempotent upsert with the v1.4 `params_schema` and `default_params`. The applied `20261022120000_…` file is history and never edited; the newest `*_seed_code_review_agent.sql` is the effective row, and `seed.sql` §4a mirrors it (the seed-contract tests and the panel parity tests read the newest). **Order:** deploy the runtime that reads the new params first, then apply the migration as a user-confirmed `infra-engineer` step; an older runtime rejects the new default params as unknown keys. Rollback: re-apply the older statement, after removing webhook rules that set the new params.
 
 ## 6. API Design
 
@@ -296,7 +319,7 @@ The wrapper re-validates `params` (defense in depth) and applies defaults; a vio
 
 ### 6.2 GitHub REST calls
 
-All through `github_client.py` with the installation token. The client holds an **allowlist** of exactly these seven method+path templates, bound to the constructor's org, repo, and `pr_number`; anything else raises `ForbiddenCall` before the request (AC-10). `ForbiddenCall` is not a `GitHubError`, so API-failure handlers cannot swallow it.
+All through `github_client.py` with the installation token. The client holds an **allowlist** of exactly these eight method+path templates, bound to the constructor's org, repo, and `pr_number`, and the Git tree read to the head SHA (`bind_head_sha`, once, full hex; before it the read is refused); anything else raises `ForbiddenCall` before the request (AC-10). `ForbiddenCall` is not a `GitHubError`, so API-failure handlers cannot swallow it.
 
 | Purpose                   | Method + path                                                                            | Notes                                                     |
 | ------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -306,6 +329,7 @@ All through `github_client.py` with the installation token. The client holds an 
 | File content              | `GET /repos/{o}/{r}/contents/{path}?ref={sha}` with `Accept: application/vnd.github.raw` | merge-base and head versions; spec; reports; conventions  |
 | Directory listing         | `GET /repos/{o}/{r}/contents/{dir}?ref={sha}`                                            | `docs/adr` only; fidelity reports are read by path        |
 | Linked issue              | `GET /repos/{o}/{r}/issues/{m}`                                                          | must not itself be a PR (`pull_request` key absent)       |
+| Git tree (D-63)           | `GET /repos/{o}/{r}/git/trees/{sha}?recursive=1`                                         | `sha` = the bound head; paths, types, blob sizes (§8.3)   |
 | Post comment (only write) | `POST /repos/{o}/{r}/issues/{n}/comments`                                                | `n` must equal `params.pr_number`                         |
 
 Delivered client behavior (S-205 D2, D3; S-206 D8; S-213 DR-4):
@@ -313,7 +337,8 @@ Delivered client behavior (S-205 D2, D3; S-206 D8; S-213 DR-4):
 - Every request has an explicit `(5, 30)` s connect and read timeout (DF-14), does not follow redirects, and ignores proxy environment variables (`trust_env=False`).
 - Path segments are percent-encoded one by one; empty, `.`, and `..` segments, and segments that would decode to `/` or `\`, are refused.
 - `get_content_raw` decodes UTF-8; `get_content_bytes` returns raw bytes over the same allowlisted call (§8.3 step 1). A 404 on contents is `None`; a 404 or a file path on a listing is `[]`.
-- A 404 on `pull`, `compare`, or `issue` raises `GitHubNotFound` (`code = "GITHUB_NOT_FOUND"`). The wrapper maps it: PR → `not_applicable`, issue → skipped. It is never a run `error_code` (§13).
+- A truncated tree (GitHub's cap) returns the entries sent; the wrapper logs `warn` "repository tree truncated". A tree that cannot be read (any `GitHubError`, or a head that cannot be bound) is `warn` "repository tree unavailable" and skips the selection; the review goes on.
+- A 404 on `pull`, `compare`, `issue`, or the tree raises `GitHubNotFound` (`code = "GITHUB_NOT_FOUND"`). The wrapper maps it: PR → `not_applicable`, issue → skipped. It is never a run `error_code` (§13).
 - A 2xx whose body cannot be read raises `GitHubMalformedResponse`, a `GitHubApiError` subclass.
 - GitHub's contents listing returns at most 1,000 entries for a directory (§8.3 step 5).
 
@@ -399,6 +424,23 @@ Output schema (`submit_review.inputSchema`):
 
 `line_start`/`line_end` refer to the head version of `file`. `failure_scenario` may be empty for suggestions.
 
+**Selection call (PRD v1.4 FR-32–FR-34, D-59; `context/selection.py`).** With `context_selection = llm`, non-empty `context_folders`, a readable tree and at least one candidate, one call before the review:
+
+```text
+bedrock-runtime.converse(
+  modelId = SELECTION_MODEL_ID or MODEL_ID,
+  system = [ {text: <static selection prompt: roles, index-only rule, untrusted-data rule>} ],
+  messages = [ {role: user, content: [ {text: <nonce-wrapped pr, issue…, changed-files, candidates>} ]} ],
+  inferenceConfig = { maxTokens: 2000 },
+  toolConfig = { tools: [ {toolSpec: {name: "select_context", inputSchema: {json: <schema below>}}} ],
+                 toolChoice: { tool: { name: "select_context" } } }
+)
+```
+
+- **Input.** Blocks `pr` (title, head branch, body; 2,000 tokens), one `issue` per linked issue (title and body cut at `## Task Checklist`; 1,500 tokens), `changed-files` (`<k>. <path> (+a -d)` for the reviewed files, at most 300), and `candidates` (`<k>. <path> (<size> bytes)`, at most 400). Paths are escaped and cut to 300. Every block is wrapped in nonce markers as in §8.5, with the same `2 × blocks + 1` integrity check and up to 8 draws; no free nonce fails the selection open. No reasoning field is sent.
+- **Output schema.** `{"documents": [{"index": int ≥ 1, "role": "spec" | "verifier_report", "reason": string ≤ 200}] (≤ 6), "file_priority": [int ≥ 1]}`, both required. The wrapper reads the first `select_context` `toolUse` (a JSON-string input is parsed); a stop reason outside the accepted set above, no such block, or a value without a `documents` list is invalid output. Entry by entry: an index outside the candidate list (or a `bool`, float or string), an unknown role, a repeated index, and every entry past the sixth are discarded and counted (`warn` "context selection entries discarded"); a reason is cut to 200 (a non-string reason is empty). `file_priority` keeps valid, distinct indexes into the changed files; a missing one is empty. Indexes map to wrapper-built paths, so the model never names a path (ADR-010 addendum).
+- **Fail open (FR-33).** One attempt (`max_attempts = 1`, no botocore retry) with connect `min(10, t/4)` and read the rest of `t = min(60 s, 15% of the time to the run deadline)`; under 5 s the call is skipped (`no_time`). Any exception (Bedrock error, timeout, invalid output, nonce exhaustion) is one `warn` "context selection failed; using rule-based context" with a fixed `reason` and an allowlisted name, and the run continues with the rules. No repair call; never counted toward `MAX_CALLS` (FR-18); its client is not the review's counting client.
+
 ## 7. Authentication & Authorization Design
 
 ### 7.1 Who can trigger (D-01, D-02, D-30)
@@ -441,12 +483,12 @@ Steps (run_steps keys, `pipeline.STEPS`) and what each does. Params are validate
 | Step       | Work                                                                                                                                                                       | Exit paths                                                                                                                                                                                        |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `load_pr`  | Mint token; `GET pull`. Record `head_sha` at this instant — the SHA reviewed (PRD FR-3). `draft` is logged, not checked.                                                   | `GitHubNotFound` (404: not a PR, or invisible to the App), closed, or merged → `not_applicable`, no comment                                                                                       |
-| `context`  | Changed files, classify, size check (§8.2) before any content fetch, merge base, expanded diff, issues, spec, verifier candidates, conventions, `build_prompt` (§8.3–§8.5) | Over lines or over tokens → budget comment; no reviewed file → nothing-to-review note (DF-16); both `not_applicable`, posted in a `post` step, no Converse call, no verifier evaluation           |
+| `context`  | Changed files, classify, docs-only check and size check (§8.2) before any content fetch, merge base, expanded diff, issues, Git tree and context selection, spec, verifier candidates, conventions, `build_prompt` (§8.3–§8.5) | Docs-only → docs-only note (FR-35); over lines or over tokens → budget comment; no reviewed file → nothing-to-review note (DF-16); all `not_applicable`, posted in a `post` step, no review call, no verifier evaluation |
 | `review`   | Converse through the adapter (§6.3), including schema validation, the fallbacks, and the repair call                                                                       | Bedrock error, `MODEL_OUTPUT_INVALID`, or `RUN_TIMEOUT` → `failed`                                                                                                                                |
 | `validate` | Location, contract, cap, verdict (§8.6–§8.7), against the same `DiffContext` that built the prompt and the accepted call's `ContextData`                                   | Anything raised → `INTERNAL_ERROR`                                                                                                                                                                |
 | `post`     | Render (§8.8), scrub, `POST` comment, artifact, metrics                                                                                                                    | POST error → `failed`/`COMMENT_POST_FAILED`, one failure comment unless `GitHubPermissionDenied` (§13). Once a comment is posted, a later error is an `error` event and never fails the run (§13) |
 
-Runs that end on the budget or nothing-to-review path have the steps `load_pr, context, post` and write `runs.metrics` but no artifact (EC-21).
+Runs that end on the docs-only, budget or nothing-to-review path have the steps `load_pr, context, post` and write `runs.metrics` but no artifact (EC-21).
 
 **Known limit (SHA pinning).** `GET pulls/{n}/files` takes no `ref`. After a force-push between `GET pull` and the listing, the file list can come from a newer head, while every content read, the marker, and the artifact use the captured SHA (§16 R9).
 
@@ -457,8 +499,8 @@ stateDiagram-v2
     [*] --> load_pr
     load_pr --> not_applicable: closed, merged, 404
     load_pr --> context
-    context --> note_post: over lines, over tokens, or no reviewed file
-    note_post --> not_applicable: budget comment or nothing-to-review note
+    context --> note_post: docs-only, over lines, over tokens, or no reviewed file
+    note_post --> not_applicable: docs-only note, budget comment, or nothing-to-review note
     context --> review
     review --> validate
     validate --> post
@@ -491,6 +533,8 @@ From `pulls/{n}/files` (D-26 named the compare API for the file list; the delive
 
 Only the head name decides the group. A `previous_filename` that matches the excluded, lockfile, or generated rule withholds the base: it is never fetched, the file diffs as added, and `FileDiff.base_withheld` names the rule (D-42).
 
+**Docs-only PRs (PRD v1.4 FR-35, D-62).** Before the size check, a PR whose listing is complete and whose every changed file (at least one) has a documentation or image extension (`.md`, `.mdx`, `.markdown`, `.rst`, `.txt`, `.adoc`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, any case; `context.diff.is_docs_only`) gets the docs-only note (§8.8): no content fetch, no tree read, no Converse call, `succeeded`/`not_applicable`, no artifact. Any other file, a shell script included, is reviewed. A listing cut at the cap is never docs-only.
+
 Changed lines = Σ (additions + deletions) over reviewed files, at GitHub's reported counts (D-42 keeps them for a withheld-base rename; the §8.4 token check is the backstop). Over `max_diff_lines` → `OverBudget(reason="lines", lines, files, max_diff_lines, truncated=False)` and the budget comment (PRD FR-6) without fetching contents. A listing cut at the 30-page cap (3,000 files) is over budget too, `truncated=True`, because its counts are lower bounds (S-206 D2, D-11).
 
 `context.diff.escape_path` renders a repository path wherever it reaches the prompt or the comment: it escapes `\`, C0 controls, DEL, C1 controls, U+2028, and U+2029. Escaping `\` makes it injective, so two paths never share an escaped form (D-52).
@@ -506,8 +550,10 @@ Changed lines = Σ (additions + deletions) over reviewed files, at GitHub's repo
 
    Lines split on CRLF, CR, or LF. The body is cut at the first `Task Checklist` heading per D-43 (ATX indented 0–3 with optional closing hashes, setext with the underline on the next line, any whitespace including NBSP between the words, zero-width characters removed first; case-sensitive; blockquoted, HTML, and bold forms not cut), inclusive to the end. The kept text is a byte-exact prefix. Pass title, labels, trimmed body. Each issue capped at 8,000 estimated tokens (truncated with a marker).
 
-3. **Spec (D-24).** Per issue, first hit wins: (a) a `workstream/specification-[A-Za-z0-9._-]+\.md` path in the body; (b) title `^\[PRD-([A-Za-z0-9._-]+)\]` → `workstream/specification-prd-<name>.md`; (c) label `prd:<name>` → same. Names cannot contain `/`, so every request is one file under `workstream/`. Read at `head_sha`; each path is fetched at most once, a 404 logs a `warn` and falls through. Distinct specs from several issues are all kept, in issue order, and share the spec cap equally (§8.4 e); an unused share is not passed on (DF-20, S-207 DR-2). None → "no spec found". Over the cap: split on ATX headings outside code fences (the fence rule is shared with §8.3 step 4 in `context/markdown.py`); keep (i) every heading, (ii) sections cited in the issue body as `Spec §<n>[.<m>…]`, matched exactly or as a dotted prefix (`8` keeps `8.x`, not `80`) with their deeper headings, (iii) sections naming a linked story ID or a reviewed path; then truncate to the cap. Citations are deduped and capped at 200; the excess is counted in `SpecContext.citations_ignored` (S-207 DR-7).
-4. **Verifier candidates (D-25, D-33, D-44, D-45, D-49).** Per issue, read at `head_sha`: `workstream/fidelity-report-S-<id>.md` (the first `Story (S-\d+)` in the title) and `workstream/fidelity-report-issue-<N>.md`; paths are built only by `conventions.story_report_path`/`issue_report_path`, so `*-rollup.md` is never read. A report shared by two issues is read once and credited to the first. Per report:
+   **2a. Git tree and context selection (PRD v1.4 FR-32–FR-34, D-59, D-63).** After the issues, one `get_tree(head_sha)` (§6.2), whatever the mode: its paths also feed the report lookup (step 4). Then, unless `context_selection = rules` (`skipped`/`rules`), `context_folders` is empty (`no_folders`), or the tree is unavailable (`tree_unavailable`): the candidates are the tree's blobs under a `context_folders` prefix (`<folder>/`, so `docs` never matches `docs-old/`) with a documentation extension (§8.2), in tree order, numbered from 1, at most 400 (`warn` "context selection candidates capped" beyond). A path with a backslash, a control character, an empty or dot segment, or over 400 characters is never a candidate, nor is a PRD FR-10 excluded workstream file (`path_reason` `excluded`: task lists, planner state, decisions, research) or a `*-rollup.md` report (verifier DR-01, DR-13): the model can only pick candidates, so these are never read. No candidate → `skipped`/`no_candidates`; else the selection call (§6.3). Its `spec` picks go to step 3 and its `verifier_report` picks to step 4, each after the rule-based paths and deduplicated; its `file_priority` orders the full files (§8.4 g). One `info` event "context selection done" carries counts only (status, reason, candidates, picks, ranked files, tokens, ms), never a path.
+
+3. **Spec (D-24).** Per issue, first hit wins: (a) a `workstream/specification-[A-Za-z0-9._-]+\.md` path in the body; (b) title `^\[PRD-([A-Za-z0-9._-]+)\]` → `workstream/specification-prd-<name>.md`; (c) label `prd:<name>` → same. Names cannot contain `/`, so every request is one file under `workstream/`. Read at `head_sha`; each path is fetched at most once, a 404 logs a `warn` and falls through. Distinct specs from several issues are all kept, in issue order, and share the spec cap equally (§8.4 e); an unused share is not passed on (DF-20, S-207 DR-2). Then the selected spec documents (step 2a), read at `head_sha` through the same cache and 404 `warn`, attributed to issue 0. None at all → "no spec found". Over the cap: split on ATX headings outside code fences (the fence rule is shared with §8.3 step 4 in `context/markdown.py`); keep (i) every heading, (ii) sections cited in the issue body as `Spec §<n>[.<m>…]`, matched exactly or as a dotted prefix (`8` keeps `8.x`, not `80`) with their deeper headings, (iii) sections naming a linked story ID or a reviewed path; then truncate to the cap. Citations are deduped and capped at 200; the excess is counted in `SpecContext.citations_ignored` (S-207 DR-7).
+4. **Verifier candidates (D-25, D-33, D-44, D-45, D-49, D-64).** Per issue, read at `head_sha`: `workstream/fidelity-report-<ID>.md` for each story ID in the title (`verifier.title_story_ids`: `Story (S-\d+)` matches first, then any whole-word `[A-Z]{1,4}-\d+` such as riel's `GC-08`, which, when the tree was read, counts only if the listing holds its exact or suffixed report, so `UTF-8` or `SHA-256` takes no slot (verifier DR-02); deduped; the first 3) and `workstream/fidelity-report-issue-<N>.md`. With the tree read, each exact name is followed by the suffixed names the tree lists directly under `workstream/` as `<name minus .md>-<slug>.md`, `<slug>` in `[A-Za-z0-9._-]+` and not `rollup`, sorted, at most 3 per name; a suffix costs no blind read. Then the selected `verifier_report` documents (step 2a), attributed to issue 0. Exact paths are built only by `conventions.story_report_path`/`issue_report_path`, so `*-rollup.md` is never read. A report shared by two issues, or by an issue and the selection, is read once and credited to the first. Per report:
    - 404 → state `none`; 403 → skip, `warn`, `unavailable=True` (per-report state `none`); 401, 5xx, and rate limit propagate (§13).
    - **Drift section (D-44).** The first line outside a code fence that matches `#{2,3}[ \t]+(?:\d{1,3}(?:\.\d{1,3}){0,3}\.?[ \t]+)?(?:Drift catalog|Drift)\b` (ASCII; vertical tab and form feed are not separators). It ends at the next ATX heading of the same or higher level outside a fence. None, or an empty file → `not_parseable`, `warn` with the path only. Fences follow CommonMark: a backtick fence's info string may not contain a backtick (D-45).
    - **Tables (D-45).** A header line with an unescaped `|` plus a delimiter row with the same cell count; a blank line, a line with no unescaped `|`, a heading, or a fence ends it. Header and delimiter rows are never rows.
@@ -533,15 +579,15 @@ Changed lines = Σ (additions + deletions) over reviewed files, at GitHub's repo
    | d     | Verifier drift sections      | `min(4,000 × n, 10% of R) // n` for each of the `n` reports                                                                         |
    | e     | Spec (already trimmed, §8.3) | `30% of B // n` for each of the `n` specs                                                                                           |
    | f     | Conventions                  | 10% of `B`                                                                                                                          |
-   | g     | Full files                   | sorted by rendered cost (path included), ties in files-list order, placed as a prefix until `R_left` runs out; the rest are dropped |
+   | g     | Full files                   | whole, in `budget.full_file_order` (D-61): tier source, tests, docs (`context.diff.file_tier`), then the selection's rank, then rendered cost (path included), then files-list order; each that fits is placed, each that does not is dropped |
 
-   A piece's unused share is not passed on. `ContextData.full_files_included` and `full_files_dropped` are tuples of paths in smallest-first order; `include_full_files=False` (the R4 and repair rebuilds) drops every file. The render order (diff, PR, issues, specs, drift sections, candidates, conventions, files, notes, `prompt.RENDER_ORDER`) differs from the fill order.
+   A piece's unused share is not passed on. `ContextData.full_files_included` and `full_files_dropped` are tuples of paths in that fill order; `include_full_files=False` (the R4 and repair rebuilds) drops every file. The render order (diff, PR, issues, specs, drift sections, candidates, conventions, files, notes, `prompt.RENDER_ORDER`) differs from the fill order.
 
 3. **Invariant.** `estimate(fallback_system) + estimate(user) ≤ B`, measured on the final strings after the nonce check and before the sink and the return, by an explicit `raise` that holds under `python -O`. A violation is `BudgetInvariantError` (`INTERNAL_ERROR`). D-47 extends the bound to every Converse call (§6.3).
 4. **Notes.** Every cut or omission is a `BlockNote(block, ref, state, reason)`: state `truncated`, `trimmed` (the upstream spec trim), or `omitted`; reason `cap`, `budget`, or `empty`. A whitespace-only piece (in practice an empty spec) is set aside uncharged as `omitted`/`empty`; `no_spec` keeps meaning "no spec found". One note per block and ref: the most severe state wins (omitted > trimmed > truncated), then `budget` over `cap`. The notes tell the model which candidate IDs were dropped and that they count as unchecked. The renderer words them (§8.8).
 5. A candidate dropped at step 2b gets status `dropped_for_budget` in §8.7 and counts toward `blocking`, whatever the model returns for its ID. The budget can never hide verifier drift.
 
-Adding full files smallest first until full yields the same set as PRD FR-5's "drop largest-first". `OverBudget` (S-206) carries `reason` (`lines` or `tokens`) so both budget paths reach the same comment (§8.8). `RubricError` (version or category drift in `rubric.md`, checked at the first build) and `NonceError` (§8.5) are `INTERNAL_ERROR` too (§13).
+**Full-file order (PRD v1.4 FR-5, D-61).** A file is documentation when it has a documentation extension or sits under `docs/`, a test when a directory segment is `test`, `tests` or `__tests__` or its name is `*.test.*`, `*.spec.*`, `test_*.py` or `*_test.go`, and source otherwise. Placement tries every file in order and skips the ones that do not fit (verifier candidates, b, stay a prefix). Every file is tried before any later file is placed, so a file is never dropped to make room for a later one: documentation is dropped first and source last, an unranked file within a tier is dropped largest first, and a smaller file after a dropped one still gets the room it fits in. `OverBudget` (S-206) carries `reason` (`lines` or `tokens`) so both budget paths reach the same comment (§8.8). `RubricError` (version or category drift in `rubric.md`, checked at the first build) and `NonceError` (§8.5) are `INTERNAL_ERROR` too (§13).
 
 ### 8.5 Prompt
 
@@ -612,7 +658,7 @@ Counts (`ValidationCounts.as_metrics()`) are numbers and enum keys only; `findin
 - **Marker.** `run_id` must be a UUID and is lowercased; the SHA must be 40 or 64 lowercase hex; otherwise the field reads `invalid`. The budget comment, the failure comment, and the nothing-to-review note carry no marker. No body starts with `/review`.
 - **Findings.** A single-line location renders `file:120`. Suggestion downgrade tags: "(Downgraded: not located in the diff.)" and "(Downgraded: no failure scenario.)". A title ending in `.`, `!`, `?`, or `…` gets no second period; an empty title reads "(untitled)". Line numbers and counts above 999,999,999 render as `999999999+`.
 - **Verifier.** Every `Validation.candidates` entry is listed (shown, then dropped). Labels: `confirmed`, `not reproduced`, and `unchecked` for both `not_checked` and `dropped_for_budget`. The row is always `candidate.text` (wrapper data, D-38); the model's reason is shown only when `reason_from_model`, otherwise "not checked by the model". Per-report lines: "`path`: no Critical Unintended drift.", "`path`: report not parseable.", "Some verifier reports unavailable (permission).". "Other drift: N item(s), see the report(s)." is omitted at 0. With no section: "**Verifier:** no verifier report.", "report not parseable (`path`).", or "verifier reports unavailable (permission)." when the S-208 flag is set and nothing parsed.
-- **Context line.** Clauses in order: issues, spec, PR description, drift sections, conventions, full files, name-only, the listing-cut note, withheld base. Suffixes from the §8.4 notes: `(trimmed)`, `(truncated)`, `(truncated for budget)`, `omitted (budget)`, `(empty, not included)`. "issues unavailable (permission)" replaces "no linked issues". With no full file included and some dropped: "full files omitted to fit the model's context (N files)" (covers the R4 and repair rebuilds, S-210 DR-12); otherwise "N files too large to include in full: …". Name-only reasons render `lockfile`, `generated`, `no text diff` (for `binary`), `excluded`, `content unavailable`. "base withheld: `x` (previous name is excluded / a lockfile / generated)" (D-42). "name-only list truncated for the model". Each list shows at most 20 names within a shared 8,000-character budget, then "and N more"; paths are cut to 200. The renderer reads the accepted call's `ContextData`.
+- **Context line.** Clauses in order: issues, spec, PR description, drift sections, conventions, full files, name-only, the listing-cut note, withheld base. Suffixes from the §8.4 notes: `(trimmed)`, `(truncated)`, `(truncated for budget)`, `omitted (budget)`, `(empty, not included)`. "issues unavailable (permission)" replaces "no linked issues". With no full file included and some dropped: "full files omitted to fit the model's context (N files)" (covers the R4 and repair rebuilds, S-210 DR-12); otherwise "N files too large to include in full: …". Name-only reasons render `lockfile`, `generated`, `no text diff` (for `binary`), `excluded`, `content unavailable`. "base withheld: `x` (previous name is excluded / a lockfile / generated)" (D-42). "name-only list truncated for the model". Last, the context selection (PRD v1.4 FR-34): "selected: spec `path`, verifier report `path`" (paths through `code_span`; the model's reason is never rendered), "selection picked no documents", "selection failed; rule-based context only", "selection off (rules)", "selection off (no context folders)", "selection skipped (no candidate documents)", "selection skipped (no time left)", or "selection skipped (repository tree unavailable)". Each list shows at most 20 names within a shared 8,000-character budget, then "and N more"; paths are cut to 200. The renderer reads the accepted call's `ContextData`.
 - **Neutralization (DF-19).** All model and repository text is text: controls and line separators become spaces; bidi controls, U+200B–U+200D, U+2060, U+FEFF, and the tag block are removed, so the only U+200B are the wrapper's; `& < >` become entities; `@` and `#` get U+200B, and so does `GH-` before a digit (no mentions, headings, or issue references; the wrapper's own `#315` stays a link); Markdown punctuation is backslash-escaped (no emphasis, code, links, images, tables, strikethrough, or math); `://` and `www.` are broken (no autolinks). Code spans run `escape_path`, remove every backtick, and show `& < >` as entities; an empty path reads "(unknown)". Field caps, applied before neutralizing so an escape is never split: title 200, scenario 1,500, consequence 500, reason 300, row 1,050, labels 60, paths 200 or 400, model 200, version 20.
 - **Size guarantee (D-28, D-36).** Sizes are `comment_size(text) = max(code points, UTF-16 units)`, because GitHub's counting unit is unverified (fc12bb7, §17 Q6). The body is measured after neutralization. While it exceeds 60,000, apply the next stage and re-measure; a stage that changes nothing is not recorded in `Rendered.stages`; cuts count raw characters, the `…` included, before neutralizing:
   1. keep the longest suggestion prefix that fits, "Suggestions (k of n)", and no `<details>` at k = 0;
@@ -631,6 +677,7 @@ Counts (`ValidationCounts.as_metrics()`) are numbers and enum keys only; `findin
   Singular "1 line", "1 file". Then the run link, and an optional line "Not counted, listed by name only: …".
 
 - **Nothing-to-review note** (DF-16): "Nothing to review: this PR changes only files listed by name (<N> files). Not reviewed." + run link + "Listed by name only: …", or "Nothing to review: this PR changes no files. Not reviewed." + run link.
+- **Docs-only note** (PRD v1.4 FR-35): "Documentation-only PR: all <N> changed files are documentation or images. Not reviewed." (singular: "the 1 changed file is documentation or an image") + run link; one line, no marker.
 - **Failure comment**: "Code review failed (`<error_code>`). [run](…)", one line; `render.canonical_code` prints `INTERNAL_ERROR` for any code outside §13's nine, and never renders exception text.
 - **Run link** (D-29): `PANEL_BASE_URL` with trailing slashes dropped + `/runs/<run_id>`, only when the base URL matches `https?://host[:port][/segments]` (≤ 200 chars) and the run ID is a UUID; otherwise "(run link unavailable)".
 - **Rubric version (D-53).** Printed in the review comment's footer only; the budget comment, the nothing-to-review note, and the failure comment apply no rubric and carry none.
@@ -642,6 +689,7 @@ Counts (`ValidationCounts.as_metrics()`) are numbers and enum keys only; `findin
 - The deadline is checked before every step, `post` included, and after each worker phase. `load_pr`, `context`, and `review` run under `bounded`, which stops waiting at the deadline in real time and abandons the worker; its late results and `warn` events are discarded. An abandoned worker keeps doing its remaining GitHub reads (known limit). `validate` (pure CPU) and `post` (bounded by its timeouts) run inline.
 - `heartbeat.run_with_heartbeat` wraps `load_pr`, `context`, and `review`, never `validate` or `post`.
 - **Converse (S-210 DR-5).** Each call gets a fresh client from `client_factory` sized by `call_timeouts(remaining)`: each of botocore's 3 attempts gets `(remaining − 13 s) / 3`, of which connect is `min(10, per_attempt / 4)` and read the rest, capped at 600 s. The 13 s is botocore's largest standard-mode backoff including retry-after. Under 2 s per attempt (remaining < 19 s) no call starts (`RUN_TIMEOUT`). At a full 900 s run (deadline 840 s) one attempt may read for about 266 s. A call that returns after the deadline is `RUN_TIMEOUT`, with its tokens recorded. The bound needs `client_factory` and a `deadline`, which production always passes.
+- **Selection call (PRD v1.4 FR-33).** `t = min(60 s, 15% of deadline − now)`, as one attempt (no botocore retry): connect `min(10, t/4)`, read `t − connect`; under 5 s it is skipped. It runs inside the `context` phase, so `bounded` still stops waiting at the run deadline.
 - **Post phase.** `post_timeouts(budget)` gives connect `min(5, budget / 4)` and read `min(30, rest)`. The review, budget, or note POST gets at most half of the time left; the failure comment gets what remains; under 2 s it is skipped and logged (§13).
 
 ## 9. Integration Details
@@ -652,7 +700,7 @@ Counts (`ValidationCounts.as_metrics()`) are numbers and enum keys only; `findin
 | Bedrock Runtime | `boto3` `converse`                   | botocore standard retry mode, `total_max_attempts: 3` (3 HTTP attempts) on throttling/5xx; a fresh client per call sized by `call_timeouts` (§8.9); `AccessDeniedException` → `BEDROCK_ACCESS_DENIED`; `ValidationException` handled per §6.3; errors carry the allowlisted name, HTTP status, and request ID only (ADR-009)                                                                                                                                                                            | Runtime role                                   |
 | Supabase        | sibling `agent_reporter` (PostgREST) | Sibling behavior: 4xx not retried; CloudWatch/stderr fallback                                                                                                                                                                                                                                                                                                                                                                                                                                           | Service-role key (Secrets Manager)             |
 
-Environment variables (`agentcore.json`): `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `MODEL_ID`, `PANEL_BASE_URL` (required: a missing one fails startup with `INTERNAL_ERROR` before any run update), `PRICE_INPUT_PER_MTOK`, `PRICE_OUTPUT_PER_MTOK` (optional), `AWS_REGION`. `MODEL_ID` (set in Wave B) is the Sol model ID or a system-defined inference-profile ID such as `us.openai.…`, never an opaque application-profile ARN, or the reasoning field is silently not sent (§6.3, S-210 DR-8).
+Environment variables (`agentcore.json`): `SUPABASE_URL`, `SUPABASE_KEY_SECRET_ID`, `MODEL_ID`, `PANEL_BASE_URL` (required: a missing one fails startup with `INTERNAL_ERROR` before any run update), `PRICE_INPUT_PER_MTOK`, `PRICE_OUTPUT_PER_MTOK`, `SELECTION_MODEL_ID` (optional; the selection call's model, default `MODEL_ID`, PRD v1.4 FR-32), `AWS_REGION`. `MODEL_ID` (set in Wave B) is the Sol model ID or a system-defined inference-profile ID such as `us.openai.…`, never an opaque application-profile ARN, or the reasoning field is silently not sent (§6.3, S-210 DR-8).
 
 **Fallback model (D-18).** Switching to DeepSeek V4 Pro is a `MODEL_ID` change plus the IAM ARN; the adapter has no model-specific branches beyond the reasoning field, which is omitted for non-OpenAI model IDs (detection rule in §6.3).
 
@@ -830,6 +878,12 @@ Resolved by Wave B live verification, not by design:
 | D-54 | Comment order: Blocking, Verifier, collapsed Suggestions (PRD FR-24 amended).                                                                                                                                                |
 | D-55 | A lost review-POST response may leave a review plus a failure note; accepted known limit (§13).                                                                                                                              |
 | D-58 | Linked issues also from `Refs #N` lists in the PR body, after closing links and the branch (PRD FR-7 amended). |
+| D-59 | One constrained selection call before the review picks spec and verifier documents by index from a wrapper-built list; fails open (PRD FR-32–FR-34). |
+| D-60 | `context_folders` (comma-separated string, default `docs,workstream`) and `context_selection` (`llm` or `rules`) params (PRD FR-1, FR-36). |
+| D-61 | Full files are dropped documentation first, then tests, then source; the selection's ranking, else largest first, within a tier (PRD FR-5). |
+| D-62 | Documentation-only PRs, by extension, get a note and no model call (PRD FR-35). |
+| D-63 | Candidates come from one recursive Git tree read, allowlisted and bound to the head SHA. |
+| D-64 | Report names also with a `-<slug>` suffix from the tree listing, and for any `[A-Z]{1,4}-<n>` story ID in an issue title (PRD FR-9). |
 
 WHAT-phase decisions D-01–D-19 are in the PRD.
 

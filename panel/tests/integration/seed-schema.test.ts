@@ -104,18 +104,19 @@ if (!probe.available) {
 
 // ---------------------------------------------------------------------------
 // S-204 (#406) TC-204-15 — the `code-review` agents row, seeded by
-// supabase/seed.sql and the `*_seed_code_review_agent.sql` data migration.
+// supabase/seed.sql and the newest `*_seed_code_review_agent.sql` data
+// migration (each is a whole, idempotent upsert; PRD v1.4 added the second).
 // Same Docker gate as above.
 // ---------------------------------------------------------------------------
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../supabase/migrations/", import.meta.url));
 
 function codeReviewMigrationSql(): string {
-  const found = readdirSync(MIGRATIONS_DIR).filter((f) =>
-    f.endsWith("_seed_code_review_agent.sql"),
-  );
-  expect(found).toHaveLength(1);
-  return readFileSync(`${MIGRATIONS_DIR}${found[0]}`, "utf8");
+  const found = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith("_seed_code_review_agent.sql"))
+    .sort();
+  expect(found.length).toBeGreaterThanOrEqual(1);
+  return readFileSync(`${MIGRATIONS_DIR}${found[found.length - 1]}`, "utf8");
 }
 
 function migrationSchema(sql: string): unknown {
@@ -143,6 +144,8 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — seeded code-review agent 
       max_suggestions: 5,
       run_timeout_seconds: 900,
       reasoning_effort: "high",
+      context_folders: "docs,workstream",
+      context_selection: "llm",
     });
   });
 

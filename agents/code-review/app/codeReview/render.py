@@ -17,6 +17,12 @@ their input:
   spec §13 code, never an exception message.
 - ``render_nothing_to_review`` — the note for a PR whose changed files are all
   listed by name only (S-213, DF-16): no model call, no silence.
+- ``render_docs_only`` — the one-line note for a PR whose changed files are all
+  documentation or images (PRD v1.4 FR-35, D-62).
+
+The context line ends with the context selection (PRD v1.4 FR-34): the
+documents it picked, by role and path, or that it was off, skipped or failed.
+The model's reason for a pick is never rendered.
 
 Each ends with the run link ``PANEL_BASE_URL/runs/<run_id>`` (D-29). The link
 is built only from a validated base URL (``http(s)``, host, optional port,
@@ -125,6 +131,19 @@ from context.diff import (
     OverBudget,
     escape_path,
 )
+from context.selection import (
+    ROLE_SPEC,
+    SKIP_NO_CANDIDATES,
+    SKIP_NO_FOLDERS,
+    SKIP_NO_TIME,
+    SKIP_RULES,
+    SKIP_TREE_UNAVAILABLE,
+    STATUS_EMPTY,
+    STATUS_FAILED,
+    STATUS_PICKED,
+    Pick,
+    Selection,
+)
 from context.verifier import REPORT_NOT_PARSEABLE, REPORT_PARSED, VerifierContext, VerifierReport
 from validate import (
     DOWNGRADE_NO_SCENARIO,
@@ -161,6 +180,7 @@ __all__ = [
     "format_line",
     "neutralize",
     "render_budget",
+    "render_docs_only",
     "render_failure",
     "render_nothing_to_review",
     "render_review",
@@ -294,6 +314,13 @@ _NAME_ONLY_LABELS = {
     "binary": "no text diff",
     "excluded": "excluded",
     "content_unavailable": "content unavailable",
+}
+_SELECTION_SKIPPED = {
+    SKIP_RULES: "selection off (rules)",
+    SKIP_NO_FOLDERS: "selection off (no context folders)",
+    SKIP_NO_CANDIDATES: "selection skipped (no candidate documents)",
+    SKIP_NO_TIME: "selection skipped (no time left)",
+    SKIP_TREE_UNAVAILABLE: "selection skipped (repository tree unavailable)",
 }
 _WITHHELD_LABELS = {
     "excluded": "previous name is excluded",
@@ -680,7 +707,25 @@ def _withheld_label(f: FileDiff) -> str:
     return f"{_path(f.filename)} ({label})"
 
 
-def _context_line(context: ContextData, diff: DiffContext | None) -> str:
+def _selection_clause(selection: Selection, names: _Names) -> str:
+    """The selection's part of the context line (FR-34)."""
+    if selection.status == STATUS_PICKED:
+
+        def pick(p: Pick) -> str:
+            role = "spec" if p.role == ROLE_SPEC else "verifier report"
+            return f"{role} {_path(p.path)}"
+
+        return "selected: " + names.join(selection.picks, pick)
+    if selection.status == STATUS_EMPTY:
+        return "selection picked no documents"
+    if selection.status == STATUS_FAILED:
+        return "selection failed; rule-based context only"
+    return _SELECTION_SKIPPED.get(selection.reason or "", "selection skipped")
+
+
+def _context_line(
+    context: ContextData, diff: DiffContext | None, selection: Selection | None = None
+) -> str:
     """The context line: what the review saw, what it did not, and why."""
     names = _Names(CONTEXT_MAX_CHARS)
     notes: dict[tuple[str, str | None], BlockNote] = {}
@@ -758,6 +803,8 @@ def _context_line(context: ContextData, diff: DiffContext | None) -> str:
     withheld = [f for f in diff.files if f.base_withheld] if diff is not None else []
     if withheld:
         clauses.append("base withheld: " + names.join(withheld, _withheld_label))
+    if selection is not None:
+        clauses.append(_selection_clause(selection, names))
     return "**Context:** " + " · ".join(clauses)
 
 
@@ -807,14 +854,16 @@ def render_review(
     rubric_version: str,
     panel_base_url: str,
     limit: int = MAX_COMMENT_CHARS,
+    selection: Selection | None = None,
 ) -> Rendered:
     """The review comment (spec §8.8), at most ``limit`` characters (module docstring).
 
     ``context`` is the ``ContextData`` of the call whose output was accepted
     (``ReviewResult.context``); ``diff`` is the run's ``DiffContext`` (name-only
     files, withheld bases); ``verifier`` the run's ``VerifierContext``
-    (per-report states, other drift). ``limit`` exists for tests; it must be
-    at least ``MIN_LIMIT``.
+    (per-report states, other drift); ``selection`` the run's context
+    selection (FR-34), ``None`` to leave it off the line. ``limit`` exists for
+    tests; it must be at least ``MIN_LIMIT``.
     """
     if not isinstance(limit, int) or limit < MIN_LIMIT:
         raise ValueError(f"limit must be an int >= {MIN_LIMIT}")
@@ -824,7 +873,7 @@ def render_review(
     header = f"## Code review: **{validation.verdict}** · `{_short_sha(head_sha)}`"
     head = f"{_marker(run_id, head_sha)}\n\n{header}"
     footer = _footer(model_id, rubric_version, _link(panel_base_url, run_id))
-    context_line = _context_line(context, diff)
+    context_line = _context_line(context, diff, selection)
     blocking, suggestions = validation.blocking, validation.suggestions
     leads = [_lead(f) for f in blocking]
     full = [_blocking_full(f, lead, False) for f, lead in zip(blocking, leads, strict=True)]
@@ -1079,6 +1128,16 @@ def render_nothing_to_review(
         f"Nothing to review: this PR changes only files listed by name ({count})."
         f" Not reviewed. {link}\n\nListed by name only: {listed}.\n"
     )
+
+
+def render_docs_only(files: int, *, run_id: str, panel_base_url: str) -> str:
+    """The one-line note for a documentation-only PR (FR-35, D-62): not reviewed."""
+    link = _link(panel_base_url, run_id)
+    if files == 1:
+        what = "the 1 changed file is documentation or an image"
+    else:
+        what = f"all {format_line(files)} changed files are documentation or images"
+    return f"Documentation-only PR: {what}. Not reviewed. {link}\n"
 
 
 def canonical_code(error_code: object) -> str:

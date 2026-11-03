@@ -398,6 +398,272 @@
       "id": "params-number",
       "valid": false,
       "params": 1
+    },
+    {
+      "id": "context_folders-default",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs,workstream"
+      }
+    },
+    {
+      "id": "context_folders-one",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs"
+      }
+    },
+    {
+      "id": "context_folders-nested-spaced",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs/requirements, workstream"
+      }
+    },
+    {
+      "id": "context_folders-dot-dir",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": ".github/docs"
+      }
+    },
+    {
+      "id": "context_folders-dots-in-name",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "...x,a.b_c-d"
+      }
+    },
+    {
+      "id": "context_folders-empty",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": ""
+      }
+    },
+    {
+      "id": "context_folders-ten",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "d0,d1,d2,d3,d4,d5,d6,d7,d8,d9"
+      }
+    },
+    {
+      "id": "context_folders-eleven",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10"
+      }
+    },
+    {
+      "id": "context_folders-dotdot",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": ".."
+      }
+    },
+    {
+      "id": "context_folders-dotdot-tail",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs/.."
+      }
+    },
+    {
+      "id": "context_folders-dotdot-head",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "../secrets"
+      }
+    },
+    {
+      "id": "context_folders-dot",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "."
+      }
+    },
+    {
+      "id": "context_folders-dot-head",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "./docs"
+      }
+    },
+    {
+      "id": "context_folders-leading-slash",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "/docs"
+      }
+    },
+    {
+      "id": "context_folders-trailing-slash",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs/"
+      }
+    },
+    {
+      "id": "context_folders-empty-segment",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs//x"
+      }
+    },
+    {
+      "id": "context_folders-empty-folder",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs,,workstream"
+      }
+    },
+    {
+      "id": "context_folders-leading-comma",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": ",docs"
+      }
+    },
+    {
+      "id": "context_folders-space-only",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": " "
+      }
+    },
+    {
+      "id": "context_folders-backslash",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs\\x"
+      }
+    },
+    {
+      "id": "context_folders-inner-space",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs x"
+      }
+    },
+    {
+      "id": "context_folders-non-ascii",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "d\u00f6cs"
+      }
+    },
+    {
+      "id": "context_folders-newline",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs\n"
+      }
+    },
+    {
+      "id": "context_folders-semicolon",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "docs;rm"
+      }
+    },
+    {
+      "id": "context_folders-too-long",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "id": "context_folders-not-string",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": [
+          "docs"
+        ]
+      }
+    },
+    {
+      "id": "context_folders-number",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": 1
+      }
+    },
+    {
+      "id": "context_folders-null",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_folders": null
+      }
+    },
+    {
+      "id": "context_selection-llm",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_selection": "llm"
+      }
+    },
+    {
+      "id": "context_selection-rules",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "context_selection": "rules"
+      }
+    },
+    {
+      "id": "context_selection-upper",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_selection": "LLM"
+      }
+    },
+    {
+      "id": "context_selection-other",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_selection": "auto"
+      }
+    },
+    {
+      "id": "context_selection-null",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "context_selection": null
+      }
     }
   ]
 }

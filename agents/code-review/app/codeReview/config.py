@@ -26,6 +26,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from context.conventions import (
+    CONTEXT_FOLDERS_MAX_CHARS,
+    CONTEXT_FOLDERS_PATTERN,
+    DEFAULT_CONTEXT_FOLDERS,
+)
+
 # --- Module constants read by the copied credentials.py -------------------
 SUPABASE_URL: str = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY_SECRET_ID: str = os.environ.get(
@@ -35,7 +41,7 @@ TOKEN_STALE_THRESHOLD_MINUTES: float = 45.0
 
 # ---------------------------------------------------------------------------
 # Params contract (spec §5.1). Keep byte-for-byte equal in meaning to the
-# `params_schema` / `default_params` in supabase/seed.sql and the
+# `params_schema` / `default_params` in supabase/seed.sql and the newest
 # *_seed_code_review_agent.sql migration.
 # ---------------------------------------------------------------------------
 
@@ -59,6 +65,15 @@ PARAMS_SCHEMA: dict[str, Any] = {
             "enum": ["low", "medium", "high"],
             "default": "high",
         },
+        # PRD v1.4 FR-1, FR-36 (D-60): a string, since webhook rules cannot
+        # fill list params; the pattern is the whole FR-36 rule, for Ajv too.
+        "context_folders": {
+            "type": "string",
+            "maxLength": CONTEXT_FOLDERS_MAX_CHARS,
+            "pattern": CONTEXT_FOLDERS_PATTERN,
+            "default": DEFAULT_CONTEXT_FOLDERS,
+        },
+        "context_selection": {"type": "string", "enum": ["llm", "rules"], "default": "llm"},
     },
 }
 
@@ -179,10 +194,25 @@ class Settings:
     panel_base_url: str
     price_input_per_mtok: float | None = None
     price_output_per_mtok: float | None = None
+    selection_model_id: str | None = None  # PRD v1.4 FR-32; ``None``: ``model_id``
 
     def run_url(self, run_id: str) -> str:
         """The panel link for a run (D-29)."""
         return f"{self.panel_base_url}/runs/{run_id}"
+
+    @property
+    def selection_model(self) -> str:
+        """The selection call's model: ``SELECTION_MODEL_ID``, else ``MODEL_ID``."""
+        return self.selection_model_id or self.model_id
+
+    @property
+    def selection_prices(self) -> tuple[float, float] | None:
+        """``PRICE_*`` price ``MODEL_ID`` only: no cost for another selection model."""
+        if self.selection_model != self.model_id:
+            return None
+        if self.price_input_per_mtok is None or self.price_output_per_mtok is None:
+            return None
+        return (self.price_input_per_mtok, self.price_output_per_mtok)
 
 
 def _price(env: Mapping[str, str], var: str) -> float | None:
@@ -214,4 +244,5 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         panel_base_url=values["PANEL_BASE_URL"].rstrip("/"),
         price_input_per_mtok=_price(env, "PRICE_INPUT_PER_MTOK"),
         price_output_per_mtok=_price(env, "PRICE_OUTPUT_PER_MTOK"),
+        selection_model_id=env.get("SELECTION_MODEL_ID", "").strip() or None,
     )

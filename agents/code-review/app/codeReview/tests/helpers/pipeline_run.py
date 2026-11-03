@@ -221,8 +221,11 @@ class Harness:
             "PANEL_BASE_URL": PANEL,
         }.items():
             self.monkeypatch.setenv(key, value)
-        for var in ("PRICE_INPUT_PER_MTOK", "PRICE_OUTPUT_PER_MTOK"):
+        for var in ("PRICE_INPUT_PER_MTOK", "PRICE_OUTPUT_PER_MTOK", "SELECTION_MODEL_ID"):
             self.monkeypatch.delenv(var, raising=False)
+        # The head's Git tree (PRD v1.4, D-63): empty unless a test sets one, so
+        # there are no selection candidates and no selection call.
+        self.set_tree([])
 
     def _backstop(self, get_run: Any, get_secrets: Any) -> None:
         self.backstops += 1
@@ -302,7 +305,28 @@ class Harness:
     # -- fixture edits -------------------------------------------------------------
 
     def set_pull(self, **overrides: Any) -> None:
+        head = overrides.get("head_sha")
         self.stub.add(("GET", PULL_PATH), json_response(pull_json(**overrides)))
+        if head is not None:
+            self.set_tree([], head=head)
+
+    def set_tree(
+        self,
+        blobs: list[tuple[str, int | None]],
+        *,
+        truncated: bool = False,
+        head: str = HEAD,
+    ) -> None:
+        """The head's recursive Git tree: ``(path, size)`` blobs (PRD v1.4, D-63)."""
+        entries = [
+            {"path": p, "mode": "100644", "type": "blob", "sha": "0" * 40}
+            | ({} if s is None else {"size": s})
+            for p, s in blobs
+        ]
+        body = {"sha": head, "url": "", "tree": entries, "truncated": truncated}
+        self.stub.add(
+            ("GET", f"{self.prefix}/git/trees/{head}", (("recursive", "1"),)), json_response(body)
+        )
 
     def set_files(self, files: list[dict[str, Any]]) -> None:
         self.stub.add(("GET", FILES_PATH, FILES_Q), json_response(files))
