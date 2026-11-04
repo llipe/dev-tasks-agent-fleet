@@ -165,7 +165,7 @@ def test_the_selection_ranking_orders_full_file_drops(h):
     h.drive()
     ctx = h.prompts[-1].context
     order = list(ctx.full_files_included) + list(ctx.full_files_dropped)
-    assert order == [FACADE, CONTRACT, GUIDE]
+    assert order == [FACADE, CONTRACT]  # GUIDE is a docs file: diff only (D-67)
 
 
 # ---------------------------------------------------------------------------

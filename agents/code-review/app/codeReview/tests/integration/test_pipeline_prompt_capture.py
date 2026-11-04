@@ -78,9 +78,11 @@ def test_prompt_capture_context_and_full_files(h):
     assert "\n line_50 = 50\n" in d and "\n line_150 = 150\n" in d
     assert "\n line_49 = 49\n" not in d and "\n line_151 = 151\n" not in d
     assert "\n-line_100 = 100\n" in d and "\n+line_100 = 'changed'\n" in d
-    # Touched files in full, one file block each, with their head content.
+    # Touched code files in full, one file block each, with their head content;
+    # the docs file reaches the model as its diff only (PRD v1.5 FR-5, D-67).
     files = _contents(p, "file")
-    assert len(files) == 3
+    assert len(files) == 2
+    assert not any(f.startswith("path: docs/") for f in files)
     app = next(f for f in files if f.startswith("path: src/app.py\n"))
     assert app == "path: src/app.py\n" + _numbered(200, changed=100)
     assert any(f.startswith("path: src/new_name.py\n") for f in files)

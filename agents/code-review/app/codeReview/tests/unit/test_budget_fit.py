@@ -81,14 +81,15 @@ def _note(ctx: ContextData, block: str, ref: str | None = None):
 
 
 def test_fill_order_is_spec_a_to_g():
+    # PRD v1.5 FR-5 (D-67): full code files come before the spec and conventions.
     assert FILL_ORDER == (
         "pr",
         "verifier-candidate",
         "issue",
         "verifier",
+        "file",
         "spec",
         "conventions",
-        "file",
     )
     assert PR_TOKEN_CAP == 4_000
 
@@ -395,7 +396,8 @@ def test_drift_section_whole_when_room():
 # ---------------------------------------------------------------------------
 
 
-def test_spec_takes_the_rest_and_starves_conventions_and_files():
+def test_full_code_files_before_the_spec_which_starves_conventions():
+    # PRD v1.5 FR-5 (D-67): the full code file is placed first; the spec takes the rest.
     s = spec(text=_text(50_000))
     ins = inputs(
         title="t",
@@ -408,9 +410,9 @@ def test_spec_takes_the_rest_and_starves_conventions_and_files():
     b = m + m // 4
     ctx = _ctx(ins, b)
     assert b * 3 // 10 > b - m  # the spec cap exceeds what is left
+    assert ctx.full_files_included == ("a.py",)
     assert _note(ctx, "spec")[-1].reason == "budget"
     assert _note(ctx, "conventions")[0].state == "omitted"
-    assert ctx.full_files_included == ()
 
 
 def test_spec_capped_at_30_percent_of_b_and_split_among_specs():
@@ -453,11 +455,11 @@ def test_three_smallest_of_five_files_fit():
 
 
 def test_one_huge_file_and_a_hundred_small_ones():
-    files = [file_diff("huge.bin.txt", head="z" * 1_000_000)]
+    files = [file_diff("huge.dat", head="z" * 1_000_000)]
     files += [file_diff(f"small/{i:03d}.py", head=f"value = {i}\n") for i in range(100)]
     ctx = _ctx(inputs(diff=diff_ctx(files)), 150_000)
     assert len(ctx.full_files_included) == 100
-    assert ctx.full_files_dropped == ("huge.bin.txt",)
+    assert ctx.full_files_dropped == ("huge.dat",)
 
 
 def test_full_files_are_whole_or_absent():

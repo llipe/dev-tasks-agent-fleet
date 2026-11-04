@@ -343,7 +343,7 @@ def test_artifact_metrics(h):
     assert ctx["spec"] is None
     assert ctx["spec_trimmed"] is False
     assert ctx["fidelity_reports"] == ["workstream/fidelity-report-S-001.md"]
-    assert ctx["full_files_included"] == 3
+    assert ctx["full_files_included"] == 2  # the docs file is diff-only (PRD v1.5 FR-5, D-67)
     assert ctx["full_files_dropped"] == 0
     assert ctx["listed_by_name"] == ["pnpm-lock.yaml", "assets/logo.png"]
     assert [f["id"] for f in meta["findings"]] == ["B1", "S1"]
