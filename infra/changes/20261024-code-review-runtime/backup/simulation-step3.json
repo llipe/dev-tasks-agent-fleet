@@ -1,0 +1,18 @@
+{
+  "role": "arn:aws:iam::755641879575:role/agent-fleet-code-review-runtime",
+  "simulated_at": "2026-10-24",
+  "all_pass": true,
+  "results": [
+    { "expect": "allow", "action": "bedrock:InvokeModel", "resource": "inference-profile/us.openai.gpt-6.1-sol (us-east-1)", "decision": "allowed" },
+    { "expect": "allow", "action": "bedrock:InvokeModel", "resource": "foundation-model/openai.gpt-6.1-sol (us-east-2)", "decision": "allowed" },
+    { "expect": "allow", "action": "bedrock:InvokeModel", "resource": "foundation-model/openai.gpt-6.1-sol (us-west-2)", "decision": "allowed" },
+    { "expect": "allow", "action": "secretsmanager:GetSecretValue", "resource": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY", "decision": "allowed" },
+    { "expect": "allow", "action": "secretsmanager:GetSecretValue", "resource": "agent-fleet/prod/GITHUB_APP_PRIVATE_KEY", "decision": "allowed" },
+    { "expect": "deny", "action": "bedrock:InvokeModel", "resource": "inference-profile/us.openai.gpt-5.6-sol", "decision": "implicitDeny" },
+    { "expect": "deny", "action": "bedrock:InvokeModel", "resource": "foundation-model/openai.gpt-5.6-sol", "decision": "implicitDeny" },
+    { "expect": "deny", "action": "bedrock:InvokeModel", "resource": "foundation-model/anthropic.claude-sonnet-4-6", "decision": "implicitDeny" },
+    { "expect": "deny", "action": "bedrock:InvokeModelWithResponseStream", "resource": "inference-profile/us.openai.gpt-6.1-sol", "decision": "implicitDeny" },
+    { "expect": "deny", "action": "secretsmanager:GetSecretValue", "resource": "agent-fleet/prod/ANTHROPIC_API_KEY", "decision": "implicitDeny" },
+    { "expect": "deny", "action": "s3:PutObject", "resource": "arn:aws:s3:::any-bucket/key", "decision": "implicitDeny" }
+  ]
+}

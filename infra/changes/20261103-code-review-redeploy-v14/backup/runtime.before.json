@@ -1,0 +1,37 @@
+{
+    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/codereview_code_review-g73KtjA3MT",
+    "agentRuntimeName": "codereview_code_review",
+    "agentRuntimeId": "codereview_code_review-g73KtjA3MT",
+    "agentRuntimeVersion": "3",
+    "createdAt": "2026-10-24T15:57:05.635299+00:00",
+    "lastUpdatedAt": "2026-10-24T21:46:45.656069+00:00",
+    "roleArn": "arn:aws:iam::755641879575:role/agent-fleet-code-review-runtime",
+    "networkConfiguration": {
+        "networkMode": "PUBLIC"
+    },
+    "status": "READY",
+    "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 1800
+    },
+    "description": "AgentCore Runtime: codereview_code_review",
+    "workloadIdentityDetails": {
+        "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:workload-identity-directory/default/workload-identity/codereview_code_review-g73KtjA3MT"
+    },
+    "agentRuntimeArtifact": {
+        "containerConfiguration": {
+            "containerUri": "755641879575.dkr.ecr.us-east-1.amazonaws.com/codereview/code_review:7881c60ef4445c3878d272a3ef99bc3cdf4c79ca4901ffb97f8dd30c046652a8"
+        }
+    },
+    "environmentVariables": {
+        "AWS_REGION": "us-east-1",
+        "MODEL_ID": "deepseek.v3.2",
+        "PANEL_BASE_URL": "https://dt-agent-fleet-panel.fly.dev",
+        "SUPABASE_KEY_SECRET_ID": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL": "https://hegxeycmbmjfgzqpdiik.supabase.co"
+    },
+    "metadataConfiguration": {
+        "requireMMDSV2": true
+    },
+    "platformVersion": "V1"
+}
