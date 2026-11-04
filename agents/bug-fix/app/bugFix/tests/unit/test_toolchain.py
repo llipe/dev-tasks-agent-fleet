@@ -364,6 +364,39 @@ class TestRepoGate:
         ]
         assert gate.first.item == DEVELOPER_MD
 
+    def test_js_toolchain_carries_the_selected_node(self):
+        from node import NODE_VERSIONS, NodeChoice
+
+        gate = check_repo_gate(MapReader(js(engines={"node": ">=24.21.0 <25"})))
+        assert gate.ok
+        assert gate.toolchain.node == NodeChoice(NODE_VERSIONS[1], "engines.node")
+        assert gate.toolchain.node_version == NODE_VERSIONS[1]
+        assert gate.summary == f"repo gate passed (js, pnpm, node {NODE_VERSIONS[1]})"
+
+    def test_python_toolchain_has_no_node(self):
+        gate = check_repo_gate(MapReader(py()))
+        assert gate.toolchain.node is None
+        assert gate.toolchain.node_version is None
+        assert gate.summary == "repo gate passed (python, make)"
+
+    def test_unsatisfiable_engines_node_is_a_named_miss(self):
+        gate = check_repo_gate(MapReader(js(engines={"node": ">=30"})))
+        assert gate.missing == (GateMiss(toolchain.NODE_ITEM, "node"),)
+        assert gate.toolchain is None
+        assert gate.summary == f"repo gate: missing {toolchain.NODE_ITEM}"
+
+    def test_node_miss_comes_after_the_lockfile_and_before_the_scripts(self):
+        scripts = {k: v for k, v in GATES.items() if k != "lint"}
+        gate = check_repo_gate(MapReader(js(scripts, lock=None, engines={"node": "^18"})))
+        assert [m.item for m in gate.missing] == [
+            toolchain.LOCKFILE_ITEM,
+            toolchain.NODE_ITEM,
+            "lint",
+        ]
+
+    def test_node_item_is_a_miss_item(self):
+        assert toolchain.NODE_ITEM in toolchain.MISS_ITEMS
+
     def test_every_miss_item_is_in_the_refusal_closed_set(self):
         """Every item the gate can name renders in a `repo_gate` reply (D-104)."""
         from refusal import REPO_GATE_ITEMS

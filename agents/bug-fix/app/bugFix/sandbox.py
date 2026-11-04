@@ -17,6 +17,8 @@ uid ``fixer``, never in the wrapper's own process or with its env (spec §7, §1
 2. **Minimal env (D-51 layer 1).** The spawn gets an env built from an
    allow-list, never from ``os.environ``: ``ANTHROPIC_API_KEY`` (only when the
    caller passes it), ``PATH``, ``HOME=/home/fixer``, ``LANG``, ``CI=1``.
+   ``PATH`` is one of :data:`ALLOWED_PATHS`: the base, or the repo's shipped
+   Node (``node.py``) first.
    ``setpriv`` passes it through unchanged, and ``fixer_exec.py`` rebuilds the
    final env from the same allow-list (and refuses to exec while still root).
    No secret is ever put in argv.
@@ -76,12 +78,28 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import IO, Any, NamedTuple
 
+import node as node_versions
+
 FIXER_USER = "fixer"
 FIXER_UID = 10002
 FIXER_GID = 10002
 FIXER_HOME = "/home/fixer"
 FIXER_PATH = "/usr/local/bin:/usr/bin:/bin"
 DEFAULT_LANG = "C.UTF-8"
+
+
+def node_path(version: str) -> str:
+    """``FIXER_PATH`` with a shipped Node's ``bin`` first; ``ValueError``
+    for any other version, so a PATH never names a directory outside the set."""
+    return f"{node_versions.bin_dir(version)}:{FIXER_PATH}"
+
+
+# Every PATH a fixer process may get: the base, or one shipped Node first.
+# fixer_exec.ALLOWED_PATHS must be equal (a unit test pins both).
+ALLOWED_PATHS: tuple[str, ...] = (
+    FIXER_PATH,
+    *(node_path(v) for v in node_versions.NODE_VERSIONS),
+)
 
 # The child's env, by name (D-51). fixer_exec.ALLOWED must be equal.
 ALLOWED_ENV: tuple[str, ...] = ("ANTHROPIC_API_KEY", "PATH", "HOME", "LANG", "CI")
@@ -183,6 +201,9 @@ class SandboxPaths(NamedTuple):
     setpriv: str = "/usr/bin/setpriv"
     python: str = "/usr/local/bin/python3"
     fixer_exec: str = "/app/fixer_exec.py"
+    # srt is a Node script; it runs on the image's default Node, not the repo's
+    # (#471), so its proxy is the one the S-182 confinement checks ran on.
+    node: str = "/usr/bin/node"
     srt: str = "/usr/bin/srt"
     srt_settings: str = "/etc/bug-fix/srt-settings.json"
     claude: str = "/usr/bin/claude"
@@ -298,13 +319,20 @@ class SandboxResult:
         return self.outcome is Outcome.OK
 
 
-def build_env(anthropic_api_key: str | None = None, lang: str = DEFAULT_LANG) -> dict[str, str]:
+def build_env(
+    anthropic_api_key: str | None = None,
+    lang: str = DEFAULT_LANG,
+    *,
+    node: str | None = None,
+) -> dict[str, str]:
     """The env handed to the spawn: the allow-list, built from scratch.
 
     Nothing is read from ``os.environ``. The Anthropic key is included only
-    when the caller passes it (the CLI needs it; repo scripts don't).
+    when the caller passes it (the CLI needs it; repo scripts don't). ``node``,
+    a shipped Node version, puts its ``bin`` first on PATH (:func:`node_path`).
     """
-    env = {"PATH": FIXER_PATH, "HOME": FIXER_HOME, "LANG": lang, "CI": "1"}
+    path = FIXER_PATH if node is None else node_path(node)
+    env = {"PATH": path, "HOME": FIXER_HOME, "LANG": lang, "CI": "1"}
     if anthropic_api_key:
         env["ANTHROPIC_API_KEY"] = anthropic_api_key
     return env
@@ -393,7 +421,12 @@ class Sandbox:
             ("fixer_exec", p.fixer_exec, False),
         ]
         if mode is Mode.SCRIPT:
-            return [*common, ("srt", p.srt, True), ("srt_settings", p.srt_settings, False)]
+            return [
+                *common,
+                ("node", p.node, True),
+                ("srt", p.srt, True),
+                ("srt_settings", p.srt_settings, False),
+            ]
         return [*common, ("claude", p.claude, True)]
 
     def check_available(self, mode: Mode) -> None:
@@ -410,7 +443,8 @@ class Sandbox:
             raise ValueError("empty command")
         prefix = fixer_prefix(self.paths)
         if mode is Mode.SCRIPT:
-            return [*prefix, self.paths.srt, "--settings", self.paths.srt_settings, "--", *argv]
+            srt = [self.paths.node, self.paths.srt, "--settings", self.paths.srt_settings]
+            return [*prefix, *srt, "--", *argv]
         if argv[0] != self.paths.claude:
             raise ValueError("CLI mode runs only the pinned claude binary")
         rest = list(argv[1:])
@@ -430,14 +464,16 @@ class Sandbox:
         anthropic_api_key: str | None = None,
         stdin: bytes | None = None,
         max_output: int = DEFAULT_MAX_OUTPUT,
+        node: str | None = None,
     ) -> SandboxResult:
         """Run ``argv`` as ``fixer`` in the sandbox. Output is returned unscrubbed:
-        callers pass it through ``scrubber.tail`` before it leaves the process."""
+        callers pass it through ``scrubber.tail`` before it leaves the process.
+        ``node`` is the repo's shipped Node version (``toolchain.node_version``)."""
         if timeout <= 0:
             raise ValueError("timeout must be positive")
+        env = build_env(anthropic_api_key, node=node)
         self.check_available(mode)
         self.check_localhost()
-        env = build_env(anthropic_api_key)
         cmd = self.build_command(mode, argv)
 
         with (

@@ -168,6 +168,7 @@ class SandboxCall:
     timeout: float
     mode: Mode
     anthropic_api_key: str | None
+    node: str | None = None
 
 
 def result(code: int | None = 0, stdout: str = "", stderr: str = "", timed_out: bool = False):
@@ -200,8 +201,9 @@ class StubSandbox:
         anthropic_api_key: str | None = None,
         stdin: bytes | None = None,
         max_output: int = 64 * 1024,
+        node: str | None = None,
     ) -> SandboxResult:
-        call = SandboxCall(tuple(argv), cwd, timeout, mode, anthropic_api_key)
+        call = SandboxCall(tuple(argv), cwd, timeout, mode, anthropic_api_key, node)
         self.calls.append(call)
         answer = self.answers.get(tuple(argv), self.default)
         if isinstance(answer, BaseException):

@@ -80,14 +80,13 @@ def test_sample_pr_prompt_blocks():
         "conventions",
         "file",
         "file",
-        "file",
     ]
     ctx = p.context
     assert ctx.issue_numbers == (41,)
     assert ctx.no_spec and ctx.verifier_state == "parsed"
     assert [c.id for c in ctx.shown_candidates] == ["V1"] and ctx.dropped_candidates == ()
-    # PRD v1.4 FR-5 (D-61): source first, documentation last, in fill order.
-    assert ctx.full_files_included == ("src/new_name.py", "src/app.py", "docs/notes with space.md")
+    # PRD v1.5 FR-5 (D-67): code files only, smallest first; the docs file is diff-only.
+    assert ctx.full_files_included == ("src/new_name.py", "src/app.py")
     assert p.tokens <= MAX_CONTEXT_TOKENS
 
 
