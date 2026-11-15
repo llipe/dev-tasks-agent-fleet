@@ -128,8 +128,25 @@ def test_riel_632_shaped_long_line_doc_costs_under_40_percent():
         "TESTING.md", "TESTING.md", base, head, "modified", context=PROSE_CONTEXT_LINES
     )
     assert estimate(narrow) < 0.4 * estimate(wide)
-    out = _md_and_py({("TESTING.md", MB): base, ("TESTING.md", HEAD): head}, [_f("TESTING.md")])
+    # Plus code, as on riel#632: the code keeps ±50, and the PR's whole diff
+    # still costs under 40% of what ±50 everywhere did (#463 AC-5).
+    code_base = _lines(300)
+    code_head = code_base.replace("line 150\n", "LINE 150\n")
+    out = _md_and_py(
+        {
+            ("TESTING.md", MB): base,
+            ("TESTING.md", HEAD): head,
+            ("src/app.py", MB): code_base,
+            ("src/app.py", HEAD): code_head,
+        },
+        [_f("TESTING.md"), _f("src/app.py")],
+    )
     assert out["TESTING.md"].diff == narrow
+    code_wide = unified_diff("src/app.py", "src/app.py", code_base, code_head, "modified")
+    assert out["src/app.py"].diff == code_wide
+    before = estimate(wide) + estimate(code_wide)
+    after = estimate(out["TESTING.md"].diff) + estimate(out["src/app.py"].diff)
+    assert after < 0.4 * before
 
 
 def test_the_prompt_states_both_widths():
