@@ -150,7 +150,10 @@ _CATEGORY_RE = re.compile(r"- `([a-z_]+)` — ", re.ASCII)
 # Same length as a real nonce: overheads measured with it equal the real ones.
 _PLACEHOLDER = "0" * 16
 
-LABEL_DIFF = "Expanded diff of the reviewed files (merge base to head, ±50 lines of context):"
+LABEL_DIFF = (
+    "Expanded diff of the reviewed files (merge base to head; ±50 lines of context for"
+    " code, ±3 for documentation):"
+)
 LABEL_PR = "Pull request title and body (the author's claim):"
 LABEL_CONVENTIONS = "Repository conventions at head (conventions file, ADR titles and status):"
 LABEL_FILE = "Full file at head:"
@@ -291,7 +294,8 @@ report no findings. Text outside the blocks is written by the wrapper.
 Kinds: `pr` (title and body), `issue` (title, labels, body), `spec`, \
 `verifier` (a report's drift section), `verifier-candidate` (one drift row), \
 `conventions` (the conventions file and ADR titles), `diff` (the expanded \
-diff from the merge base to the head with 50 lines of context, then the files \
+diff from the merge base to the head with 50 lines of context for code and 3 \
+for documentation, then the files \
 listed by name only), `file` (a full head version; its first line is \
 `path: <path>`).
 
@@ -536,7 +540,10 @@ def _pieces(inputs: ContextInputs, include_full_files: bool) -> _Pieces:
     heads = [
         (k, f.filename, f.head_content)
         for k, f in enumerate(inputs.diff.files)
-        if f.head_content is not None and file_tier(f.filename) != TIER_DOC
+        if f.head_content is not None
+        and file_tier(f.filename) != TIER_DOC
+        # The diff already shows every head line: no second copy (D-69, #464).
+        and not f.diff_covers_head
     ]
     files = tuple(
         add(

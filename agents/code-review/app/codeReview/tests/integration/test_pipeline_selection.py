@@ -161,6 +161,22 @@ def test_selection_model_id_is_used_when_set(h, monkeypatch):
 
 def test_the_selection_ranking_orders_full_file_drops(h):
     _riel(h)
+    # Modified long files, so each keeps head lines outside its diff and is a
+    # full-file candidate (an added file is whole in its diff, D-69).
+    from tests.helpers.pipeline_run import MERGE_BASE
+
+    base = "".join(f"export const v{i} = {i};\n" for i in range(200))
+    head = base.replace("export const v100 = 100;\n", "export const v100 = 0;\n")
+    h.set_files(
+        [
+            file_entry(FACADE, 1, 1),
+            file_entry(CONTRACT, 1, 1),
+            file_entry(GUIDE, 1, 0, status="added"),
+        ]
+    )
+    for path in (FACADE, CONTRACT):
+        h.set_content(path, MERGE_BASE, base)
+        h.set_content(path, HEAD, head)
     h.fake.push(_selection([], [1, 2, 3]), review())
     h.drive()
     ctx = h.prompts[-1].context

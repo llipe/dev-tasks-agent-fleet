@@ -2,7 +2,7 @@
 name: runbook-code-review-deployment
 trigger: Deploying or redeploying the code-review agent, changing its model, setting up the `/review` PR-comment trigger, rotating its secrets, or a code-review run that fails or does nothing
 owner: operator (repository owner)
-last_verified: 2026-11-03 — redeploy to version 4 with `main` d20d73a (PRD v1.4 context selection, #473, #474), ChangeId 20261103-code-review-redeploy-v14. First live deploy 2026-10-24 (ChangeId 20261024-code-review-runtime)
+last_verified: 2026-11-04 — redeploy to version 5 with `main` f4443bd (#477, D-67), ChangeId 20261103-code-review-redeploy-v15; version 4 on 2026-11-03 with d20d73a (#473, #474), ChangeId 20261103-code-review-redeploy-v14. First live deploy 2026-10-24 (ChangeId 20261024-code-review-runtime)
 related: ["infra/changes/20261024-code-review-runtime/", "agents/code-review/agentcore/agentcore.json", "agents/code-review/agentcore/cdk/test/code-review-runtime.test.ts", "infra/agentcore-invoke-policy.json", "supabase/migrations/20261022120000_seed_code_review_agent.sql", "docs/runbooks/webhook-rules.md", "docs/runbooks/webhook-deployment.md"]
 ---
 

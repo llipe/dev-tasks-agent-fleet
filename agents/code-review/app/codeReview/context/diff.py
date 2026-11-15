@@ -2,7 +2,8 @@
 File classification, size check, and the expanded diff (S-206).
 
 Spec §8.2 and §8.3 step 1; decisions D-11 (no partial review) and D-26
-(the ±50-line diff is built locally from blobs).
+(the expanded diff is built locally from blobs: ±50 lines of context for
+code, ±3 for documentation, D-68).
 
 Flow (``diff_context``):
 
@@ -17,7 +18,9 @@ Flow (``diff_context``):
    ``OverBudget`` and nothing else is fetched: no merge base, no content.
 3. ``expanded_diff`` reads the merge base through ``compare`` and fetches the
    merge-base and head blobs with a pool of ``MAX_WORKERS`` threads, then
-   emits ``difflib.unified_diff(n=50)`` per file, the head contents, and the
+   emits ``difflib.unified_diff`` per file (``context_lines_for``: ±50, or ±3
+   for documentation), the head contents, whether the diff covers the whole
+   head file (``diff_covers_head``, D-69), and the
    changed head line ranges. A file whose base is withheld is never fetched at
    its previous name: it is diffed as if added (``/dev/null`` base, every head
    line ``+``), so excluded content cannot leak as ``-`` lines (FR-10, AC-8)
@@ -63,6 +66,7 @@ from github_client import (
 
 __all__ = [
     "CONTEXT_LINES",
+    "PROSE_CONTEXT_LINES",
     "DOC_EXTENSIONS",
     "IMAGE_EXTENSIONS",
     "LOCKFILE_NAMES",
@@ -83,6 +87,8 @@ __all__ = [
     "changed_ranges",
     "check_size",
     "classify",
+    "context_lines_for",
+    "diff_covers_head",
     "diff_context",
     "escape_path",
     "expanded_diff",
@@ -94,7 +100,8 @@ __all__ = [
     "unified_diff",
 ]
 
-CONTEXT_LINES = 50  # D-26
+CONTEXT_LINES = 50  # D-26: code files
+PROSE_CONTEXT_LINES = 3  # D-68 (#463): documentation files (``DOC_EXTENSIONS``)
 MAX_WORKERS = 8  # spec §11
 NUL_SCAN_BYTES = 8192  # "a NUL byte in the first 8 KB" (spec §8.2)
 
@@ -191,7 +198,7 @@ class OverBudget:
 
 @dataclass(frozen=True)
 class FileDiff:
-    """One reviewed file: its ±50-line diff, head content, and changed ranges."""
+    """One reviewed file: its expanded diff, head content, and changed ranges."""
 
     filename: str
     status: str
@@ -203,6 +210,9 @@ class FileDiff:
     # previous name matched, when the base was withheld and the file was
     # diffed as added; ``None`` otherwise. For the comment's context line.
     base_withheld: str | None = None
+    # The diff's hunks span every head line (an added file, a withheld base,
+    # or a short file): a full copy would repeat it, so none is sent (D-69).
+    diff_covers_head: bool = False
 
 
 @dataclass(frozen=True)
@@ -402,8 +412,45 @@ def _header_path(prefix: str, path: str) -> str:
     return prefix + escape_path(path)
 
 
-def unified_diff(base_path: str, head_path: str, base: str, head: str, status: str) -> str:
-    """``difflib.unified_diff(n=50)`` of two texts, as one string.
+def context_lines_for(path: str) -> int:
+    """Diff context for ``path``: ±3 for documentation (by extension, any case), else ±50.
+
+    D-68 (#463): documentation written one paragraph per line made ±50 lines
+    cost tens of thousands of tokens for a small edit. The head path decides.
+    """
+    return PROSE_CONTEXT_LINES if is_doc_path(path) else CONTEXT_LINES
+
+
+def diff_covers_head(base: str, head: str, context: int) -> bool:
+    """Whether the diff of ``base`` → ``head`` at ``context`` shows every head line (D-69).
+
+    The union of the hunks' head ranges is the whole head file: always for an
+    added file (empty base), sometimes for a short one. Equal texts have no
+    hunk, and an empty head has nothing to show: both are ``False``.
+    """
+    head_lines = split_lines(head)
+    if not head_lines:
+        return False
+    matcher = difflib.SequenceMatcher(None, split_lines(base), head_lines)
+    covered = 0  # head lines [0, covered) are inside a hunk so far
+    for group in matcher.get_grouped_opcodes(context):
+        start, end = group[0][3], group[-1][4]
+        if start > covered:
+            return False
+        covered = max(covered, end)
+    return covered >= len(head_lines)
+
+
+def unified_diff(
+    base_path: str,
+    head_path: str,
+    base: str,
+    head: str,
+    status: str,
+    *,
+    context: int = CONTEXT_LINES,
+) -> str:
+    """``difflib.unified_diff(n=context)`` of two texts, as one string.
 
     ``added`` diffs from ``/dev/null`` and ``removed`` to ``/dev/null``. A line
     without a final newline is followed by git's ``\\ No newline at end of
@@ -414,7 +461,7 @@ def unified_diff(base_path: str, head_path: str, base: str, head: str, status: s
     to_file = "/dev/null" if status == "removed" else _header_path("b/", head_path)
     out: list[str] = []
     for line in difflib.unified_diff(
-        split_lines(base), split_lines(head), from_file, to_file, n=CONTEXT_LINES
+        split_lines(base), split_lines(head), from_file, to_file, n=context
     ):
         if line.endswith("\n"):
             out.append(line)
@@ -545,17 +592,24 @@ def expanded_diff(
         removed = f.status == "removed"
         # A withheld base diffs as added: empty base, every head line "+".
         diff_status = "added" if withheld[i] is not None else f.status
+        context = context_lines_for(f.filename)  # the head path decides (D-68)
         files.append(
             FileDiff(
                 filename=f.filename,
                 status=f.status,
                 previous_filename=f.previous_filename,
                 diff=unified_diff(
-                    f.previous_filename or f.filename, f.filename, base_text, head_text, diff_status
+                    f.previous_filename or f.filename,
+                    f.filename,
+                    base_text,
+                    head_text,
+                    diff_status,
+                    context=context,
                 ),
                 head_content=None if removed else head_text,
                 changed_ranges=() if removed else changed_ranges(base_text, head_text),
                 base_withheld=withheld[i],
+                diff_covers_head=not removed and diff_covers_head(base_text, head_text, context),
             )
         )
 
