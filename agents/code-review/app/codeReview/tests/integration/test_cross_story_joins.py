@@ -193,9 +193,9 @@ def test_a_huge_invalid_output_is_cut_so_the_repair_request_fits_b(h):
 
 def test_a_context_length_retry_context_is_what_validate_and_render_see(h):
     """R4 retry: no full files in the accepted build; the comment and metrics agree."""
-    h.use_long_app(
-        changed=2
-    )  # the scripted blocking finding is on line 2  # a full file, so the context-length retry applies (D-69)
+    # A full file, so the context-length retry applies (D-69); the scripted
+    # blocking finding is on line 2.
+    h.use_long_app(changed=2)
     h.fake.push(context_length_rejected(), review([blocking()]))
     result = h.drive()
 

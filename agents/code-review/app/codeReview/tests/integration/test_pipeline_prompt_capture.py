@@ -6,7 +6,8 @@ build, and the R4 and repair rebuilds: up to three, S-210 (7)). Each test drives
 ``main.invoke`` on recorded fixtures and reads the captured prompts back with
 the builder-independent ``parse_blocks``:
 
-- PRD AC-4: ±50 lines of context per hunk, touched files in full, lockfiles by
+- PRD AC-4: ±50 lines of context per hunk for code (±3 for docs, D-68), touched
+  code files in full unless their diff shows them whole (D-69), lockfiles by
   name only, the largest full files dropped first under a small budget;
 - PRD AC-6: issue #315 without its task checklist, and its spec;
 - PRD AC-8: excluded workstream files never reach the model, and the PR's own

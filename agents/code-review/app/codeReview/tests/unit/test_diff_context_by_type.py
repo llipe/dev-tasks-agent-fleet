@@ -21,6 +21,7 @@ from context.diff import (
     unified_diff,
 )
 from context.tokens import estimate
+from prompt import LABEL_DIFF, system_prompt
 from tests.unit.test_diff import HEAD, MB, Repo, _expand, _f, _lines
 
 
@@ -129,3 +130,16 @@ def test_riel_632_shaped_long_line_doc_costs_under_40_percent():
     assert estimate(narrow) < 0.4 * estimate(wide)
     out = _md_and_py({("TESTING.md", MB): base, ("TESTING.md", HEAD): head}, [_f("TESTING.md")])
     assert out["TESTING.md"].diff == narrow
+
+
+def test_the_prompt_states_both_widths():
+    """The model is told the context it gets: ±50 for code, ±3 for documentation (qa gate)."""
+    assert (
+        f"±{CONTEXT_LINES} lines of context for code, ±{PROSE_CONTEXT_LINES} for documentation"
+        in (LABEL_DIFF)
+    )
+    flat = " ".join(system_prompt().split())
+    assert (
+        f"with {CONTEXT_LINES} lines of context for code and {PROSE_CONTEXT_LINES} for documentation"
+        in flat
+    )
