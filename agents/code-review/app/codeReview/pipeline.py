@@ -97,6 +97,7 @@ from bedrock_adapter import (
 from bedrock_adapter import review as converse_review
 from budget import BLOCK_SPEC, ContextData, ContextInputs
 from config import DEADLINE_RESERVE_SECONDS, HEARTBEAT_INTERVAL, Settings
+from context.conventions import DEFAULT_CONTEXT_FOLDERS
 from context.diff import (
     DiffContext,
     NameOnlyFile,
@@ -1156,7 +1157,11 @@ class Pipeline:
         warn = self._events.warner(gate)
         if self.params.get("context_selection") == CONTEXT_SELECTION_RULES:
             selection = skipped(SKIP_RULES)
-        elif not (folders := parse_context_folders(self.params.get("context_folders", ""))):
+        elif not (
+            folders := parse_context_folders(
+                self.params.get("context_folders", DEFAULT_CONTEXT_FOLDERS)
+            )
+        ):
             selection = skipped(SKIP_NO_FOLDERS)
         elif tree is None:
             selection = skipped(SKIP_TREE_UNAVAILABLE)

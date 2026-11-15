@@ -78,15 +78,14 @@ def test_sample_pr_prompt_blocks():
         "verifier",
         "verifier-candidate",
         "conventions",
-        "file",
-        "file",
     ]
     ctx = p.context
     assert ctx.issue_numbers == (41,)
     assert ctx.no_spec and ctx.verifier_state == "parsed"
     assert [c.id for c in ctx.shown_candidates] == ["V1"] and ctx.dropped_candidates == ()
-    # PRD v1.5 FR-5 (D-67): code files only, smallest first; the docs file is diff-only.
-    assert ctx.full_files_included == ("src/new_name.py", "src/app.py")
+    # The sample's files are short: each diff shows the whole head file, so no
+    # full copy repeats it (D-69, #464); the docs file is diff-only (D-67).
+    assert ctx.full_files_included == () and ctx.full_files_dropped == ()
     assert p.tokens <= MAX_CONTEXT_TOKENS
 
 

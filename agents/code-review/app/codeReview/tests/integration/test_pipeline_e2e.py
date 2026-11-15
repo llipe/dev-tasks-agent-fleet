@@ -343,7 +343,8 @@ def test_artifact_metrics(h):
     assert ctx["spec"] is None
     assert ctx["spec_trimmed"] is False
     assert ctx["fidelity_reports"] == ["workstream/fidelity-report-S-001.md"]
-    assert ctx["full_files_included"] == 2  # the docs file is diff-only (PRD v1.5 FR-5, D-67)
+    # The sample's files are short and whole in their diffs (D-69); docs are diff-only (D-67).
+    assert ctx["full_files_included"] == 0
     assert ctx["full_files_dropped"] == 0
     assert ctx["listed_by_name"] == ["pnpm-lock.yaml", "assets/logo.png"]
     assert [f["id"] for f in meta["findings"]] == ["B1", "S1"]
@@ -382,7 +383,8 @@ def test_artifact_metrics(h):
     assert metrics["reasoning_effort_applied"] is True
     assert set(metrics["context_tokens"]) >= CONTEXT_TOKEN_BLOCKS
     assert all(isinstance(v, int) and v >= 0 for v in metrics["context_tokens"].values())
-    assert metrics["context_tokens"]["full_files"] > 0
+    # The sample's files are whole in their diffs: no full copy is charged (D-69).
+    assert metrics["context_tokens"]["full_files"] == 0
     assert metrics["findings_by_severity"]["blocking"] == 1
     assert metrics["findings_by_severity"]["suggestion"] == 1
     assert metrics["verifier_candidates"] == 1

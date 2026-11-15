@@ -339,6 +339,20 @@ class Harness:
             ("GET", f"{self.prefix}/contents/{encoded}", (("ref", ref),)), text_response(text)
         )
 
+    def use_long_app(self, lines: int = 200, changed: int = 100) -> None:
+        """Make ``src/app.py`` long enough that its ±50-line diff leaves head lines out.
+
+        The sample's files are tiny, so their diffs cover the whole head file and
+        no full copy is sent (D-69). Tests about full files use this instead.
+        """
+        base = "".join(f"line_{i} = {i}\n" for i in range(1, lines + 1))
+        self.set_content("src/app.py", MERGE_BASE, base)
+        self.set_content(
+            "src/app.py",
+            HEAD,
+            base.replace(f"line_{changed} = {changed}\n", f"line_{changed} = 'changed'\n"),
+        )
+
     def set_issue(self, number: int, **overrides: Any) -> None:
         from tests.helpers.github_stub import fixture_json
 
