@@ -1,9 +1,10 @@
 """
 Token estimate and line-boundary truncation (D-27, spec §8.4).
 
-The single place the agent counts tokens. There is no Python tokenizer for the
-Bedrock OpenAI models, so the estimate is ``ceil(len(text) / 3.5)`` over code
-points, conservative by design. S-207 caps issues and the spec with it; S-209's
+The single place the agent estimates tokens. The estimate is
+``ceil(len(text) / 3.5)`` over code points, conservative by design; it needs no
+tokenizer and no network. The model adapter checks it against the API's exact
+``count_tokens`` before each review call (D-84). S-207 caps issues and the spec with it; S-209's
 budget fit (``budget.py``) reuses ``estimate``, ``estimate_len`` and
 ``truncate`` from here and defines no estimator of its own.
 """

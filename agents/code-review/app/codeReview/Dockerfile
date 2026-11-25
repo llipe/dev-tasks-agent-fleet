@@ -3,8 +3,9 @@
 # IP ranges hit "429 Too Many Requests" (dependency-update issue #77).
 #
 # No scanner toolchains, no git, no gh CLI: this agent never clones and never
-# shells out (D-07). It reads GitHub over REST (`requests`) and calls Bedrock
-# Converse (`boto3`), so the image is Python plus the pinned dependencies only.
+# shells out (D-07). It reads GitHub over REST (`requests`), calls the Anthropic
+# Messages API (`anthropic`) and reads its secrets from Secrets Manager
+# (`boto3`), so the image is Python plus the pinned dependencies only.
 
 FROM public.ecr.aws/docker/library/python:3.13-slim AS base
 

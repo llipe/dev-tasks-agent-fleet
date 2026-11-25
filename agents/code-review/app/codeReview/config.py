@@ -59,12 +59,15 @@ PARAMS_SCHEMA: dict[str, Any] = {
     "required": ["pr_number"],
     "properties": {
         "pr_number": {"type": "integer", "minimum": 1, "title": "Pull request number"},
-        "max_diff_lines": {"type": "integer", "minimum": 100, "maximum": 10000, "default": 2000},
+        # v1.8 (D-77): up to 20,000 changed lines; the default stays 2,000.
+        "max_diff_lines": {"type": "integer", "minimum": 100, "maximum": 20000, "default": 2000},
+        # v1.8 (D-90): Claude Sonnet 5.5's window holds B = 900,000 plus the
+        # 64,000 output tokens, so the default is the maximum.
         "max_context_tokens": {
             "type": "integer",
             "minimum": 20000,
-            "maximum": 400000,
-            "default": 150000,
+            "maximum": 900000,
+            "default": 900000,
         },
         "max_suggestions": {"type": "integer", "minimum": 0, "maximum": 20, "default": 5},
         "run_timeout_seconds": {"type": "integer", "minimum": 120, "maximum": 900, "default": 900},
@@ -211,11 +214,6 @@ class Settings:
     def selection_model(self) -> str:
         """The selection call's model: ``SELECTION_MODEL_ID``, else ``MODEL_ID``."""
         return self.selection_model_id or self.model_id
-
-    @property
-    def selection_prices(self) -> tuple[float, float] | None:
-        """The D-87 price of the selection model, ``None`` for a model not in the table."""
-        return MODEL_PRICES.get(self.selection_model)
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:

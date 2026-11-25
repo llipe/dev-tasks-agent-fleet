@@ -126,6 +126,7 @@ from prompt import (
 __all__ = [
     "ACCEPTED_STOP_REASONS",
     "BACKOFF_ALLOWANCE_SECONDS",
+    "BLOCK_FALLBACK",
     "CONTEXT_LENGTH_PHRASE",
     "FALLBACKS",
     "FALLBACK_BETA",
@@ -160,11 +161,15 @@ __all__ = [
     "build_request",
     "call_timeouts",
     "count_payload",
+    "answer_text",
+    "answering_model",
     "describe_error",
     "is_context_length",
     "make_client",
+    "message_usage",
     "request_tokens",
     "review",
+    "usage_cost",
 ]
 
 MAX_TOKENS = 64_000  # D-83; thinking counts toward it
@@ -503,7 +508,7 @@ def make_client(
 
     The key is passed to the constructor only: it is never placed in
     ``os.environ``, so the SDK's ``ANTHROPIC_API_KEY`` fallback is never used.
-    ``max_retries=0`` is the selection call's single attempt (S-217).
+    ``max_retries=0`` is the selection call's single attempt (``context/selection.py``).
     """
     timeout = anthropic.Timeout(read_timeout_seconds, connect=connect_timeout_seconds)
     client: ModelClient = anthropic.Anthropic(
@@ -582,7 +587,7 @@ class _Output:
 BLOCK_FALLBACK = "fallback"  # a server-side fallback hop (``BetaFallbackBlock``, D-86)
 
 
-def _text(message: Any) -> str:
+def answer_text(message: Any) -> str:
     """The answer's text: the ``text`` blocks after the last ``fallback`` block, joined.
 
     Blocks are read by ``type``. With a server-side fallback the content holds
@@ -612,7 +617,7 @@ def _invalid(error: str, rule: str, previous: str) -> _Output:
 
 
 def _parse(message: Any) -> _Output:
-    previous = _text(message)
+    previous = answer_text(message)
     if getattr(message, "stop_reason", None) not in ACCEPTED_STOP_REASONS:
         return _invalid("$: the reply is incomplete (stop reason not accepted)", "stop", previous)
     if not previous.strip():
@@ -630,21 +635,23 @@ def _count(value: Any) -> int | None:
     return None
 
 
-def _usage(message: Any) -> tuple[int, int] | None:
+def message_usage(message: Any) -> tuple[int, int] | None:
+    """``(input, output)`` tokens of a final message, ``None`` when absent or malformed."""
     usage = getattr(message, "usage", None)
     i = _count(getattr(usage, "input_tokens", None))
     o = _count(getattr(usage, "output_tokens", None))
     return (i, o) if i is not None and o is not None else None
 
 
-def _model_of(message: Any) -> str | None:
+def answering_model(message: Any) -> str | None:
+    """``message.model`` cut to 200 characters; ``None`` when missing, empty or not a string."""
     model = getattr(message, "model", None)
     if not isinstance(model, str) or not model:
         return None
     return model[:MODEL_NAME_MAX_CHARS]
 
 
-def _cost(tokens: tuple[int, int], prices: tuple[float, float]) -> float | None:
+def usage_cost(tokens: tuple[int, int], prices: tuple[float, float]) -> float | None:
     """USD for ``tokens`` at per-million prices; ``None`` when not finite."""
     value = (tokens[0] * prices[0] + tokens[1] * prices[1]) / 1_000_000
     return round(value, 6) if math.isfinite(value) else None
@@ -705,7 +712,7 @@ class _Run:
             (model,) = distinct
             prices = PRICE_TABLE.get(model) if model is not None else None
             if prices is not None:
-                cost = _cost(tokens, prices)
+                cost = usage_cost(tokens, prices)
         return CallMetrics(
             calls=self.calls,
             repair_calls=self.repair_calls,
@@ -832,12 +839,12 @@ class _Run:
                 f"model call failed: {describe_error(exc)}", metrics=self.metrics()
             ) from None
         self.stop(start)
-        usage = _usage(message)
+        usage = message_usage(message)
         if usage is None or self.tokens is None:
             self.tokens = None
         else:
             self.tokens = (self.tokens[0] + usage[0], self.tokens[1] + usage[1])
-        model = _model_of(message)
+        model = answering_model(message)
         self.models.append(model)
         if model not in PRICE_TABLE and not self.price_warned:
             self.price_warned = True

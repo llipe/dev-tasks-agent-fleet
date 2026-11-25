@@ -140,7 +140,7 @@ describe.skipIf(!probe.available)("panel Layer 2.5 — seeded code-review agent 
     expect(row.params_schema.required).toEqual(["pr_number"]);
     expect(row.default_params).toEqual({
       max_diff_lines: 2000,
-      max_context_tokens: 150000,
+      max_context_tokens: 900000,
       max_suggestions: 5,
       run_timeout_seconds: 900,
       reasoning_effort: "high",

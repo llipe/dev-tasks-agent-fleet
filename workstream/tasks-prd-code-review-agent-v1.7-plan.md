@@ -61,14 +61,14 @@
   - [x] 1.24 Run Tests: `make -C agents/code-review/app/codeReview validate` and `pnpm run validate` (lint, format:check, typecheck, test, audit)
 
 - [ ] 2.0 Implement Story S-217 - https://github.com/llipe/dev-tasks-agent-fleet/issues/481: Selection call, params, CDK, and runbook for the Anthropic model
-  - [ ] 2.1 [code-review] `[T]` Port `test_selection.py` and `test_selection_hostile.py` to the fake Anthropic client; add failing tests: `max_tokens=8000`, effort `low`, stripped selection schema, fallback beta, `max_retries=0`, `timeout=min(60 s, 15% of time left)`; refusal, 429, timeout under 5 s, invalid output and empty candidates all fail open (D-71, D-82, D-83; FR-33)
-  - [ ] 2.2 [code-review] `[T]` Add failing bound cases to `test_properties_params.py` and `tests/fixtures/params_cases.json`: `max_diff_lines` 19,999 / 20,000 / 20,001; `max_context_tokens` 899,999 / 900,000 / 900,001 (D-77, D-90)
-  - [ ] 2.3 [code-review] `[T]` Add the failing large-PR prompt-capture test: a generated diff of about 393k estimated tokens is reviewed with the default params, not budget-skipped (AC-14)
-  - [ ] 2.4 [code-review-cdk] `[T]` Add failing assertions to `code-review-runtime.test.ts`: `secretsmanager:GetSecretValue` on the Anthropic key secret ARN only; no `bedrock:` action; env `MODEL_ID=claude-sonnet-5-5` and `ANTHROPIC_API_KEY_SECRET_ID`; no `PRICE_*` (D-74, D-88; AC-17 IAM half)
-  - [ ] 2.5 [code-review] `[I]` Switch `context/selection.py` to the adapter's client factory with structured output; `SELECTION_MODEL_ID` falls back to `MODEL_ID` (D-71)
-  - [ ] 2.6 [code-review] `[I]` Update `PARAMS_SCHEMA` in `config.py`: `max_diff_lines` maximum 20,000 (default 2,000); `max_context_tokens` default and maximum 900,000 (D-77, D-90)
-  - [ ] 2.7 [supabase] `[I]` Create the migration `supabase/migrations/<ts>_seed_code_review_agent.sql` with the same schema and defaults; update `supabase/seed.sql`; document rollback in the migration header (re-apply the previous seed's values; roll it back before the runtime) (D-89)
-  - [ ] 2.8 [code-review] `[I]` Make `test_seed_contract.py` and the Python/Ajv parity fixtures pass
+  - [x] 2.1 [code-review] `[T]` Port `test_selection.py` and `test_selection_hostile.py` to the fake Anthropic client; add failing tests: `max_tokens=8000`, effort `low`, stripped selection schema, fallback beta, `max_retries=0`, `timeout=min(60 s, 15% of time left)`; refusal, 429, timeout under 5 s, invalid output and empty candidates all fail open (D-71, D-82, D-83; FR-33)
+  - [x] 2.2 [code-review] `[T]` Add failing bound cases to `test_properties_params.py` and `tests/fixtures/params_cases.json`: `max_diff_lines` 19,999 / 20,000 / 20,001; `max_context_tokens` 899,999 / 900,000 / 900,001 (D-77, D-90)
+  - [x] 2.3 [code-review] `[T]` Add the failing large-PR prompt-capture test: a generated diff of about 393k estimated tokens is reviewed with the default params, not budget-skipped (AC-14)
+  - [x] 2.4 [code-review-cdk] `[T]` Add failing assertions to `code-review-runtime.test.ts`: `secretsmanager:GetSecretValue` on the Anthropic key secret ARN only; no `bedrock:` action; env `MODEL_ID=claude-sonnet-5-5` and `ANTHROPIC_API_KEY_SECRET_ID`; no `PRICE_*` (D-74, D-88; AC-17 IAM half)
+  - [x] 2.5 [code-review] `[I]` Switch `context/selection.py` to the adapter's client factory with structured output; `SELECTION_MODEL_ID` falls back to `MODEL_ID` (D-71)
+  - [x] 2.6 [code-review] `[I]` Update `PARAMS_SCHEMA` in `config.py`: `max_diff_lines` maximum 20,000 (default 2,000); `max_context_tokens` default and maximum 900,000 (D-77, D-90)
+  - [x] 2.7 [supabase] `[I]` Create the migration `supabase/migrations/<ts>_seed_code_review_agent.sql` with the same schema and defaults; update `supabase/seed.sql`; document rollback in the migration header (re-apply the previous seed's values; roll it back before the runtime) (D-89)
+  - [x] 2.8 [code-review] `[I]` Make `test_seed_contract.py` and the Python/Ajv parity fixtures pass
   - [ ] 2.9 [code-review-cdk] `[I]` Update `agentcore.json` and `cdk-stack.ts`: secret grant, Bedrock grant removed, env updated (D-74, D-88)
   - [ ] 2.10 [repo root] `[I]` Update `docs/runbooks/code-review-deployment.md`: create and rotate the key secret, tier/ITPM check (D-78), deploy order runtime → migration → riel rule (D-89), v1.8 rollback, the new `MODEL_*` error codes (FR-49a)
   - [ ] 2.11 Migration gate: do **not** apply the migration in this story; applying it is S-218 step 3.5, with explicit user confirmation
