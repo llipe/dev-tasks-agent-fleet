@@ -2,7 +2,7 @@
 name: runbook-code-review-deployment
 trigger: Deploying or redeploying the code-review agent, moving it to Claude Sonnet 5.5 (v1.8), changing its model, creating or rotating its Anthropic API key, setting up the `/review` PR-comment trigger, rotating its secrets, or a code-review run that fails or does nothing
 owner: operator (repository owner)
-last_verified: 2026-11-04 — redeploy to version 5 with `main` f4443bd (#477, D-67), ChangeId 20261103-code-review-redeploy-v15; version 4 on 2026-11-03 with d20d73a (#473, #474), ChangeId 20261103-code-review-redeploy-v14. First live deploy 2026-10-24 (ChangeId 20261024-code-review-runtime)
+last_verified: 2026-11-04
 related: ["agents/code-review/agentcore/agentcore.json", "agents/code-review/agentcore/iam/runtime-role-policy.json", "agents/code-review/agentcore/cdk/test/code-review-runtime.test.ts", "supabase/migrations/20261125120000_seed_code_review_agent.sql", "supabase/migrations/20261103120000_seed_code_review_agent.sql", "infra/changes/20261024-code-review-runtime/", "infra/agentcore-invoke-policy.json", "docs/runbooks/webhook-rules.md", "docs/runbooks/webhook-deployment.md"]
 ---
 
@@ -410,6 +410,11 @@ rule applies: a deleted secret has a recovery window, and its name cannot be reu
 4. Add a row to the log below.
 
 ### Verification log
+
+Deployment history behind the `last_verified` date: first live deploy 2026-10-24 (ChangeId
+`20261024-code-review-runtime`); version 4 on 2026-11-03 with `d20d73a` (#473, #474, ChangeId
+`20261103-code-review-redeploy-v14`); version 5 on 2026-11-04 with `main` `f4443bd` (#477, D-67,
+ChangeId `20261103-code-review-redeploy-v15`).
 
 The rows below are the version 4 and 5 (Bedrock) history. The first v1.8 row is added by S-218
 (issue #482).

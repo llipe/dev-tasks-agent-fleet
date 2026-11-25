@@ -82,8 +82,9 @@ The project is delivered in phases:
 │   │   ├── agentcore/       # Runtime config + CDK infra
 │   │   ├── app/securityAnalyst/   # Agent source, tests, Makefile, pyproject.toml
 │   │   └── README.md        # Agent-specific docs (status, layout, deployment, env vars)
-│   ├── code-review/   # Code Review agent (Python) — Wave A delivered, not deployed (Wave B pending)
-│   │   └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml (no agentcore/ config yet)
+│   ├── code-review/   # Code Review agent (Python, AgentCore Container) — Wave A delivered, deployed (runtime v5, Bedrock build; v1.7 Anthropic change pending S-218)
+│   │   ├── agentcore/       # Runtime config + CDK infra
+│   │   └── app/codeReview/   # Agent source, tests, Makefile, pyproject.toml
 │   └── bug-fix/            # Phase 5 agent (Python, AgentCore Container) — Wave A delivered, verified live (S-180–S-190)
 │       ├── agentcore/       # Runtime config + CDK infra
 │       ├── app/bugFix/      # Agent source, tests, Makefile, pyproject.toml, image
