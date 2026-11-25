@@ -51,13 +51,6 @@ from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError, ConnectTimeoutError, ReadTimeoutError
 
-from bedrock_adapter import (
-    ACCEPTED_STOP_REASONS,
-    ClientFactory,
-    aws_error_name,
-    response_usage,
-    usage_cost,
-)
 from context.conventions import (
     CONTEXT_FOLDERS_MAX_CHARS,
     CONTEXT_FOLDERS_PATTERN,
@@ -67,6 +60,13 @@ from context.diff import escape_path, is_doc_path, path_reason
 from context.issues import LinkedIssue, strip_task_checklist
 from context.tokens import truncate
 from github_client import TreeEntry
+from legacy_bedrock import (  # S-217 (#481) moves selection to Anthropic
+    ACCEPTED_STOP_REASONS,
+    ClientFactory,
+    aws_error_name,
+    response_usage,
+    usage_cost,
+)
 from prompt import MAX_NONCE_ATTEMPTS, end_marker, new_nonce, open_marker
 
 __all__ = [

@@ -23,10 +23,11 @@ spec §8.1 steps (``STEPS``), and always ends the run:
    Over the line budget (``check_size``) or the token budget (``build_prompt``)
    the run posts the budget comment; with no reviewed file (a lockfile-only PR,
    DF-16) it posts the "nothing to review" note. All three happen in a
-   ``post`` step, end ``succeeded``/``not_applicable``, make no Converse call
+   ``post`` step, end ``succeeded``/``not_applicable``, make no model call
    and write no ``audit_report`` (EC-21).
-3. ``review`` — ``bedrock_adapter.review`` with the production client factory,
-   the run deadline and the clock.
+3. ``review`` — ``model_adapter.review`` with the production client factory
+   (the Anthropic API key, fetched once and registered with the scrubber before
+   the first model call), the run deadline and the clock.
 4. ``validate`` — ``validate_result`` with the same ``DiffContext`` that built
    the prompt.
 5. ``post`` — render with the accepted call's ``ContextData``, scrub, ``POST``
@@ -59,18 +60,18 @@ failure path, at most once.
 **What leaves the wrapper** (§12, §13). run_events carry fixed messages and
 counts only: no prompt, model or repository text, and no reviewed path. Every
 event, the comment body and the artifact metadata pass through ``scrubber``
-with the token and the Supabase key. Model and repository text in the
+with the token, the Supabase key and the Anthropic API key. Model and repository text in the
 ``Validation`` is scrubbed before rendering, since the renderer escapes it
 (``_`` becomes ``\\_``) and a scrub of the escaped body alone would miss it.
 
 **Metrics** (§5.3, S-210 DR-11). ``estimated_input_tokens`` is the estimate
-(``bedrock_adapter.request_tokens``) of every Converse request actually sent,
+(``model_adapter.request_tokens``) of every review request actually sent,
 the same scope as ``input_tokens`` (the sum of every call's usage), so the two
 compare directly for the D-27 recalibration; ``estimated_first_call_tokens``
 is the first prompt's budget estimate. ``context_tokens`` is per block of the
 accepted call's prompt. The selection call's tokens, cost and duration are the
 ``selection_*`` keys (FR-34): never part of the review's ``input_tokens``,
-``bedrock_calls`` or ``estimated_input_tokens``.
+``model_calls`` or ``estimated_input_tokens``.
 """
 
 from __future__ import annotations
@@ -84,17 +85,6 @@ from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from bedrock_adapter import (
-    MAX_ATTEMPTS,
-    BedrockAdapterError,
-    CallMetrics,
-    ClientFactory,
-    ConverseClient,
-    ReviewResult,
-    make_client,
-    request_tokens,
-)
-from bedrock_adapter import review as converse_review
 from budget import BLOCK_SPEC, ContextData, ContextInputs
 from config import DEADLINE_RESERVE_SECONDS, HEARTBEAT_INTERVAL, Settings
 from context.conventions import DEFAULT_CONTEXT_FOLDERS
@@ -125,6 +115,7 @@ from context.selection import (
 )
 from context.spec import resolve_specs
 from context.verifier import REPORT_NONE, Candidate, VerifierContext, verifier_candidates
+from credentials import fetch_anthropic_key
 from github_client import (
     ForbiddenCall,
     GitHubClient,
@@ -137,6 +128,18 @@ from github_client import (
     PullRequest,
 )
 from heartbeat import HeartbeatResult, run_with_heartbeat
+from legacy_bedrock import ClientFactory as SelectionClientFactory  # S-217 removes
+from legacy_bedrock import make_client as make_selection_client  # S-217 removes
+from model_adapter import (
+    MAX_RETRIES,
+    CallMetrics,
+    ModelAdapterError,
+    ModelClient,
+    ReviewResult,
+    make_client,
+    request_tokens,
+)
+from model_adapter import review as model_review
 from prompt import Prompt, PromptSink, build_prompt, new_nonce, null_sink
 from render import (
     canonical_code,
@@ -202,8 +205,10 @@ FAILURE_COMMENT: dict[str, str] = {
     "INVALID_PARAMS": "no",
     "GITHUB_PERMISSION_DENIED": "attempted",
     "GITHUB_API_ERROR": "attempted",
-    "BEDROCK_ACCESS_DENIED": "yes",
-    "BEDROCK_ERROR": "yes",
+    "MODEL_ACCESS_DENIED": "yes",
+    "MODEL_API_ERROR": "yes",
+    "MODEL_RATE_LIMITED": "yes",
+    "MODEL_REFUSED": "yes",
     "MODEL_OUTPUT_INVALID": "yes",
     "RUN_TIMEOUT": "yes",
     "COMMENT_POST_FAILED": "once_unless_denied",
@@ -544,7 +549,7 @@ def audit_metadata(
     result: ReviewResult,
     inputs: ContextInputs,
     diff: DiffContext,
-    model_id: str,
+    model_id: str | None,
     reasoning_effort: str,
     selection: Selection | None = None,
 ) -> dict[str, Any]:
@@ -618,8 +623,9 @@ def _empty_metrics() -> dict[str, Any]:
         "estimated_input_tokens": None,
         "estimated_first_call_tokens": None,
         "cost_usd": None,
-        "bedrock_ms": 0,
-        "bedrock_calls": 0,
+        "model_ms": 0,
+        "model_calls": 0,
+        "answered_by_model": None,
         "wall_clock_ms": 0,
         "output_mode": None,
         "repair_calls": 0,
@@ -669,13 +675,18 @@ class PipelineDeps:
 
     ``resolve_token`` maps the org to an installation token. ``make_github``
     is called as ``make_github(token, org, repo, pr_number)``.
-    ``bedrock_factory`` is ``bedrock_adapter.make_client``'s shape, called once
-    per Converse call with that call's timeouts.
+    ``resolve_model_key`` returns the Anthropic API key (D-88); the pipeline
+    calls it at most once per run, before the first model call.
+    ``model_factory`` is ``model_adapter.make_client``'s shape (``api_key``,
+    the call's timeouts, ``max_retries``), called once per review call.
+    ``bedrock_factory`` is the selection call's client until S-217 (#481).
     """
 
     resolve_token: Callable[[str], str]
     make_github: Callable[..., GitHubClient] = GitHubClient
-    bedrock_factory: ClientFactory = make_client
+    resolve_model_key: Callable[[], str] = fetch_anthropic_key
+    model_factory: Callable[..., ModelClient] = make_client
+    bedrock_factory: SelectionClientFactory = make_selection_client
     clock: Callable[[], float] = time.monotonic
     sink: PromptSink = null_sink
     nonce_factory: Callable[[], str] = new_nonce
@@ -778,16 +789,29 @@ class _Events:
         return warn
 
 
-class _CountingClient:
-    """A Converse client that adds each request's estimate to the run total (DR-11)."""
+class _CountingStream:
+    """``beta.messages`` of a review client: each request's estimate is added (DR-11)."""
 
-    def __init__(self, inner: ConverseClient, pipeline: Pipeline) -> None:
+    def __init__(self, inner: Any, pipeline: Pipeline) -> None:
         self._inner = inner
         self._pipeline = pipeline
 
-    def converse(self, **request: Any) -> Any:
+    def stream(self, **request: Any) -> Any:
         self._pipeline._sent_tokens += request_tokens(request)
-        return self._inner.converse(**request)
+        return self._inner.stream(**request)
+
+
+class _CountingBeta:
+    def __init__(self, inner: Any, pipeline: Pipeline) -> None:
+        self.messages = _CountingStream(inner.messages, pipeline)
+
+
+class _CountingClient:
+    """A review client whose sent requests are counted; ``count_tokens`` is not (TC-216-19)."""
+
+    def __init__(self, inner: ModelClient, pipeline: Pipeline) -> None:
+        self.messages = inner.messages
+        self.beta = _CountingBeta(inner.beta, pipeline)
 
 
 # ---------------------------------------------------------------------------
@@ -813,6 +837,8 @@ class Pipeline:
     _metrics: dict[str, Any] = field(default_factory=_empty_metrics, init=False)
     _counts: dict[str, Any] = field(default_factory=dict, init=False)
     _sent_tokens: int = field(default=0, init=False)
+    _model_key: str | None = field(default=None, init=False)
+    _model_key_lock: threading.Lock = field(default_factory=threading.Lock, init=False)
     _failure_comment_tried: bool = field(default=False, init=False)
     # Set once a comment is posted: from then on nothing may post again or fail
     # the run (QA-213-04).
@@ -967,7 +993,7 @@ class Pipeline:
         with self._step("review"):
             self._check_deadline()
             async for chunk in self._phase(
-                lambda gate: self._converse(gathered, gate), box, check=False
+                lambda gate: self._review(gathered, gate), box, check=False
             ):
                 yield chunk
             result: ReviewResult = box.value
@@ -981,7 +1007,8 @@ class Pipeline:
                 output_mode=result.output_mode,
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
-                bedrock_ms=result.bedrock_ms,
+                model_ms=result.model_ms,
+                answered_by_model=result.answered_by_model,
             )
 
         # 4. validate
@@ -1204,12 +1231,12 @@ class Pipeline:
         )
         return selection
 
-    def _converse(self, gathered: _Gathered, gate: _Gate) -> ReviewResult:
+    def _review(self, gathered: _Gathered, gate: _Gate) -> ReviewResult:
         assert gathered.prompt is not None and gathered.inputs is not None
-        return converse_review(
+        return model_review(
             gathered.prompt,
             gathered.inputs,
-            client_factory=self._bedrock_client,
+            client_factory=self._model_client,
             settings=self.settings,
             reasoning_effort=self.params["reasoning_effort"],
             max_diff_lines=self.params["max_diff_lines"],
@@ -1220,19 +1247,33 @@ class Pipeline:
             deadline=self._deadline,
         )
 
-    def _bedrock_client(
+    def _api_key(self) -> str:
+        """The Anthropic API key, fetched once per run (D-88, DF-34: after the token).
+
+        Registered with the scrubber before it is returned, so before the first
+        model call; it reaches the SDK only as the client constructor's ``api_key``.
+        """
+        with self._model_key_lock:
+            if self._model_key is None:
+                key = self.deps.resolve_model_key()
+                if key and key not in self.secrets:
+                    self.secrets.append(key)
+                self._model_key = key
+            return self._model_key
+
+    def _model_client(
         self,
         *,
         read_timeout_seconds: float,
         connect_timeout_seconds: float,
-        max_attempts: int = MAX_ATTEMPTS,
-    ) -> ConverseClient:
+        max_retries: int = MAX_RETRIES,
+    ) -> ModelClient:
         """The review's client, counted (DR-11). The selection call does not come here."""
-        extra = {} if max_attempts == MAX_ATTEMPTS else {"max_attempts": max_attempts}
-        inner = self.deps.bedrock_factory(
+        inner = self.deps.model_factory(
+            api_key=self._api_key(),
             read_timeout_seconds=read_timeout_seconds,
             connect_timeout_seconds=connect_timeout_seconds,
-            **extra,
+            max_retries=max_retries,
         )
         return _CountingClient(inner, self)
 
@@ -1347,7 +1388,7 @@ class Pipeline:
             verifier=verifier,
             run_id=self.request.run_id,
             head_sha=self._pull.head_sha,
-            model_id=self.settings.model_id,
+            model_id=result.answered_by_model,
             rubric_version=result.prompt.rubric_version,
             panel_base_url=self.settings.panel_base_url,
             selection=selection,
@@ -1371,7 +1412,7 @@ class Pipeline:
                 result=result,
                 inputs=g.inputs,
                 diff=g.diff,
-                model_id=self.settings.model_id,
+                model_id=result.answered_by_model,
                 reasoning_effort=self.params["reasoning_effort"],
                 selection=selection,
             ),
@@ -1491,7 +1532,7 @@ class Pipeline:
             status = _status(exc)
             if status is not None:
                 message += f" (HTTP {status})"
-            if isinstance(exc, BedrockAdapterError | RunTimeout | CommentPostFailed):
+            if isinstance(exc, ModelAdapterError | RunTimeout | CommentPostFailed):
                 message += f": {exc}"
             return _scrub_text(message, self.secrets)[:MESSAGE_MAX]
         except Exception:  # noqa: BLE001

@@ -197,7 +197,7 @@ def _code_without_docstrings(source: str) -> str:
 
 # The selection call keeps its Bedrock forced-tool request until S-217 (#481)
 # moves it to the Anthropic client; these files are that residual.
-SELECTION_RESIDUAL = {"context/selection.py", "context/legacy_bedrock.py"}
+SELECTION_RESIDUAL = {"context/selection.py", "legacy_bedrock.py"}
 
 
 def test_request_shape_static_scan_of_the_package_is_tool_free():
@@ -397,10 +397,10 @@ def test_sent_schema_pinned():
 def test_sent_schema_keeps_structure_does_not_mutate_and_is_idempotent():
     before = copy.deepcopy(SUBMIT_REVIEW_SCHEMA)
     out = sent_schema(SUBMIT_REVIEW_SCHEMA)
-    assert SUBMIT_REVIEW_SCHEMA == before
+    assert before == SUBMIT_REVIEW_SCHEMA
     assert out is not SUBMIT_REVIEW_SCHEMA
     out["properties"]["findings"]["items"]["required"].append("x")
-    assert SUBMIT_REVIEW_SCHEMA == before
+    assert before == SUBMIT_REVIEW_SCHEMA
     again = sent_schema(SUBMIT_REVIEW_SCHEMA)
     assert sent_schema(again) == again
     items = again["properties"]["findings"]["items"]
@@ -642,7 +642,9 @@ def test_count_rebuild_is_the_runs_one_context_length_rebuild():
     assert rec.messages == [WARN_CONTEXT_RETRY, WARN_CONTEXT_AFTER_RETRY]
 
 
-@pytest.mark.parametrize("counts", [[BUDGET + 1], [BUDGET + 1, BUDGET + 1]], ids=["no-files", "still-over"])
+@pytest.mark.parametrize(
+    "counts", [[BUDGET + 1], [BUDGET + 1, BUDGET + 1]], ids=["no-files", "still-over"]
+)
 def test_count_over_b_with_nothing_to_drop_is_budget_invariant_and_sends_nothing(counts):
     ins = review_inputs(files=()) if len(counts) == 1 else review_inputs()
     fake = FakeAnthropic([], counts=counts)
@@ -669,8 +671,13 @@ def test_count_failure_falls_back_to_the_estimate_with_a_warn(error):
 
 
 def test_count_failure_with_estimate_over_b_and_files_rebuilds(monkeypatch):
-    monkeypatch.setattr(model_adapter, "request_tokens", lambda r: BUDGET + 1 if any(
-        LABEL_FILE in b["text"] for b in r["messages"][0]["content"]) else 10)
+    monkeypatch.setattr(
+        model_adapter,
+        "request_tokens",
+        lambda r: (
+            BUDGET + 1 if any(LABEL_FILE in b["text"] for b in r["messages"][0]["content"]) else 10
+        ),
+    )
     rec = Recorder()
     fake = FakeAnthropic([_ok()], counts=[server_error(), server_error()])
     result = run(fake, recorder=rec)
@@ -777,7 +784,9 @@ def test_context_length_match_is_case_folded():
 @pytest.mark.parametrize(
     "error",
     [
-        api_status_error(400, "x" * 4096 + "prompt is too long", error_type="invalid_request_error"),
+        api_status_error(
+            400, "x" * 4096 + "prompt is too long", error_type="invalid_request_error"
+        ),
         bad_request("output_config.format.schema: unsupported keyword"),
         bad_request("Unexpected value for anthropic-beta"),
         api_status_error(413, "prompt is too long", error_type="request_too_large"),
@@ -1125,7 +1134,9 @@ def test_usage_cost_at_the_price_table():
 
 
 def test_usage_is_summed_over_every_call_that_returned():
-    fake = FakeAnthropic([message("nope", usage=(100, 10)), review_message(valid_review(), usage=(200, 20))])
+    fake = FakeAnthropic(
+        [message("nope", usage=(100, 10)), review_message(valid_review(), usage=(200, 20))]
+    )
     result = run(fake)
     assert (result.input_tokens, result.output_tokens) == (300, 30)
     assert result.cost_usd == round((300 * 2 + 30 * 10) / 1e6, 6)
@@ -1241,7 +1252,13 @@ def test_result_shape_review_keyword_names():
 def test_result_shape_error_codes():
     assert {
         cls.code
-        for cls in (ModelAccessDenied, ModelApiError, ModelRateLimited, ModelRefused, ModelOutputInvalid)
+        for cls in (
+            ModelAccessDenied,
+            ModelApiError,
+            ModelRateLimited,
+            ModelRefused,
+            ModelOutputInvalid,
+        )
     } == {
         "MODEL_ACCESS_DENIED",
         "MODEL_API_ERROR",

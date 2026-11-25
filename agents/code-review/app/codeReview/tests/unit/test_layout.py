@@ -1,5 +1,6 @@
 """
-S-204 AC1/AC2 — package layout and dependency pins (TC-204-01..03).
+S-204 AC1/AC2 — package layout and dependency pins (TC-204-01..03); S-216 AC10
+(TC-216-51, TC-216-52): the Bedrock review path is gone and ``anthropic`` is pinned.
 
 The package mirrors the security-analyst sibling (D-20): the shared modules are
 copied, not imported across agents, and the dependency set is the sibling's
@@ -35,7 +36,8 @@ EXPECTED_FILES = [
 
 COPIED_MODULES = ["agent_reporter", "credentials", "heartbeat", "signal_backstop", "scrubber"]
 
-EXPECTED_DEPS = {"bedrock-agentcore", "boto3", "requests", "PyJWT", "cryptography"}
+SIBLING_DEPS = {"bedrock-agentcore", "boto3", "requests", "PyJWT", "cryptography"}
+EXPECTED_DEPS = {*SIBLING_DEPS, "anthropic"}  # D-80
 
 FORBIDDEN_DEPS = {"strands-agents", "semgrep", "checkov"}
 
@@ -88,12 +90,14 @@ def test_copied_module_keeps_sibling_surface(module):
     assert _public_defs(SIBLING / f"{module}.py") <= ours
 
 
-def test_dependencies_are_exactly_the_five_sibling_pins():
+def test_dependencies_are_the_five_sibling_pins_plus_anthropic():
+    """TC-216-52 (port of TC-204-02): six exact pins; five at the sibling's versions."""
     ours = _pins(PKG / "pyproject.toml")
     sibling = _pins(SIBLING / "pyproject.toml")
     assert set(ours) == EXPECTED_DEPS
-    for name in EXPECTED_DEPS:
+    for name in SIBLING_DEPS:
         assert ours[name] == sibling[name], f"{name} pinned {ours[name]} != sibling {sibling[name]}"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", ours["anthropic"])
 
 
 def test_no_forbidden_dependencies():
@@ -151,3 +155,78 @@ def test_dockerignore_excludes_tests_and_venv():
     entries = {ln.strip() for ln in (PKG / ".dockerignore").read_text().splitlines()}
     assert "tests/" in entries
     assert ".venv/" in entries
+
+
+# ---------------------------------------------------------------------------
+# S-216 AC10 — no Bedrock review path (TC-216-51)
+# ---------------------------------------------------------------------------
+
+REMOVED = [
+    "bedrock_adapter.py",
+    "tests/unit/test_bedrock_adapter.py",
+    "tests/unit/test_bedrock_hostile.py",
+    "tests/unit/test_properties_bedrock.py",
+    "tests/helpers/bedrock_run.py",
+]
+
+# The context-selection call keeps its Bedrock client until S-217 (#481), which
+# deletes these and empties this set. ``tests/fixtures/bedrock.py`` serves the
+# selection tests until then.
+SELECTION_RESIDUAL = {"legacy_bedrock.py", "context/selection.py", "pipeline.py"}
+
+
+@pytest.mark.parametrize("name", REMOVED)
+def test_bedrock_review_files_are_gone(name):
+    assert not (PKG / name).exists()
+
+
+def _model_sources():
+    for path in _source_files():
+        rel = path.relative_to(PKG).as_posix()
+        if rel.startswith("tests/"):
+            continue
+        yield rel, path.read_text()
+
+
+def test_no_bedrock_review_code_outside_the_selection_residual():
+    offenders = []
+    for rel, text in _model_sources():
+        if rel in SELECTION_RESIDUAL:
+            continue
+        for needle in (
+            "bedrock-runtime",
+            "converse(",
+            "BedrockAdapterError",
+            "BEDROCK_",
+            "bedrock_adapter",
+        ):
+            if needle in text:
+                offenders.append((rel, needle))
+    assert offenders == []
+
+
+def test_legacy_bedrock_is_imported_only_by_the_selection_path():
+    importers = []
+    for rel, text in _model_sources():
+        tree = ast.parse(text)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "legacy_bedrock":
+                importers.append(rel)
+    assert sorted(set(importers)) == ["context/selection.py", "pipeline.py"]
+
+
+def test_boto3_is_imported_only_for_secrets_and_the_selection_residual():
+    """``boto3`` reads Secrets Manager in ``credentials.py``; the selection's Bedrock
+    client is the S-217 residual. No model code imports botocore's ``ClientError``."""
+    importers = set()
+    for rel, text in _model_sources():
+        tree = ast.parse(text)
+        for node in ast.walk(tree):
+            mods = []
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                mods = [node.module or ""]
+            if any(m.split(".")[0] in {"boto3", "botocore"} for m in mods):
+                importers.add(rel)
+    assert importers == {"credentials.py", "legacy_bedrock.py", "context/selection.py"}

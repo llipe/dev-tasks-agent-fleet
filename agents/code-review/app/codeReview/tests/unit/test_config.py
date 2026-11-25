@@ -11,6 +11,8 @@ Invariant (spec §8.9, ADR-006)::
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 import config
@@ -127,19 +129,35 @@ class TestLoadSettings:
         assert s.model_id == "sentinel-model-id-91c2"
         assert s.panel_base_url == "https://sentinel-panel.example"
 
-    def test_prices_are_optional_and_default_to_none(self):
-        s = load_settings(_env())
-        assert s.price_input_per_mtok is None
-        assert s.price_output_per_mtok is None
+    def test_retired_price_vars_are_not_read(self):
+        """TC-216-45 (D-87): ``PRICE_*`` are retired; garbage there is ignored."""
+        s = load_settings(_env(PRICE_INPUT_PER_MTOK="abc-sentinel", PRICE_OUTPUT_PER_MTOK="nan"))
+        assert not hasattr(s, "price_input_per_mtok")
+        assert not hasattr(s, "price_output_per_mtok")
+        assert {f.name for f in dataclasses.fields(Settings)}.isdisjoint(
+            {"price_input_per_mtok", "price_output_per_mtok"}
+        )
 
-    def test_prices_are_parsed_as_floats(self):
-        s = load_settings(_env(PRICE_INPUT_PER_MTOK="3.5", PRICE_OUTPUT_PER_MTOK="15"))
-        assert s.price_input_per_mtok == 3.5
-        assert s.price_output_per_mtok == 15.0
+    def test_anthropic_key_secret_id_defaults(self):
+        """TC-216-46 (D-88): the key's secret ID, default when unset or blank."""
+        assert load_settings(_env()).anthropic_api_key_secret_id == (
+            "agent-fleet/prod/ANTHROPIC_API_KEY"
+        )
+        assert load_settings(
+            _env(ANTHROPIC_API_KEY_SECRET_ID="  ")
+        ).anthropic_api_key_secret_id == ("agent-fleet/prod/ANTHROPIC_API_KEY")
 
-    def test_blank_price_is_treated_as_unset(self):
-        s = load_settings(_env(PRICE_INPUT_PER_MTOK="  "))
-        assert s.price_input_per_mtok is None
+    def test_anthropic_key_secret_id_is_read(self):
+        s = load_settings(_env(ANTHROPIC_API_KEY_SECRET_ID="agent-fleet/dev/ANTHROPIC_API_KEY"))
+        assert s.anthropic_api_key_secret_id == "agent-fleet/dev/ANTHROPIC_API_KEY"
+
+    def test_the_api_key_itself_is_never_a_setting(self):
+        """D-88: settings hold the secret ID only, never ``ANTHROPIC_API_KEY``."""
+        s = load_settings(_env(ANTHROPIC_API_KEY="sk-ant-api03-sentinel"))
+        assert "sk-ant-api03-sentinel" not in repr(s)
+
+    def test_price_table_is_the_d87_constant(self):
+        assert config.MODEL_PRICES == {"claude-sonnet-5-5": (2.0, 10.0)}
 
     def test_panel_base_url_trailing_slash_is_stripped(self):
         s = load_settings(_env(PANEL_BASE_URL="https://panel.example/"))
@@ -171,16 +189,6 @@ class TestLoadSettings:
         with pytest.raises(ConfigError) as exc_info:
             load_settings(env)
         text = str(exc_info.value) + repr(exc_info.value)
-        assert "sentinel" not in text
-
-    @pytest.mark.parametrize("var", ["PRICE_INPUT_PER_MTOK", "PRICE_OUTPUT_PER_MTOK"])
-    @pytest.mark.parametrize("bad", ["abc-sentinel", "nan", "inf", "-1"])
-    def test_invalid_price_names_var_without_value(self, var, bad):
-        with pytest.raises(ConfigError) as exc_info:
-            load_settings(_env(**{var: bad}))
-        assert exc_info.value.var == var
-        text = str(exc_info.value)
-        assert var in text
         assert "sentinel" not in text
 
     def test_defaults_to_process_environment(self, monkeypatch):

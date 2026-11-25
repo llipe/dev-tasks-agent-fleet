@@ -505,7 +505,7 @@ class _Candidates(Protocol):
 
 
 class _Result(Protocol):
-    """What ``validate_result`` reads from ``bedrock_adapter.ReviewResult``."""
+    """What ``validate_result`` reads from ``model_adapter.ReviewResult``."""
 
     @property
     def findings(self) -> Mapping[str, Any]: ...

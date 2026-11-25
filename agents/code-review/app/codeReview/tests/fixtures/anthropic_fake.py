@@ -227,7 +227,7 @@ def message(
 
 def review_message(review: Any, **kw: Any) -> BetaMessage:
     """A final message whose one text block is ``json.dumps(review)``."""
-    return message(json.dumps(review), **kw)
+    return message(json.dumps(review, ensure_ascii=False), **kw)
 
 
 class _Loose:

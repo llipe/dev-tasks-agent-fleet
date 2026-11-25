@@ -825,7 +825,9 @@ class _Run:
             self.price_warned = True
             self.warn(WARN_NO_PRICE)
         if getattr(message, "stop_reason", None) == STOP_REFUSAL:
-            raise ModelRefused("model refused the request (stop_reason refusal)", metrics=self.metrics())
+            raise ModelRefused(
+                "model refused the request (stop_reason refusal)", metrics=self.metrics()
+            )
         return message
 
     def map_status(self, exc: anthropic.APIStatusError, end: float) -> Exception:
@@ -1004,4 +1006,3 @@ def review(
         clock=clock,
         deadline=deadline,
     ).run()
-

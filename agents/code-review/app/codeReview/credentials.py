@@ -1,6 +1,6 @@
 """
-Credential resolution — Supabase service role key from Secrets Manager
-and GitHub App installation token minting.
+Credential resolution — Supabase service role key from Secrets Manager,
+the Anthropic API key (S-216, D-88), and GitHub App installation token minting.
 """
 
 from __future__ import annotations
@@ -14,7 +14,12 @@ import jwt
 import requests
 from botocore.exceptions import ClientError
 
-from config import SUPABASE_KEY_SECRET_ID, SUPABASE_URL, TOKEN_STALE_THRESHOLD_MINUTES
+from config import (
+    DEFAULT_ANTHROPIC_API_KEY_SECRET_ID,
+    SUPABASE_KEY_SECRET_ID,
+    SUPABASE_URL,
+    TOKEN_STALE_THRESHOLD_MINUTES,
+)
 
 
 class CredentialError(Exception):
@@ -69,6 +74,43 @@ def fetch_supabase_key(secret_id: str | None = None) -> str:
             f"role key (secret '{sid}')",
         )
     return key
+
+
+# ---------------------------------------------------------------------------
+# Anthropic API key (D-88)
+# ---------------------------------------------------------------------------
+
+
+def fetch_anthropic_key(secret_id: str | None = None) -> str:
+    """Read the Anthropic API key from AWS Secrets Manager (S-216, D-88).
+
+    Called once per run, before the first model call. The key is returned to
+    the caller, which registers it with the scrubber and passes it to the
+    client constructor; it is never placed in ``os.environ``. A failure is
+    ``CredentialError("ANTHROPIC_KEY_UNAVAILABLE")`` (``INTERNAL_ERROR`` for
+    the run, DF-34) whose message names the secret ID and the AWS error code,
+    never a value or the AWS message, and chains nothing.
+    """
+    sid = secret_id or DEFAULT_ANTHROPIC_API_KEY_SECRET_ID
+    sm = boto3.client("secretsmanager")
+    try:
+        response = sm.get_secret_value(SecretId=sid)
+    except ClientError as exc:
+        error = exc.response.get("Error", {}) if isinstance(exc.response, dict) else {}
+        code = error.get("Code") if isinstance(error, dict) else None
+        name = code if isinstance(code, str) and code.isidentifier() else "ClientError"
+        raise CredentialError(
+            "ANTHROPIC_KEY_UNAVAILABLE",
+            f"Could not read the Anthropic API key from Secrets Manager (secret '{sid}'): {name}",
+        ) from None
+    key = response.get("SecretString")
+    if not isinstance(key, str) or not key.strip():
+        raise CredentialError(
+            "ANTHROPIC_KEY_UNAVAILABLE",
+            f"Secrets Manager returned no usable SecretString for the Anthropic API key "
+            f"(secret '{sid}')",
+        )
+    return key.strip()  # a console-pasted value may end with a newline
 
 
 # ---------------------------------------------------------------------------

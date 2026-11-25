@@ -4,14 +4,17 @@ Drive ``main.invoke`` through the S-213 pipeline on recorded fixtures (S-213).
 Everything below the AgentCore entrypoint is real: ``main.invoke``, the
 ``RunReporter`` lifecycle, ``pipeline.Pipeline``, the GitHub client with its
 allowlist, the context readers, the budget fit, the prompt builder, the
-Bedrock adapter, validation and rendering. Only the edges are replaced:
+model adapter, validation and rendering. Only the edges are replaced:
 
 - the reporter's HTTP layer (``agent_reporter._SupabaseClient``) records every
   write in a ``ReporterSink``;
 - the GitHub transport is a ``StubTransport`` (``tests/helpers/github_stub.py``)
   shared by every client the pipeline builds;
-- Bedrock is a ``FakeConverse`` (``tests/fixtures/bedrock.py``) behind a
-  recording client factory, so the production ``client_factory`` path runs;
+- the Anthropic API is a ``FakeAnthropic`` (``tests/fixtures/anthropic_fake.py``)
+  behind a recording ``model_factory``, so the production ``client_factory``
+  path runs; the API key is ``API_KEY``, from a counting ``resolve_model_key``;
+- the context-selection call is still a Bedrock ``FakeConverse``
+  (``selection_fake``, ``tests/fixtures/bedrock.py``) until S-217 (#481);
 - the clock is a ``ManualClock``, the prompt sink a list, and the heartbeat a
   spy that records the step it wraps;
 - credential resolution returns ``TOKEN``; the Supabase key is ``SUPABASE_KEY``.
@@ -35,19 +38,22 @@ from github_client import GitHubClient
 from heartbeat import is_heartbeat_chunk, read_terminal_payload, run_with_heartbeat
 from pipeline import PipelineDeps
 from prompt import Prompt
-from tests.fixtures.bedrock import FakeConverse, tool_use_response
+from tests.fixtures.anthropic_fake import FakeAnthropic, review_message
+from tests.fixtures.bedrock import FakeConverse
 from tests.helpers.github_stub import StubTransport, json_response, load_fixture, text_response
 
 RUN_ID = "3f2b8c1e-5d4a-4f6b-9a7c-2e1d0b9a8c7f"
 OTHER_RUN_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
 TOKEN = "ghs_INSTALLATIONtokenSENTINEL0123456789"
 SUPABASE_KEY = "svc-key-SENTINEL-5b1e9c"
+API_KEY = "sk-ant-api03-APIKEYSENTINEL-7d41c0e9"
+API_KEY_SECRET_ID = "agent-fleet/test/ANTHROPIC_API_KEY"
 ORG, REPO, PR = "acme", "widgets", 42
 HEAD = "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d"
 BASE = "3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c"
 MERGE_BASE = "7e1d3c5b9a8f6e4d2c0b1a3f5e7d9c8b6a4f2e0d"
 MOVED_HEAD = "0123456789abcdef0123456789abcdef01234567"
-MODEL_ID = "us.openai.gpt-5-6-sol-v1:0"
+MODEL_ID = "claude-sonnet-5-5"
 PANEL = "https://panel.local"
 RUN_URL = f"{PANEL}/runs/{RUN_ID}"
 COMMENT_URL = "https://github.com/acme/widgets/pull/42#issuecomment-2000001"
@@ -71,9 +77,9 @@ V1_NOT_REPRODUCED = {
 V1_CONFIRMED = {"candidate_id": "V1", "status": "confirmed", "reason": "Still visible in the diff."}
 
 
-def review(findings: list[dict[str, Any]] | None = None, checks: Any = None) -> dict[str, Any]:
-    """A forced ``submit_review`` response; V1 not reproduced unless ``checks`` says otherwise."""
-    return tool_use_response(
+def review(findings: list[dict[str, Any]] | None = None, checks: Any = None) -> Any:
+    """A final review message; V1 not reproduced unless ``checks`` says otherwise."""
+    return review_message(
         {
             "findings": list(findings or []),
             "verifier_checks": [V1_NOT_REPRODUCED] if checks is None else list(checks),
@@ -191,11 +197,15 @@ class ManualClock:
 class Harness:
     monkeypatch: Any
     stub: StubTransport = field(default_factory=lambda: load_fixture("sample-pr"))
-    fake: FakeConverse = field(default_factory=FakeConverse)
+    fake: FakeAnthropic = field(default_factory=FakeAnthropic)
+    selection_fake: FakeConverse = field(default_factory=FakeConverse)
     clock: ManualClock = field(default_factory=ManualClock)
     reporter: ReporterSink = field(default_factory=ReporterSink)
     prompts: list[Prompt] = field(default_factory=list)
+    model_factory_calls: list[dict[str, Any]] = field(default_factory=list)
     bedrock_factory_calls: list[dict[str, Any]] = field(default_factory=list)
+    key_resolutions: int = 0
+    api_key: str = API_KEY
     heartbeat_steps: list[str] = field(default_factory=list)
     token_resolutions: list[str] = field(default_factory=list)
     heartbeat_interval: float = 120.0
@@ -219,9 +229,15 @@ class Harness:
             "SUPABASE_KEY_SECRET_ID": "agent-fleet/test/key",
             "MODEL_ID": self.model_id,
             "PANEL_BASE_URL": PANEL,
+            "ANTHROPIC_API_KEY_SECRET_ID": API_KEY_SECRET_ID,
         }.items():
             self.monkeypatch.setenv(key, value)
-        for var in ("PRICE_INPUT_PER_MTOK", "PRICE_OUTPUT_PER_MTOK", "SELECTION_MODEL_ID"):
+        for var in (
+            "PRICE_INPUT_PER_MTOK",
+            "PRICE_OUTPUT_PER_MTOK",
+            "SELECTION_MODEL_ID",
+            "ANTHROPIC_API_KEY",
+        ):
             self.monkeypatch.delenv(var, raising=False)
         # The head's Git tree (PRD v1.4, D-63): empty unless a test sets one, so
         # there are no selection candidates and no selection call.
@@ -236,9 +252,18 @@ class Harness:
         self.token_resolutions.append(org)
         return TOKEN
 
-    def bedrock_factory(self, **kwargs: Any) -> FakeConverse:
-        self.bedrock_factory_calls.append(kwargs)
+    def resolve_model_key(self) -> str:
+        self.key_resolutions += 1
+        return self.api_key
+
+    def model_factory(self, **kwargs: Any) -> FakeAnthropic:
+        self.model_factory_calls.append(kwargs)
         return self.fake
+
+    def bedrock_factory(self, **kwargs: Any) -> FakeConverse:
+        """The selection call's client until S-217 (#481)."""
+        self.bedrock_factory_calls.append(kwargs)
+        return self.selection_fake
 
     def heartbeat(self, fn: Callable[[], Any], *, interval: float, seq_start: int = 0) -> Any:
         steps = self.reporter.step_keys()
@@ -249,6 +274,8 @@ class Harness:
         return PipelineDeps(
             resolve_token=self.resolve_token,
             make_github=functools.partial(GitHubClient, transport=self.stub, sleep=lambda s: None),
+            resolve_model_key=self.resolve_model_key,
+            model_factory=self.model_factory,
             bedrock_factory=self.bedrock_factory,
             clock=self.clock,
             sink=self.prompts.append,
