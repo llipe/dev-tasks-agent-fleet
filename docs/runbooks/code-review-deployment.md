@@ -130,6 +130,13 @@ recorded under `infra/changes/<ChangeId>/` (S-218, issue #482).
      --action-names secretsmanager:GetSecretValue --resource-arns <secret ARN>
    ```
 
+   ```bash
+   aws iam simulate-principal-policy \
+     --policy-source-arn arn:aws:iam::755641879575:role/agent-fleet-code-review-runtime \
+     --action-names bedrock:InvokeModel \
+     --resource-arns arn:aws:bedrock:us-east-1::foundation-model/deepseek.v3.2
+   ```
+
    Between this step and step 4 the live version 5 runtime can no longer call Bedrock, so `/review`
    runs fail with `BEDROCK_ACCESS_DENIED`. Applying the policy after step 4 instead leaves the v1.8
    runtime unable to read its key. To avoid either window, apply the policy in two passes:
