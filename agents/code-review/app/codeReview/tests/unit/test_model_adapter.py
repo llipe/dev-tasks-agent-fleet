@@ -63,6 +63,7 @@ from tests.fixtures.anthropic_fake import (
     auth_error,
     bad_request,
     connection_error,
+    fallback_block,
     finding,
     loose_message,
     message,
@@ -276,6 +277,56 @@ def test_parse_other_block_types_are_ignored_never_executed():
     only_tool = [{"type": "tool_use", "id": "toolu_1", "name": "submit_review", "input": {}}]
     fake = FakeAnthropic([message(blocks=only_tool), _ok()])
     assert run(fake).repair_calls == 1
+
+
+def _text_block(text: str) -> dict[str, Any]:
+    return {"type": "text", "text": text}
+
+
+def test_parse_fallback_block_text_after_it_is_the_answer():
+    """D-86, AC-16: a fallback block separates the declined model's partial output from
+    the fallback model's answer; only the text after it is parsed, with no repair."""
+    blocks = [
+        _text_block('{"findings": ['),
+        fallback_block(),
+        _text_block(json.dumps(valid_review())),
+    ]
+    fake = FakeAnthropic([message(blocks=blocks, model="claude-opus-5-1")])
+    result = run(fake)
+    assert result.findings == valid_review()
+    assert result.repair_calls == 0 and fake.calls == 1
+    assert result.answered_by_model == "claude-opus-5-1"
+
+
+def test_parse_multiple_fallback_blocks_only_text_after_the_last():
+    blocks = [
+        _text_block("partial A"),
+        fallback_block(to_model="claude-opus-5-1"),
+        _text_block("partial B {"),
+        {"type": "thinking", "thinking": "x", "signature": "s"},
+        fallback_block(from_model="claude-opus-5-1", to_model="claude-haiku-5"),
+        {"type": "thinking", "thinking": "y", "signature": "s"},
+        _text_block(json.dumps(valid_review())[:20]),
+        _text_block(json.dumps(valid_review())[20:]),
+    ]
+    result = run(FakeAnthropic([message(blocks=blocks)]))
+    assert result.findings == valid_review() and result.repair_calls == 0
+
+
+def test_parse_fallback_block_with_no_text_after_it_is_empty_text_and_repaired():
+    """DF-39 path: nothing after the last fallback block is a reply with no text."""
+    rec = Recorder()
+    blocks = [_text_block(json.dumps(valid_review())), fallback_block()]
+    fake = FakeAnthropic([message(blocks=blocks), _ok()])
+    result = run(fake, recorder=rec)
+    assert result.repair_calls == 1 and fake.calls == 2
+    assert dict(rec.warns)[WARN_REPAIR]["rule"] == "text"
+
+
+def test_parse_without_a_fallback_block_all_text_blocks_are_joined():
+    text = json.dumps(valid_review())
+    blocks = [_text_block(text[:10]), _text_block(text[10:])]
+    assert run(FakeAnthropic([message(blocks=blocks)])).findings == valid_review()
 
 
 def test_parse_end_turn_with_one_json_object_is_accepted():

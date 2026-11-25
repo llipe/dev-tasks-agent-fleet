@@ -23,6 +23,7 @@ from anthropic.types.beta import BetaMessage
 from tests.fixtures.anthropic_fake import (
     FakeAnthropic,
     api_status_error,
+    fallback_block,
     message,
     prompt_too_long,
     rate_limited,
@@ -100,3 +101,15 @@ def test_fake_errors_are_the_sdks_own_classes(error, cls):
     assert isinstance(error, anthropic.APIStatusError)
     assert error.request_id == "req_fixture_0001"
     assert isinstance(error.status_code, int)
+
+
+def test_the_fake_fallback_block_is_the_sdks_beta_fallback_block():
+    """D-86: the real ``BetaFallbackBlock`` type, so the adapter is tested on real shapes."""
+    from anthropic.types.beta import BetaFallbackBlock
+
+    msg = message(
+        blocks=[{"type": "text", "text": "a"}, fallback_block(), {"type": "text", "text": "b"}]
+    )
+    assert isinstance(msg.content[1], BetaFallbackBlock)
+    assert msg.content[1].type == "fallback"
+    assert msg.content[1].to.model == "claude-opus-5-1"

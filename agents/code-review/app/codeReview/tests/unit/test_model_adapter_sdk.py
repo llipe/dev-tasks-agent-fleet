@@ -319,3 +319,76 @@ def test_a_count_tokens_failure_is_not_retried_into_a_failed_run(sdk):
     assert result.calls == 1
     assert len(t.counts()) == 3
     assert "token count failed; using the estimate" in rec.messages
+
+
+def _fallback_stream(partial: str, answer: str) -> httpx2.Response:
+    """A streamed server-side fallback: partial text, a ``fallback`` block, the answer."""
+    events: list[tuple[str, dict[str, Any]]] = [
+        (
+            "message_start",
+            {
+                "type": "message_start",
+                "message": {
+                    "id": "msg_sdk_fb",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-sonnet-5-5",
+                    "content": [],
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 10, "output_tokens": 1},
+                },
+            },
+        )
+    ]
+    blocks: list[dict[str, Any]] = [
+        {"type": "text", "text": ""},
+        {
+            "type": "fallback",
+            "from": {"model": "claude-sonnet-5-5"},
+            "to": {"model": "claude-opus-5-1"},
+            "trigger": {"type": "refusal"},
+        },
+        {"type": "text", "text": ""},
+    ]
+    texts = {0: partial, 2: answer}
+    for index, block in enumerate(blocks):
+        events.append(
+            (
+                "content_block_start",
+                {"type": "content_block_start", "index": index, "content_block": block},
+            )
+        )
+        if index in texts:
+            events.append(
+                (
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": {"type": "text_delta", "text": texts[index]},
+                    },
+                )
+            )
+        events.append(("content_block_stop", {"type": "content_block_stop", "index": index}))
+    events += [
+        (
+            "message_delta",
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                "usage": {"output_tokens": 50},
+            },
+        ),
+        ("message_stop", {"type": "message_stop"}),
+    ]
+    return httpx2.Response(200, headers={"content-type": "text/event-stream"}, content=_sse(events))
+
+
+def test_a_streamed_fallback_answer_posts_without_a_repair(sdk):
+    """D-86, AC-16: the SDK assembles the fallback block; the adapter reads the text after it."""
+    t = sdk(Transport([_fallback_stream('{"findings": [', json.dumps(valid_review()))]))
+    result = _review()
+    assert len(t.streams()) == 1
+    assert result.findings == valid_review() and result.repair_calls == 0
+    assert result.answered_by_model == "claude-opus-5-1"  # the SDK relabels the snapshot

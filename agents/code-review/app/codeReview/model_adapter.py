@@ -61,7 +61,10 @@ message from another model.
 
 **Answering model (D-86, DF-32).** ``message.model`` of the last call that
 returned is ``answered_by_model``; on success that is the accepted call. A
-missing, empty or non-string value is ``None``, never ``MODEL_ID``.
+missing, empty or non-string value is ``None``, never ``MODEL_ID``. After a
+server-side fallback the content holds the declined model's partial output, a
+``fallback`` block, then the fallback model's answer: only the ``text`` blocks
+after the last ``fallback`` block are parsed.
 
 **Cost (D-87, DF-31).** ``PRICE_TABLE`` is keyed on the exact
 ``message.model``. The cost is computed only when every call that returned
@@ -576,12 +579,27 @@ class _Output:
     previous: str  # the model's reply, for the repair block (untrusted)
 
 
+BLOCK_FALLBACK = "fallback"  # a server-side fallback hop (``BetaFallbackBlock``, D-86)
+
+
 def _text(message: Any) -> str:
+    """The answer's text: the ``text`` blocks after the last ``fallback`` block, joined.
+
+    Blocks are read by ``type``. With a server-side fallback the content holds
+    the declined model's partial output, a ``fallback`` block, then the
+    fallback model's answer; only the text after the last ``fallback`` block
+    is the answer (D-86). With no ``fallback`` block every ``text`` block is
+    the answer. Nothing after the last one is a reply with no text (DF-39).
+    """
     content = getattr(message, "content", None)
     if not isinstance(content, list):
         return ""
+    start = 0
+    for k, block in enumerate(content):
+        if getattr(block, "type", None) == BLOCK_FALLBACK:
+            start = k + 1
     parts = []
-    for block in content:
+    for block in content[start:]:
         if getattr(block, "type", None) == "text":
             text = getattr(block, "text", None)
             if isinstance(text, str):

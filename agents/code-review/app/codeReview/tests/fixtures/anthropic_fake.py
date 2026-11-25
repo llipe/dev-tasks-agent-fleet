@@ -56,6 +56,7 @@ __all__ = [
     "auth_error",
     "bad_request",
     "connection_error",
+    "fallback_block",
     "finding",
     "loose_message",
     "message",
@@ -223,6 +224,21 @@ def message(
             "usage": _usage(usage),
         }
     )
+
+
+def fallback_block(
+    from_model: str = MODEL, to_model: str = "claude-opus-5-1", category: str | None = None
+) -> dict[str, Any]:
+    """A ``BetaFallbackBlock`` (``type: fallback``): one model's output gives way to the next."""
+    trigger: dict[str, Any] = {"type": "refusal"}
+    if category is not None:
+        trigger["category"] = category
+    return {
+        "type": "fallback",
+        "from": {"model": from_model},
+        "to": {"model": to_model},
+        "trigger": trigger,
+    }
 
 
 def review_message(review: Any, **kw: Any) -> BetaMessage:
