@@ -9,6 +9,7 @@
 | 1.2     | 2026-10-22 | Spec v1.1 write-back (D-36–D-38, verifier DF-02–DF-04): S-208 candidate shape; S-209 priority fill, budget invariant, per-candidate nonce blocks; S-212 verifier rows from wrapper data and five-stage size guarantee; S-213 failure comment after `COMMENT_POST_FAILED`. Story titles aligned with the shortened issue titles.                                                                                       | product-engineer |
 | 1.3     | 2026-10-22 | D-39 write-back (verifier F1 on #428): S-214 sets `runtime_arn` and enables the row in one update.                                                                                                                                                                                                                                                                                                                    | product-engineer |
 | 1.4     | 2026-10-23 | Wave A drift write-back (human-confirmed batch, Llipe, 2026-10-23): story text that contradicted the delivered decisions is corrected. S-206 binary rule (S-206 D1) and the lockfile-only edge case (DF-16); S-207 AC2 checklist forms (D-43); S-208 AC2 drift heading (D-44); S-211 AC2 span bound (D-50); S-213 user story names the nothing-to-review note and the spec §13 silent paths. Source versions updated. | product-engineer |
+| 1.5     | 2026-11-17 | v1.7 — Anthropic model (PRD v1.7, spec v1.8; D-70–D-90): S-216 review call on Claude Sonnet 5.5 through the Anthropic API, S-217 selection call, params, CDK and runbook, S-218 infra pass and live verification. Coverage extended to FR-1, FR-18, FR-19, FR-29, FR-32 (v1.7 text) and AC-14–AC-17. | product-engineer |
 
 Source: `docs/requirements/prd-code-review-agent.md` (v1.1; v1.2 amends FR-9, FR-20, FR-24), `workstream/specification-prd-code-review-agent.md` (v1.0; delivered contract in v1.3), `workstream/decisions-code-review-agent.md` (D-01–D-35; D-36–D-55 added during delivery).
 
@@ -868,6 +869,244 @@ Configures the trigger (spec §7.1), runs the live acceptance criteria (PRD AC-1
 
 ---
 
+## v1.7 — Anthropic model
+
+Source: PRD v1.7 (D-70–D-79), spec v1.8 (§5.1, §5.3, §6.3, §7.2, §8.9, §9, §12–§17; D-80–D-90). Branch from `main` after PR #478 (merged). One PR per story into `integration/code-review-anthropic-model`, one consolidated PR to `main`.
+
+### Story S-216: Review call on Claude Sonnet 5.5 through the Anthropic API
+
+**Priority:** Critical
+**Estimated Size:** L
+**Dependencies:** none (PR #478 merged)
+
+#### User Story
+
+As the operator,
+I want the review call to run on Claude Sonnet 5.5 through the Anthropic API with a structured-output schema,
+So that PRs whose expanded diff exceeds DeepSeek's window are reviewed instead of skipped.
+
+#### Context
+
+Replaces `bedrock_adapter.py` with `model_adapter.py` (D-80). Implements PRD v1.7 FR-18, FR-19, FR-29 and spec §6.3. Since 2026-11-01, 24 of 189 riel runs were budget-skipped on DeepSeek (D-70). The selection call, params, and CDK are S-217.
+
+#### Acceptance Criteria
+
+- [ ] Each review request is a streaming `beta.messages.stream` call with `model=MODEL_ID`, `max_tokens=64000`, `output_config.effort` from `reasoning_effort`, `output_config.format` with the sent schema, `betas=["server-side-fallback-2026-07-01"]` and `fallbacks="default"`; no `tool_choice`, no tools, no `thinking` field (D-80–D-83, D-86; AC-15).
+- [ ] `sent_schema(SUBMIT_REVIEW_SCHEMA)` equals the full schema minus `minimum`, `maxLength` and `pattern` (pinned test); `validate_review` still checks the full schema, and a reply breaking a removed keyword gets one repair call (D-81; AC-15).
+- [ ] `count_tokens` runs on the exact request before every call; over `B` with a full file → rebuild without full files before sending; over `B` with none → `BudgetInvariantError`, nothing sent; a failed count falls back to the estimate check with a `warn` (D-84).
+- [ ] A `400` whose message contains `prompt is too long` triggers the one context-length rebuild (D-48 warnings unchanged); a second one, or one on the repair call, is `MODEL_API_ERROR`.
+- [ ] Error mapping after the SDK's 2 retries: `RateLimitError` → `MODEL_RATE_LIMITED`; `AuthenticationError`/`PermissionDeniedError` → `MODEL_ACCESS_DENIED`; other API or connection errors → `MODEL_API_ERROR`; timeout → `RUN_TIMEOUT` past the deadline, else `MODEL_API_ERROR`; final `stop_reason: refusal` → `MODEL_REFUSED` with the failure comment (D-72, D-85; AC-11, AC-16).
+- [ ] `message.model` is recorded as `answered_by_model`, the artifact `model_id`, and printed in the review comment footer; a fallback answer posts normally (D-86; AC-16).
+- [ ] At most 3 review calls per run (first, context-length retry, repair); a fourth raises `CallBudgetExceeded`; `count_tokens` is not counted.
+- [ ] `cost_usd` from `usage` at $2 / $10 per MTok for `claude-sonnet-5-5`, `None` with a `warn` for another answering model; metrics renamed `model_ms`, `model_calls`; `output_mode` is `structured_output` (D-87; spec §5.3).
+- [ ] The key is read from Secrets Manager (`ANTHROPIC_API_KEY_SECRET_ID`) once per run by `credentials.py`, registered with the scrubber before the first model call, passed to the client constructor, and never appears in `os.environ`, a log, a run event, an artifact, or the prompt (D-88; AC-17).
+- [ ] `bedrock_adapter.py` and its tests are removed; `pipeline.py`, `validate.py`, `budget.py` change only at import sites and renamed metrics (D-74, D-80).
+
+#### Business Rules
+
+- Nothing the model returns executes; no tools are declared (D-07).
+- A refusal is never posted as a review; after the fallback it is a visible failure (D-72).
+
+#### Technical Notes
+
+- Pin `anthropic` in `pyproject.toml` (Python 3.13 image); `boto3` stays for Secrets Manager only.
+- `call_timeouts(remaining)` sizes the per-attempt `timeout`; with streaming it bounds the gap between events, so `bounded` remains the run-deadline guard (spec §8.9).
+- Messages and `warn` events carry the SDK error class, HTTP status and `request-id` only (ADR-009 principle).
+- Read every response block by `type`; ignore `thinking` blocks.
+
+#### Testing Requirements
+
+- **Unit Tests:** `tests/unit/test_model_adapter.py` (request shape, sent-schema pin, `count_tokens` paths, `prompt is too long` retry, repair, refusal, fallback model, error classes → codes, 3-call cap, cost), `test_model_adapter_hostile.py` (ported from `test_bedrock_hostile.py`: model text never in errors or events), `test_properties_model.py` (ported property tests), credentials test for the key secret and scrubber registration.
+- **Integration Tests:** `test_pipeline_e2e.py`, `test_pipeline_prompt_capture.py`, `test_pipeline_hostile.py` against a fake Anthropic client (`tests/fixtures/anthropic_fake.py`, replacing `fixtures/bedrock.py`).
+- **Manual/UI Testing:** none (live in S-218).
+- **Edge-Case Matrix:** `max_tokens` stop → repair; empty text → repair; two JSON values → repair; refusal after fallback; fallback model answer; 429 with `retry-after`; deadline reached mid-stream; `count_tokens` 5xx; budget exactly `B`.
+- **Acceptance-Criteria Mapping:** AC-11, AC-15, AC-16, AC-17 (key half) → the unit and integration files above.
+- **Execution Commands:** `make validate` in `agents/code-review/app/codeReview/`; `pnpm run validate` at the root.
+
+#### Migration Requirements (When Data Model Changes)
+
+- None: no schema or data change in this story (`error_code` and `runs.metrics` are free-form).
+
+#### Implementation Steps
+
+1. Write the failing tests (request shape, sent schema, error mapping, refusal, fallback model, key handling).
+2. Add `model_adapter.py` with the client factory, `review()`, `ReviewResult`/`CallMetrics` keeping their shape.
+3. Add `sent_schema` to `findings_schema.py`.
+4. Add the key fetch to `credentials.py` and `config.py`; wire the scrubber.
+5. Switch `pipeline.py` imports and renamed metrics; footer uses `answered_by_model` in `render.py`.
+6. Delete `bedrock_adapter.py` and Bedrock-only tests and fixtures; update the remaining tests.
+
+#### Files to Create/Modify
+
+- `pkg/model_adapter.py` (new), `pkg/bedrock_adapter.py` (delete)
+- `pkg/findings_schema.py`, `pkg/credentials.py`, `pkg/config.py`, `pkg/pipeline.py`, `pkg/render.py`, `pkg/main.py`, `pkg/pyproject.toml`
+- `pkg/tests/unit/test_model_adapter.py`, `test_model_adapter_hostile.py`, `test_properties_model.py` (new); `tests/fixtures/anthropic_fake.py` (new); Bedrock tests removed or ported
+
+#### Definition of Done Checklist
+
+- [ ] Code implemented per technical guidelines
+- [ ] Unit/integration/manual/edge-case tests written and passing
+- [ ] Quality gates passing (`lint`, `format:check`, `typecheck`, `test`, `audit`)
+- [ ] Code reviewed and approved
+- [ ] Acceptance criteria verified
+- [ ] Acceptance criteria explicitly mapped to test evidence
+- [ ] Migration lifecycle complete (or documented opt-out) when schema/data-model changes exist
+- [ ] Pull Request created and merged
+
+---
+
+### Story S-217: Selection call, params, CDK, and runbook for the Anthropic model
+
+**Priority:** High
+**Estimated Size:** M
+**Dependencies:** S-216
+
+#### User Story
+
+As the operator,
+I want the selection call, the params limits, the IAM grants, and the runbook to match the Anthropic model,
+So that one provider and one credential serve the whole run and a 900k-token PR fits the budget.
+
+#### Context
+
+Implements PRD v1.7 FR-1, FR-32 and spec §5.1, §6.3 (selection), §7.2, §9, §15 (D-71, D-77, D-88–D-90). The runbook update ships here with the CDK change (FR-49a).
+
+#### Acceptance Criteria
+
+- [ ] `context/selection.py` calls the Anthropic API through `model_adapter`'s client factory: `SELECTION_MODEL_ID` or `MODEL_ID`, `max_tokens=8000`, effort `low`, structured output with the stripped selection schema, the fallback beta; one attempt (`max_retries=0`) with `timeout=min(60 s, 15% of time left)`; any error, refusal or invalid output fails open (D-71, D-82, D-83; FR-33).
+- [ ] `PARAMS_SCHEMA`: `max_diff_lines` maximum 20,000 (default 2,000); `max_context_tokens` default and maximum 900,000 (D-77, D-90).
+- [ ] New `supabase/migrations/<ts>_seed_code_review_agent.sql` carries the same schema and defaults; `test_seed_contract.py` and `tests/fixtures/params_cases.json` (Python and Ajv parity) pass.
+- [ ] A PR whose expanded diff needs about 393k estimated tokens is reviewed with the default params, not budget-skipped (L2 prompt-capture test with a generated large diff; AC-14).
+- [ ] CDK: the runtime role can `secretsmanager:GetSecretValue` on the Anthropic key secret ARN only and has no `bedrock:` action; env sets `MODEL_ID=claude-sonnet-5-5` and `ANTHROPIC_API_KEY_SECRET_ID`, and drops `PRICE_*`; `code-review-runtime.test.ts` pins both (D-74, D-88; AC-17 IAM half).
+- [ ] `docs/runbooks/code-review-deployment.md` covers creating and rotating the key secret, the tier/ITPM check (D-78), the deploy order (runtime → migration → riel rule, D-89), the v1.8 rollback, and the new error codes.
+
+#### Business Rules
+
+- The selection call never fails the run (FR-33).
+- The runtime is deployed before the migration: an older runtime rejects the new defaults (D-89).
+
+#### Technical Notes
+
+- Selection's sent schema drops `minimum`/`maxLength` the same way as S-216's `sent_schema`.
+- `agentcore.json` and `agentcore/cdk` are the only infra code changed here; nothing is applied in this story.
+
+#### Testing Requirements
+
+- **Unit Tests:** `test_selection.py`, `test_selection_hostile.py` ported to the fake Anthropic client; `test_seed_contract.py`; `test_properties_params.py` for the new bounds (19,999 / 20,000 / 20,001; 899,999 / 900,000 / 900,001).
+- **Integration Tests:** `test_pipeline_selection.py`; large-PR prompt capture (AC-14).
+- **Manual/UI Testing:** panel params form accepts `max_context_tokens=900000` and rejects 900,001 after the migration (checked in S-218).
+- **Edge-Case Matrix:** selection refusal, selection 429, selection timeout under 5 s, empty candidates; params at each bound.
+- **Acceptance-Criteria Mapping:** AC-14 → large-PR capture; AC-17 IAM → `code-review-runtime.test.ts`; FR-1 → seed contract.
+- **Execution Commands:** `make validate` (agent); `pnpm run validate` (panel, Ajv parity); `npm test` in `agents/code-review/agentcore/cdk`.
+
+#### Migration Requirements (When Data Model Changes)
+
+- Migration artifact: `supabase/migrations/<ts>_seed_code_review_agent.sql` (updates the `agents` row's `params_schema` and `default_params`; no table change).
+- Rollback/impact notes: re-apply the previous seed migration's values; an older runtime rejects the new defaults, so roll the migration back before the runtime.
+- Apply step: in S-218, after the runtime deploy, with explicit user confirmation.
+- Verification after apply: `agents` row shows the new schema; panel form validates 900,000.
+
+#### Implementation Steps
+
+1. Port the selection tests to the fake client; write the failing params-bound and CDK tests.
+2. Switch `context/selection.py` to the adapter's client factory and structured output.
+3. Update `config.py`, the seed migration, `supabase/seed.sql`, the parity fixtures.
+4. Update `agentcore.json`, `cdk-stack.ts` and its test.
+5. Update the runbook.
+
+#### Files to Create/Modify
+
+- `pkg/context/selection.py`, `pkg/config.py`, `supabase/seed.sql`, `supabase/migrations/<ts>_seed_code_review_agent.sql` (new)
+- `agents/code-review/agentcore/agentcore.json`, `agentcore/cdk/lib/cdk-stack.ts`, `agentcore/cdk/test/code-review-runtime.test.ts`
+- `pkg/tests/unit/test_selection*.py`, `test_seed_contract.py`, `test_properties_params.py`, `tests/fixtures/params_cases.json`, `tests/integration/test_pipeline_selection.py`
+- `docs/runbooks/code-review-deployment.md`
+
+#### Definition of Done Checklist
+
+- [ ] Code implemented per technical guidelines
+- [ ] Unit/integration/manual/edge-case tests written and passing
+- [ ] Quality gates passing (`lint`, `format:check`, `typecheck`, `test`, `audit`)
+- [ ] Code reviewed and approved
+- [ ] Acceptance criteria verified
+- [ ] Acceptance criteria explicitly mapped to test evidence
+- [ ] Migration lifecycle complete (or documented opt-out) when schema/data-model changes exist
+- [ ] Pull Request created and merged
+
+---
+
+### Story S-218: Infra pass and live verification on Claude Sonnet 5.5
+
+**Priority:** High
+**Estimated Size:** M
+**Dependencies:** S-216, S-217 (merged to `main`)
+
+#### User Story
+
+As the operator,
+I want the key secret, the deploy, the migration and the rule change applied one approved step at a time and verified live,
+So that riel PRs get reviewed on Sonnet 5.5 and every step can be reverted.
+
+#### Context
+
+`infra-engineer` pass (PRD §12; spec §15 v1.8 row). Answers spec §17 Q9–Q12. Also redeploys the v1.6 leaner-diff change (#478), which is merged but not deployed.
+
+#### Acceptance Criteria
+
+- [ ] Change record under `infra/changes/<ChangeId>/` (plan, commands, rollback, result) with one approval per step.
+- [ ] Secret `agent-fleet/prod/ANTHROPIC_API_KEY` created from a key the user provides; its value never appears in the change record or the session output.
+- [ ] Tier check recorded: the account's input-tokens-per-minute limit for `claude-sonnet-5-5`; if under 900,000 the default `max_context_tokens` is lowered to fit, through a follow-up migration (D-78, Q10).
+- [ ] Live structured-output test: whether `maxItems` is accepted is recorded and `sent_schema` adjusted if not (Q9); the `prompt is too long` message confirmed (Q12).
+- [ ] Runtime deployed (v6), then the seed migration applied with confirmation, then the riel `/review` rule's `max_diff_lines` set to 20,000 (D-89).
+- [ ] Live: AC-12 (seeded-bug fixture PR → blocking finding; clean PR → clear; 5-PR smoke recorded with `answered_by_model`), AC-14 (a riel PR of 200k+ tokens reviewed), AC-17 (no `bedrock:` action on the role; the key absent from CloudWatch logs for the runs), p95 `model_ms` recorded (Q11).
+- [ ] Runbook verification log updated; roadmap row set by the planner.
+
+#### Business Rules
+
+- Every infra step is approved, reversible, and recorded; nothing is merged by an agent.
+
+#### Technical Notes
+
+- AWS login may be needed (remote `aws login` URL); the Anthropic key is entered by the user (`! aws secretsmanager create-secret …` or the console), never pasted into chat.
+- Rollback: runtime v5 + restore the `bedrock:InvokeModel` grant from the change backup + previous seed values.
+
+#### Testing Requirements
+
+- **Unit Tests:** none (infra and live).
+- **Integration Tests:** none.
+- **Manual/UI Testing:** `/review` on fixture PRs and live riel PRs; panel run pages show `answered_by_model`, cost and tokens.
+- **Edge-Case Matrix:** large PR (200k+), docs-only (still no call), over-line-cap (> 20,000 lines), a 429 if the tier is low.
+- **Acceptance-Criteria Mapping:** AC-12, AC-14, AC-17 → runbook verification log entries.
+- **Execution Commands:** per the runbook and the change record's `commands.sh`.
+
+#### Migration Requirements (When Data Model Changes)
+
+- Applies S-217's seed migration: explicit user confirmation before applying; verification after apply (agents row, panel form); rollback re-applies the previous values.
+
+#### Implementation Steps
+
+1. Plan and record the change (`/infra-engineer`).
+2. Secret, tier check, live structured-output probe.
+3. Deploy the runtime; verify.
+4. Apply the migration; raise the riel rule; verify.
+5. Live verification and smoke; update the runbook log.
+
+#### Files to Create/Modify
+
+- `infra/changes/<ChangeId>/plan.md`, `commands.sh`, `rollback.sh`, `result.md`
+- `docs/runbooks/code-review-deployment.md` (verification log)
+
+#### Definition of Done Checklist
+
+- [ ] Infra steps applied with approval and recorded
+- [ ] Live checks passing and logged
+- [ ] Quality gates passing for any code change
+- [ ] Acceptance criteria verified
+- [ ] Acceptance criteria explicitly mapped to test evidence
+- [ ] Migration lifecycle complete
+- [ ] Pull Request (change record + runbook log) created and merged
+
+---
+
 ## Execution Plan
 
 ```mermaid
@@ -894,6 +1133,8 @@ Dependency order for the planner: S-204 → S-205 → {S-206, S-207, S-210} → 
 
 Estimated total: 12 stories, roughly 13–18 days of focused work.
 
+**v1.7 — Anthropic model:** S-216 → S-217 → S-218 (sequential; S-218 runs after the consolidated PR merges). About 4–6 days plus the live pass.
+
 ---
 
 ## Coverage Validation
@@ -901,7 +1142,7 @@ Estimated total: 12 stories, roughly 13–18 days of focused work.
 ### Summary
 
 - **Total PRD Requirements:** 58 (31 FR, 13 AC, 5 business rules, 4 data requirements, 5 user stories)
-- **Total User Stories:** 12
+- **Total User Stories:** 15 (12 Wave A/B + 3 v1.7)
 - **Coverage:** 100%
 - **Status:** Complete
 
@@ -967,6 +1208,18 @@ Estimated total: 12 stories, roughly 13–18 days of focused work.
 | US-3 suggestions separated                             | S-212                      | ✅ Covered |
 | US-4 builds on verifier, no repeats                    | S-208, S-209, S-212        | ✅ Covered |
 | US-5 failed/skipped review says so                     | S-212, S-213               | ✅ Covered |
+| v1.7 FR-1 budgets (900,000; `max_diff_lines` ≤ 20,000)  | S-217, S-218               | ✅ Covered |
+| v1.7 FR-18 structured output, refusal fallback         | S-216                      | ✅ Covered |
+| v1.7 FR-19 Sonnet 5.5 default, answering model named   | S-216                      | ✅ Covered |
+| v1.7 FR-29 model API failure outcomes                  | S-216                      | ✅ Covered |
+| v1.7 FR-32 selection call on the Anthropic API         | S-217                      | ✅ Covered |
+| v1.7 AC-14 large PR reviewed                           | S-217, S-218               | ✅ Covered |
+| v1.7 AC-15 structured output, stripped keywords        | S-216                      | ✅ Covered |
+| v1.7 AC-16 refusal fallback                            | S-216                      | ✅ Covered |
+| v1.7 AC-17 key handling, no Bedrock grant              | S-216, S-217, S-218        | ✅ Covered |
+| v1.7 §17 data egress, credentials                      | S-216, S-218               | ✅ Covered |
+| v1.7 §14 same-family precision check (D-79)            | S-218 (first reviews), post-deploy measurement | ✅ Covered |
+| v1.7 D-75 duplicate trigger                            | — (issue #479, out of scope) | ✅ Out of scope |
 
 ### Gaps
 

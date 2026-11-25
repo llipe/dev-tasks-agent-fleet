@@ -42,3 +42,23 @@
 - **Cross-references:** issue bodies mention #315, #280, #90, #97, #98 as fixtures or patterns; GitHub shows these as backlinks on those issues.
 - No assignees (single-operator repo). No issue template constraints applied. No PR created or issue closed in this run, so no `Assisted-by` line was needed.
 - GitHub is now the source of truth for execution tracking of this PRD.
+
+## v1.7 — Anthropic model (2026-11-17)
+
+- Source: [`user-stories-prd-code-review-agent.md`](user-stories-prd-code-review-agent.md) v1.5, section "v1.7 — Anthropic model"
+
+| Story ID | Story Title                                                    | Issue                                                             | Labels                                                                                                                      | Milestone | Assignee |
+| -------- | -------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------- | -------- |
+| S-216    | Review call on Claude Sonnet 5.5                                | [#480](https://github.com/llipe/dev-tasks-agent-fleet/issues/480) | agent:code-review, phase:control-plane, prd:code-review-agent, priority:critical, size:L, story, type: enhancement             | —         | —        |
+| S-217    | Selection call, params, CDK, and runbook                        | [#481](https://github.com/llipe/dev-tasks-agent-fleet/issues/481) | agent:code-review, phase:control-plane, prd:code-review-agent, priority:high, scope:infra, size:M, story, type: enhancement     | —         | —        |
+| S-218    | Infra and live verification on Sonnet 5.5                       | [#482](https://github.com/llipe/dev-tasks-agent-fleet/issues/482) | agent:code-review, phase:control-plane, prd:code-review-agent, priority:high, scope:infra, size:M, story, type: enhancement     | —         | —        |
+
+3 of 3 stories published. Dependency order: S-216 (#480) → S-217 (#481) → S-218 (#482). Cross-links between the three bodies use issue numbers.
+
+### Notes
+
+- **Execution method:** `gh-cli`, delegated to `github-ops`.
+- **Titles shortened** to fit the 80-character issue-title cap; the stories file keeps the full titles.
+- **#479** (duplicate trigger, D-75) is out of scope and not referenced from the story issues.
+- No milestone, no assignees. No PR created or issue closed, so no `Assisted-by` line was needed.
+- GitHub is now the source of truth for execution tracking of v1.7.

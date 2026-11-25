@@ -7,8 +7,9 @@
 | 1.0     | 2026-10-22 | Initial matrix from test plan v1.0 (248 counted cases), PRD v1.1 (FR-1…FR-31, AC-1…AC-13), spec v1.0, decisions D-01…D-35, and stories v1.1 (82 story ACs across S-204…S-215, #406–#417).                                                                                                                                                                                                                                                   | verifier         |
 | 1.1     | 2026-10-22 | DF-02, DF-03, DF-04 resolved in spec v1.1 (D-36–D-38); D.3 states updated; G-5 partly resolved.                                                                                                                                                                                                                                                                                                                                             | product-engineer |
 | 1.2     | 2026-10-23 | Wave A audit fill-in (human-confirmed write-back batch, Llipe, 2026-10-23): §C Observed and Result filled for S-204–S-213 (84 story ACs; S-209 renumbered to stories v1.3's AC1–AC8); Wave B rows marked not yet run. §A FR-9, FR-20, FR-24 rows follow PRD v1.2 (D-49, D-53, D-54); S-209 story-AC references renumbered. §B notes which PRD ACs remain live-only. §D gap and finding states updated against spec v1.3 and test plan v1.2. | product-engineer |
+| 1.3     | 2026-11-23 | v1.7 Anthropic model: new §F maps PRD v1.7 FR-1, FR-18, FR-19, FR-29, FR-31, FR-32, FR-33 and AC-11, AC-12, AC-14–AC-17 to test plan v1.3 §14 (TC-216/217/218, SC-LIVE-13…24, CT-13…21, RT-14…22); 23 story ACs of S-216–S-218 (#480–#482) marked not yet run; gaps G-7…G-12 (G-10 replaces G-4); rows pinned by DF-23…DF-39. §A–§E unchanged. | verifier         |
 
-> Companion to [`test-plan-prd-code-review-agent.md`](test-plan-prd-code-review-agent.md) v1.2. It maps:
+> Companion to [`test-plan-prd-code-review-agent.md`](test-plan-prd-code-review-agent.md) v1.3 (v1.7 cases in plan §14 and §F below). It maps:
 >
 > - **PRD FR → PRD AC → story AC → test case IDs → layers** (§A);
 > - each PRD AC to at least one positive and one negative or edge test (§B);
@@ -252,3 +253,113 @@ A `Drift` result carries an impact class (Critical, Major, or Minor) and an inte
 `product-engineer`. A row whose **(new)** test was not written is reported as `Fail` with "test not implemented", not as `Pass`.
 A known-red row (§D.3) that still fails because its finding was not reconciled is reported as `Drift` with that DF's classification,
 not as `Fail`.
+
+---
+
+## F. v1.7 — Anthropic model (S-216…S-218, #480–#482)
+
+Added in matrix v1.3 (verifier, Design Mode, 2026-11-23), companion to test plan v1.3 §14. Sources: PRD v1.7, spec v1.8, decisions D-70–D-90, stories v1.5 "v1.7 — Anthropic model". Test IDs: TC-216-nn, TC-217-nn, TC-218-nn (plan §14.2–§14.4), SC-LIVE-13…24 (§14.4), CT-13…21 (§14.5), RT-14…22 (§14.8), DF-23…39 (§14.10). Retired and ported Wave A/B cases are listed in plan §14.9; their §A–§C rows above stay as history. The fill-in protocol of §E applies to §F.3.
+
+### F.1 PRD FR (v1.7 wording) → PRD AC → story AC → tests
+
+| FR    | Requirement (short, PRD v1.7)                                                                                       | PRD AC            | Story ACs                                                         | Test case IDs                                                                                         | Layers           | Gap / finding                 |
+| ----- | ------------------------------------------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------- |
+| FR-1  | Params: `max_diff_lines` max 20,000; `max_context_tokens` default and max 900,000 (D-77, D-90)                      | AC-14             | S-217-AC2, S-217-AC3                                              | TC-217-10…17, CT-20, RT-21                                                                           | L1, L2.5, MR     | —                             |
+| FR-18 | One Messages API call, structured output, sent schema stripped, full-schema validation, one repair, refusal fallback | AC-11, AC-15, AC-16 | S-216-AC1, S-216-AC2, S-216-AC3, S-216-AC4, S-216-AC5, S-216-AC7 | TC-216-01…33, TC-216-38…40, CT-13…CT-17, RT-14…RT-18, TC-218-05, TC-218-06                           | L1, L2, Live     | DF-25…DF-30, DF-39            |
+| FR-19 | `MODEL_ID` = `claude-sonnet-5-5`; answering model in footer and artifact; one adapter; no Bedrock path                | AC-16             | S-216-AC6, S-216-AC10                                             | TC-216-34…37, TC-216-51…55, CT-14, CT-18, TC-218-07                                                  | L1, L2, Live, MR | DF-31, DF-32                  |
+| FR-29 | Outcomes: rate limit after retries and surviving refusal → `failed` with a code                                     | AC-11, AC-16      | S-216-AC5                                                         | TC-216-26…33, CT-17, RT-18, SC-LIVE-22                                                               | L1, L2, Live     | DF-23, DF-24, DF-25           |
+| FR-31 | `runs.metrics` (v1.8 names: `model_ms`, `model_calls`, `answered_by_model`, cost from the price table)              | —                 | S-216-AC8                                                         | TC-216-41…45, CT-18, RT-19                                                                           | L1, L2           | DF-31, DF-32                  |
+| FR-32 | Selection call on the Anthropic API, structured output, no tools                                                    | AC-15             | S-217-AC1                                                         | TC-217-01…03, TC-217-06, CT-19, CT-15                                                                | L1               | —                             |
+| FR-33 | Selection fails open; one attempt; `min(60 s, 15%)`                                                                 | —                 | S-217-AC1                                                         | TC-217-04, TC-217-05, TC-217-07…09, RT-22                                                            | L1               | DF-33                         |
+
+**Spec-only and non-functional rows (v1.8)**
+
+| Item                                                  | Story ACs                       | Test case IDs                                             | Layers       | Gap / finding |
+| ----------------------------------------------------- | ------------------------------- | --------------------------------------------------------- | ------------ | ------------- |
+| Exact `count_tokens` check (§6.3, D-84)                | S-216-AC3                       | TC-216-14…20, RT-14, TC-218-05                            | L1, Live     | DF-27…DF-29   |
+| Key handling (§12, D-88)                              | S-216-AC9, S-217-AC5, S-218-AC2 | TC-216-46…50, RT-20, TC-217-23, TC-218-02, SC-LIVE-18     | L1, L2, Live, MR | DF-34, DF-36 |
+| Least-privilege IAM, no `bedrock:` (§7.2, D-74, D-88) | S-217-AC5                       | TC-217-21, TC-217-22, CT-21, SC-LIVE-17                   | L1, Live     | —             |
+| Deadline and streaming timeouts (§8.9, D-85)           | S-216-AC5, S-217-AC1            | TC-216-27, TC-216-28, TC-217-03, TC-217-04                | L1, L2       | DF-38         |
+| Deploy order (D-89), tier check (D-78)                 | S-218-AC3, S-218-AC5            | TC-218-04, TC-218-08, TC-218-09                           | Live         | —             |
+| Runbook in the same PR (FR-49a)                        | S-217-AC6, S-218-AC7            | TC-217-25, TC-217-26, TC-218-11                           | MR, L1       | —             |
+| Spec §17 Q9–Q12                                        | S-218-AC4, S-218-AC6            | TC-218-04…07, SC-LIVE-19                                  | Live         | DF-29, DF-31  |
+| Success metrics (PRD §14): latency, cost, precision    | S-218-AC6                       | SC-LIVE-15, SC-LIVE-19                                    | Live         | Non-gating    |
+
+### F.2 PRD AC rollup, v1.7 (positive + negative/edge)
+
+| PRD AC | Positive                                                     | Negative / edge                                                          | Automated before live?                       | Note                 |
+| ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------ | -------------------------------------------- | -------------------- |
+| AC-11  | TC-216-29, TC-216-33                                         | TC-216-26, TC-216-27, SC-LIVE-22                                         | yes (L1, L2)                                 | DF-23, DF-25         |
+| AC-12  | SC-LIVE-13, SC-LIVE-15                                       | SC-LIVE-14 (clean PR → `clear`)                                          | no (live by definition)                      | R2, D-79             |
+| AC-14  | TC-217-18, SC-LIVE-16                                        | TC-217-19, TC-217-20                                                     | yes (L2)                                     | DF-37                |
+| AC-15  | TC-216-01, TC-216-08, TC-217-01, CT-13, CT-19                | TC-216-02, TC-216-10, TC-216-11, RT-17, TC-218-05                        | yes; keyword acceptance is live (Q9)          | G-8                  |
+| AC-16  | TC-216-34, TC-216-35                                         | TC-216-29, TC-216-30, TC-216-36, SC-LIVE-23                              | yes (L1, L2); live half observational        | G-10; DF-26, DF-32   |
+| AC-17  | TC-216-46, TC-216-47, TC-217-21, SC-LIVE-17                  | TC-216-48, TC-216-49, TC-216-50, TC-217-22, RT-20, TC-218-02, SC-LIVE-18 | yes (L1, L2); logs and role are live         | DF-34, DF-36         |
+
+All six v1.7-relevant PRD ACs have at least one positive and one negative or edge test. PRD AC-1–AC-10 and AC-13 are unchanged in substance by v1.7; their Wave A/B rows in §B stand, with the wording ports listed in plan §14.9.
+
+### F.3 Story AC → tests
+
+| Story AC   | Issue | Requirement (short)                                                                                                         | Test case IDs                                                     | Layers       | Observed                   | Result  |
+| ---------- | ----- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------ | -------------------------- | ------- |
+| S-216-AC1  | #480  | Streaming `beta.messages.stream`; `max_tokens` 64,000; `output_config` effort + format; fallback beta; no tools, `tool_choice`, `thinking` | TC-216-01…07, CT-13, CT-14, CT-15                                  | L1           | Not yet run (v1.7)         | Not run |
+| S-216-AC2  | #480  | `sent_schema` pinned; full-schema validation; removed-keyword violation → one repair                                         | TC-216-08…13, CT-16, RT-16, RT-17                                 | L1           | Not yet run (v1.7)         | Not run |
+| S-216-AC3  | #480  | `count_tokens` before every call; over `B` → rebuild or `BudgetInvariantError`; count failure → estimate + `warn`             | TC-216-14…20, RT-14                                               | L1           | Not yet run (v1.7)         | Not run |
+| S-216-AC4  | #480  | `prompt is too long` → one rebuild; second or on repair → `MODEL_API_ERROR`                                                  | TC-216-21…25, CT-15, RT-18                                        | L1           | Not yet run (v1.7)         | Not run |
+| S-216-AC5  | #480  | SDK error class → `MODEL_*`; timeout vs deadline; refusal → `MODEL_REFUSED` + failure comment                                | TC-216-26…33, CT-15, CT-17, RT-14, RT-18                          | L1, L2       | Not yet run (v1.7)         | Not run |
+| S-216-AC6  | #480  | `answered_by_model` in metrics, artifact, footer; fallback answer posts normally                                             | TC-216-34…37, CT-18                                               | L1, L2       | Not yet run (v1.7)         | Not run |
+| S-216-AC7  | #480  | ≤ 3 review calls; fourth → `CallBudgetExceeded`; `count_tokens` not counted                                                   | TC-216-38…40, TC-216-19, RT-14                                    | L1, L2       | Not yet run (v1.7)         | Not run |
+| S-216-AC8  | #480  | Cost at $2/$10 for `claude-sonnet-5-5`, else `None` + `warn`; `model_ms`, `model_calls`; `structured_output`                   | TC-216-41…45, TC-216-07, CT-18, RT-19                             | L1, L2       | Not yet run (v1.7)         | Not run |
+| S-216-AC9  | #480  | Key from Secrets Manager once; scrubber first; constructor only; never in env, logs, events, artifacts, prompt                | TC-216-46…50, RT-20, CT-15                                        | L1, L2       | Not yet run (v1.7)         | Not run |
+| S-216-AC10 | #480  | Bedrock adapter and tests removed; pipeline, validate, budget change only at imports and metric names                         | TC-216-51…55                                                      | L1, L2, MR   | Not yet run (v1.7)         | Not run |
+| S-217-AC1  | #481  | Selection on the Anthropic client factory; 8,000 tokens, effort `low`, stripped schema, beta; `max_retries=0`; fails open      | TC-217-01…09, CT-15, CT-19, RT-22                                 | L1           | Not yet run (v1.7)         | Not run |
+| S-217-AC2  | #481  | `PARAMS_SCHEMA` bounds 20,000 and 900,000; defaults                                                                          | TC-217-10…12, RT-21                                               | L1           | Not yet run (v1.7)         | Not run |
+| S-217-AC3  | #481  | New seed migration; seed contract; Python/Ajv parity                                                                         | TC-217-13…17, CT-20                                               | L1, L2.5, MR | Not yet run (v1.7)         | Not run |
+| S-217-AC4  | #481  | ~393k-token PR reviewed at default params (AC-14)                                                                            | TC-217-18…20                                                      | L2           | Not yet run (v1.7)         | Not run |
+| S-217-AC5  | #481  | CDK: secret-ARN-only grant; no `bedrock:`; env `MODEL_ID`, `ANTHROPIC_API_KEY_SECRET_ID`; no `PRICE_*`                        | TC-217-21…24, CT-21                                               | L1           | Not yet run (v1.7)         | Not run |
+| S-217-AC6  | #481  | Runbook: key create/rotate, tier check, deploy order, v1.8 rollback, error codes                                             | TC-217-25, TC-217-26                                              | MR, L1       | Not yet run (v1.7)         | Not run |
+| S-218-AC1  | #482  | Change record with one approval per step                                                                                     | TC-218-01, TC-218-10                                              | MR           | Not yet run (v1.7)         | Not run |
+| S-218-AC2  | #482  | Key secret created; value never in the record or session                                                                     | TC-218-02, TC-218-03                                              | MR, Live     | Not yet run (v1.7)         | Not run |
+| S-218-AC3  | #482  | Tier/ITPM recorded; lower the default if under 900,000 (Q10)                                                                 | TC-218-04                                                         | Live         | Not yet run (v1.7)         | Not run |
+| S-218-AC4  | #482  | Live structured-output probe (Q9); `prompt is too long` confirmed (Q12)                                                      | TC-218-05, TC-218-06, TC-218-07                                   | Live         | Not yet run (v1.7)         | Not run |
+| S-218-AC5  | #482  | Runtime v6 → migration (confirmed) → riel rule 20,000                                                                       | TC-218-08, TC-218-09                                              | Live         | Not yet run (v1.7)         | Not run |
+| S-218-AC6  | #482  | Live AC-12, AC-14, AC-17; p95 `model_ms` (Q11)                                                                               | SC-LIVE-13…19, SC-LIVE-20…24 (edges)                              | Live         | Not yet run (v1.7)         | Not run |
+| S-218-AC7  | #482  | Runbook verification log; roadmap row by the planner                                                                         | TC-218-11                                                         | MR           | Not yet run (v1.7)         | Not run |
+
+All 23 of 23 v1.7 story ACs map to at least one test.
+
+### F.4 Gaps, v1.7
+
+| Gap  | FR / AC                              | What is missing                                                                                                                                                                                                                                                                                      | Closed by (test)                     | Suggested owner        | Status   |
+| ---- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------- | -------- |
+| G-7  | PRD v1.3–v1.6 (FR-7 `Refs`, FR-32–FR-36; D-58–D-69) | The plan and this matrix were never extended for PRD v1.3–v1.6 (selection, `context_folders`, docs-only skip, tiered full files, ±3 docs context). Their tests exist in code (`test_selection*.py`, `test_diff_context_by_type.py`, seed 464001) and fidelity reports, but have no TC/§C rows here. Not backfilled in v1.3 (out of scope). | A backfill pass                      | verifier, product-engineer | Open     |
+| G-8  | AC-15, FR-18                         | Provider acceptance (structured-output keywords, `count_tokens` with `output_config`, the fallback beta, the `prompt is too long` text, the `message.model` form) is shown only live.                                                                                                              | TC-218-05…07                         | S-218                  | Accepted |
+| G-9  | FR-18, FR-29                         | The fake cannot show SDK retries, `retry-after`, headers, or SSE assembly. Claimed only through the real SDK over `httpx.MockTransport`.                                                                                                                                                             | CT-15                                | S-216                  | Open     |
+| G-10 | AC-16; replaces G-4                  | A refusal that triggers the server-side fallback cannot be provoked on demand live. Automated at L1/L2 against the fake; the live half is observational.                                                                                                                                            | TC-216-29, TC-216-35, SC-LIVE-23     | S-218 (observational)  | Accepted |
+| G-11 | AC-11 (rate limit), D-78             | A live 429 depends on the account tier; covered automatically by CT-15 (b) and TC-216-26.                                                                                                                                                                                                          | SC-LIVE-22 (conditional)             | S-218                  | Accepted |
+| G-12 | DF-23…DF-39                          | Seventeen spec ambiguities; the tests in §F.5 assert the plan's expected value until product-engineer decides.                                                                                                                                                                                     | §F.5                                 | product-engineer       | Open     |
+
+**Story ACs relying only on live or manual evidence (8):** S-218-AC1…AC7 (infra and live by nature) and S-217-AC6 (runbook, MR plus the lint check). S-216-AC10 has a manual diff-review row (TC-216-54) alongside static L1 checks.
+
+### F.5 Rows pinned by a design finding, v1.7
+
+| Test(s)                          | Finding | Expected value asserted until reconciled                         |
+| -------------------------------- | ------- | ---------------------------------------------------------------- |
+| TC-216-32, CT-17                 | DF-23   | Failure comment `yes` for the four `MODEL_*` codes               |
+| RT-13, CT-17                     | DF-24   | Eleven §13 codes                                                 |
+| TC-216-27, RT-18                 | DF-25   | `RateLimitError` past the deadline → `RUN_TIMEOUT`               |
+| TC-216-29, TC-216-30             | DF-26   | Any final `refusal` → `MODEL_REFUSED`, no repair                 |
+| TC-216-20                        | DF-27   | Repair count over `B` → `MODEL_OUTPUT_INVALID`                   |
+| TC-216-15, RT-14                 | DF-28   | One context-length rebuild per run, whichever trigger            |
+| TC-216-14, TC-218-05             | DF-29   | Count payload drops `max_tokens`, `betas`, `fallbacks`           |
+| TC-216-04, CT-14                 | DF-30   | `beta.messages.stream`                                           |
+| TC-216-41, TC-218-07, RT-19      | DF-31   | Exact-match price key `claude-sonnet-5-5`                        |
+| TC-216-36, TC-216-42             | DF-32   | Accepted call's model; `null` if missing; cost `None` when mixed |
+| TC-217-09                        | DF-33   | Selection reason `api_error`                                     |
+| TC-216-50                        | DF-34   | Key-fetch failure → `INTERNAL_ERROR`, fetched after the token    |
+| TC-216-49, SC-LIVE-18            | DF-36   | Key absent from the comment and the prompt (union)               |
+| TC-217-18, SC-LIVE-16            | DF-37   | L2 at `max_diff_lines` 2,000; live at the rule's 20,000          |
+| TC-216-27, SC-LIVE-19            | DF-38   | Abandoned stream is a known limit; measured                      |
+| TC-216-05, CT-14                 | DF-39   | Non-text blocks ignored; no text → repair                        |
+
+A pinned row that fails because product-engineer decided differently is reported in Audit Mode as `Drift` with that DF's classification, per §E. DF-35 (stale spec text) pins no test.
