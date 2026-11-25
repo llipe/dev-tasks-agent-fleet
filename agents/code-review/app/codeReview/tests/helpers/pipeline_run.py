@@ -13,8 +13,9 @@ model adapter, validation and rendering. Only the edges are replaced:
 - the Anthropic API is a ``FakeAnthropic`` (``tests/fixtures/anthropic_fake.py``)
   behind a recording ``model_factory``, so the production ``client_factory``
   path runs; the API key is ``API_KEY``, from a counting ``resolve_model_key``;
-- the context-selection call is still a Bedrock ``FakeConverse``
-  (``selection_fake``, ``tests/fixtures/bedrock.py``) until S-217 (#481);
+- the context-selection call is a second ``FakeAnthropic`` (``selection_fake``)
+  behind a recording ``selection_factory`` (S-217), so the selection's
+  requests, tokens and errors stay apart from the review's;
 - the clock is a ``ManualClock``, the prompt sink a list, and the heartbeat a
   spy that records the step it wraps;
 - credential resolution returns ``TOKEN``; the Supabase key is ``SUPABASE_KEY``.
@@ -39,7 +40,6 @@ from heartbeat import is_heartbeat_chunk, read_terminal_payload, run_with_heartb
 from pipeline import PipelineDeps
 from prompt import Prompt
 from tests.fixtures.anthropic_fake import FakeAnthropic, review_message
-from tests.fixtures.bedrock import FakeConverse
 from tests.helpers.github_stub import StubTransport, json_response, load_fixture, text_response
 
 RUN_ID = "3f2b8c1e-5d4a-4f6b-9a7c-2e1d0b9a8c7f"
@@ -198,12 +198,12 @@ class Harness:
     monkeypatch: Any
     stub: StubTransport = field(default_factory=lambda: load_fixture("sample-pr"))
     fake: FakeAnthropic = field(default_factory=FakeAnthropic)
-    selection_fake: FakeConverse = field(default_factory=FakeConverse)
+    selection_fake: FakeAnthropic = field(default_factory=FakeAnthropic)
     clock: ManualClock = field(default_factory=ManualClock)
     reporter: ReporterSink = field(default_factory=ReporterSink)
     prompts: list[Prompt] = field(default_factory=list)
     model_factory_calls: list[dict[str, Any]] = field(default_factory=list)
-    bedrock_factory_calls: list[dict[str, Any]] = field(default_factory=list)
+    selection_factory_calls: list[dict[str, Any]] = field(default_factory=list)
     key_resolutions: int = 0
     api_key: str = API_KEY
     heartbeat_steps: list[str] = field(default_factory=list)
@@ -260,9 +260,9 @@ class Harness:
         self.model_factory_calls.append(kwargs)
         return self.fake
 
-    def bedrock_factory(self, **kwargs: Any) -> FakeConverse:
-        """The selection call's client until S-217 (#481)."""
-        self.bedrock_factory_calls.append(kwargs)
+    def selection_factory(self, **kwargs: Any) -> FakeAnthropic:
+        """The selection call's client: ``model_adapter.make_client``'s shape (S-217)."""
+        self.selection_factory_calls.append(kwargs)
         return self.selection_fake
 
     def heartbeat(self, fn: Callable[[], Any], *, interval: float, seq_start: int = 0) -> Any:
@@ -276,7 +276,7 @@ class Harness:
             make_github=functools.partial(GitHubClient, transport=self.stub, sleep=lambda s: None),
             resolve_model_key=self.resolve_model_key,
             model_factory=self.model_factory,
-            bedrock_factory=self.bedrock_factory,
+            selection_factory=self.selection_factory,
             clock=self.clock,
             sink=self.prompts.append,
             nonce_factory=_nonces(),

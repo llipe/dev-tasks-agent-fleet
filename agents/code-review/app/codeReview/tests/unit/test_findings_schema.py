@@ -24,7 +24,7 @@ from findings_schema import (
     parse_review_json,
     validate_review,
 )
-from tests.fixtures.bedrock import finding, valid_review
+from tests.fixtures.anthropic_fake import finding, valid_review
 from tests.helpers.perf import perf_bound
 
 SENTINEL = "SENTINEL-DO-NOT-ECHO"

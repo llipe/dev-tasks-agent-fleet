@@ -4,10 +4,10 @@ PRD v1.4 end to end â€” context selection, docs-only skip, tiered drops (FR-32â€
 Drives ``main.invoke`` with the S-213 harness. The ``riel`` scenario replays
 ``llipe/riel#889``: a ``GC-08`` story whose audit file
 (``workstream/audit-gift-card-compensation-gc08.md``) follows no dev-tasks name,
-so only the selection call can find it. The selection call is a Bedrock
-Converse request on ``selection_fake`` until S-217 (#481) moves it to the
-Anthropic client; the review is a ``stream`` call on ``fake``. The selection
-never counts toward the review's calls, tokens or cost (TC-216-40).
+so only the selection call can find it. Both calls are ``stream`` calls on
+the Anthropic client (S-217): the selection on ``selection_fake``, the review
+on ``fake``. The selection never counts toward the review's calls, tokens or
+cost (TC-216-40), and its client is not the review's counting client.
 """
 
 from __future__ import annotations
@@ -15,11 +15,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+import json
+
 import pytest
 
-from context.selection import SELECTION_TOOL
 from model_adapter import request_tokens
-from tests.fixtures.bedrock import throttled, tool_use_response
+from tests.fixtures.anthropic_fake import message, rate_limited
 from tests.helpers.github_stub import json_response, text_response
 from tests.helpers.pipeline_run import (
     COMMENT_URL,
@@ -79,11 +80,9 @@ def _riel(h: Harness, *, tree: bool = True) -> None:
         h.set_tree([("docs/README.md", 300), (SPEC, 4000), (AUDIT, 2500), ("src/x.ts", 9)])
 
 
-def _selection(documents: list[dict[str, Any]], priority: Sequence[int] = ()) -> dict[str, Any]:
-    return tool_use_response(
-        {"documents": documents, "file_priority": list(priority)},
-        name=SELECTION_TOOL,
-        usage=(700, 50),
+def _selection(documents: list[dict[str, Any]], priority: Sequence[int] = ()) -> Any:
+    return message(
+        json.dumps({"documents": documents, "file_priority": list(priority)}), usage=(700, 50)
     )
 
 
@@ -109,10 +108,23 @@ def test_selection_brings_the_spec_and_the_audit_into_the_review(h):
     result = h.drive()
     assert (result["status"], result["outcome"]) == ("succeeded", "no_findings")
     assert h.selection_fake.calls == 1 and h.fake.calls == 1
-    (selection_req,) = h.selection_fake.requests
+    (selection_req,) = h.selection_fake.stream_requests
     (review_req,) = h.fake.stream_requests
-    assert selection_req["toolConfig"]["toolChoice"] == {"tool": {"name": SELECTION_TOOL}}
-    assert "tools" not in review_req and "tool_choice" not in review_req
+    for req in (selection_req, review_req):
+        assert "tools" not in req and "tool_choice" not in req and "thinking" not in req
+    # D-82, D-83: the selection runs at effort low with 8,000 tokens, whatever
+    # the run's reasoning_effort (high by default); the review keeps its own.
+    assert selection_req["output_config"]["effort"] == "low"
+    assert selection_req["max_tokens"] == 8000
+    assert review_req["output_config"]["effort"] == "high"
+    assert selection_req["output_config"]["format"]["type"] == "json_schema"
+    assert h.selection_fake.counts_made == 0
+    # One attempt, keyed like the review: the key is fetched once per run.
+    (built,) = h.selection_factory_calls
+    assert built["max_retries"] == 0
+    assert built["api_key"] == h.api_key
+    assert h.key_resolutions == 1
+    assert all(c["max_retries"] == 2 for c in h.model_factory_calls)
 
     user = h.prompts[-1].user
     assert f"Spec `{SPEC}`:" in user
@@ -162,7 +174,7 @@ def test_selection_model_id_is_used_when_set(h, monkeypatch):
     h.selection_fake.push(_selection(PICKS))
     h.fake.push(review())
     h.drive()
-    assert h.selection_fake.requests[0]["modelId"] == "us.anthropic.claude-haiku-4-5"
+    assert h.selection_fake.stream_requests[0]["model"] == "us.anthropic.claude-haiku-4-5"
     assert h.fake.stream_requests[0]["model"] == h.model_id
 
 
@@ -199,7 +211,7 @@ def test_the_selection_ranking_orders_full_file_drops(h):
 
 def test_an_invalid_selection_falls_back_to_the_rules(h):
     _riel(h)
-    h.selection_fake.push(tool_use_response({"documents": "everything"}, name=SELECTION_TOOL))
+    h.selection_fake.push(message('{"documents": "everything"}'))
     h.fake.push(review())
     result = h.drive()
     assert result["status"] == "succeeded"
@@ -211,13 +223,45 @@ def test_an_invalid_selection_falls_back_to_the_rules(h):
     assert h.reporter.terminal["metrics"]["selection_status"] == "failed"
 
 
-def test_a_throttled_selection_falls_back_to_the_rules(h):
+def test_a_rate_limited_selection_falls_back_to_the_rules(h):
     _riel(h)
-    h.selection_fake.push(throttled())
+    h.selection_fake.push(rate_limited())
     h.fake.push(review())
     result = h.drive()
     assert result["status"] == "succeeded"
     assert h.selection_fake.calls == 1 and h.fake.calls == 1
+    m = h.reporter.terminal["metrics"]
+    assert (m["selection_status"], m["selection_reason"]) == ("failed", "api_error")  # DF-33
+    assert m["model_calls"] == 1
+
+
+def test_a_refused_selection_falls_back_to_the_rules(h):
+    _riel(h)
+    h.selection_fake.push(message("", stop_reason="refusal"))
+    h.fake.push(review())
+    result = h.drive()
+    assert result["status"] == "succeeded"
+    assert h.selection_fake.calls == 1 and h.fake.calls == 1
+    assert h.reporter.terminal["metrics"]["selection_reason"] == "invalid_output"
+    assert _context_line(h.posts()[-1]).endswith("selection failed; rule-based context only")
+
+
+def test_a_selection_answered_by_a_fallback_model_has_no_cost(h):
+    _riel(h)
+    h.selection_fake.push(
+        message(
+            json.dumps({"documents": PICKS, "file_priority": []}),
+            model="claude-opus-5-1",
+            usage=(700, 50),
+        )
+    )
+    h.fake.push(review())
+    h.drive()
+    m = h.reporter.terminal["metrics"]
+    assert m["selection_status"] == "picked"
+    assert m["selection_cost_usd"] is None
+    assert m["answered_by_model"] == h.model_id  # the review's, not the selection's
+    assert m["cost_usd"] is not None
 
 
 def test_rules_mode_makes_no_selection_call(h):
@@ -226,6 +270,7 @@ def test_rules_mode_makes_no_selection_call(h):
     result = h.drive({"pr_number": 42, "context_selection": "rules"})
     assert result["status"] == "succeeded"
     assert h.fake.calls == 1
+    assert h.selection_fake.calls == 0 and h.selection_factory_calls == []  # TC-217-07
     assert _context_line(h.posts()[-1]).endswith("selection off (rules)")
 
 
@@ -234,6 +279,7 @@ def test_empty_context_folders_make_no_selection_call(h):
     h.fake.push(review())
     h.drive({"pr_number": 42, "context_folders": ""})
     assert h.fake.calls == 1
+    assert h.selection_fake.calls == 0 and h.selection_factory_calls == []
     assert _context_line(h.posts()[-1]).endswith("selection off (no context folders)")
 
 
@@ -242,7 +288,7 @@ def test_context_folders_limit_the_candidates(h):
     h.selection_fake.push(_selection([{"index": 1, "role": "verifier_report", "reason": "r"}]))
     h.fake.push(review())
     h.drive({"pr_number": 42, "context_folders": "workstream"})
-    user = h.selection_fake.requests[0]["messages"][0]["content"][0]["text"]
+    user = h.selection_fake.stream_requests[0]["messages"][0]["content"][0]["text"]
     assert AUDIT in user and SPEC not in user
     assert f"Verifier report `{AUDIT}`" in h.prompts[-1].user
 
@@ -257,6 +303,7 @@ def test_a_tree_read_failure_skips_the_selection(h):
     result = h.drive()
     assert result["status"] == "succeeded"
     assert h.fake.calls == 1
+    assert h.selection_fake.calls == 0
     assert "repository tree unavailable" in h.reporter.messages("warn")
     assert _context_line(h.posts()[-1]).endswith("selection skipped (repository tree unavailable)")
 
@@ -344,5 +391,5 @@ def test_more_than_400_candidates_are_capped_with_a_warning(h):
     h.fake.push(review())
     h.drive()
     assert "context selection candidates capped" in h.reporter.messages("warn")
-    user = h.selection_fake.requests[0]["messages"][0]["content"][0]["text"]
+    user = h.selection_fake.stream_requests[0]["messages"][0]["content"][0]["text"]
     assert "400. docs/f0399.md" in user and "docs/f0400.md" not in user
