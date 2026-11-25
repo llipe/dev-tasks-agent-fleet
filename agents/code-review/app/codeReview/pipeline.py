@@ -1281,7 +1281,7 @@ class Pipeline:
         *,
         read_timeout_seconds: float,
         connect_timeout_seconds: float,
-        max_retries: int,
+        max_retries: int = 0,
     ) -> ModelClient:
         """The selection call's client (FR-33): the run's key, uncounted.
 

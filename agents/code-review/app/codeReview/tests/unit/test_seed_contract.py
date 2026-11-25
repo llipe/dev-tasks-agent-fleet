@@ -261,7 +261,10 @@ def test_v18_migration_header_states_the_deploy_order_and_the_rollback():
     ).lower()
     assert "d-89" in header
     plan = header[header.index("deploy order (d-89)") :]
-    order = [plan.index(w) for w in ("(1) the v1.8 runtime", "(2) then this migration", "(3) then the riel")]
+    order = [
+        plan.index(w)
+        for w in ("(1) the v1.8 runtime", "(2) then this migration", "(3) then the riel")
+    ]
     assert order == sorted(order)
     assert "max_diff_lines" in header and "20000" in header.replace(",", "")
     assert "rollback" in header

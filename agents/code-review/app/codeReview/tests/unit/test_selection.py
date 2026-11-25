@@ -422,7 +422,9 @@ def test_a_nonce_that_cannot_avoid_the_content_fails_open():
     assert result.status == STATUS_FAILED
     assert result.reason == "prompt"
     assert fake.calls == 0
-    assert warnings == [("context selection failed; using rule-based context", {"reason": "prompt"})]
+    assert warnings == [
+        ("context selection failed; using rule-based context", {"reason": "prompt"})
+    ]
 
 
 def test_request_bounds_the_issue_and_body_text():

@@ -12,10 +12,9 @@ cost (TC-216-40), and its client is not the review's counting client.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
-
-import json
 
 import pytest
 

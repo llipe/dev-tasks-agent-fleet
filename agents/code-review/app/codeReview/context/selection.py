@@ -643,9 +643,7 @@ def select_context(
             message = stream.get_final_message()
         tokens = message_usage(message)
         model = answering_model(message)
-        parsed = parse_selection(
-            _answer(message), n, min(len(inputs.changed), MAX_CHANGED_FILES)
-        )
+        parsed = parse_selection(_answer(message), n, min(len(inputs.changed), MAX_CHANGED_FILES))
     except Exception as exc:  # noqa: BLE001 - FR-33: the selection never fails the run
         data = _failure(exc)
         if warn is not None:

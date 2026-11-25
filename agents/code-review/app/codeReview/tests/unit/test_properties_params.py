@@ -182,9 +182,7 @@ def test_rt21_v18_bounds_property():
         if ONLY_ITER is not None and str(i) != ONLY_ITER:
             continue
         lo, hi = V18_BOUNDS[key]
-        expected = (
-            isinstance(value, int) and not isinstance(value, bool) and lo <= value <= hi
-        )
+        expected = isinstance(value, int) and not isinstance(value, bool) and lo <= value <= hi
         got = _accepted({"pr_number": 1, key: value})
         assert got == expected, f"seed={RT21_SEED} iter={i} {key}={value!r}"
         accepted += got

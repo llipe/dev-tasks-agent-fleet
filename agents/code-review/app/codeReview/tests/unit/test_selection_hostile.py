@@ -280,7 +280,11 @@ def _random_doc(rng: Any, n: int) -> Any:
         return {"index": rng.choice([True, 1.0, "1", None]), "role": "spec", "reason": "r"}
     if kind == 3:
         return rng.choice([None, "docs/x.md", [1], 7])
-    return {"index": rng.randint(1, n), "role": "verifier_report", "reason": "r" * rng.randint(0, 300)}
+    return {
+        "index": rng.randint(1, n),
+        "role": "verifier_report",
+        "reason": "r" * rng.randint(0, 300),
+    }
 
 
 def _random_item(rng: Any, n: int) -> Any:
@@ -295,7 +299,11 @@ def _random_item(rng: Any, n: int) -> Any:
     docs = [_random_doc(rng, n) for _ in range(rng.randint(0, 9))]
     text = json.dumps({"documents": docs, "file_priority": [rng.randint(-1, 4) for _ in range(3)]})
     if kind == 3:
-        blocks = [{"type": "text", "text": "partial"}, fallback_block(), {"type": "text", "text": text}]
+        blocks = [
+            {"type": "text", "text": "partial"},
+            fallback_block(),
+            {"type": "text", "text": text},
+        ]
         return message(blocks=blocks, model=rng.choice(["claude-opus-5-1", "claude-sonnet-5-5"]))
     return message(text)
 
@@ -316,7 +324,9 @@ def test_rt22_select_context_never_raises_and_fails_open():
         assert fake.calls <= 1 and fake.counts_made == 0, ctx
         assert all(b["max_retries"] == 0 for b in built), ctx
         assert len(built) == fake.calls, ctx
-        failed = [w for w in warnings if w[0] == "context selection failed; using rule-based context"]
+        failed = [
+            w for w in warnings if w[0] == "context selection failed; using rule-based context"
+        ]
         if result.status == "failed":
             assert len(failed) == 1, ctx
             assert failed[0][1]["reason"] in FAILURE_KINDS, ctx
