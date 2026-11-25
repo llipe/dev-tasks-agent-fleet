@@ -137,6 +137,9 @@ recorded under `infra/changes/<ChangeId>/` (S-218, issue #482).
      --resource-arns arn:aws:bedrock:us-east-1::foundation-model/deepseek.v3.2
    ```
 
+   The `implicitDeny` expectation applies only after the final pass (below). During the interim
+   two-pass policy, which keeps the Bedrock grant, this simulation returns `allowed`, and that is expected.
+
    Between this step and step 4 the live version 5 runtime can no longer call Bedrock, so `/review`
    runs fail with `BEDROCK_ACCESS_DENIED`. Applying the policy after step 4 instead leaves the v1.8
    runtime unable to read its key. To avoid either window, apply the policy in two passes:

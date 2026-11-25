@@ -23,7 +23,7 @@ The context-selection call uses the Anthropic client from `model_adapter.make_cl
 - Positive: one provider and one credential path for the code-review agent; the runtime role needs no Bedrock grant for the review or selection calls.
 - Positive: the selection tests run on the same Anthropic fake as the review tests.
 - Negative: PR content used for selection (PR body, issue text, document index) now leaves AWS for the Anthropic API under its standard retention, as the review content already did (ADR-010 addendum 2026-11-25, D-76).
-- Follow-up: the deployed runtime (version 5) still runs the Bedrock build and its IAM policy still grants Bedrock until S-218 deploys the v1.7 build and applies the new policy and secret. Until then this ADR describes the branch, not production.
+- Follow-up: the deployed runtime (version 5) still runs the Bedrock build and its IAM policy still grants Bedrock until S-218 (#482) deploys the v1.7 build and applies the new policy and secret. Until then this ADR describes the branch, not production.
 
 ## Related
 
