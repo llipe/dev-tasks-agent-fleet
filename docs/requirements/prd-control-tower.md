@@ -6,6 +6,7 @@
 | ------- | ---------- | ------------------------------------------------------------------------------------------------- | ------------------------- |
 | 1.0     | 2026-11-25 | Initial draft. Decisions D-01 to D-17 in `workstream/decisions-control-tower.md`. | @llipe / product-engineer |
 | 1.1     | 2026-11-25 | Approved by @llipe. No requirement changed. The glossary append for the 13 proposed Vocabulary terms was refused: the bounded context `panel` does not resolve because the technical guidelines have no package map (D-17). The rows stay `proposed` until it exists. | @llipe / product-engineer |
+| 1.2     | 2026-11-25 | Factual corrections from `workstream/research-control-tower.md`; no requirement changed. FR-2, §12 and §17 no longer cite a hashed-at-rest or constant-time token precedent in the webhook code: webhook secrets are in Vault and the URL token is plain text, so token hashing and verification are new. §12 states what Realtime covers today. §17 counts logout as a public surface. | product-engineer |
 
 ## 1. Executive Summary
 
@@ -86,7 +87,7 @@ There is no external user. The Control Tower sits behind the panel's existing lo
 ### Wave A — Ingest
 
 - **FR-1.** The panel lets the owner register a **tower repository** by `owner/name`. A repository is registered at most once (D-11).
-- **FR-2.** Registering a tower repository issues one **tower token**. The panel shows it once and stores only a hash, following the show-once pattern of webhook signing secrets (D-11).
+- **FR-2.** Registering a tower repository issues one **tower token**. The panel shows it once, as it does for webhook signing secrets, and stores only a hash of it (D-11). Hashing is new to the panel: webhook secrets are kept recoverable in Vault because verifying a signature needs them, and a tower token never needs to be read back.
 - **FR-3.** The owner can rotate or revoke a tower token per repository. A rotated or revoked token is rejected on its next use. Removing a tower repository revokes its token (D-11).
 - **FR-4.** A tower token grants exactly one capability: writing Control Tower data for its own repository. It grants no read, and no access to agents, runs, schedules, webhooks or any other repository's tower data (D-11).
 - **FR-5.** The panel exposes one ingest endpoint that accepts a **push** authenticated by a tower token. It rejects a push with a missing, unknown or revoked token, and a push that names a repository other than the token's (D-04, D-11).
@@ -193,9 +194,9 @@ Titles, scope lines and digest text come from the reporting repository, which ma
 
 ## 12. Technical Considerations
 
-- **Stack.** Next.js panel on Fly.io with Supabase as the system of record and Supabase Realtime for live updates, as the technical guidelines define; no new infrastructure.
-- **Ingest endpoint.** It is a public route authenticated by its own credential, like `POST /api/webhooks/[token]`. Its size cap, constant-time token comparison and fail-closed behavior should follow that precedent.
-- **Token handling.** Reuse the show-once and hashed-at-rest approach of webhook endpoints.
+- **Stack.** Next.js panel on Fly.io with Supabase as the system of record and Supabase Realtime for live updates, ; no new infrastructure. Today Realtime is published only for runs and run events and reaches the browser through a server-side relay; extending that to tower data is for the specification.
+- **Ingest endpoint.** It is a public route authenticated by its own credential, like `POST /api/webhooks/[token]`. Its size cap and fail-closed behavior should follow that precedent. Token verification is new: the webhook route looks its URL token up in plain text and verifies a signature, which a tower token does not have.
+- **Token handling.** Reuse the show-once reveal of webhook endpoints. Hashing at rest has no precedent in the panel and is specified new.
 - **Access to stored data.** Tower tables follow the panel's current row-level-security posture; the browser never reads them directly.
 - **Retention.** The daily prune follows the webhook-delivery prune.
 - **Release gate.** The auth release gate should assert that the ingest endpoint rejects a push without a valid token, as it does for webhooks and internal endpoints.
@@ -256,7 +257,7 @@ Titles, scope lines and digest text come from the reporting repository, which ma
 
 ## 17. Security & Compliance
 
-- The ingest endpoint is the panel's third public write surface, after login and webhooks. It must reject before parsing more than it needs, cap body size, compare tokens in constant time, and fail closed.
+- The ingest endpoint is a new public write surface, alongside login, logout and webhooks. It must reject before parsing more than it needs, cap body size, verify the token without leaking it through timing, and fail closed.
 - A tower token is write-only and bound to one repository, so a leaked token can falsify one repository's status and nothing else. It is revocable per repository (D-11).
 - The token is stored hashed and shown once. It must not appear in logs, error messages or the delivery record.
 - Pushed text is untrusted input: it is rendered as text, never as markup, and never interpreted as an instruction.
