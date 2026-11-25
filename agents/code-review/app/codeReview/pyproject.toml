@@ -5,12 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "code-review"
 version = "0.1.0"
-description = "Code review agent for AgentCore — one Bedrock Converse call over an expanded PR diff, one PR comment"
+description = "Code review agent for AgentCore — one Anthropic Messages API call over an expanded PR diff, one PR comment"
 requires-python = ">=3.13"
-# Pinned at the security-analyst sibling's versions (D-20). No strands-agents:
-# the review is a single Converse call with no tool loop (D-07). No scanner
-# toolchains (semgrep, checkov): this agent does not scan.
+# Pinned at the security-analyst sibling's versions (D-20), plus the Anthropic
+# SDK for the model call (D-80; boto3 stays for Secrets Manager only). No
+# strands-agents: the review is a single Messages API call with no tool loop
+# (D-07). No scanner toolchains (semgrep, checkov): this agent does not scan.
 dependencies = [
+    "anthropic==2.14.0",
     "bedrock-agentcore==1.22.0",
     "boto3==1.43.81",
     "requests==2.34.2",
