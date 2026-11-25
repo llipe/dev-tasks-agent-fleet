@@ -4,7 +4,8 @@
 
 | Version | Date       | Summary                                                                                           | Author                    |
 | ------- | ---------- | ------------------------------------------------------------------------------------------------- | ------------------------- |
-| 1.0     | 2026-11-25 | Initial draft. Decisions D-01 to D-17 in `workstream/decisions-control-tower.md`. Awaiting review. | @llipe / product-engineer |
+| 1.0     | 2026-11-25 | Initial draft. Decisions D-01 to D-17 in `workstream/decisions-control-tower.md`. | @llipe / product-engineer |
+| 1.1     | 2026-11-25 | Approved by @llipe. No requirement changed. The glossary append for the 13 proposed Vocabulary terms was refused: the bounded context `panel` does not resolve because the technical guidelines have no package map (D-17). The rows stay `proposed` until it exists. | @llipe / product-engineer |
 
 ## 1. Executive Summary
 
