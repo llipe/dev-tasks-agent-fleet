@@ -180,7 +180,7 @@ describe('runtime-role-policy.json (AC-2, spec §7.2 v1.8, AC-17 IAM half)', () 
     expect([...asList(sm[0].Resource)].sort()).toEqual([...SECRET_ARNS].sort());
   });
 
-  test('the only wildcard in a secret ARN is the Anthropic key\'s -?????? suffix', () => {
+  test("the only wildcard in a secret ARN is the Anthropic key's -?????? suffix", () => {
     const sm = statements.find(s => asList(s.Action).includes('secretsmanager:GetSecretValue'))!;
     for (const arn of asList(sm.Resource)) {
       expect(arn).not.toContain('*');

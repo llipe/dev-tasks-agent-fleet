@@ -351,9 +351,11 @@ LARGE_FILES = 10
 LARGE_EDITS = 95  # per file: 10 x 95 edits = 1,900 changed lines (<= 2,000)
 
 
-def _gen_line(f: int, i: int, width: int, edited: bool = False) -> str:
-    head = f"v{f:02d}_{i:06d} = {'1' if edited else '0'}"
-    return head + " " * max(0, width - len(head) - 1) + "\n"
+def _gen_line(i: int, width: int, edited: bool = False) -> str:
+    """Line ``i`` of a generated file, ``width`` characters with its newline."""
+    head = f"v{i:06d}={'1' if edited else '0'}"
+    assert len(head) < width
+    return head + " " * (width - len(head) - 1) + "\n"
 
 
 def _large_pr(h: Harness, *, width: int, spacing: int = 101) -> list[str]:
@@ -361,9 +363,9 @@ def _large_pr(h: Harness, *, width: int, spacing: int = 101) -> list[str]:
     paths = [f"src/gen_{f:02d}.py" for f in range(LARGE_FILES)]
     lines = LARGE_EDITS * spacing
     edits_at = {51 + k * spacing for k in range(LARGE_EDITS)}
-    for f, path in enumerate(paths):
-        base = "".join(_gen_line(f, i, width) for i in range(1, lines + 1))
-        head = "".join(_gen_line(f, i, width, i in edits_at) for i in range(1, lines + 1))
+    for path in paths:
+        base = "".join(_gen_line(i, width) for i in range(1, lines + 1))
+        head = "".join(_gen_line(i, width, i in edits_at) for i in range(1, lines + 1))
         h.set_content(path, MERGE_BASE, base)
         h.set_content(path, HEAD, head)
     h.set_files([file_entry(p, LARGE_EDITS, LARGE_EDITS) for p in paths])
@@ -379,7 +381,7 @@ def _exact_count(kwargs: dict) -> int:
 
 def test_large_pr_is_reviewed_at_the_default_params(h):
     """TC-217-18 (AC-14): ~393k estimated tokens, default params, one review call."""
-    _large_pr(h, width=13)
+    paths = _large_pr(h, width=13)
     h.fake = FakeAnthropic([review()], default_count=_exact_count)
     result = h.drive()
     assert result["status"] == "succeeded"
@@ -390,7 +392,9 @@ def test_large_pr_is_reviewed_at_the_default_params(h):
     assert 380_000 <= m["estimated_first_call_tokens"] <= 400_000, m["estimated_first_call_tokens"]
     (p,) = h.prompts
     assert p.context.max_context_tokens == 900_000  # D-90 default
-    assert len(_contents(p, "diff")) == LARGE_FILES
+    diff = "".join(_contents(p, "diff"))
+    assert [f"+++ b/{path}" in diff for path in paths] == [True] * LARGE_FILES
+    assert diff.count("\n+v") == LARGE_FILES * LARGE_EDITS  # every edit, in its context
     assert p.context.full_files_included == ()
     (body,) = h.posts()
     assert "over the context budget" not in body

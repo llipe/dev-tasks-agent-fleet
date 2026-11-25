@@ -69,7 +69,7 @@
   - [x] 2.6 [code-review] `[I]` Update `PARAMS_SCHEMA` in `config.py`: `max_diff_lines` maximum 20,000 (default 2,000); `max_context_tokens` default and maximum 900,000 (D-77, D-90)
   - [x] 2.7 [supabase] `[I]` Create the migration `supabase/migrations/<ts>_seed_code_review_agent.sql` with the same schema and defaults; update `supabase/seed.sql`; document rollback in the migration header (re-apply the previous seed's values; roll it back before the runtime) (D-89)
   - [x] 2.8 [code-review] `[I]` Make `test_seed_contract.py` and the Python/Ajv parity fixtures pass
-  - [ ] 2.9 [code-review-cdk] `[I]` Update `agentcore.json` and `cdk-stack.ts`: secret grant, Bedrock grant removed, env updated (D-74, D-88)
+  - [x] 2.9 [code-review-cdk] `[I]` Update `agentcore.json` and `cdk-stack.ts`: secret grant, Bedrock grant removed, env updated (D-74, D-88)
   - [ ] 2.10 [repo root] `[I]` Update `docs/runbooks/code-review-deployment.md`: create and rotate the key secret, tier/ITPM check (D-78), deploy order runtime → migration → riel rule (D-89), v1.8 rollback, the new `MODEL_*` error codes (FR-49a)
   - [ ] 2.11 Migration gate: do **not** apply the migration in this story; applying it is S-218 step 3.5, with explicit user confirmation
   - [ ] 2.12 Verify Acceptance Criterion: selection on Anthropic, fail-open (FR-33) → 2.1
