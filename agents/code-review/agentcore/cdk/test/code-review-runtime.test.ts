@@ -135,6 +135,15 @@ describe('synthesized stack (AC-2)', () => {
     }
   });
 
+  test('no bedrock: action string anywhere in the synthesized template (TC-217-22, SN-16)', () => {
+    // Covers inline Role `Policies` and any other resource shape, not only
+    // AWS::IAM::Policy/ManagedPolicy. IAM action names are case-insensitive.
+    // `bedrock-agentcore:` baseline actions do not match.
+    const synthesized = JSON.stringify(template.toJSON());
+    expect(synthesized).not.toMatch(/"bedrock:/i);
+    expect(synthesized).not.toMatch(/foundation-model\/|inference-profile\//);
+  });
+
   test('the runtime resource uses the imported role', () => {
     const runtimes = template.findResources('AWS::BedrockAgentCore::Runtime');
     expect(Object.keys(runtimes)).toHaveLength(1);

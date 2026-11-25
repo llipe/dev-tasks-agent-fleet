@@ -479,3 +479,7 @@ def test_selection_request_body_and_headers(sdk):
     assert FALLBACK_BETA in stream.headers.get("anthropic-beta", "")
     assert stream.headers["authorization"] == f"Bearer {KEY}"
     assert KEY not in stream.content.decode()
+    # CT-15 (d) "only there", selection half: no other header and not the URL.
+    others = {k: v for k, v in stream.headers.items() if k.lower() != "authorization"}
+    assert KEY not in json.dumps(others)
+    assert KEY not in str(stream.url)
