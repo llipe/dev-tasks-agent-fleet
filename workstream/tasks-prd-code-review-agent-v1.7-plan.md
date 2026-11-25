@@ -80,7 +80,7 @@
   - [x] 2.14 Verify Acceptance Criterion: large PR reviewed (AC-14) → 2.3
   - [x] 2.15 Verify Acceptance Criterion: CDK grants and env (AC-17 IAM half) → 2.4
   - [x] 2.16 Verify Acceptance Criterion: runbook covers the key secret, tier check, deploy order, rollback and error codes → 2.10 review
-  - [ ] 2.17 Record the AC-to-test mapping (AC-14, AC-17 IAM, FR-1) in the PR body
+  - [x] 2.17 Record the AC-to-test mapping (AC-14, AC-17 IAM, FR-1) in the PR body
   - [x] 2.18 Run Tests: `make -C agents/code-review/app/codeReview validate`, `pnpm run validate` (panel, Ajv parity), `npm test` in `agents/code-review/agentcore/cdk`
 
 - [ ] 3.0 Implement Story S-218 - https://github.com/llipe/dev-tasks-agent-fleet/issues/482: Infra pass and live verification on Claude Sonnet 5.5
