@@ -98,7 +98,7 @@ The **active codebase** is the `dependency-update` Python agent under
 `agents/security-analyst/app/securityAnalyst/` (Phase 3, done and verified live, see
 Delivery phases above), and the `code-review` Python package under
 `agents/code-review/app/codeReview/` (Wave A delivered: a `/review` PR comment starts one run
-that makes one model review (Claude Sonnet 5.5 through the Anthropic API, structured output, at most 3 calls, no tools) and posts one review comment; it is deployed (runtime v5, 2026-11-04, Wave B done). The Anthropic model change (v1.7) is not deployed yet (S-218) — see
+that makes one model review (Claude Sonnet 5.5 through the Anthropic API, structured output, at most 3 calls, no tools) and posts one review comment; it is deployed (runtime v5, 2026-11-04; Wave B live verification, S-215 #417, still open). The Anthropic model change (v1.7) is not deployed yet (S-218) — see
 [`docs/requirements/prd-code-review-agent.md`](docs/requirements/prd-code-review-agent.md)).
 Agent-specific details (pipeline, deployment, environment variables, runtime timeouts) live in
 [`agents/dependency-update/README.md`](agents/dependency-update/README.md) and

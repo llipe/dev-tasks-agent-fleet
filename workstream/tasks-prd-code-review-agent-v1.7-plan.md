@@ -58,12 +58,12 @@
   - [x] 1.19 Verify Acceptance Criterion: answering model in footer and artifact; 3-call cap; cost; renamed metrics → 1.7, 1.14
   - [x] 1.20 Verify Acceptance Criterion: key handling (AC-17, key half) → 1.9
   - [x] 1.21 Verify Acceptance Criterion: no Bedrock code left; `pipeline.py`, `validate.py`, `budget.py` change only at imports and metric names → `grep -r bedrock pkg/` empty, diff review
-    > Note (PR #484): the review path has no Bedrock code. The selection call's Bedrock client stays in the temporary `pkg/legacy_bedrock.py` (imported by `context/selection.py` and `pipeline.py`'s `bedrock_factory` dep), with `tests/fixtures/bedrock.py`, until 2.5 deletes them; `test_layout.py` pins that residual. `pipeline.py` also gained the API-key wiring (AC9), beyond imports and metric names.
+    > Note (PR #484, closed by PR #485): S-216 left the selection call's Bedrock client in a temporary `pkg/legacy_bedrock.py`; S-217 (2.5) deleted it with `tests/fixtures/bedrock.py`, and `test_layout.py` now pins that no Bedrock reference remains but the AgentCore runtime. `pipeline.py` also gained the API-key wiring (AC9), beyond imports and metric names.
   - [x] 1.22 Run edge-case tests: `max_tokens` stop, empty text, two JSON values (each → repair); refusal after fallback; fallback-model answer; 429 with `retry-after`; deadline mid-stream; `count_tokens` 5xx; budget exactly `B`
   - [x] 1.23 Record the AC-to-test mapping (AC-11, AC-15, AC-16, AC-17 key half) in the PR body
   - [x] 1.24 Run Tests: `make -C agents/code-review/app/codeReview validate` and `pnpm run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 2.0 Implement Story S-217 - https://github.com/llipe/dev-tasks-agent-fleet/issues/481: Selection call, params, CDK, and runbook for the Anthropic model
+- [x] 2.0 Implement Story S-217 - https://github.com/llipe/dev-tasks-agent-fleet/issues/481: Selection call, params, CDK, and runbook for the Anthropic model
   - [x] 2.1 [code-review] `[T]` Port `test_selection.py` and `test_selection_hostile.py` to the fake Anthropic client; add failing tests: `max_tokens=8000`, effort `low`, stripped selection schema, fallback beta, `max_retries=0`, `timeout=min(60 s, 15% of time left)`; refusal, 429, timeout under 5 s, invalid output and empty candidates all fail open (D-71, D-82, D-83; FR-33)
   - [x] 2.2 [code-review] `[T]` Add failing bound cases to `test_properties_params.py` and `tests/fixtures/params_cases.json`: `max_diff_lines` 19,999 / 20,000 / 20,001; `max_context_tokens` 899,999 / 900,000 / 900,001 (D-77, D-90)
   - [x] 2.3 [code-review] `[T]` Add the failing large-PR prompt-capture test: a generated diff of about 393k estimated tokens is reviewed with the default params, not budget-skipped (AC-14)
