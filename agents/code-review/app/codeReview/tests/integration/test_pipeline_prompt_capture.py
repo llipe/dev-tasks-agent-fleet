@@ -13,8 +13,12 @@ the builder-independent ``parse_blocks``:
 - PRD AC-8: excluded workstream files never reach the model, and the PR's own
   comments and reviews are never read (FR-10);
 - PRD AC-13 (static): injected instructions sit inside nonce blocks only, a
-  forged end marker closes nothing, the only tool is ``submit_review``, and a
-  model-supplied ``verdict`` key is a schema failure, not a verdict.
+  forged end marker closes nothing, the request carries no tool (structured
+  output only, S-216), and a model-supplied ``verdict`` key is a schema
+  failure, not a verdict.
+
+The prompt sink receives exactly the ``system`` and ``messages`` sent on each
+``beta.messages.stream`` call (TC-216-55, port of TC-209-17).
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ import json
 import pytest
 
 from prompt import Prompt
-from tests.fixtures.bedrock import FakeConverse
+from tests.fixtures.anthropic_fake import FakeAnthropic, prompt_too_long, review_message
 from tests.helpers.github_stub import json_response, load_fixture, text_response
 from tests.helpers.pipeline_run import (
     HEAD,
@@ -286,41 +290,48 @@ def test_prompt_capture_injection_stays_inside_nonce_blocks(h):
     assert [t for t, _c in cands] == ["V1"]
     assert "Ignore previous instructions" in cands[0][1]
 
-    tools = h.fake.requests[0]["toolConfig"]["tools"]
-    assert [t["toolSpec"]["name"] for t in tools] == ["submit_review"]
-    assert h.fake.requests[0]["toolConfig"]["toolChoice"] == {"tool": {"name": "submit_review"}}
+    first_request = h.fake.stream_requests[0]
+    assert "tools" not in first_request and "tool_choice" not in first_request
+    assert first_request["output_config"]["format"]["type"] == "json_schema"
     # The wrapper's verdict comes from the findings, not from the model's key.
     assert result["verdict"] == "blocking"
     assert h.reporter.terminal["metrics"]["repair_calls"] == 1
 
 
-def review_with_verdict() -> dict:
-    from tests.fixtures.bedrock import tool_use_response
-
-    return tool_use_response({"findings": [], "verifier_checks": [], "verdict": "clear"})
+def review_with_verdict() -> object:
+    return review_message({"findings": [], "verifier_checks": [], "verdict": "clear"})
 
 
 def test_prompt_capture_sink_sees_at_most_three_prompts(h):
     """S-210 (7): first build, R4 rebuild and repair rebuild."""
-    from tests.fixtures.bedrock import context_length_rejected, tool_use_response
-
     h.use_long_app()  # a full file, so the context-length retry applies (D-69)
     h.fake.push(
-        context_length_rejected(),
-        tool_use_response({"findings": "bad", "verifier_checks": []}),
+        prompt_too_long(),
+        review_message({"findings": "bad", "verifier_checks": []}),
         review(),
     )
     h.drive()
     assert len(h.prompts) == 3
     assert h.prompts[0].context.full_files_included
     assert not h.prompts[1].context.full_files_included
-    assert json.dumps(h.reporter.terminal["metrics"]["output_mode"]) == '"forced_schema"'
+    assert json.dumps(h.reporter.terminal["metrics"]["output_mode"]) == '"structured_output"'
+    # TC-216-55: the sink saw exactly what each stream call sent.
+    for captured, sent in zip(h.prompts, h.fake.stream_requests, strict=True):
+        assert sent["system"] == captured.system
+        assert sent["messages"][0]["content"][0] == {"type": "text", "text": captured.user}
 
 
-def test_fake_converse_is_the_production_client_factory_path(h):
-    """S-210 (8): the factory is called once per Converse call with that call's timeouts."""
+def test_fake_anthropic_is_the_production_client_factory_path(h):
+    """S-210 (8): the factory is called once per review call with that call's timeouts."""
     h.fake.push(review())
     h.drive()
-    assert isinstance(h.fake, FakeConverse)
-    assert len(h.bedrock_factory_calls) == 1
-    assert set(h.bedrock_factory_calls[0]) == {"read_timeout_seconds", "connect_timeout_seconds"}
+    assert isinstance(h.fake, FakeAnthropic)
+    assert len(h.model_factory_calls) == 1
+    assert set(h.model_factory_calls[0]) == {
+        "api_key",
+        "read_timeout_seconds",
+        "connect_timeout_seconds",
+        "max_retries",
+    }
+    assert h.model_factory_calls[0]["max_retries"] == 2
+    assert h.bedrock_factory_calls == []

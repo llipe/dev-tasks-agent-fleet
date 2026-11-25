@@ -663,24 +663,14 @@ def test_failing_without_a_warn_callback_still_fails_open():
 @pytest.mark.parametrize(
     ("env", "expected"),
     [
-        ({}, None),
-        ({"PRICE_INPUT_PER_MTOK": "3", "PRICE_OUTPUT_PER_MTOK": "15"}, (3.0, 15.0)),
-        ({"PRICE_INPUT_PER_MTOK": "3"}, None),
-        (
-            {
-                "PRICE_INPUT_PER_MTOK": "3",
-                "PRICE_OUTPUT_PER_MTOK": "15",
-                "SELECTION_MODEL_ID": "other-model",
-            },
-            None,
-        ),
-        (
-            {"PRICE_INPUT_PER_MTOK": "3", "PRICE_OUTPUT_PER_MTOK": "15", "SELECTION_MODEL_ID": "m"},
-            (3.0, 15.0),
-        ),
+        ({}, None),  # MODEL_ID "m" is not in the D-87 table
+        ({"PRICE_INPUT_PER_MTOK": "3", "PRICE_OUTPUT_PER_MTOK": "15"}, None),  # retired
+        ({"SELECTION_MODEL_ID": "claude-sonnet-5-5"}, (2.0, 10.0)),
+        ({"SELECTION_MODEL_ID": "other-model"}, None),
+        ({"MODEL_ID": "claude-sonnet-5-5"}, (2.0, 10.0)),
     ],
 )
-def test_selection_prices_apply_to_the_review_model_only(env, expected):
+def test_selection_prices_come_from_the_d87_price_table(env, expected):
     from config import load_settings
 
     base = {
@@ -691,7 +681,7 @@ def test_selection_prices_apply_to_the_review_model_only(env, expected):
     }
     settings = load_settings({**base, **env})
     assert settings.selection_prices == expected
-    assert settings.selection_model == env.get("SELECTION_MODEL_ID", "m")
+    assert settings.selection_model == env.get("SELECTION_MODEL_ID", env.get("MODEL_ID", "m"))
 
 
 @pytest.mark.parametrize(

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Decisions 1, 2 and 5 are amended by the [2026-11-25 addendum](#addendum-2026-11-25-anthropic-model-for-the-review-call-s-216-480); the original text is kept as the record of the Wave A decision.
 
 ## Context
 
@@ -64,9 +64,21 @@ PRD v1.4, D-59–D-64. Decisions 1 and 4 above change as follows; everything els
 
 **Consequences.** One more model call per review (a few thousand input tokens; its tokens and cost are recorded separately). Selection is non-deterministic, so the comment names what was picked (FR-34). `context_selection = rules` turns it off per webhook rule.
 
+## Addendum (2026-11-25): Anthropic model for the review call (S-216, #480)
+
+PRD v1.7 (D-70–D-79) and spec v1.8 §6.3, §13 (D-80–D-90). This addendum amends Decisions 1, 2 and 5 above and the Bedrock references in Decision 6 and the Context. Decisions 3, 4 and 7 stand. The selection call is **not** amended here: it stays on Bedrock Converse until S-217 (#481), which moves it to the Anthropic client (D-71).
+
+- **Decision 1 (amended): the review call is an Anthropic Messages call.** The wrapper makes one streaming call (`client.beta.messages.stream`, read with `get_final_message()`, D-80) on `MODEL_ID`, with the assembled context, the rubric and the output schema. The schema is enforced by structured outputs (`output_config.format`, D-81), not a forced tool: Sonnet 5.5 rejects a forced `tool_choice`, so the request has no `tools` and no `tool_choice`. The reply's `text` blocks are parsed as data and nothing the model returns is executed. The review makes **at most 3 calls per run** (`MAX_CALLS` = 3, spec §6.3): the first call, at most one context-length retry (D-48), and at most one repair call (D-47). The pre-send `count_tokens` check (D-84) is not a review call and is in no call count. The adapter is `agents/code-review/app/codeReview/model_adapter.py`; `bedrock_adapter.py` is deleted. This replaces the "one Bedrock Converse review call, plus at most 4 retry or repair calls" text of Decision 1 and the "at most 5 Converse calls" text of the Context.
+- **Decision 2 (superseded): no non-Anthropic family.** The reviewer is Claude Sonnet 5.5 (`claude-sonnet-5-5`) on the Anthropic API. `MODEL_ID` remains a required environment variable (`config.py`); its default is `claude-sonnet-5-5` (PRD FR-19, D-70). The model-family diversity goal is dropped (D-79), so the reviewer may be the family that wrote the code. The earlier GPT-5.6 Sol and DeepSeek V4 Pro defaults (D-09, D-17, D-18) are superseded. A refusal falls back server-side (beta `server-side-fallback-2026-07-01` with `fallbacks: "default"`, D-72, D-86); the comment names the model that answered.
+- **Decision 5 (amended): the wrapper also holds the Anthropic API key.** The key is `agent-fleet/prod/ANTHROPIC_API_KEY`, read once per run from AWS Secrets Manager by `credentials.py` (D-88), passed to the SDK client only, and never placed in the environment, a log, a run event, an artifact or the comment. The model still receives no tools and no credentials. PR content (diffs, full files, issues, specs) now leaves AWS for the Anthropic API, under its standard retention, for every managed repository (D-76, PRD §17).
+- **Decision 6 (amended reference).** The Anthropic call's errors are mapped to the agent's error codes in `model_adapter.py` (D-85). ADR-009 continues to govern the remaining AWS calls (Secrets Manager, and the selection client until S-217), not the Anthropic call.
+- **Not deployed by this change.** S-216 changes the code and tests only. The API key secret, the `agents` params migration (D-89), the IAM change (no `bedrock:` grant) and the redeploy are Wave B infrastructure work and are not recorded as done here.
+
+**Why this is an addendum.** The Wave A decision was correct for the model it named at the time. The model, the call shape and the key location changed by decision (PRD v1.7), so the record of the change belongs here and not in an edit to the original Decision text.
+
 ## Related
 
-- Requirements: [`docs/requirements/prd-code-review-agent.md`](../requirements/prd-code-review-agent.md) (v1.2), [`docs/requirements/prd-webhook-triggers.md`](../requirements/prd-webhook-triggers.md) (trigger mechanism)
+- Requirements: [`docs/requirements/prd-code-review-agent.md`](../requirements/prd-code-review-agent.md) (v1.2 for Wave A; v1.7 for the Anthropic model addendum), [`docs/requirements/prd-webhook-triggers.md`](../requirements/prd-webhook-triggers.md) (trigger mechanism)
 - Workstream: [`workstream/specification-prd-code-review-agent.md`](../../workstream/specification-prd-code-review-agent.md) (v1.3), [`workstream/decisions-code-review-agent.md`](../../workstream/decisions-code-review-agent.md) (D-01–D-55), [`workstream/planner-state-code-review-agent-wave-a.md`](../../workstream/planner-state-code-review-agent-wave-a.md), [`workstream/fidelity-report-S-204.md`](../../workstream/fidelity-report-S-204.md) to [`workstream/fidelity-report-S-213.md`](../../workstream/fidelity-report-S-213.md)
 - Related ADRs: [ADR-006](ADR-006-long-step-keepalive-and-clock-invariant.md), [ADR-009](ADR-009-allowlisted-aws-error-logging.md)
 - Docs updated: [`docs/technical-guidelines.md`](../technical-guidelines.md) (§6, §9, §11, §16, changelog 1.55), [`docs/product-context.md`](../product-context.md) (§5, §6, changelog 1.4), [`README.md`](../../README.md) (agent layout, active-codebase paragraph, ADR index)

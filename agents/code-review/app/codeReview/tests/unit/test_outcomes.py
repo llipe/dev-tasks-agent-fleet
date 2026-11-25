@@ -14,13 +14,6 @@ import enum
 
 import pytest
 
-from bedrock_adapter import (
-    BedrockAccessDenied,
-    BedrockError,
-    BedrockTimeout,
-    CallBudgetExceeded,
-    ModelOutputInvalid,
-)
 from budget import BudgetInvariantError
 from credentials import CredentialError
 from findings_schema import SchemaViolation
@@ -29,6 +22,15 @@ from github_client import (
     GitHubApiError,
     GitHubNotFound,
     GitHubPermissionDenied,
+)
+from model_adapter import (
+    CallBudgetExceeded,
+    ModelAccessDenied,
+    ModelApiError,
+    ModelOutputInvalid,
+    ModelRateLimited,
+    ModelRefused,
+    ModelTimeout,
 )
 from pipeline import (
     FAILURE_COMMENT,
@@ -94,10 +96,13 @@ CASES = [
     (CredentialError("NO_INSTALLATION", "x"), "load_pr", "INTERNAL_ERROR"),
     (CredentialError("PEM_UNAVAILABLE", "x"), "load_pr", "INTERNAL_ERROR"),
     (CredentialError("SUPABASE_UNREACHABLE", "x"), "load_pr", "INTERNAL_ERROR"),
-    (BedrockAccessDenied("denied"), "review", "BEDROCK_ACCESS_DENIED"),
-    (BedrockError("throttled"), "review", "BEDROCK_ERROR"),
-    (BedrockTimeout("late", run_timeout=True), "review", "RUN_TIMEOUT"),
-    (BedrockTimeout("read timeout", run_timeout=False), "review", "BEDROCK_ERROR"),
+    (CredentialError("ANTHROPIC_KEY_UNAVAILABLE", "x"), "review", "INTERNAL_ERROR"),  # DF-34
+    (ModelAccessDenied("denied"), "review", "MODEL_ACCESS_DENIED"),
+    (ModelApiError("5xx"), "review", "MODEL_API_ERROR"),
+    (ModelRateLimited("429"), "review", "MODEL_RATE_LIMITED"),
+    (ModelRefused("refusal"), "review", "MODEL_REFUSED"),
+    (ModelTimeout("late", run_timeout=True), "review", "RUN_TIMEOUT"),
+    (ModelTimeout("read timeout", run_timeout=False), "review", "MODEL_API_ERROR"),
     (ModelOutputInvalid("bad"), "review", "MODEL_OUTPUT_INVALID"),
     (CallBudgetExceeded("sixth"), "review", "INTERNAL_ERROR"),
     (BudgetInvariantError(10, 5), "context", "INTERNAL_ERROR"),
@@ -133,20 +138,52 @@ def test_error_code_is_mapped_on_the_code_attribute(exc, step, code):
 
 def test_validate_step_errors_are_internal_even_with_a_code():
     """S-211 (2): anything ``validate_result`` raises is a wrapper defect."""
-    assert error_code_for(BedrockError("odd"), step="validate") == "INTERNAL_ERROR"
+    assert error_code_for(ModelApiError("odd"), step="validate") == "INTERNAL_ERROR"
     assert error_code_for(GitHubApiError("odd"), step="validate") == "INTERNAL_ERROR"
 
 
 def test_mapping_ignores_the_class_and_reads_the_code():
-    """A ``BedrockError`` whose code is ``RUN_TIMEOUT`` is a timeout (S-210 (4))."""
+    """A ``ModelApiError`` whose code is ``RUN_TIMEOUT`` is a timeout (S-210 (4))."""
 
     class Odd(Exception):
-        code = "BEDROCK_ACCESS_DENIED"
+        code = "MODEL_ACCESS_DENIED"
 
-    err = BedrockError("x")
+    err = ModelApiError("x")
     err.code = "RUN_TIMEOUT"  # type: ignore[misc]
     assert error_code_for(err, step="review") == "RUN_TIMEOUT"
-    assert error_code_for(Odd(), step="review") == "BEDROCK_ACCESS_DENIED"
+    assert error_code_for(Odd(), step="review") == "MODEL_ACCESS_DENIED"
+
+
+@pytest.mark.parametrize("code", ["BEDROCK_ACCESS_DENIED", "BEDROCK_ERROR"])
+def test_retired_bedrock_codes_are_not_codes(code):
+    """CT-17: v1.8 has no ``BEDROCK_*`` code; an old one renders as INTERNAL_ERROR."""
+    assert code not in ERROR_CODES and code not in FAILURE_COMMENT
+    assert canonical_code(code) == "INTERNAL_ERROR"
+
+
+@pytest.mark.parametrize(
+    "code", ["MODEL_ACCESS_DENIED", "MODEL_API_ERROR", "MODEL_RATE_LIMITED", "MODEL_REFUSED"]
+)
+def test_model_codes_are_their_own_canonical_code(code):
+    """TC-216-32, CT-17: never collapsed to INTERNAL_ERROR."""
+    assert canonical_code(code) == code
+
+
+def test_error_codes_are_the_spec_13_eleven():
+    """CT-17, DF-24: spec v1.8 §13 has eleven codes."""
+    assert ERROR_CODES == (
+        "INVALID_PARAMS",
+        "GITHUB_PERMISSION_DENIED",
+        "GITHUB_API_ERROR",
+        "MODEL_ACCESS_DENIED",
+        "MODEL_API_ERROR",
+        "MODEL_RATE_LIMITED",
+        "MODEL_REFUSED",
+        "MODEL_OUTPUT_INVALID",
+        "RUN_TIMEOUT",
+        "COMMENT_POST_FAILED",
+        "INTERNAL_ERROR",
+    )
 
 
 class _Code(enum.StrEnum):
@@ -212,8 +249,10 @@ def test_failure_comment_table_matches_spec_13():
         "INVALID_PARAMS": "no",
         "GITHUB_PERMISSION_DENIED": "attempted",
         "GITHUB_API_ERROR": "attempted",
-        "BEDROCK_ACCESS_DENIED": "yes",
-        "BEDROCK_ERROR": "yes",
+        "MODEL_ACCESS_DENIED": "yes",  # DF-23 pinned
+        "MODEL_API_ERROR": "yes",
+        "MODEL_RATE_LIMITED": "yes",
+        "MODEL_REFUSED": "yes",
         "MODEL_OUTPUT_INVALID": "yes",
         "RUN_TIMEOUT": "yes",
         "COMMENT_POST_FAILED": "once_unless_denied",

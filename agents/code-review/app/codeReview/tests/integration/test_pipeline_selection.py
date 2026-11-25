@@ -4,9 +4,10 @@ PRD v1.4 end to end â€” context selection, docs-only skip, tiered drops (FR-32â€
 Drives ``main.invoke`` with the S-213 harness. The ``riel`` scenario replays
 ``llipe/riel#889``: a ``GC-08`` story whose audit file
 (``workstream/audit-gift-card-compensation-gc08.md``) follows no dev-tasks name,
-so only the selection call can find it. The selection call is the first
-Converse request and the review the second; the selection never counts toward
-the review's calls, tokens or cost.
+so only the selection call can find it. The selection call is a Bedrock
+Converse request on ``selection_fake`` until S-217 (#481) moves it to the
+Anthropic client; the review is a ``stream`` call on ``fake``. The selection
+never counts toward the review's calls, tokens or cost (TC-216-40).
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ from typing import Any
 
 import pytest
 
-from bedrock_adapter import request_tokens
 from context.selection import SELECTION_TOOL
+from model_adapter import request_tokens
 from tests.fixtures.bedrock import throttled, tool_use_response
 from tests.helpers.github_stub import json_response, text_response
 from tests.helpers.pipeline_run import (
@@ -103,13 +104,15 @@ def _context_line(body: str) -> str:
 
 def test_selection_brings_the_spec_and_the_audit_into_the_review(h):
     _riel(h)
-    h.fake.push(_selection(PICKS, [2, 1]), review())
+    h.selection_fake.push(_selection(PICKS, [2, 1]))
+    h.fake.push(review())
     result = h.drive()
     assert (result["status"], result["outcome"]) == ("succeeded", "no_findings")
-    assert h.fake.calls == 2
-    selection_req, review_req = h.fake.requests
+    assert h.selection_fake.calls == 1 and h.fake.calls == 1
+    (selection_req,) = h.selection_fake.requests
+    (review_req,) = h.fake.stream_requests
     assert selection_req["toolConfig"]["toolChoice"] == {"tool": {"name": SELECTION_TOOL}}
-    assert review_req["toolConfig"]["toolChoice"] == {"tool": {"name": "submit_review"}}
+    assert "tools" not in review_req and "tool_choice" not in review_req
 
     user = h.prompts[-1].user
     assert f"Spec `{SPEC}`:" in user
@@ -123,24 +126,27 @@ def test_selection_brings_the_spec_and_the_audit_into_the_review(h):
 
 def test_selection_metrics_are_recorded_apart_from_the_review(h):
     _riel(h)
-    h.fake.push(_selection(PICKS), review())
+    h.selection_fake.push(_selection(PICKS))
+    h.fake.push(review())
     h.drive()
     m = h.reporter.terminal["metrics"]
-    assert m["bedrock_calls"] == 1
+    assert m["model_calls"] == 1  # TC-216-40: the selection is not a review call
     assert (m["input_tokens"], m["output_tokens"]) == (1000, 200)
     assert (m["selection_input_tokens"], m["selection_output_tokens"]) == (700, 50)
     assert m["selection_status"] == "picked"
     assert m["selection_picks"] == 2
     assert m["selection_candidates"] == 3
     # The review's request estimate does not include the selection request.
-    assert m["estimated_input_tokens"] == request_tokens(h.fake.requests[1])
+    assert m["estimated_input_tokens"] == request_tokens(h.fake.stream_requests[0])
+    assert h.fake.calls == 1 and h.fake.counts_made == 1
     events = [e for e in h.reporter.events() if e["message"] == "context selection done"]
     assert len(events) == 1
 
 
 def test_the_artifact_records_the_picks(h):
     _riel(h)
-    h.fake.push(_selection(PICKS), review())
+    h.selection_fake.push(_selection(PICKS))
+    h.fake.push(review())
     h.drive()
     selection = h.reporter.artifacts()[-1]["metadata"]["selection"]
     assert selection["status"] == "picked"
@@ -153,10 +159,11 @@ def test_the_artifact_records_the_picks(h):
 def test_selection_model_id_is_used_when_set(h, monkeypatch):
     monkeypatch.setenv("SELECTION_MODEL_ID", "us.anthropic.claude-haiku-4-5")
     _riel(h)
-    h.fake.push(_selection(PICKS), review())
+    h.selection_fake.push(_selection(PICKS))
+    h.fake.push(review())
     h.drive()
-    assert h.fake.requests[0]["modelId"] == "us.anthropic.claude-haiku-4-5"
-    assert h.fake.requests[1]["modelId"] == h.model_id
+    assert h.selection_fake.requests[0]["modelId"] == "us.anthropic.claude-haiku-4-5"
+    assert h.fake.stream_requests[0]["model"] == h.model_id
 
 
 def test_the_selection_ranking_orders_full_file_drops(h):
@@ -177,7 +184,8 @@ def test_the_selection_ranking_orders_full_file_drops(h):
     for path in (FACADE, CONTRACT):
         h.set_content(path, MERGE_BASE, base)
         h.set_content(path, HEAD, head)
-    h.fake.push(_selection([], [1, 2, 3]), review())
+    h.selection_fake.push(_selection([], [1, 2, 3]))
+    h.fake.push(review())
     h.drive()
     ctx = h.prompts[-1].context
     order = list(ctx.full_files_included) + list(ctx.full_files_dropped)
@@ -191,10 +199,12 @@ def test_the_selection_ranking_orders_full_file_drops(h):
 
 def test_an_invalid_selection_falls_back_to_the_rules(h):
     _riel(h)
-    h.fake.push(tool_use_response({"documents": "everything"}, name=SELECTION_TOOL), review())
+    h.selection_fake.push(tool_use_response({"documents": "everything"}, name=SELECTION_TOOL))
+    h.fake.push(review())
     result = h.drive()
     assert result["status"] == "succeeded"
-    assert h.fake.calls == 2  # no repair call for the selection
+    assert h.selection_fake.calls == 1  # no repair call for the selection
+    assert h.fake.calls == 1
     assert f"Spec `{SPEC}`" not in h.prompts[-1].user
     assert "context selection failed; using rule-based context" in h.reporter.messages("warn")
     assert _context_line(h.posts()[-1]).endswith("selection failed; rule-based context only")
@@ -203,10 +213,11 @@ def test_an_invalid_selection_falls_back_to_the_rules(h):
 
 def test_a_throttled_selection_falls_back_to_the_rules(h):
     _riel(h)
-    h.fake.push(throttled(), review())
+    h.selection_fake.push(throttled())
+    h.fake.push(review())
     result = h.drive()
     assert result["status"] == "succeeded"
-    assert h.fake.calls == 2
+    assert h.selection_fake.calls == 1 and h.fake.calls == 1
 
 
 def test_rules_mode_makes_no_selection_call(h):
@@ -228,9 +239,10 @@ def test_empty_context_folders_make_no_selection_call(h):
 
 def test_context_folders_limit_the_candidates(h):
     _riel(h)
-    h.fake.push(_selection([{"index": 1, "role": "verifier_report", "reason": "r"}]), review())
+    h.selection_fake.push(_selection([{"index": 1, "role": "verifier_report", "reason": "r"}]))
+    h.fake.push(review())
     h.drive({"pr_number": 42, "context_folders": "workstream"})
-    user = h.fake.requests[0]["messages"][0]["content"][0]["text"]
+    user = h.selection_fake.requests[0]["messages"][0]["content"][0]["text"]
     assert AUDIT in user and SPEC not in user
     assert f"Verifier report `{AUDIT}`" in h.prompts[-1].user
 
@@ -252,7 +264,8 @@ def test_a_tree_read_failure_skips_the_selection(h):
 def test_a_truncated_tree_is_used_with_a_warning(h):
     _riel(h)
     h.set_tree([(SPEC, 4000)], truncated=True)
-    h.fake.push(_selection([{"index": 1, "role": "spec", "reason": "r"}]), review())
+    h.selection_fake.push(_selection([{"index": 1, "role": "spec", "reason": "r"}]))
+    h.fake.push(review())
     h.drive()
     assert "repository tree truncated" in h.reporter.messages("warn")
     assert f"Spec `{SPEC}`" in h.prompts[-1].user
@@ -311,9 +324,10 @@ def test_a_secret_in_a_picked_path_or_reason_is_scrubbed(h):
     _riel(h)
     h.set_tree([(leaky, 10)])
     h.set_content(leaky, HEAD, "# Leaky spec\n")
-    h.fake.push(
-        _selection([{"index": 1, "role": "spec", "reason": f"has {SUPABASE_KEY}"}]), review()
+    h.selection_fake.push(
+        _selection([{"index": 1, "role": "spec", "reason": f"has {SUPABASE_KEY}"}])
     )
+    h.fake.push(review())
     h.drive()
     body = h.posts()[-1]
     assert SUPABASE_KEY not in body
@@ -326,8 +340,9 @@ def test_a_secret_in_a_picked_path_or_reason_is_scrubbed(h):
 def test_more_than_400_candidates_are_capped_with_a_warning(h):
     _riel(h)
     h.set_tree([(f"docs/f{k:04d}.md", 10) for k in range(450)])
-    h.fake.push(_selection([]), review())
+    h.selection_fake.push(_selection([]))
+    h.fake.push(review())
     h.drive()
     assert "context selection candidates capped" in h.reporter.messages("warn")
-    user = h.fake.requests[0]["messages"][0]["content"][0]["text"]
+    user = h.selection_fake.requests[0]["messages"][0]["content"][0]["text"]
     assert "400. docs/f0399.md" in user and "docs/f0400.md" not in user

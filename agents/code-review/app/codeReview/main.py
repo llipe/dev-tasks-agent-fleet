@@ -1,8 +1,8 @@
 """
 code-review agent — AgentCore entrypoint.
 
-Reviews one pull request with one Bedrock Converse call over an expanded diff
-and posts one PR comment (PRD FR-1, D-07). This module owns the invocation
+Reviews one pull request with one Anthropic Messages API call over an expanded
+diff and posts one PR comment (PRD FR-1, D-07, D-70). This module owns the invocation
 contract (spec §6.1, D-21): unwrap the AgentCore ``prompt`` wrapper, validate
 the payload and ``params`` against spec §5.1 (defense in depth: the panel has
 already validated them), apply defaults, and run the pipeline under the
@@ -11,7 +11,8 @@ vendored ``RunReporter``.
 A valid invocation runs ``pipeline.Pipeline`` (S-213): ``load_pr`` ->
 ``context`` -> ``review`` -> ``validate`` -> ``post`` (spec §8.1), with the
 deps :func:`pipeline_deps` builds (the real GitHub App token, GitHub client,
-Bedrock client factory, monotonic clock, and a no-op prompt sink). Heartbeat
+the Anthropic API key read from Secrets Manager once per run, the Anthropic
+client factory, monotonic clock, and a no-op prompt sink). Heartbeat
 chunks from the pipeline are yielded straight through, then one terminal chunk.
 
 Error codes decided here (spec §13): ``INVALID_PARAMS`` for a payload or params
@@ -37,7 +38,12 @@ from config import (
     assert_clock_invariant,
     load_settings,
 )
-from credentials import CredentialError, fetch_supabase_key, resolve_github_credentials
+from credentials import (
+    CredentialError,
+    fetch_anthropic_key,
+    fetch_supabase_key,
+    resolve_github_credentials,
+)
 from heartbeat import terminal_chunk
 from pipeline import Pipeline, PipelineDeps, PipelineResult, ReviewRequest
 from signal_backstop import install_termination_backstop
@@ -280,12 +286,17 @@ def _failed(error_code: str) -> dict[str, Any]:
 
 def pipeline_deps(settings: Settings, supabase_key: str) -> PipelineDeps:
     """The production deps: the GitHub App installation token for the org, minted
-    through the ``github_installations`` row; every other dep is the default."""
+    through the ``github_installations`` row, and the Anthropic API key from
+    ``ANTHROPIC_API_KEY_SECRET_ID`` (D-88; the pipeline reads it once, after the
+    token); every other dep is the default."""
 
     def resolve_token(org: str) -> str:
         return resolve_github_credentials(org, settings.supabase_url, supabase_key).token
 
-    return PipelineDeps(resolve_token=resolve_token)
+    def resolve_model_key() -> str:
+        return fetch_anthropic_key(settings.anthropic_api_key_secret_id)
+
+    return PipelineDeps(resolve_token=resolve_token, resolve_model_key=resolve_model_key)
 
 
 # ---------------------------------------------------------------------------

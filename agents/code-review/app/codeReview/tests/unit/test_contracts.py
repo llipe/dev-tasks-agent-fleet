@@ -356,3 +356,47 @@ def test_ct08_extra_keys_are_invalid(value):
 def test_ct08_line_end_before_line_start_passes_the_schema():
     """Handled by S-211's location check, not the schema."""
     validate_review(_review(findings=[_finding(line_start=9, line_end=2)]))
+
+
+# ---------------------------------------------------------------------------
+# CT-16 (S-216) — the sent schema vs the full schema (D-81)
+# ---------------------------------------------------------------------------
+
+_STRIPPED = {"minimum", "maxLength", "pattern"}
+
+
+def _schema_nodes(schema: dict, path: str = "$"):
+    """Every subschema with its path (``properties`` values and ``items`` only)."""
+    yield path, schema
+    for name, sub in schema.get("properties", {}).items():
+        yield from _schema_nodes(sub, f"{path}.{name}")
+    if isinstance(schema.get("items"), dict):
+        yield from _schema_nodes(schema["items"], f"{path}[]")
+
+
+def test_ct16_sent_is_full_minus_exactly_the_stripped_keywords():
+    from findings_schema import sent_schema
+
+    full = dict(_schema_nodes(SUBMIT_REVIEW_SCHEMA))
+    sent = dict(_schema_nodes(sent_schema(SUBMIT_REVIEW_SCHEMA)))
+    assert set(full) == set(sent)
+    for path, node in full.items():
+        kept = {k: v for k, v in node.items() if k not in _STRIPPED}
+        got = sent[path]
+        assert set(got) == set(kept), path  # nothing lost, nothing added
+        for key, value in kept.items():
+            if key in ("properties", "items"):
+                continue
+            assert got[key] == value, (path, key)  # kept keywords unchanged in value
+        if node.get("type") == "object":
+            assert got["additionalProperties"] is False and got["required"] == node["required"]
+
+
+def test_ct16_the_full_schema_still_validates_the_stripped_keywords():
+    for bad in (
+        _review(findings=[_finding(title="t" * 201)]),
+        _review(findings=[_finding(line_start=0)]),
+        _review(checks=[{"candidate_id": "V", "status": "confirmed", "reason": ""}]),
+    ):
+        with pytest.raises(SchemaViolation):
+            validate_review(bad)

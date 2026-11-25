@@ -15,12 +15,15 @@
 ## Relevant Files
 
 - `pkg/model_adapter.py` (new) - Anthropic client factory, `review()`: `count_tokens` check, streaming structured-output call, context-length retry, repair, refusal, fallback model, error mapping, cost (S-216)
-- `pkg/bedrock_adapter.py` (delete) - replaced by `model_adapter.py` (S-216)
+- `pkg/bedrock_adapter.py` (deleted) - replaced by `model_adapter.py` (S-216)
+- `pkg/legacy_bedrock.py` (new, temporary) - the selection call's Bedrock client factory and response helpers until S-217 deletes it (S-216)
 - `pkg/findings_schema.py` - `sent_schema()` strips `minimum`, `maxLength`, `pattern` (S-216)
 - `pkg/credentials.py`, `pkg/config.py` - Anthropic key fetch from Secrets Manager, scrubber registration (S-216); `PARAMS_SCHEMA` bounds (S-217)
 - `pkg/pipeline.py`, `pkg/render.py`, `pkg/main.py`, `pkg/pyproject.toml` - imports, renamed metrics, footer `answered_by_model`, `anthropic` pin (S-216)
 - `pkg/context/selection.py` - selection call on the Anthropic client (S-217)
-- `pkg/tests/unit/test_model_adapter.py`, `test_model_adapter_hostile.py`, `test_properties_model.py`, `pkg/tests/fixtures/anthropic_fake.py` (new) - adapter tests and fake client (S-216)
+- `pkg/tests/unit/test_model_adapter.py`, `test_model_adapter_hostile.py`, `test_properties_model.py`, `test_model_adapter_sdk.py` (CT-15), `test_anthropic_fake_contract.py` (CT-14), `pkg/tests/fixtures/anthropic_fake.py`, `pkg/tests/helpers/model_run.py` (new) - adapter tests, fake client and harness (S-216)
+- `pkg/tests/unit/test_credentials.py`, `test_config.py`, `test_outcomes.py`, `test_render.py`, `test_render_hostile.py`, `test_layout.py`, `test_contracts.py`, `test_deadline.py`, `test_full_code_files.py`, `test_selection.py`, `pkg/tests/helpers/pipeline_run.py`, `pkg/tests/integration/test_cross_story_joins.py`, `test_pipeline_selection.py` - ported to the Anthropic codes, metrics and fake (S-216)
+- `TESTING.md` - the fake Anthropic client and CT-15 harness (S-216)
 - `pkg/tests/unit/test_selection*.py`, `test_seed_contract.py`, `test_properties_params.py`, `pkg/tests/fixtures/params_cases.json`, `pkg/tests/integration/test_pipeline_selection.py` - selection and params tests (S-217)
 - `pkg/tests/integration/test_pipeline_e2e.py`, `test_pipeline_prompt_capture.py`, `test_pipeline_hostile.py` - moved to the fake Anthropic client (S-216); large-PR capture (S-217)
 - `supabase/migrations/<ts>_seed_code_review_agent.sql` (new), `supabase/seed.sql` - params schema and defaults (S-217)
@@ -30,31 +33,32 @@
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-216 - https://github.com/llipe/dev-tasks-agent-fleet/issues/480: Review call on Claude Sonnet 5.5 through the Anthropic API
-  - [ ] 1.1 [code-review] `[T]` Add `tests/fixtures/anthropic_fake.py`: a fake client that records `count_tokens` and `beta.messages.stream` requests and replays scripted messages, stop reasons, `model` values and SDK error classes (D-80)
-  - [ ] 1.2 [code-review] `[T]` Write failing `test_model_adapter.py` request-shape tests: `model`, `max_tokens=64000`, `output_config.effort`, `output_config.format`, `betas=["server-side-fallback-2026-07-01"]`, `fallbacks="default"`; no `tool_choice`, tools or `thinking` (D-80, D-82, D-83, D-86; AC-15)
-  - [ ] 1.3 [code-review] `[T]` Write the failing pinned test: `sent_schema(SUBMIT_REVIEW_SCHEMA)` equals the full schema minus `minimum`, `maxLength`, `pattern`; a reply breaking a removed keyword gets one repair call (D-81; AC-15)
-  - [ ] 1.4 [code-review] `[T]` Write failing `count_tokens` tests: over `B` with full files → rebuild without them; over `B` with none → `BudgetInvariantError`, nothing sent; count failure → estimate check plus `warn`; budget exactly `B` is sent (D-84)
-  - [ ] 1.5 [code-review] `[T]` Write failing retry tests: a `400` containing `prompt is too long` → one rebuild; a second one, or one on the repair call → `MODEL_API_ERROR`
-  - [ ] 1.6 [code-review] `[T]` Write failing error-mapping tests: `RateLimitError` → `MODEL_RATE_LIMITED`; `AuthenticationError`/`PermissionDeniedError` → `MODEL_ACCESS_DENIED`; other API/connection errors → `MODEL_API_ERROR`; timeout → `RUN_TIMEOUT` past the deadline, else `MODEL_API_ERROR`; final `stop_reason: refusal` → `MODEL_REFUSED` (D-72, D-85; AC-11, AC-16)
-  - [ ] 1.7 [code-review] `[T]` Write failing tests: `message.model` is recorded as `answered_by_model` and the artifact `model_id`; a fallback answer posts normally; 3-call cap → `CallBudgetExceeded` on a fourth (`count_tokens` not counted); cost at $2/$10 per MTok for `claude-sonnet-5-5`, `None` plus `warn` for another model (D-86, D-87)
-  - [ ] 1.8 [code-review] `[T]` Port `test_bedrock_hostile.py` → `test_model_adapter_hostile.py` (model text never in errors or events) and the property tests → `test_properties_model.py`
-  - [ ] 1.9 [code-review] `[T]` Write failing credentials tests: key read once from `ANTHROPIC_API_KEY_SECRET_ID`, registered with the scrubber before the first model call, passed to the client constructor, never in `os.environ`, logs, run events, artifacts or the prompt (D-88; AC-17)
-  - [ ] 1.10 [code-review] `[I]` Pin `anthropic` in `pyproject.toml`; `boto3` stays for Secrets Manager only (D-80)
-  - [ ] 1.11 [code-review] `[I]` Add `sent_schema()` to `findings_schema.py`; `validate_review` keeps checking the full schema (D-81)
-  - [ ] 1.12 [code-review] `[I]` Add `model_adapter.py`: client factory, `review()` with the `count_tokens` check, streaming call, `ReviewResult`/`CallMetrics` with the same shape, repair, retries, refusal handling, error mapping, cost; read blocks by `type` and ignore `thinking` (D-80–D-87)
-  - [ ] 1.13 [code-review] `[I]` Add the key fetch to `credentials.py` and `config.py`; wire the scrubber (D-88)
-  - [ ] 1.14 [code-review] `[I]` Switch `pipeline.py` and `main.py` imports; rename metrics to `model_ms`, `model_calls`; `output_mode` `structured_output`; footer in `render.py` uses `answered_by_model` (D-86, D-87)
-  - [ ] 1.15 [code-review] `[I]` Delete `bedrock_adapter.py`, `fixtures/bedrock.py` and Bedrock-only tests; move `test_pipeline_e2e.py`, `test_pipeline_prompt_capture.py`, `test_pipeline_hostile.py` to the fake Anthropic client (D-74)
-  - [ ] 1.16 Verify Acceptance Criterion: request shape and sent schema (AC-15) → 1.2, 1.3
-  - [ ] 1.17 Verify Acceptance Criterion: `count_tokens` check and `prompt is too long` retry → 1.4, 1.5
-  - [ ] 1.18 Verify Acceptance Criterion: error mapping and refusal failure comment (AC-11, AC-16) → 1.6
-  - [ ] 1.19 Verify Acceptance Criterion: answering model in footer and artifact; 3-call cap; cost; renamed metrics → 1.7, 1.14
-  - [ ] 1.20 Verify Acceptance Criterion: key handling (AC-17, key half) → 1.9
-  - [ ] 1.21 Verify Acceptance Criterion: no Bedrock code left; `pipeline.py`, `validate.py`, `budget.py` change only at imports and metric names → `grep -r bedrock pkg/` empty, diff review
-  - [ ] 1.22 Run edge-case tests: `max_tokens` stop, empty text, two JSON values (each → repair); refusal after fallback; fallback-model answer; 429 with `retry-after`; deadline mid-stream; `count_tokens` 5xx; budget exactly `B`
-  - [ ] 1.23 Record the AC-to-test mapping (AC-11, AC-15, AC-16, AC-17 key half) in the PR body
-  - [ ] 1.24 Run Tests: `make -C agents/code-review/app/codeReview validate` and `pnpm run validate` (lint, format:check, typecheck, test, audit)
+- [x] 1.0 Implement Story S-216 - https://github.com/llipe/dev-tasks-agent-fleet/issues/480: Review call on Claude Sonnet 5.5 through the Anthropic API
+  - [x] 1.1 [code-review] `[T]` Add `tests/fixtures/anthropic_fake.py`: a fake client that records `count_tokens` and `beta.messages.stream` requests and replays scripted messages, stop reasons, `model` values and SDK error classes (D-80)
+  - [x] 1.2 [code-review] `[T]` Write failing `test_model_adapter.py` request-shape tests: `model`, `max_tokens=64000`, `output_config.effort`, `output_config.format`, `betas=["server-side-fallback-2026-07-01"]`, `fallbacks="default"`; no `tool_choice`, tools or `thinking` (D-80, D-82, D-83, D-86; AC-15)
+  - [x] 1.3 [code-review] `[T]` Write the failing pinned test: `sent_schema(SUBMIT_REVIEW_SCHEMA)` equals the full schema minus `minimum`, `maxLength`, `pattern`; a reply breaking a removed keyword gets one repair call (D-81; AC-15)
+  - [x] 1.4 [code-review] `[T]` Write failing `count_tokens` tests: over `B` with full files → rebuild without them; over `B` with none → `BudgetInvariantError`, nothing sent; count failure → estimate check plus `warn`; budget exactly `B` is sent (D-84)
+  - [x] 1.5 [code-review] `[T]` Write failing retry tests: a `400` containing `prompt is too long` → one rebuild; a second one, or one on the repair call → `MODEL_API_ERROR`
+  - [x] 1.6 [code-review] `[T]` Write failing error-mapping tests: `RateLimitError` → `MODEL_RATE_LIMITED`; `AuthenticationError`/`PermissionDeniedError` → `MODEL_ACCESS_DENIED`; other API/connection errors → `MODEL_API_ERROR`; timeout → `RUN_TIMEOUT` past the deadline, else `MODEL_API_ERROR`; final `stop_reason: refusal` → `MODEL_REFUSED` (D-72, D-85; AC-11, AC-16)
+  - [x] 1.7 [code-review] `[T]` Write failing tests: `message.model` is recorded as `answered_by_model` and the artifact `model_id`; a fallback answer posts normally; 3-call cap → `CallBudgetExceeded` on a fourth (`count_tokens` not counted); cost at $2/$10 per MTok for `claude-sonnet-5-5`, `None` plus `warn` for another model (D-86, D-87)
+  - [x] 1.8 [code-review] `[T]` Port `test_bedrock_hostile.py` → `test_model_adapter_hostile.py` (model text never in errors or events) and the property tests → `test_properties_model.py`
+  - [x] 1.9 [code-review] `[T]` Write failing credentials tests: key read once from `ANTHROPIC_API_KEY_SECRET_ID`, registered with the scrubber before the first model call, passed to the client constructor, never in `os.environ`, logs, run events, artifacts or the prompt (D-88; AC-17)
+  - [x] 1.10 [code-review] `[I]` Pin `anthropic` in `pyproject.toml`; `boto3` stays for Secrets Manager only (D-80)
+  - [x] 1.11 [code-review] `[I]` Add `sent_schema()` to `findings_schema.py`; `validate_review` keeps checking the full schema (D-81)
+  - [x] 1.12 [code-review] `[I]` Add `model_adapter.py`: client factory, `review()` with the `count_tokens` check, streaming call, `ReviewResult`/`CallMetrics` with the same shape, repair, retries, refusal handling, error mapping, cost; read blocks by `type` and ignore `thinking` (D-80–D-87)
+  - [x] 1.13 [code-review] `[I]` Add the key fetch to `credentials.py` and `config.py`; wire the scrubber (D-88)
+  - [x] 1.14 [code-review] `[I]` Switch `pipeline.py` and `main.py` imports; rename metrics to `model_ms`, `model_calls`; `output_mode` `structured_output`; footer in `render.py` uses `answered_by_model` (D-86, D-87)
+  - [x] 1.15 [code-review] `[I]` Delete `bedrock_adapter.py`, `fixtures/bedrock.py` and Bedrock-only tests; move `test_pipeline_e2e.py`, `test_pipeline_prompt_capture.py`, `test_pipeline_hostile.py` to the fake Anthropic client (D-74)
+  - [x] 1.16 Verify Acceptance Criterion: request shape and sent schema (AC-15) → 1.2, 1.3
+  - [x] 1.17 Verify Acceptance Criterion: `count_tokens` check and `prompt is too long` retry → 1.4, 1.5
+  - [x] 1.18 Verify Acceptance Criterion: error mapping and refusal failure comment (AC-11, AC-16) → 1.6
+  - [x] 1.19 Verify Acceptance Criterion: answering model in footer and artifact; 3-call cap; cost; renamed metrics → 1.7, 1.14
+  - [x] 1.20 Verify Acceptance Criterion: key handling (AC-17, key half) → 1.9
+  - [x] 1.21 Verify Acceptance Criterion: no Bedrock code left; `pipeline.py`, `validate.py`, `budget.py` change only at imports and metric names → `grep -r bedrock pkg/` empty, diff review
+    > Note (PR #484): the review path has no Bedrock code. The selection call's Bedrock client stays in the temporary `pkg/legacy_bedrock.py` (imported by `context/selection.py` and `pipeline.py`'s `bedrock_factory` dep), with `tests/fixtures/bedrock.py`, until 2.5 deletes them; `test_layout.py` pins that residual. `pipeline.py` also gained the API-key wiring (AC9), beyond imports and metric names.
+  - [x] 1.22 Run edge-case tests: `max_tokens` stop, empty text, two JSON values (each → repair); refusal after fallback; fallback-model answer; 429 with `retry-after`; deadline mid-stream; `count_tokens` 5xx; budget exactly `B`
+  - [x] 1.23 Record the AC-to-test mapping (AC-11, AC-15, AC-16, AC-17 key half) in the PR body
+  - [x] 1.24 Run Tests: `make -C agents/code-review/app/codeReview validate` and `pnpm run validate` (lint, format:check, typecheck, test, audit)
 
 - [ ] 2.0 Implement Story S-217 - https://github.com/llipe/dev-tasks-agent-fleet/issues/481: Selection call, params, CDK, and runbook for the Anthropic model
   - [ ] 2.1 [code-review] `[T]` Port `test_selection.py` and `test_selection_hostile.py` to the fake Anthropic client; add failing tests: `max_tokens=8000`, effort `low`, stripped selection schema, fallback beta, `max_retries=0`, `timeout=min(60 s, 15% of time left)`; refusal, 429, timeout under 5 s, invalid output and empty candidates all fail open (D-71, D-82, D-83; FR-33)

@@ -229,8 +229,10 @@ ERROR_CODES = (
     "INVALID_PARAMS",
     "GITHUB_PERMISSION_DENIED",
     "GITHUB_API_ERROR",
-    "BEDROCK_ACCESS_DENIED",
-    "BEDROCK_ERROR",
+    "MODEL_ACCESS_DENIED",
+    "MODEL_API_ERROR",
+    "MODEL_RATE_LIMITED",
+    "MODEL_REFUSED",
     "MODEL_OUTPUT_INVALID",
     "RUN_TIMEOUT",
     "COMMENT_POST_FAILED",
@@ -835,8 +837,9 @@ def _join(parts: Iterable[str | None]) -> str:
     return "\n\n".join(p for p in parts if p) + "\n"
 
 
-def _footer(model_id: str, rubric_version: str, link: str) -> str:
-    model = code_span(model_id, MODEL_MAX)
+def _footer(model_id: str | None, rubric_version: str, link: str) -> str:
+    # The answering model (D-86); one the API did not name is "(unknown)" (DF-32).
+    model = code_span(model_id or "", MODEL_MAX)
     version = _plain(rubric_version, VERSION_MAX, empty="?")
     scope = "; ".join(OUT_OF_SCOPE)
     return f"<sub>Not reviewed here: {scope}. Model {model} · rubric v{version} · {link}</sub>"
@@ -850,7 +853,7 @@ def render_review(
     verifier: VerifierContext | None,
     run_id: str,
     head_sha: str,
-    model_id: str,
+    model_id: str | None,
     rubric_version: str,
     panel_base_url: str,
     limit: int = MAX_COMMENT_CHARS,
