@@ -7,6 +7,7 @@
 | 1.0     | 2026-11-25 | Initial draft. Decisions D-01 to D-17 in `workstream/decisions-control-tower.md`. | @llipe / product-engineer |
 | 1.1     | 2026-11-25 | Approved by @llipe. No requirement changed. The glossary append for the 13 proposed Vocabulary terms was refused: the bounded context `panel` does not resolve because the technical guidelines have no package map (D-17). The rows stay `proposed` until it exists. | @llipe / product-engineer |
 | 1.2     | 2026-11-25 | Factual corrections from `workstream/research-control-tower.md`; no requirement changed. FR-2, §12 and §17 no longer cite a hashed-at-rest or constant-time token precedent in the webhook code: webhook secrets are in Vault and the URL token is plain text, so token hashing and verification are new. §12 states what Realtime covers today. §17 counts logout as a public surface. | product-engineer |
+| 1.3     | 2026-11-25 | FR-8 rewritten, confirmed by @llipe in the HOW phase (D-21): the newest observed result per item wins, a snapshot never erases, and each push names its branch. Two lanes pushing from different worktrees no longer overwrite each other. OQ-3 resolved. | @llipe / product-engineer |
 
 ## 1. Executive Summary
 
@@ -95,7 +96,7 @@ There is no external user. The Control Tower sits behind the panel's existing lo
   - a **snapshot**: the full hierarchy of the repository at one moment — its PRDs, their waves, the issues of each wave, issues with no PRD, and, when present, the lanes registry;
   - a **tower event**: one thing that happened — an issue step or wave stage changed result, a block was raised or cleared, a pull request was linked, a session ended with its model and token usage.
 - **FR-7.** The ingestion contract is versioned. Every push states its contract version, and the endpoint rejects a version it does not support with a response that names the versions it does (D-16).
-- **FR-8.** A snapshot replaces the panel's picture of the repository's hierarchy. Work the snapshot no longer contains is kept as history, not deleted. A tower event updates only the item it names.
+- **FR-8.** Every step and stage result in a push carries the time it was observed, and every push states the branch it was built from. For each step or stage the panel keeps the result with the newest observed time. A snapshot adds and updates items and never removes them; an item leaves the open picture only when a snapshot built from the default branch no longer contains it, and it is then kept as history. A tower event updates only the item it names. The panel rejects an observed time more than a few minutes in the future (D-21).
 - **FR-9.** Ingestion is idempotent: a push delivered twice changes nothing the second time. An event that arrives out of order never moves an item backward in time.
 - **FR-10.** A tower event that names an issue, wave or PRD the panel has not seen is stored and shown as soon as a snapshot supplies its place in the hierarchy. It is never dropped.
 - **FR-11.** The panel records, per tower repository, when its last push arrived and whether the last push was accepted (D-05, D-14).
@@ -268,7 +269,7 @@ Titles, scope lines and digest text come from the reporting repository, which ma
 
 - **OQ-1.** Is the staleness threshold one setting for the panel or one per repository? FR-31 fixes only the 24-hour default.
 - **OQ-2.** Is rate limiting per token needed on the ingest endpoint in v1, or is the body-size cap enough at this volume? For the specification.
-- **OQ-3.** What does the tower show when two snapshots disagree because two lanes pushed from different worktrees of the same repository? FR-9 covers ordering in time, not two views of the hierarchy. For the specification, with the dev-tasks PRD.
+- **OQ-3.** Resolved in v1.3 by FR-8: the newest observed result per item wins and a snapshot never erases (D-21).
 - **OQ-4.** Should a rollup also be shown per repository (total open issues waiting on the owner across PRDs)? Not requested; cheap once the read contract exists.
 
 ## Decisions
@@ -294,6 +295,7 @@ All IDs refer to `workstream/decisions-control-tower.md`.
 | D-15 | Summaries kept permanently; raw events pruned 90 days after ship; default view is open work plus 14 days                |
 | D-16 | Two PRDs; this one owns the contract and ships three waves; a companion PRD in `llipe/dev-tasks` owns the sending side  |
 | D-17 | Thirteen domain terms; "workflow agent" for the dev-tasks side; "agent" and "run" keep their panel meaning              |
+| D-21 | Newest observed result per item wins; a snapshot never erases; each push names its branch                            |
 
 ## Vocabulary
 
