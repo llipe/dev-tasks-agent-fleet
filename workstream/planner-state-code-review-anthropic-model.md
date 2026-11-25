@@ -17,7 +17,7 @@
 
 ## Current Position
 
-- Next story: none (Phase 5: rollup, consolidated PR)
+- Next story: none — consolidated PR #486 awaiting user review and merge; then S-218 (#482) via /infra-engineer
 - Last merged PR: #485 (merge commit db40252, 2026-11-25T15:38:49Z)
 - Integration branch HEAD: db40252
 
