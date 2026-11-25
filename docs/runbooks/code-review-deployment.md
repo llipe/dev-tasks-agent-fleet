@@ -131,8 +131,14 @@ recorded under `infra/changes/<ChangeId>/` (S-218, issue #482).
    ```
 
    Between this step and step 4 the live version 5 runtime can no longer call Bedrock, so `/review`
-   runs fail with `BEDROCK_ACCESS_DENIED`. Turn the `/review` rule off first (Rollback step 1) and
-   back on after step 4, or run steps 3 and 4 together.
+   runs fail with `BEDROCK_ACCESS_DENIED`. Applying the policy after step 4 instead leaves the v1.8
+   runtime unable to read its key. To avoid either window, apply the policy in two passes:
+   1. Before step 4, apply `runtime-role-policy.json` **plus** the backup's `bedrock:InvokeModel`
+      statement (an interim document in the change record). Both runtimes then work.
+   2. After step 4 is verified, apply `runtime-role-policy.json` as is and simulate again.
+
+   Until the second pass, a rollback (Rollback step 4) needs no IAM change. If you apply the final
+   policy in one pass, turn the `/review` rule off first (Rollback step 1) and back on after step 4.
 4. **Deploy the runtime** (section 1), then verify it (section "Verification"). This includes the
    v1.6 change from #478. The footer of the review comment names the answering model.
 5. **Apply the seed migration, with explicit user confirmation.**
@@ -333,8 +339,10 @@ rotation needs no redeploy.
 
 ### Create the Anthropic API key secret
 
-Once, before the v1.8 deploy (section 1a step 2). The key value must never be in a shell
-history, a chat, a log or a committed file. Use either:
+Once, before the v1.8 deploy (section 1a step 2). First create the key in the Anthropic Console,
+in the organization from the tier check, and name it after the agent (for example
+`agent-fleet-code-review`) so it can be found and revoked. The key value must never be in a shell
+history, a chat, a log or a committed file. Store it with either:
 
 - **The AWS console:** Secrets Manager → **Store a new secret** → *Other type of secret* →
   **Plaintext**, paste the key, name it `agent-fleet/prod/ANTHROPIC_API_KEY`, no rotation. Or:
@@ -350,8 +358,6 @@ history, a chat, a log or a committed file. Use either:
   ```
 
 Record the returned ARN (with its suffix) in the change record. The value is never recorded.
-Create the key in the Anthropic Console in the organization from the tier check, and name it after
-the agent (for example `agent-fleet-code-review`) so it can be found and revoked.
 
 ### Rotate the Anthropic API key
 
