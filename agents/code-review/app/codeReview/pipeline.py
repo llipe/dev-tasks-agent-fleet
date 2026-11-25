@@ -128,8 +128,6 @@ from github_client import (
     PullRequest,
 )
 from heartbeat import HeartbeatResult, run_with_heartbeat
-from legacy_bedrock import ClientFactory as SelectionClientFactory  # S-217 removes
-from legacy_bedrock import make_client as make_selection_client  # S-217 removes
 from model_adapter import (
     MAX_RETRIES,
     CallMetrics,
@@ -679,14 +677,16 @@ class PipelineDeps:
     calls it at most once per run, before the first model call.
     ``model_factory`` is ``model_adapter.make_client``'s shape (``api_key``,
     the call's timeouts, ``max_retries``), called once per review call.
-    ``bedrock_factory`` is the selection call's client until S-217 (#481).
+    ``selection_factory`` has the same shape and builds the selection call's
+    client (S-217, D-71): the same key, ``max_retries=0``, and not the
+    review's counting client, so it never counts toward ``model_calls``.
     """
 
     resolve_token: Callable[[str], str]
     make_github: Callable[..., GitHubClient] = GitHubClient
     resolve_model_key: Callable[[], str] = fetch_anthropic_key
     model_factory: Callable[..., ModelClient] = make_client
-    bedrock_factory: SelectionClientFactory = make_selection_client
+    selection_factory: Callable[..., ModelClient] = make_client
     clock: Callable[[], float] = time.monotonic
     sink: PromptSink = null_sink
     nonce_factory: Callable[[], str] = new_nonce
@@ -1207,9 +1207,8 @@ class Pipeline:
                     ),
                     candidates=found.candidates,
                 ),
-                client_factory=self.deps.bedrock_factory,
+                client_factory=self._selection_client,
                 model_id=self.settings.selection_model,
-                prices=self.settings.selection_prices,
                 clock=self.deps.clock,
                 deadline=self._deadline,
                 nonce_factory=self.deps.nonce_factory,
@@ -1276,6 +1275,26 @@ class Pipeline:
             max_retries=max_retries,
         )
         return _CountingClient(inner, self)
+
+    def _selection_client(
+        self,
+        *,
+        read_timeout_seconds: float,
+        connect_timeout_seconds: float,
+        max_retries: int = 0,
+    ) -> ModelClient:
+        """The selection call's client (FR-33): the run's key, uncounted.
+
+        The key is fetched here on the first model call of the run (after the
+        GitHub token, DF-34) and registered with the scrubber; a fetch failure
+        fails the selection open, and the review call fetches again.
+        """
+        return self.deps.selection_factory(
+            api_key=self._api_key(),
+            read_timeout_seconds=read_timeout_seconds,
+            connect_timeout_seconds=connect_timeout_seconds,
+            max_retries=max_retries,
+        )
 
     # -- logging and metrics -------------------------------------------------------
 

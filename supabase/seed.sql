@@ -209,7 +209,8 @@ on conflict (slug) do update
 -- ---------------------------------------------------------------------
 -- 4a. code-review agent (S-204, spec §5.1)
 --    Mirrored by the newest migrations/*_seed_code_review_agent.sql (prod):
---    20261103120000 (PRD v1.4: context_folders, context_selection).
+--    20261125120000 (v1.8, S-217: max_diff_lines maximum 20000,
+--    max_context_tokens default and maximum 900000; D-77, D-90).
 --    runtime_arn is a placeholder until the first `agentcore deploy` (Wave B,
 --    S-214) sets it. It is deliberately NOT in the `do update` list, so
 --    re-running this seed never overwrites a deployed ARN with the placeholder.
@@ -234,7 +235,7 @@ insert into agents (
 values (
   'code-review',
   'Code Review',
-  'Reviews one pull request against its linked issues, spec, and verifier report with one Bedrock call, and posts one PR comment.',
+  'Reviews one pull request against its linked issues, spec, and verifier report with Claude Sonnet 5.5 on the Anthropic API, and posts one PR comment.',
   '0.1.0',
   'pending-deploy:code-review',  -- placeholder; set by S-214 after the first deploy
   'DEFAULT',
@@ -243,7 +244,7 @@ values (
   1800,  -- 30 min: MUST equal maxLifetime in agentcore.json
   120,   -- grace_seconds
   300,   -- start_timeout_seconds: queue clock (D9), NOT idleRuntimeSessionTimeout
-  '{"max_diff_lines":2000,"max_context_tokens":150000,"max_suggestions":5,"run_timeout_seconds":900,"reasoning_effort":"high","context_folders":"docs,workstream","context_selection":"llm"}'::jsonb,
+  '{"max_diff_lines":2000,"max_context_tokens":900000,"max_suggestions":5,"run_timeout_seconds":900,"reasoning_effort":"high","context_folders":"docs,workstream","context_selection":"llm"}'::jsonb,
   $json${
     "type": "object",
     "additionalProperties": false,
@@ -259,14 +260,14 @@ values (
       "max_diff_lines": {
         "type": "integer",
         "minimum": 100,
-        "maximum": 10000,
+        "maximum": 20000,
         "default": 2000
       },
       "max_context_tokens": {
         "type": "integer",
         "minimum": 20000,
-        "maximum": 400000,
-        "default": 150000
+        "maximum": 900000,
+        "default": 900000
       },
       "max_suggestions": {
         "type": "integer",

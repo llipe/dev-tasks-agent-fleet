@@ -334,4 +334,102 @@ def test_fake_anthropic_is_the_production_client_factory_path(h):
         "max_retries",
     }
     assert h.model_factory_calls[0]["max_retries"] == 2
-    assert h.bedrock_factory_calls == []
+    assert h.selection_factory_calls == []
+
+
+# ---------------------------------------------------------------------------
+# PRD AC-14 (S-217, TC-217-18…20, EC-45): a ~393k-token PR at default params
+# ---------------------------------------------------------------------------
+#
+# DF-37: "default params" means max_diff_lines = 2,000 here, so the PR stays
+# under 2,000 changed lines and its size comes from the ±50 context lines.
+# Each generated file holds single-line edits every ``spacing`` lines; at 101
+# the hunks' context meets, so the diff shows each file whole and no full copy
+# is sent (D-69): the prompt is the expanded diff plus the fixed sections.
+
+LARGE_FILES = 10
+LARGE_EDITS = 95  # per file: 10 x 95 edits = 1,900 changed lines (<= 2,000)
+
+
+def _gen_line(i: int, width: int, edited: bool = False) -> str:
+    """Line ``i`` of a generated file, ``width`` characters with its newline."""
+    head = f"v{i:06d}={'1' if edited else '0'}"
+    assert len(head) < width
+    return head + " " * (width - len(head) - 1) + "\n"
+
+
+def _large_pr(h: Harness, *, width: int, spacing: int = 101) -> list[str]:
+    """``LARGE_FILES`` modified code files, each with ``LARGE_EDITS`` one-line edits."""
+    paths = [f"src/gen_{f:02d}.py" for f in range(LARGE_FILES)]
+    lines = LARGE_EDITS * spacing
+    edits_at = {51 + k * spacing for k in range(LARGE_EDITS)}
+    for path in paths:
+        base = "".join(_gen_line(i, width) for i in range(1, lines + 1))
+        head = "".join(_gen_line(i, width, i in edits_at) for i in range(1, lines + 1))
+        h.set_content(path, MERGE_BASE, base)
+        h.set_content(path, HEAD, head)
+    h.set_files([file_entry(p, LARGE_EDITS, LARGE_EDITS) for p in paths])
+    return paths
+
+
+def _exact_count(kwargs: dict) -> int:
+    """A ``count_tokens`` answer equal to the D-47 estimate of what is counted."""
+    from model_adapter import request_tokens
+
+    return request_tokens(kwargs)
+
+
+def test_large_pr_is_reviewed_at_the_default_params(h):
+    """TC-217-18 (AC-14): ~393k estimated tokens, default params, one review call."""
+    paths = _large_pr(h, width=13)
+    h.fake = FakeAnthropic([review()], default_count=_exact_count)
+    result = h.drive()
+    assert result["status"] == "succeeded"
+    assert result["outcome"] != "not_applicable"
+    assert h.fake.calls == 1
+    m = h.reporter.terminal["metrics"]
+    assert m["changed_lines"] == 2 * LARGE_FILES * LARGE_EDITS <= 2000
+    assert 380_000 <= m["estimated_first_call_tokens"] <= 400_000, m["estimated_first_call_tokens"]
+    (p,) = h.prompts
+    assert p.context.max_context_tokens == 900_000  # D-90 default
+    diff = "".join(_contents(p, "diff"))
+    assert [f"+++ b/{path}" in diff for path in paths] == [True] * LARGE_FILES
+    assert diff.count("\n+v") == LARGE_FILES * LARGE_EDITS  # every edit, in its context
+    assert p.context.full_files_included == ()
+    (body,) = h.posts()
+    assert "over the context budget" not in body
+    assert len(h.reporter.artifacts()) == 1
+
+
+def test_large_pr_over_900k_tokens_gets_the_budget_comment(h):
+    """TC-217-19 (EC-45): just over B = 900,000 by the estimate -> budget comment, no call."""
+    _large_pr(h, width=34)
+    result = h.drive()
+    assert (result["status"], result["outcome"]) == ("succeeded", "not_applicable")
+    assert h.fake.calls == 0
+    assert "over the context budget of 900000 tokens" in h.posts()[0]
+    assert h.prompts == []
+
+
+def test_large_pr_counted_over_b_drops_full_files_then_is_reviewed(h):
+    """TC-217-19 (D-84): estimate under B, exact count 900,001 with full files -> rebuild."""
+    # Spacing 102 leaves one head line out of every hunk, so each file also goes in full.
+    _large_pr(h, width=13, spacing=102)
+    h.fake = FakeAnthropic([review()], counts=[900_001], default_count=_exact_count)
+    result = h.drive()
+    assert result["status"] == "succeeded"
+    assert h.fake.calls == 1 and h.fake.counts_made == 2
+    assert len(h.prompts) == 2
+    assert h.prompts[0].context.full_files_included
+    assert h.prompts[1].context.full_files_included == ()
+    sent = h.fake.stream_requests[0]
+    assert sent["messages"][0]["content"][0]["text"] == h.prompts[1].user
+
+
+def test_large_pr_with_the_pre_v17_budget_is_skipped(h):
+    """TC-217-20: the same PR at max_context_tokens 150,000 (the old default) is not reviewed."""
+    _large_pr(h, width=13)
+    result = h.drive({"pr_number": 42, "max_context_tokens": 150_000})
+    assert (result["status"], result["outcome"]) == ("succeeded", "not_applicable")
+    assert h.fake.calls == 0
+    assert "over the context budget of 150000 tokens" in h.posts()[0]

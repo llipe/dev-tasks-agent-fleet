@@ -16,6 +16,11 @@ HTTP layer, so it cannot show what the SDK itself does. These tests run
 (e) an SSE stream with ``thinking`` and ``text`` blocks assembles into a final
     message with both; the adapter keeps the text.
 
+S-217 adds the selection call's half: ``context.selection.select_context``
+through ``make_client(max_retries=0)`` makes exactly one HTTP attempt on a
+429 and fails open, and its request carries the selection body and the beta
+header, with no ``count_tokens`` request.
+
 Plan note: the pinned SDK (``anthropic==2.14.0``) is built on ``httpx2``, not
 ``httpx``, so the transport is ``httpx2.MockTransport``. ``output_config``,
 ``betas`` and ``fallbacks`` are named parameters of ``beta.messages.stream`` in
@@ -392,3 +397,89 @@ def test_a_streamed_fallback_answer_posts_without_a_repair(sdk):
     assert len(t.streams()) == 1
     assert result.findings == valid_review() and result.repair_calls == 0
     assert result.answered_by_model == "claude-opus-5-1"  # the SDK relabels the snapshot
+
+
+# ---------------------------------------------------------------------------
+# CT-15, selection half (S-217): one attempt with the real SDK
+# ---------------------------------------------------------------------------
+
+
+def _select_with_the_sdk() -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
+    from context.selection import ChangedFile, DocCandidate, SelectionInputs, select_context
+
+    warnings: list[tuple[str, dict[str, Any]]] = []
+
+    def factory(**kw: Any) -> Any:
+        return model_adapter.make_client(api_key=KEY, **kw)
+
+    counter = iter(range(1, 100))
+    result = select_context(
+        SelectionInputs(
+            pr_title="t",
+            pr_body="b",
+            head_ref="h",
+            issues=(),
+            changed=(ChangedFile("src/a.py", 1, 0),),
+            candidates=(DocCandidate(1, "docs/spec.md", 10),),
+        ),
+        client_factory=factory,
+        model_id="claude-sonnet-5-5",
+        clock=lambda: 0.0,
+        deadline=800.0,
+        nonce_factory=lambda: f"{next(counter):016x}",
+        warn=lambda m, **d: warnings.append((m, d)),
+    )
+    return result, warnings
+
+
+def test_selection_429_is_one_request_and_fails_open(sdk):
+    """(b), selection: ``max_retries=0`` is exactly one HTTP request, then fail open."""
+    limited = [
+        _error(429, "rate_limit_error", "slow down", **{"retry-after-ms": "1"}) for _ in range(3)
+    ]
+    t = sdk(Transport(limited))
+    result, warnings = _select_with_the_sdk()
+    assert len(t.streams()) == 1
+    assert t.counts() == []
+    assert (result.status, result.reason) == ("failed", "api_error")
+    assert warnings == [
+        (
+            "context selection failed; using rule-based context",
+            {"reason": "api_error", "error": "RateLimitError"},
+        )
+    ]
+
+
+def test_selection_request_body_and_headers(sdk):
+    """(d), selection: effort low, 8,000 tokens, structured output, the beta, no tools."""
+    answer = json.dumps({"documents": [{"index": 1, "role": "spec", "reason": "r"}]})
+    t = sdk(
+        Transport(
+            [
+                httpx2.Response(
+                    200,
+                    headers={"content-type": "text/event-stream", "request-id": "req_sel"},
+                    content=_stream_body(answer),
+                )
+            ]
+        )
+    )
+    result, warnings = _select_with_the_sdk()
+    assert result.status == "picked" and result.spec_paths == ("docs/spec.md",)
+    assert warnings == []
+    (stream,) = t.streams()
+    assert t.counts() == []
+    body = json.loads(stream.content)
+    assert body["model"] == "claude-sonnet-5-5"
+    assert body["max_tokens"] == 8_000
+    assert body["output_config"]["effort"] == "low"
+    assert body["output_config"]["format"]["type"] == "json_schema"
+    assert body["fallbacks"] == "default"
+    assert "tools" not in body and "tool_choice" not in body and "thinking" not in body
+    assert FALLBACK_BETA in stream.headers.get("anthropic-beta", "")
+    assert stream.headers["authorization"] == f"Bearer {KEY}"
+    assert KEY not in stream.content.decode()
+    # CT-15 (d) "only there", selection half: no other header and not the URL.
+    others = {k: v for k, v in stream.headers.items() if k.lower() != "authorization"}
+    assert KEY not in json.dumps(others)
+    assert KEY not in str(stream.url)

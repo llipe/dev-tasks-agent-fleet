@@ -74,6 +74,8 @@ PRD v1.7 (D-70–D-79) and spec v1.8 §6.3, §13 (D-80–D-90). This addendum am
 - **Decision 6 (amended reference).** The Anthropic call's errors are mapped to the agent's error codes in `model_adapter.py` (D-85). ADR-009 continues to govern the remaining AWS calls (Secrets Manager, and the selection client until S-217), not the Anthropic call.
 - **Not deployed by this change.** S-216 changes the code and tests only. The API key secret, the `agents` params migration (D-89), the IAM change (no `bedrock:` grant) and the redeploy are Wave B infrastructure work and are not recorded as done here.
 
+- **Selection moved (S-217, #481).** The selection call is now an Anthropic Messages call through `model_adapter.make_client` with `max_retries=0` (`context/selection.py`). `legacy_bedrock.py` and `tests/fixtures/bedrock.py` are removed, and ADR-009 governs only the Secrets Manager calls. The statements above that place the selection call on Bedrock describe the state before S-217. See [ADR-011](ADR-011-code-review-selection-on-anthropic-api.md).
+
 **Why this is an addendum.** The Wave A decision was correct for the model it named at the time. The model, the call shape and the key location changed by decision (PRD v1.7), so the record of the change belongs here and not in an edit to the original Decision text.
 
 ## Related

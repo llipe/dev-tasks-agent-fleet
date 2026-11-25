@@ -163,16 +163,18 @@ def test_dockerignore_excludes_tests_and_venv():
 
 REMOVED = [
     "bedrock_adapter.py",
+    "legacy_bedrock.py",  # S-217: the selection call moved to the Anthropic client
+    "tests/fixtures/bedrock.py",
     "tests/unit/test_bedrock_adapter.py",
     "tests/unit/test_bedrock_hostile.py",
     "tests/unit/test_properties_bedrock.py",
     "tests/helpers/bedrock_run.py",
 ]
 
-# The context-selection call keeps its Bedrock client until S-217 (#481), which
-# deletes these and empties this set. ``tests/fixtures/bedrock.py`` serves the
-# selection tests until then.
-SELECTION_RESIDUAL = {"legacy_bedrock.py", "context/selection.py", "pipeline.py"}
+# The only Bedrock name left is the AgentCore runtime SDK (``bedrock_agentcore``,
+# its ``BedrockAgentCoreApp``, the ``bedrock-agentcore`` pin and the
+# ``bedrock-agentcore:`` IAM service prefix): it hosts the agent, it is not a model.
+_AGENTCORE_RE = re.compile(r"bedrock[_-]agentcore|BedrockAgentCore", re.IGNORECASE)
 
 
 @pytest.mark.parametrize("name", REMOVED)
@@ -188,36 +190,58 @@ def _model_sources():
         yield rel, path.read_text()
 
 
-def test_no_bedrock_review_code_outside_the_selection_residual():
+def test_no_bedrock_model_code_anywhere_in_the_package():
+    """S-217: no Bedrock model path remains, review or selection (TC-216-51, TC-217-09)."""
     offenders = []
     for rel, text in _model_sources():
-        if rel in SELECTION_RESIDUAL:
-            continue
         for needle in (
             "bedrock-runtime",
             "converse(",
             "BedrockAdapterError",
             "BEDROCK_",
             "bedrock_adapter",
+            "legacy_bedrock",
+            "bedrock_error",
+            "bedrock_factory",
         ):
             if needle in text:
                 offenders.append((rel, needle))
     assert offenders == []
 
 
-def test_legacy_bedrock_is_imported_only_by_the_selection_path():
+def test_no_bedrock_reference_but_the_agentcore_runtime():
+    """Outside the tests, every ``bedrock`` mention is the AgentCore runtime SDK."""
+    paths = [*_source_files(), PKG / "Dockerfile", PKG / "pyproject.toml"]
+    offenders = []
+    for path in paths:
+        rel = path.relative_to(PKG).as_posix()
+        if rel.startswith("tests/"):
+            continue
+        for n, line in enumerate(path.read_text().splitlines(), start=1):
+            if re.search("bedrock", _AGENTCORE_RE.sub("", line), re.IGNORECASE):
+                offenders.append(f"{rel}:{n}")
+    assert offenders == []
+
+
+def test_nothing_imports_a_bedrock_module():
     importers = []
     for rel, text in _model_sources():
         tree = ast.parse(text)
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "legacy_bedrock":
+            mods = []
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                mods = [node.module or ""]
+            if any(m in {"legacy_bedrock", "bedrock_adapter"} for m in mods):
                 importers.append(rel)
-    assert sorted(set(importers)) == ["context/selection.py", "pipeline.py"]
+    assert importers == []
 
 
-def test_boto3_is_imported_only_for_secrets_and_the_selection_residual():
-    """``boto3`` reads Secrets Manager in ``credentials.py``; the selection's Bedrock
-    client is the S-217 residual. No model code imports botocore's ``ClientError``."""
+def test_boto3_is_imported_only_for_secrets():
+    """``boto3`` reads Secrets Manager in ``credentials.py`` and nothing else (D-74, S-217).
+
+    No model code imports botocore's ``ClientError``."""
     importers = set()
     for rel, text in _model_sources():
         tree = ast.parse(text)
@@ -229,4 +253,4 @@ def test_boto3_is_imported_only_for_secrets_and_the_selection_residual():
                 mods = [node.module or ""]
             if any(m.split(".")[0] in {"boto3", "botocore"} for m in mods):
                 importers.add(rel)
-    assert importers == {"credentials.py", "legacy_bedrock.py", "context/selection.py"}
+    assert importers == {"credentials.py"}

@@ -37,12 +37,13 @@ SPEC_SCHEMA = {
     "required": ["pr_number"],
     "properties": {
         "pr_number": {"type": "integer", "minimum": 1, "title": "Pull request number"},
-        "max_diff_lines": {"type": "integer", "minimum": 100, "maximum": 10000, "default": 2000},
+        # v1.8 (D-77, D-90): maxima 20,000 and 900,000; default 900,000 tokens.
+        "max_diff_lines": {"type": "integer", "minimum": 100, "maximum": 20000, "default": 2000},
         "max_context_tokens": {
             "type": "integer",
             "minimum": 20000,
-            "maximum": 400000,
-            "default": 150000,
+            "maximum": 900000,
+            "default": 900000,
         },
         "max_suggestions": {"type": "integer", "minimum": 0, "maximum": 20, "default": 5},
         "run_timeout_seconds": {"type": "integer", "minimum": 120, "maximum": 900, "default": 900},
@@ -225,6 +226,54 @@ def row(request) -> dict:
 # ---------------------------------------------------------------------------
 # TC-204-14 — schema and defaults
 # ---------------------------------------------------------------------------
+
+
+# Applied history: each older seed keeps the contract it applied (TC-217-13).
+HISTORY = {
+    "20261022120000_seed_code_review_agent.sql": (10000, 400000, 150000, False),
+    "20261103120000_seed_code_review_agent.sql": (10000, 400000, 150000, True),
+}
+
+
+def test_the_v18_seed_is_a_new_migration_after_the_v14_one():
+    """S-217: a third whole upsert, newer than 20261103120000; the older ones stay."""
+    name = _migration().name
+    assert name > "20261103120000_seed_code_review_agent.sql", name
+    found = sorted(p.name for p in MIGRATIONS.glob("*_seed_code_review_agent.sql"))
+    assert found[:-1] == sorted(HISTORY), found
+
+
+@pytest.mark.parametrize("name", sorted(HISTORY))
+def test_older_seed_migrations_keep_their_applied_contract(name):
+    cols = agent_rows(MIGRATIONS / name)["code-review"]["columns"]
+    props = json.loads(cols["params_schema"])["properties"]
+    diff_max, tokens_max, tokens_default, v14 = HISTORY[name]
+    assert props["max_diff_lines"]["maximum"] == diff_max
+    assert props["max_context_tokens"]["maximum"] == tokens_max
+    assert json.loads(cols["default_params"])["max_context_tokens"] == tokens_default
+    assert ("context_folders" in props) is v14
+
+
+def test_v18_migration_header_states_the_deploy_order_and_the_rollback():
+    """TC-217-16 (D-89): runtime, then migration, then the riel rule; roll back the reverse way."""
+    header = "\n".join(
+        ln for ln in _migration().read_text().splitlines() if ln.startswith("--")
+    ).lower()
+    assert "d-89" in header
+    plan = header[header.index("deploy order (d-89)") :]
+    order = [
+        plan.index(w)
+        for w in ("(1) the v1.8 runtime", "(2) then this migration", "(3) then the riel")
+    ]
+    assert order == sorted(order)
+    assert "max_diff_lines" in header and "20000" in header.replace(",", "")
+    assert "rollback" in header
+    assert "20261103120000_seed_code_review_agent.sql" in header  # the values to re-apply
+    assert "before the runtime" in header
+
+
+def test_v18_description_names_no_bedrock_call(row):
+    assert "bedrock" not in row["columns"]["description"].lower()
 
 
 def test_migration_file_name_sorts_after_existing_migrations():

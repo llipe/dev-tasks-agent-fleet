@@ -92,7 +92,7 @@ class TestDefaults:
         assert apply_defaults({"pr_number": 7}) == {
             "pr_number": 7,
             "max_diff_lines": 2000,
-            "max_context_tokens": 150000,
+            "max_context_tokens": 900000,  # D-90 (v1.8)
             "max_suggestions": 5,
             "run_timeout_seconds": 900,
             "reasoning_effort": "high",
@@ -172,8 +172,8 @@ class TestPrNumber:
 # ---------------------------------------------------------------------------
 
 BOUNDS = {
-    "max_diff_lines": (100, 10000),
-    "max_context_tokens": (20000, 400000),
+    "max_diff_lines": (100, 20000),  # D-77 (v1.8)
+    "max_context_tokens": (20000, 900000),  # D-90 (v1.8)
     "max_suggestions": (0, 20),
     "run_timeout_seconds": (120, 900),
 }
@@ -210,6 +210,38 @@ class TestBounds:
         for key, (lo, hi) in BOUNDS.items():
             prop = PARAMS_SCHEMA["properties"][key]
             assert (prop["minimum"], prop["maximum"]) == (lo, hi)
+
+    # TC-217-10, TC-217-11 (EC-43): the v1.8 edges, and the v1.0 maxima + 1 now accepted.
+    @pytest.mark.parametrize(
+        ("key", "value", "ok"),
+        [
+            ("max_diff_lines", 99, False),
+            ("max_diff_lines", 100, True),
+            ("max_diff_lines", 10001, True),
+            ("max_diff_lines", 19999, True),
+            ("max_diff_lines", 20000, True),
+            ("max_diff_lines", 20001, False),
+            ("max_context_tokens", 19999, False),
+            ("max_context_tokens", 20000, True),
+            ("max_context_tokens", 400001, True),
+            ("max_context_tokens", 899999, True),
+            ("max_context_tokens", 900000, True),
+            ("max_context_tokens", 900001, False),
+        ],
+    )
+    def test_v18_bounds(self, key, value, ok):
+        payload = _payload({"pr_number": 1, key: value})
+        if ok:
+            validate_payload(payload)
+        else:
+            with pytest.raises(InvalidParams) as exc_info:
+                validate_payload(payload)
+            assert exc_info.value.field == f"params.{key}"
+
+    def test_v18_defaults(self):
+        props = PARAMS_SCHEMA["properties"]
+        assert props["max_diff_lines"]["default"] == 2000
+        assert props["max_context_tokens"]["default"] == 900000
 
 
 # ---------------------------------------------------------------------------

@@ -196,17 +196,12 @@ def _code_without_docstrings(source: str) -> str:
     return ast.unparse(tree)
 
 
-# The selection call keeps its Bedrock forced-tool request until S-217 (#481)
-# moves it to the Anthropic client; these files are that residual.
-SELECTION_RESIDUAL = {"context/selection.py", "legacy_bedrock.py"}
-
-
 def test_request_shape_static_scan_of_the_package_is_tool_free():
-    """TC-216-04: no tool fields anywhere in model code; the stream is a context manager."""
+    """TC-216-04, CT-19: no tool fields anywhere in model code, selection included (S-217)."""
     offenders = []
     for path in PKG.rglob("*.py"):
         rel = path.relative_to(PKG)
-        if rel.parts[0] in {"tests", ".venv"} or rel.as_posix() in SELECTION_RESIDUAL:
+        if rel.parts[0] in {"tests", ".venv"}:
             continue
         code = _code_without_docstrings(path.read_text())
         for needle in ("tool_choice", "thinking=", "toolResult", "messages.create("):

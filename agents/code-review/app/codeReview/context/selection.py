@@ -1,7 +1,8 @@
 """
-Context selection (PRD v1.4 FR-32–FR-34, FR-36; D-59, D-60, D-63; ADR-010 addendum).
+Context selection (PRD v1.4 FR-32–FR-34, FR-36; v1.7 FR-32, FR-33; D-59, D-60,
+D-63, D-71, D-82, D-83; spec §6.3; ADR-010 addendum).
 
-Before the review, one constrained Bedrock Converse call picks the documents
+Before the review, one constrained Anthropic Messages call picks the documents
 the rule-based lookup (FR-8, FR-9) cannot find in repositories that do not
 follow the dev-tasks names, and ranks the changed files for the full-file
 fill (FR-5).
@@ -15,14 +16,23 @@ fill (FR-5).
   path the client could not read safely (a backslash, a control character,
   an empty or dot segment, over ``CANDIDATE_PATH_MAX_CHARS``) is never a
   candidate either.
-- **The call** (``select_context``): on ``model_id`` (``SELECTION_MODEL_ID``,
-  default ``MODEL_ID``), with the forced ``select_context`` schema and no
-  other tool. Its input is the PR title, head branch and body, the linked
+- **The call** (``select_context``): one ``client.beta.messages.stream`` on
+  ``model_id`` (``SELECTION_MODEL_ID``, default ``MODEL_ID``, D-71) with
+  ``max_tokens`` = ``MAX_OUTPUT_TOKENS`` (8,000, D-83), effort ``low``
+  whatever the run's ``reasoning_effort`` (D-82), structured output with the
+  sent selection schema (``findings_schema.sent_schema``: ``minimum`` and
+  ``maxLength`` dropped, D-81) and the review's server-side fallback (D-72).
+  No tools, no ``tool_choice``, no ``thinking`` field, no ``count_tokens``
+  call (the input is bounded by its block caps). Its input is the PR title,
+  head branch and body, the linked
   issues' titles and bodies (cut at ``## Task Checklist``), the changed files
   with their line counts, and the numbered candidates (path and size). Every
   one of those texts is untrusted: it sits inside a nonce-marked block, as in
   the review prompt, and a nonce the content carries is drawn again.
-- **The answer** (``parse_selection``): up to ``MAX_PICKS`` documents by
+- **The answer** (``parse_selection``): the final message's text after the
+  last ``fallback`` block (``model_adapter.answer_text``, the review's rule,
+  D-86), parsed as exactly one JSON value; a stop reason other than
+  ``end_turn`` (a refusal included) is invalid output. Up to ``MAX_PICKS`` documents by
   **index** with a role (``spec`` or ``verifier_report``) and a reason cut to
   ``REASON_MAX_CHARS``, and a ranking of the changed files by index. An index
   outside its list, an unknown role, a duplicate and any entry past the sixth
@@ -30,26 +40,29 @@ fill (FR-5).
   issue can at worst steer the pick to another document under the configured
   folders.
 - **Fail open** (FR-33): any error, a timeout (the call gets
-  ``min(60 s, 15% of the time left)`` as one attempt with no botocore retry),
-  or output that is not a selection ends ``failed`` with one warning, and the
-  review goes on with the rule-based context. There is no repair call, and the
-  call never counts toward the review's ``MAX_CALLS``. Its tokens, cost and
-  duration are its own (``Selection.as_metrics``, FR-34).
+  ``t = min(60 s, 15% of the time left)`` as one attempt: the client is built
+  with ``max_retries=0``, a quarter of ``t`` (at most 10 s) to connect and the
+  rest to read), or output that is not a selection ends ``failed`` with one
+  warning, and the review goes on with the rule-based context. The failure
+  kind is ``invalid_output``, ``timeout`` (``APITimeoutError``), ``api_error``
+  (any other SDK error, DF-33), ``prompt`` or ``error``. There is no repair
+  call, and the call never counts toward the review's ``MAX_CALLS``. Its
+  tokens, cost and duration are its own (``Selection.as_metrics``, FR-34); the
+  cost uses the D-87 price of the answering model, ``None`` for any other.
 
-Warnings carry fixed messages, counts, and an allowlisted AWS error name or an
-exception class (ADR-009), never prompt, model or repository text.
+Warnings carry fixed messages, counts, and an allowlisted SDK exception class
+(ADR-009), never prompt, model, API or repository text.
 """
 
 from __future__ import annotations
 
-import json
 import re
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from botocore.exceptions import BotoCoreError, ClientError, ConnectTimeoutError, ReadTimeoutError
+import anthropic
 
 from context.conventions import (
     CONTEXT_FOLDERS_MAX_CHARS,
@@ -59,12 +72,17 @@ from context.conventions import (
 from context.diff import escape_path, is_doc_path, path_reason
 from context.issues import LinkedIssue, strip_task_checklist
 from context.tokens import truncate
+from findings_schema import SchemaViolation, parse_review_json, sent_schema
 from github_client import TreeEntry
-from legacy_bedrock import (  # S-217 (#481) moves selection to Anthropic
+from model_adapter import (
     ACCEPTED_STOP_REASONS,
+    FALLBACK_BETA,
+    FALLBACKS,
+    PRICE_TABLE,
     ClientFactory,
-    aws_error_name,
-    response_usage,
+    answer_text,
+    answering_model,
+    message_usage,
     usage_cost,
 )
 from prompt import MAX_NONCE_ATTEMPTS, end_marker, new_nonce, open_marker
@@ -73,14 +91,15 @@ __all__ = [
     "CANDIDATE_PATH_MAX_CHARS",
     "MAX_CANDIDATES",
     "MAX_FOLDERS",
+    "MAX_OUTPUT_TOKENS",
     "MAX_PICKS",
     "REASON_MAX_CHARS",
     "ROLES",
     "ROLE_SPEC",
     "ROLE_VERIFIER",
+    "SELECTION_EFFORT",
     "SELECTION_SCHEMA",
     "SELECTION_TIMEOUT_MAX_SECONDS",
-    "SELECTION_TOOL",
     "SKIP_NO_CANDIDATES",
     "SKIP_NO_FOLDERS",
     "SKIP_NO_TIME",
@@ -119,7 +138,7 @@ REASON_MAX_CHARS = 200
 ROLE_SPEC = "spec"
 ROLE_VERIFIER = "verifier_report"
 ROLES = (ROLE_SPEC, ROLE_VERIFIER)
-SELECTION_TOOL = "select_context"
+SELECTION_EFFORT = "low"  # D-82, whatever the run's reasoning_effort
 
 # FR-33: the call gets the lesser of 60 s and 15% of the time left to the run
 # deadline, as one attempt; under ``MIN_SELECTION_SECONDS`` it is not made.
@@ -127,7 +146,8 @@ SELECTION_TIMEOUT_MAX_SECONDS = 60.0
 SELECTION_TIME_SHARE = 0.15
 MIN_SELECTION_SECONDS = 5.0
 CONNECT_TIMEOUT_MAX_SECONDS = 10.0
-MAX_OUTPUT_TOKENS = 2_000
+MAX_RETRIES = 0  # one attempt: no SDK retry (FR-33)
+MAX_OUTPUT_TOKENS = 8_000  # D-83; adaptive thinking counts toward it
 
 # Caps on what the request carries (estimated tokens, counts, characters).
 PR_TOKEN_CAP = 2_000
@@ -144,6 +164,12 @@ SKIP_NO_FOLDERS = "no_folders"  # ``context_folders`` is empty
 SKIP_NO_CANDIDATES = "no_candidates"
 SKIP_NO_TIME = "no_time"
 SKIP_TREE_UNAVAILABLE = "tree_unavailable"  # the Git tree read failed
+# Failure kinds (spec §5.2 ``selection.reason``; DF-33).
+FAIL_INVALID_OUTPUT = "invalid_output"
+FAIL_TIMEOUT = "timeout"
+FAIL_API_ERROR = "api_error"  # any SDK error but a timeout (DF-33)
+FAIL_PROMPT = "prompt"
+FAIL_ERROR = "error"
 
 WARN_FAILED = "context selection failed; using rule-based context"
 WARN_DISCARDED = "context selection entries discarded"
@@ -284,8 +310,8 @@ You choose context documents for an automated code review of one GitHub pull \
 request. You do not review the code. Nothing you write is executed.
 
 The user message lists the pull request, its linked issues, the changed files \
-and a numbered list of candidate documents from the repository. Call \
-`{SELECTION_TOOL}` once with:
+and a numbered list of candidate documents from the repository. Reply with one \
+JSON object, matching the output schema, with:
 
 - `documents`: at most {MAX_PICKS} candidate documents, each by its number in \
 the candidate list, with a `role` and a one-sentence `reason` (at most \
@@ -315,12 +341,10 @@ written by the wrapper.
 """
 
 
-def _tool_config() -> dict[str, Any]:
+def _output_config() -> dict[str, Any]:
     return {
-        "tools": [
-            {"toolSpec": {"name": SELECTION_TOOL, "inputSchema": {"json": SELECTION_SCHEMA}}}
-        ],
-        "toolChoice": {"tool": {"name": SELECTION_TOOL}},
+        "effort": SELECTION_EFFORT,
+        "format": {"type": "json_schema", "schema": sent_schema(SELECTION_SCHEMA)},
     }
 
 
@@ -382,7 +406,10 @@ def build_request(
     model_id: str,
     nonce_factory: Callable[[], str] = new_nonce,
 ) -> dict[str, Any]:
-    """The Converse request. Raises ``SelectionPromptError`` when no nonce avoids the content."""
+    """The ``beta.messages.stream`` keyword arguments (spec §6.3).
+
+    Raises ``SelectionPromptError`` when no nonce avoids the content.
+    """
     blocks = _blocks(inputs)
     for _ in range(MAX_NONCE_ATTEMPTS):
         nonce = nonce_factory()
@@ -391,11 +418,13 @@ def build_request(
         user = _user(blocks, nonce)
         if user.count(nonce) == 2 * len(blocks) + 1 and nonce not in _SYSTEM:
             return {
-                "modelId": model_id,
-                "system": [{"text": _SYSTEM}],
-                "messages": [{"role": "user", "content": [{"text": user}]}],
-                "inferenceConfig": {"maxTokens": MAX_OUTPUT_TOKENS},
-                "toolConfig": _tool_config(),
+                "model": model_id,
+                "max_tokens": MAX_OUTPUT_TOKENS,
+                "system": _SYSTEM,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": user}]}],
+                "output_config": _output_config(),
+                "betas": [FALLBACK_BETA],
+                "fallbacks": FALLBACKS,
             }
     raise SelectionPromptError(f"no collision-free nonce in {MAX_NONCE_ATTEMPTS} attempts")
 
@@ -426,12 +455,15 @@ def _index(value: Any, size: int) -> int | None:
 
 
 def parse_selection(value: Any, candidates: int, files: int) -> ParsedSelection:
-    """Validate the tool input against the candidate and file counts (module docstring)."""
+    """Validate the answer against the candidate and file counts (module docstring).
+
+    ``value`` is the parsed answer, or its text: exactly one JSON value.
+    """
     if isinstance(value, str):
         try:
-            value = json.loads(value)
-        except (ValueError, RecursionError):
-            raise SelectionInvalid("the selection is not JSON") from None
+            value = parse_review_json(value)
+        except SchemaViolation:
+            raise SelectionInvalid("the selection is not exactly one JSON value") from None
     if not isinstance(value, dict) or not isinstance(value.get("documents"), list):
         raise SelectionInvalid("the selection has no documents list")
     kept: list[ParsedPick] = []
@@ -456,23 +488,19 @@ def parse_selection(value: Any, candidates: int, files: int) -> ParsedSelection:
     return ParsedSelection(tuple(kept), priority, discarded)
 
 
-def _tool_input(response: Any) -> Any:
-    """The ``select_context`` input of a forced reply; ``SelectionInvalid`` otherwise."""
-    if not isinstance(response, dict):
-        raise SelectionInvalid("the response is not an object")
-    output = response.get("output")
-    message = output.get("message") if isinstance(output, dict) else None
-    content = message.get("content") if isinstance(message, dict) else None
-    if not isinstance(content, list):
-        raise SelectionInvalid("the response has no message content")
-    stop = response.get("stopReason")
-    if stop is not None and stop not in ACCEPTED_STOP_REASONS:
-        raise SelectionInvalid("the reply is incomplete")
-    for block in content:
-        use = block.get("toolUse") if isinstance(block, dict) else None
-        if isinstance(use, dict) and use.get("name") == SELECTION_TOOL:
-            return use.get("input")
-    raise SelectionInvalid(f"no {SELECTION_TOOL} tool call in the reply")
+def _answer(message: Any) -> str:
+    """The answer text of a complete reply; ``SelectionInvalid`` otherwise.
+
+    A stop reason other than ``end_turn`` (``refusal``, ``max_tokens``, none)
+    is invalid output, and so is a reply with no text after the last
+    ``fallback`` block. The text is never put in an exception.
+    """
+    if getattr(message, "stop_reason", None) not in ACCEPTED_STOP_REASONS:
+        raise SelectionInvalid("the reply is incomplete or refused")
+    text = answer_text(message)
+    if not text.strip():
+        raise SelectionInvalid("the reply has no text")
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -546,19 +574,25 @@ def selection_timeout(remaining_seconds: float) -> float | None:
     return float(seconds) if seconds >= MIN_SELECTION_SECONDS else None
 
 
+_NAME_RE = re.compile(r"[A-Za-z0-9_]{1,100}", re.ASCII)
+
+
+def _class_name(exc: BaseException) -> str:
+    name = type(exc).__name__
+    return name if _NAME_RE.fullmatch(name) else "unknown"
+
+
 def _failure(exc: Exception) -> dict[str, str]:
-    """The warning's data: a fixed kind and an allowlisted name, never a message."""
+    """The warning's data: a fixed kind and an allowlisted class name, never a message."""
     if isinstance(exc, SelectionInvalid):
-        return {"reason": "invalid_output"}
+        return {"reason": FAIL_INVALID_OUTPUT}
     if isinstance(exc, SelectionPromptError):
-        return {"reason": "prompt"}
-    if isinstance(exc, ClientError):
-        return {"reason": "bedrock_error", "error": aws_error_name(exc)}
-    if isinstance(exc, ReadTimeoutError | ConnectTimeoutError):
-        return {"reason": "timeout", "error": type(exc).__name__}
-    if isinstance(exc, BotoCoreError):
-        return {"reason": "bedrock_error", "error": type(exc).__name__}
-    return {"reason": "error", "error": type(exc).__name__}
+        return {"reason": FAIL_PROMPT}
+    if isinstance(exc, anthropic.APITimeoutError):  # before APIConnectionError, its base
+        return {"reason": FAIL_TIMEOUT, "error": _class_name(exc)}
+    if isinstance(exc, anthropic.AnthropicError):
+        return {"reason": FAIL_API_ERROR, "error": _class_name(exc)}
+    return {"reason": FAIL_ERROR, "error": _class_name(exc)}
 
 
 def select_context(
@@ -566,13 +600,17 @@ def select_context(
     *,
     client_factory: ClientFactory,
     model_id: str,
-    prices: tuple[float, float] | None,
     clock: Callable[[], float] = time.monotonic,
     deadline: float,
     nonce_factory: Callable[[], str] = new_nonce,
     warn: Callable[..., Any] | None = None,
 ) -> Selection:
-    """Make the selection call, or skip it; never raises an ``Exception`` (FR-33)."""
+    """Make the selection call, or skip it; never raises an ``Exception`` (FR-33).
+
+    ``client_factory`` is ``model_adapter.make_client``'s shape with the key
+    bound (the pipeline's selection client, not the review's counting one);
+    it is called once, with ``max_retries=0`` and the call's timeouts.
+    """
     n = len(inputs.candidates)
     if n == 0:
         return skipped(SKIP_NO_CANDIDATES)
@@ -581,13 +619,15 @@ def select_context(
         return skipped(SKIP_NO_TIME, n)
     start = clock()
     tokens: tuple[int, int] | None = None
+    model: str | None = None
 
     def metrics() -> SelectionMetrics:
         ms = max(0, round((clock() - start) * 1000))
+        prices = PRICE_TABLE.get(model) if model is not None else None  # D-87
         return SelectionMetrics(
             tokens[0] if tokens else None,
             tokens[1] if tokens else None,
-            usage_cost(tokens, prices),
+            usage_cost(tokens, prices) if tokens is not None and prices is not None else None,
             ms,
         )
 
@@ -597,13 +637,13 @@ def select_context(
         client = client_factory(
             read_timeout_seconds=timeout - connect,
             connect_timeout_seconds=connect,
-            max_attempts=1,
+            max_retries=MAX_RETRIES,
         )
-        response = client.converse(**request)
-        tokens = response_usage(response)
-        parsed = parse_selection(
-            _tool_input(response), n, min(len(inputs.changed), MAX_CHANGED_FILES)
-        )
+        with client.beta.messages.stream(**request) as stream:
+            message = stream.get_final_message()
+        tokens = message_usage(message)
+        model = answering_model(message)
+        parsed = parse_selection(_answer(message), n, min(len(inputs.changed), MAX_CHANGED_FILES))
     except Exception as exc:  # noqa: BLE001 - FR-33: the selection never fails the run
         data = _failure(exc)
         if warn is not None:

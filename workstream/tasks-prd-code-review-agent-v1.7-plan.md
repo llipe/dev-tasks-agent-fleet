@@ -16,19 +16,22 @@
 
 - `pkg/model_adapter.py` (new) - Anthropic client factory, `review()`: `count_tokens` check, streaming structured-output call, context-length retry, repair, refusal, fallback model, error mapping, cost (S-216)
 - `pkg/bedrock_adapter.py` (deleted) - replaced by `model_adapter.py` (S-216)
-- `pkg/legacy_bedrock.py` (new, temporary) - the selection call's Bedrock client factory and response helpers until S-217 deletes it (S-216)
+- `pkg/legacy_bedrock.py` (deleted in S-217) - the selection call's temporary Bedrock client factory and response helpers (S-216); `tests/fixtures/bedrock.py` deleted with it
 - `pkg/findings_schema.py` - `sent_schema()` strips `minimum`, `maxLength`, `pattern` (S-216)
 - `pkg/credentials.py`, `pkg/config.py` - Anthropic key fetch from Secrets Manager, scrubber registration (S-216); `PARAMS_SCHEMA` bounds (S-217)
 - `pkg/pipeline.py`, `pkg/render.py`, `pkg/main.py`, `pkg/pyproject.toml` - imports, renamed metrics, footer `answered_by_model`, `anthropic` pin (S-216)
-- `pkg/context/selection.py` - selection call on the Anthropic client (S-217)
+- `pkg/context/selection.py` - selection call on the Anthropic client: `beta.messages.stream`, structured output, `max_retries=0`, fail-open kinds incl. `api_error` (S-217)
+- `pkg/model_adapter.py` - `answer_text`, `message_usage`, `answering_model`, `usage_cost` made public for the selection call (S-217)
+- `pkg/pipeline.py` - `PipelineDeps.selection_factory` replaces `bedrock_factory`; uncounted selection client with the run's key (S-217)
+- `pkg/Dockerfile`, `pkg/context/tokens.py` - stale Bedrock comments reworded (S-217)
 - `pkg/tests/unit/test_model_adapter.py`, `test_model_adapter_hostile.py`, `test_properties_model.py`, `test_model_adapter_sdk.py` (CT-15), `test_anthropic_fake_contract.py` (CT-14), `pkg/tests/fixtures/anthropic_fake.py`, `pkg/tests/helpers/model_run.py` (new) - adapter tests, fake client and harness (S-216)
 - `pkg/tests/unit/test_credentials.py`, `test_config.py`, `test_outcomes.py`, `test_render.py`, `test_render_hostile.py`, `test_layout.py`, `test_contracts.py`, `test_deadline.py`, `test_full_code_files.py`, `test_selection.py`, `pkg/tests/helpers/pipeline_run.py`, `pkg/tests/integration/test_cross_story_joins.py`, `test_pipeline_selection.py` - ported to the Anthropic codes, metrics and fake (S-216)
 - `TESTING.md` - the fake Anthropic client and CT-15 harness (S-216)
 - `pkg/tests/unit/test_selection*.py`, `test_seed_contract.py`, `test_properties_params.py`, `pkg/tests/fixtures/params_cases.json`, `pkg/tests/integration/test_pipeline_selection.py` - selection and params tests (S-217)
 - `pkg/tests/integration/test_pipeline_e2e.py`, `test_pipeline_prompt_capture.py`, `test_pipeline_hostile.py` - moved to the fake Anthropic client (S-216); large-PR capture (S-217)
-- `supabase/migrations/<ts>_seed_code_review_agent.sql` (new), `supabase/seed.sql` - params schema and defaults (S-217)
-- `agents/code-review/agentcore/agentcore.json`, `agentcore/cdk/lib/cdk-stack.ts`, `agentcore/cdk/test/code-review-runtime.test.ts` - secret grant, no `bedrock:`, env (S-217)
-- `docs/runbooks/code-review-deployment.md` - key secret, tier check, deploy order, rollback, error codes (S-217); verification log (S-218)
+- `supabase/migrations/20261125120000_seed_code_review_agent.sql` (new, not applied), `supabase/seed.sql`, `panel/tests/integration/seed-schema.test.ts` - params schema and defaults (S-217)
+- `agents/code-review/agentcore/agentcore.json`, `agentcore/iam/runtime-role-policy.json` (new: the v1.8 desired role policy), `agentcore/cdk/test/code-review-runtime.test.ts` - secret grant, no `bedrock:`, env (S-217); `cdk-stack.ts` needed no change (the role is imported)
+- `docs/runbooks/code-review-deployment.md`, `docs/runbooks/README.md`, `TESTING.md` - key secret, tier check, deploy order, rollback, error codes (S-217); verification log (S-218)
 - `infra/changes/<ChangeId>/{plan.md,commands.sh,rollback.sh,result.md}` - infra change record (S-218)
 
 ## Tasks
@@ -61,24 +64,24 @@
   - [x] 1.24 Run Tests: `make -C agents/code-review/app/codeReview validate` and `pnpm run validate` (lint, format:check, typecheck, test, audit)
 
 - [ ] 2.0 Implement Story S-217 - https://github.com/llipe/dev-tasks-agent-fleet/issues/481: Selection call, params, CDK, and runbook for the Anthropic model
-  - [ ] 2.1 [code-review] `[T]` Port `test_selection.py` and `test_selection_hostile.py` to the fake Anthropic client; add failing tests: `max_tokens=8000`, effort `low`, stripped selection schema, fallback beta, `max_retries=0`, `timeout=min(60 s, 15% of time left)`; refusal, 429, timeout under 5 s, invalid output and empty candidates all fail open (D-71, D-82, D-83; FR-33)
-  - [ ] 2.2 [code-review] `[T]` Add failing bound cases to `test_properties_params.py` and `tests/fixtures/params_cases.json`: `max_diff_lines` 19,999 / 20,000 / 20,001; `max_context_tokens` 899,999 / 900,000 / 900,001 (D-77, D-90)
-  - [ ] 2.3 [code-review] `[T]` Add the failing large-PR prompt-capture test: a generated diff of about 393k estimated tokens is reviewed with the default params, not budget-skipped (AC-14)
-  - [ ] 2.4 [code-review-cdk] `[T]` Add failing assertions to `code-review-runtime.test.ts`: `secretsmanager:GetSecretValue` on the Anthropic key secret ARN only; no `bedrock:` action; env `MODEL_ID=claude-sonnet-5-5` and `ANTHROPIC_API_KEY_SECRET_ID`; no `PRICE_*` (D-74, D-88; AC-17 IAM half)
-  - [ ] 2.5 [code-review] `[I]` Switch `context/selection.py` to the adapter's client factory with structured output; `SELECTION_MODEL_ID` falls back to `MODEL_ID` (D-71)
-  - [ ] 2.6 [code-review] `[I]` Update `PARAMS_SCHEMA` in `config.py`: `max_diff_lines` maximum 20,000 (default 2,000); `max_context_tokens` default and maximum 900,000 (D-77, D-90)
-  - [ ] 2.7 [supabase] `[I]` Create the migration `supabase/migrations/<ts>_seed_code_review_agent.sql` with the same schema and defaults; update `supabase/seed.sql`; document rollback in the migration header (re-apply the previous seed's values; roll it back before the runtime) (D-89)
-  - [ ] 2.8 [code-review] `[I]` Make `test_seed_contract.py` and the Python/Ajv parity fixtures pass
-  - [ ] 2.9 [code-review-cdk] `[I]` Update `agentcore.json` and `cdk-stack.ts`: secret grant, Bedrock grant removed, env updated (D-74, D-88)
-  - [ ] 2.10 [repo root] `[I]` Update `docs/runbooks/code-review-deployment.md`: create and rotate the key secret, tier/ITPM check (D-78), deploy order runtime → migration → riel rule (D-89), v1.8 rollback, the new `MODEL_*` error codes (FR-49a)
-  - [ ] 2.11 Migration gate: do **not** apply the migration in this story; applying it is S-218 step 3.5, with explicit user confirmation
-  - [ ] 2.12 Verify Acceptance Criterion: selection on Anthropic, fail-open (FR-33) → 2.1
-  - [ ] 2.13 Verify Acceptance Criterion: params bounds and seed migration parity (FR-1) → 2.2, 2.8
-  - [ ] 2.14 Verify Acceptance Criterion: large PR reviewed (AC-14) → 2.3
-  - [ ] 2.15 Verify Acceptance Criterion: CDK grants and env (AC-17 IAM half) → 2.4
-  - [ ] 2.16 Verify Acceptance Criterion: runbook covers the key secret, tier check, deploy order, rollback and error codes → 2.10 review
-  - [ ] 2.17 Record the AC-to-test mapping (AC-14, AC-17 IAM, FR-1) in the PR body
-  - [ ] 2.18 Run Tests: `make -C agents/code-review/app/codeReview validate`, `pnpm run validate` (panel, Ajv parity), `npm test` in `agents/code-review/agentcore/cdk`
+  - [x] 2.1 [code-review] `[T]` Port `test_selection.py` and `test_selection_hostile.py` to the fake Anthropic client; add failing tests: `max_tokens=8000`, effort `low`, stripped selection schema, fallback beta, `max_retries=0`, `timeout=min(60 s, 15% of time left)`; refusal, 429, timeout under 5 s, invalid output and empty candidates all fail open (D-71, D-82, D-83; FR-33)
+  - [x] 2.2 [code-review] `[T]` Add failing bound cases to `test_properties_params.py` and `tests/fixtures/params_cases.json`: `max_diff_lines` 19,999 / 20,000 / 20,001; `max_context_tokens` 899,999 / 900,000 / 900,001 (D-77, D-90)
+  - [x] 2.3 [code-review] `[T]` Add the failing large-PR prompt-capture test: a generated diff of about 393k estimated tokens is reviewed with the default params, not budget-skipped (AC-14)
+  - [x] 2.4 [code-review-cdk] `[T]` Add failing assertions to `code-review-runtime.test.ts`: `secretsmanager:GetSecretValue` on the Anthropic key secret ARN only; no `bedrock:` action; env `MODEL_ID=claude-sonnet-5-5` and `ANTHROPIC_API_KEY_SECRET_ID`; no `PRICE_*` (D-74, D-88; AC-17 IAM half)
+  - [x] 2.5 [code-review] `[I]` Switch `context/selection.py` to the adapter's client factory with structured output; `SELECTION_MODEL_ID` falls back to `MODEL_ID` (D-71)
+  - [x] 2.6 [code-review] `[I]` Update `PARAMS_SCHEMA` in `config.py`: `max_diff_lines` maximum 20,000 (default 2,000); `max_context_tokens` default and maximum 900,000 (D-77, D-90)
+  - [x] 2.7 [supabase] `[I]` Create the migration `supabase/migrations/<ts>_seed_code_review_agent.sql` with the same schema and defaults; update `supabase/seed.sql`; document rollback in the migration header (re-apply the previous seed's values; roll it back before the runtime) (D-89)
+  - [x] 2.8 [code-review] `[I]` Make `test_seed_contract.py` and the Python/Ajv parity fixtures pass
+  - [x] 2.9 [code-review-cdk] `[I]` Update `agentcore.json` and `cdk-stack.ts`: secret grant, Bedrock grant removed, env updated (D-74, D-88)
+  - [x] 2.10 [repo root] `[I]` Update `docs/runbooks/code-review-deployment.md`: create and rotate the key secret, tier/ITPM check (D-78), deploy order runtime → migration → riel rule (D-89), v1.8 rollback, the new `MODEL_*` error codes (FR-49a)
+  - [x] 2.11 Migration gate: do **not** apply the migration in this story; applying it is S-218 step 3.5, with explicit user confirmation
+  - [x] 2.12 Verify Acceptance Criterion: selection on Anthropic, fail-open (FR-33) → 2.1
+  - [x] 2.13 Verify Acceptance Criterion: params bounds and seed migration parity (FR-1) → 2.2, 2.8
+  - [x] 2.14 Verify Acceptance Criterion: large PR reviewed (AC-14) → 2.3
+  - [x] 2.15 Verify Acceptance Criterion: CDK grants and env (AC-17 IAM half) → 2.4
+  - [x] 2.16 Verify Acceptance Criterion: runbook covers the key secret, tier check, deploy order, rollback and error codes → 2.10 review
+  - [x] 2.17 Record the AC-to-test mapping (AC-14, AC-17 IAM, FR-1) in the PR body
+  - [x] 2.18 Run Tests: `make -C agents/code-review/app/codeReview validate`, `pnpm run validate` (panel, Ajv parity), `npm test` in `agents/code-review/agentcore/cdk`
 
 - [ ] 3.0 Implement Story S-218 - https://github.com/llipe/dev-tasks-agent-fleet/issues/482: Infra pass and live verification on Claude Sonnet 5.5
   > Note: runs through `/infra-engineer` after the integration PR is merged to `main`. One approval per step; every step has a rollback.

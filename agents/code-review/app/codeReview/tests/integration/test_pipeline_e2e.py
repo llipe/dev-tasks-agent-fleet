@@ -211,7 +211,7 @@ def test_sha_pinned(h):
     assert f"`{HEAD[:7]}`" in body
     meta = h.reporter.artifacts()[0]["metadata"]
     assert meta["head_sha"] == HEAD
-    assert h.prompts[0].context.max_context_tokens == 150_000
+    assert h.prompts[0].context.max_context_tokens == 900_000  # D-90 default
     assert HEAD in h.prompts[0].user
 
 
