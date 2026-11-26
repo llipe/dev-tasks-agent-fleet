@@ -75,6 +75,7 @@
 | 1.57    | 2026-10-24 | Merged `main` into `integration/bug-fix-agent-wave-a`: kept main's code-review rows 1.54–1.55 and the bug-fix row 1.56 (renumbered from a colliding 1.54). §9 `bug-fix` row corrected from the stale "scaffold only … Not deployed" to the current state: runtime `bugfix_bug_fix-BiuPsdGSPK` deployed (S-181, `infra/changes/20261023-bug-fix-runtime/`), sandbox spike PASS on AgentCore (S-182, D-110/D-111), and the `agents` seed row live (S-184, `infra/changes/20261024-bug-fix-agent-seed/`); the entrypoint is still a stub. The §9 `supabase/seed.sql` and migrations rows now list the bug-fix seed (section 4a2) and `20261024130000_seed_bug_fix_agent.sql` (data-only) beside code-review's. Current-state status correction only: no schema, API, or enforceable-rule change, so **no new ADR is required** (precedent: rows 1.11–1.53). | developer |
 | 1.58    | 2026-10-27 | **Bug-fix agent Wave A completion and live verification** (stories S-180–S-190, verified live on runtime v7 against fixture `llipe/bug-fix-smoke#1`, run `a76a6c8c`): §9 `bug-fix` agent row updated from "pipeline in progress, entrypoint stub" to the delivered and verified state. Wave A delivers the full orchestration (`preflight` → `refuse` → `checkout` → `claim` → `disposition`), the security model (setpriv drop to uid `fixer`, srt + CLI sandboxes, no-credentials baseline), the run lifecycle (worker thread, SIGTERM backstop, busy registration, run deadline), and the `FIX_LOOP_ENABLED=0` gate that disposes "fix loop not yet enabled" (Wave B). Spec [`specification-prd-bug-fix-agent.md`](../workstream/specification-prd-bug-fix-agent.md) v2.1, verified against PRD. No schema, API, or enforceable-rule change; status accuracy correction only. | technical-writer |
 | 1.59    | 2026-10-30 | **Bug-fix agent: one Node.js per target repo.** The image ships Node 22.23.4, 24.22.2 and 26.12.1 under `/opt/node/<major>` (official tarballs, SHA-256 pinned; NodeSource removed; `libatomic1` added), default 26 at `/usr/bin/node`. The repo gate picks the version from `engines.node` (then `.nvmrc`/`.node-version`) through a new `node.py`, and install and gates run with that `bin` first on `PATH`, from a closed set (`sandbox.ALLOWED_PATHS` = `fixer_exec.ALLOWED_PATHS`). A range no shipped Node satisfies is refusal `repo_gate` (`supported Node.js version`). Fixes run `fb717a51` (`INSTALL_FAILED`: `ERR_PNPM_UNSUPPORTED_ENGINE`, wanted `>=24.21.0 <25`, got v26.12.1). No schema/API change. | developer |
+| 1.60    | 2026-11-26 | Renamed from `docs/technical-guidelines.md` (FR-45 migration). Added `## Package Map` (one row per pnpm workspace package) so bounded contexts in `docs/domain/ubiquitous-language.md` resolve; the `panel` context is first used by `prd-repo-knowledge-views`. | product-engineer |
 
 
 
@@ -87,6 +88,16 @@ The system has three pieces with different languages and runtimes, joined by Sup
 3. **Database** — PostgreSQL via Supabase, with Realtime for live log tailing and `pg_cron` for stale-execution detection (Phase 1).
 
 Guiding principle: **the agent reports state explicitly**; nothing is reconstructed by inference over logs (see Problem Statement in `product.md`). Every decision in this document upholds that rule or resolves a consequence of it (timeouts, buffering, credentials).
+
+## Package Map
+
+Repository shape: **monorepo** (pnpm workspace, `pnpm-workspace.yaml`). The Python agents under `agents/*/app` are not workspace packages; each is documented in §9.
+
+| Package               | Path                                   | Purpose                                                                   | Owner | Canonical scripts                                                                                      | Bounded context |
+| --------------------- | -------------------------------------- | ------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------ | --------------- |
+| dev-tasks-agent-fleet | .                                      | Workspace root; delegates every canonical script to `panel`               | Llipe | lint, format:check, typecheck, test, test:unit, test:integration, test:e2e, audit, validate            | workspace       |
+| panel                 | panel                                  | Next.js control-plane panel on Fly: agents, runs, schedules, webhooks, repositories | Llipe | lint, format:check, typecheck, test, test:unit, test:integration, test:e2e, audit, validate | panel           |
+| agentcore-cdk-app     | agents/dependency-update/agentcore/cdk | CDK app that deploys the `dependency-update` AgentCore runtime            | Llipe | format:check, test                                                                                     | agent-runtime   |
 
 ## 2. Technology Stack
 

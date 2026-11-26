@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                                   | Author           |
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-11-26 | Initial version from the WHAT-phase grilling (D-01–D-17, `workstream/decisions-repo-knowledge-views.md`). | product-engineer |
+| 1.1     | 2026-11-26 | Approved by Llipe. Vocabulary terms appended to `docs/domain/ubiquitous-language.md` (context `panel`); rows now `existing`. Foundation-doc note updated after the FR-45 migration. | product-engineer |
 
 ---
 
@@ -214,7 +215,7 @@ flowchart LR
 - **Known riel incompatibility.** riel's `api.html` fetches `../api/openapi.yaml`, outside `docs/field-guide/`; under FR-11 that request is refused, so its API page will show its own fallback. Accepted, not fixed here.
 - **Graph library.** Pinned, chosen in the spec for size and performance at the aggregation threshold.
 - **Left for the HOW phase:** graph library; size caps for `graph.json` and individual field-guide files; cache TTL; aggregation node threshold; exact CSP; supported `schema_version` range; graphify version pin.
-- Foundation docs in this repository still use the pre-rename names (`docs/product.md`, `docs/tech.md`); `dev-tasks migrate docs` is recommended.
+- Foundation docs were renamed to `docs/product.md` and `docs/tech.md` (FR-45 migration, 2026-11-26), and `docs/tech.md` now carries the `## Package Map` the glossary resolves against.
 
 ## 13. Acceptance Criteria
 
@@ -290,8 +291,8 @@ None at WHAT level. HOW-phase items are listed in §12.
 
 ## Vocabulary
 
-| Term               | Status in glossary | Bounded context | Definition (proposals only)                                                                                                                                                                 | Forbidden synonyms (proposals only) |
-| ------------------ | ------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
-| Knowledge artifact | proposed           | panel           | A repository-owned file committed at a fixed path that the panel reads live from GitHub and renders: a field guide or a dependency graph.                                                  | doc snapshot, synced doc            |
-| Field guide        | proposed           | panel           | A derived, self-contained HTML guide to a repository under `docs/field-guide/` (entry `index.html`), following the field-guide contract and maintained by `technical-writer`; its sources win over it. | wiki, handbook, portal docs         |
-| Dependency graph   | proposed           | panel           | graphify's code-only output at `docs/graph/graph.json`: files and symbols and their `imports`/`calls` relations, in NetworkX node-link format.                                             | knowledge graph, code map           |
+| Term               | Status in glossary | Bounded context | Definition (proposals only) | Forbidden synonyms (proposals only) |
+| ------------------ | ------------------ | --------------- | --------------------------- | ----------------------------------- |
+| Knowledge artifact | existing           | panel           |                             |                                     |
+| Field guide        | existing           | panel           |                             |                                     |
+| Dependency graph   | existing           | panel           |                             |                                     |
