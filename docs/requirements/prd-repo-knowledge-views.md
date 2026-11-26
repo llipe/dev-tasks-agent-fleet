@@ -6,6 +6,7 @@
 | ------- | ---------- | --------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1.0     | 2026-11-26 | Initial version from the WHAT-phase grilling (D-01–D-17, `workstream/decisions-repo-knowledge-views.md`). | product-engineer |
 | 1.1     | 2026-11-26 | Approved by Llipe. Vocabulary terms appended to `docs/domain/ubiquitous-language.md` (context `panel`); rows now `existing`. Foundation-doc note updated after the FR-45 migration. | product-engineer |
+| 1.2     | 2026-11-26 | FR-21, AC-13 and §11 amended: the panel is dark-only, so the viewer follows the panel theme and new colours are tokens; a panel light theme is out of scope (D-21). | product-engineer |
 
 ---
 
@@ -107,7 +108,7 @@ sequenceDiagram
 - **FR-18.** The viewer **MUST** provide: node search by label; filters by `file_type` and `relation`; `INFERRED` and `AMBIGUOUS` edges hidden by default with a toggle; click-to-focus on a node's neighbourhood; a link from a focused node to `source_file` on GitHub at the rendered commit (D-08).
 - **FR-19.** Above a node threshold (set in the spec), the viewer **MUST** open in a community-aggregated view and let the user expand a community (D-08).
 - **FR-20.** When `GRAPH_REPORT.md` exists, the viewer **MUST** render it as sanitised Markdown in a side panel (no raw HTML) (D-08).
-- **FR-21.** The viewer **MUST** use `/DESIGN.md` tokens and follow the panel's light/dark theme (D-08).
+- **FR-21.** The viewer **MUST** use `/DESIGN.md` tokens and follow the panel's theme, which is dark-only today. New colours (node colour by `file_type`, edge style by `confidence`) **MUST** be defined as tokens so a future light theme only adds values (D-08, D-21).
 
 ### 7.5 `repo-knowledge` skill (Wave A, `llipe/dev-tasks`)
 
@@ -161,12 +162,13 @@ graphify's `graph.json` is NetworkX node-link: nodes carry `id`, `label`, `file_
 - An LLM semantic pass over docs in the graph; a graph-generating fleet agent (D-09). Either may be a later wave.
 - Automatic generation or refresh of field guides by CI or a fleet agent (D-10).
 - Per-repository visibility or roles; `prd-panel-auth-and-rls` remains DEFERRED (D-15).
+- A light theme for the panel (D-21).
 - A separate read-only GitHub App (D-14).
 - Changes to `llipe/riel`.
 
 ## 11. Design Considerations
 
-- Follows `/DESIGN.md` (Nocturne tokens, `KLabel`, tab and empty-state patterns). **DESIGN.md impact:** add the repository page layout (§5.x), a tab-bar component if none exists, the knowledge-artifact empty and error states, the staleness indicator (normal/warning), and graph-viewer tokens (node colours by `file_type`, edge styles by `confidence`), all with light/dark values.
+- Follows `/DESIGN.md` (Nocturne tokens, `KLabel`, tab and empty-state patterns). **DESIGN.md impact:** add the repository page layout (§5.x), a tab-bar component if none exists, the knowledge-artifact empty and error states, the staleness indicator (normal/warning), and graph-viewer tokens (node colours by `file_type`, edge styles by `confidence`), dark values only, named so a light theme can add values later (D-21). The field guide keeps its own theming inside the frame (e.g. riel follows `prefers-color-scheme`), so it may render light inside the dark panel; accepted (D-07, D-21).
 - The field-guide frame fills the content region; "Open full screen" opens the route in a new tab.
 - The graph viewer **MUST** be keyboard-operable for search, filters and node focus, and **MUST** offer a text alternative for the focused node (its incoming and outgoing relations as a list).
 - Phone width: the page **MUST NOT** scroll sideways at 390 px; the graph canvas and frame scroll or scale inside their own containers.
@@ -231,7 +233,7 @@ flowchart LR
 - **AC-10.** In dev-tasks, the `repo-knowledge` skill exists on all three platforms, is in `bundle-manifest.json` and the AGENTS.md registry, and `validate` passes (FR-22).
 - **AC-11.** Running `graph.yml` on a repository with unchanged code opens no PR; after a code change it opens or updates exactly one `chore(graph): refresh dependency graph` PR, and it never pushes to the default branch (FR-28–FR-30).
 - **AC-12.** `dev-tasks-agent-fleet` and `llipe/riel` both render their available artifacts in the deployed panel (FR-32–FR-34).
-- **AC-13.** The repository page does not scroll sideways at 390 px in light or dark theme (§11).
+- **AC-13.** The repository page does not scroll sideways at 390 px in the panel's theme (§11, D-21).
 
 ## 14. Success Metrics
 
@@ -288,6 +290,7 @@ None at WHAT level. HOW-phase items are listed in §12.
 | D-15 | Existing auth gate; no new roles                                                                               |
 | D-16 | Vocabulary: knowledge artifact, field guide, dependency graph; skill `repo-knowledge`                         |
 | D-17 | Four waves: A dev-tasks; B read path; C viewers; D adoption                                                   |
+| D-21 | Viewer follows the dark-only panel theme; colours as tokens; no panel light theme                              |
 
 ## Vocabulary
 
