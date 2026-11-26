@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                                  | Author                    |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------- | ------------------------- |
 | 1.0     | 2026-11-26 | Initial draft for Waves A and B. HOW decisions D-18 to D-31 in `workstream/decisions-control-tower.md`. | @llipe / product-engineer |
+| 1.1     | 2026-11-26 | Approved by @llipe, including SQ-1 (merge logic in one database function), SQ-2 (`changes_requested` event kind) and SQ-3 (removal guard). No content changed. | @llipe / product-engineer |
 
 ## 1. Executive Summary
 
