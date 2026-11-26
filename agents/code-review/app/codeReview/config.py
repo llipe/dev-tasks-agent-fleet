@@ -20,7 +20,6 @@ copied verbatim from the security-analyst sibling (D-20) and imports them.
 
 from __future__ import annotations
 
-import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -39,6 +38,15 @@ SUPABASE_KEY_SECRET_ID: str = os.environ.get(
 )
 TOKEN_STALE_THRESHOLD_MINUTES: float = 45.0
 
+# The Anthropic API key's secret (D-88). Read once per run by
+# ``credentials.fetch_anthropic_key``; never placed in the environment.
+DEFAULT_ANTHROPIC_API_KEY_SECRET_ID = "agent-fleet/prod/ANTHROPIC_API_KEY"
+
+# D-87: USD per million (input, output) tokens, keyed on the exact
+# ``message.model`` the API returns. Any other answering model records no cost.
+# ``PRICE_INPUT_PER_MTOK``/``PRICE_OUTPUT_PER_MTOK`` are retired.
+MODEL_PRICES: dict[str, tuple[float, float]] = {"claude-sonnet-5-5": (2.0, 10.0)}
+
 # ---------------------------------------------------------------------------
 # Params contract (spec §5.1). Keep byte-for-byte equal in meaning to the
 # `params_schema` / `default_params` in supabase/seed.sql and the newest
@@ -51,12 +59,15 @@ PARAMS_SCHEMA: dict[str, Any] = {
     "required": ["pr_number"],
     "properties": {
         "pr_number": {"type": "integer", "minimum": 1, "title": "Pull request number"},
-        "max_diff_lines": {"type": "integer", "minimum": 100, "maximum": 10000, "default": 2000},
+        # v1.8 (D-77): up to 20,000 changed lines; the default stays 2,000.
+        "max_diff_lines": {"type": "integer", "minimum": 100, "maximum": 20000, "default": 2000},
+        # v1.8 (D-90): Claude Sonnet 5.5's window holds B = 900,000 plus the
+        # 64,000 output tokens, so the default is the maximum.
         "max_context_tokens": {
             "type": "integer",
             "minimum": 20000,
-            "maximum": 400000,
-            "default": 150000,
+            "maximum": 900000,
+            "default": 900000,
         },
         "max_suggestions": {"type": "integer", "minimum": 0, "maximum": 20, "default": 5},
         "run_timeout_seconds": {"type": "integer", "minimum": 120, "maximum": 900, "default": 900},
@@ -106,7 +117,7 @@ REAPER_THRESHOLD_SECONDS: int = int(
     os.environ.get("REAPER_THRESHOLD_SECONDS", str(MAX_LIFETIME + GRACE_SECONDS))
 )
 
-# Keep-alive cadence around the GitHub fetch and the Converse calls.
+# Keep-alive cadence around the GitHub fetch and the model calls.
 HEARTBEAT_INTERVAL: int = int(os.environ.get("HEARTBEAT_INTERVAL", "120"))
 
 # The run-level deadline is `start + run_timeout_seconds - DEADLINE_RESERVE_SECONDS`;
@@ -192,9 +203,8 @@ class Settings:
     supabase_key_secret_id: str
     model_id: str
     panel_base_url: str
-    price_input_per_mtok: float | None = None
-    price_output_per_mtok: float | None = None
     selection_model_id: str | None = None  # PRD v1.4 FR-32; ``None``: ``model_id``
+    anthropic_api_key_secret_id: str = DEFAULT_ANTHROPIC_API_KEY_SECRET_ID  # D-88
 
     def run_url(self, run_id: str) -> str:
         """The panel link for a run (D-29)."""
@@ -204,28 +214,6 @@ class Settings:
     def selection_model(self) -> str:
         """The selection call's model: ``SELECTION_MODEL_ID``, else ``MODEL_ID``."""
         return self.selection_model_id or self.model_id
-
-    @property
-    def selection_prices(self) -> tuple[float, float] | None:
-        """``PRICE_*`` price ``MODEL_ID`` only: no cost for another selection model."""
-        if self.selection_model != self.model_id:
-            return None
-        if self.price_input_per_mtok is None or self.price_output_per_mtok is None:
-            return None
-        return (self.price_input_per_mtok, self.price_output_per_mtok)
-
-
-def _price(env: Mapping[str, str], var: str) -> float | None:
-    raw = env.get(var, "").strip()
-    if not raw:
-        return None
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ConfigError(var, "must be a number") from None
-    if not math.isfinite(value) or value < 0:
-        raise ConfigError(var, "must be a finite, non-negative number")
-    return value
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -242,7 +230,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         supabase_key_secret_id=values["SUPABASE_KEY_SECRET_ID"],
         model_id=values["MODEL_ID"],
         panel_base_url=values["PANEL_BASE_URL"].rstrip("/"),
-        price_input_per_mtok=_price(env, "PRICE_INPUT_PER_MTOK"),
-        price_output_per_mtok=_price(env, "PRICE_OUTPUT_PER_MTOK"),
         selection_model_id=env.get("SELECTION_MODEL_ID", "").strip() or None,
+        anthropic_api_key_secret_id=env.get("ANTHROPIC_API_KEY_SECRET_ID", "").strip()
+        or DEFAULT_ANTHROPIC_API_KEY_SECRET_ID,
     )

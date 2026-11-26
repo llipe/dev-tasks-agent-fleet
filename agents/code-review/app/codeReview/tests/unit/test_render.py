@@ -1159,7 +1159,7 @@ def test_budget_msg_tokens_with_missing_fields_falls_back_to_lines_wording():
 
 def test_failure_msg_snapshot():
     """TC-212-16."""
-    snapshot("failure.md", render_failure("BEDROCK_ERROR", run_id=RUN_ID, panel_base_url=PANEL))
+    snapshot("failure.md", render_failure("MODEL_API_ERROR", run_id=RUN_ID, panel_base_url=PANEL))
 
 
 @pytest.mark.parametrize("code", render.ERROR_CODES)
@@ -1173,8 +1173,10 @@ def test_failure_msg_codes_are_spec_13():
         "INVALID_PARAMS",
         "GITHUB_PERMISSION_DENIED",
         "GITHUB_API_ERROR",
-        "BEDROCK_ACCESS_DENIED",
-        "BEDROCK_ERROR",
+        "MODEL_ACCESS_DENIED",
+        "MODEL_API_ERROR",
+        "MODEL_RATE_LIMITED",
+        "MODEL_REFUSED",
         "MODEL_OUTPUT_INVALID",
         "RUN_TIMEOUT",
         "COMMENT_POST_FAILED",
@@ -1184,7 +1186,17 @@ def test_failure_msg_codes_are_spec_13():
 
 @pytest.mark.parametrize(
     "code",
-    ["boom: KeyError('x') @here", "", "GITHUB_NOT_FOUND", "bedrock_error", None, 42],
+    [
+        "boom: KeyError('x') @here",
+        "",
+        "GITHUB_NOT_FOUND",
+        "bedrock_error",
+        "BEDROCK_ERROR",
+        "BEDROCK_ACCESS_DENIED",
+        "model_api_error",
+        None,
+        42,
+    ],
 )
 def test_failure_msg_unknown_codes_render_internal_error(code):
     """Fixed text only: an exception message or unknown code never reaches the comment."""
@@ -1193,9 +1205,9 @@ def test_failure_msg_unknown_codes_render_internal_error(code):
 
 
 def test_failure_msg_never_includes_an_exception_message():
-    from bedrock_adapter import BedrockError
+    from model_adapter import ModelApiError
 
-    exc = BedrockError("secret detail @user <b>")
+    exc = ModelApiError("secret detail @user <b>")
     body = render_failure(exc.code, run_id=RUN_ID, panel_base_url=PANEL)
     assert "secret" not in body
 
@@ -1492,3 +1504,18 @@ def test_dr9_all_emoji_body_stays_under_the_limit_in_utf16_units():
     assert units <= MAX_COMMENT_CHARS
     assert out.chars == max(len(out.body), units)
     assert out.truncated
+
+
+def test_footer_names_the_answering_model_and_neutralizes_it():
+    """TC-216-34, TC-216-37 (SN-19): ``message.model`` is API data; one line, no ping,
+    no HTML; a model the API did not name is "(unknown)" (DF-32)."""
+    body = body_of(clear_fixture(), model_id="claude-sonnet-5-5")
+    footer = body.rstrip("\n").split("\n")[-1]
+    assert "Model `claude-sonnet-5-5`" in footer
+    for hostile in ("@user", "<img src=x>", "a`b`c", "line\nbreak"):
+        body = body_of(clear_fixture(), model_id=f"claude {hostile}")
+        footer = body.rstrip("\n").split("\n")[-1]
+        assert footer.startswith("<sub>") and footer.endswith("</sub>")
+        assert "<img" not in body and "@user" not in body
+    body = body_of(clear_fixture(), model_id=None)
+    assert "Model (unknown)" in body.rstrip("\n").split("\n")[-1]

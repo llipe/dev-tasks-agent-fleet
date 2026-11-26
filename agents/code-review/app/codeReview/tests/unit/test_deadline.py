@@ -6,7 +6,7 @@ clock and bounds every step: it is checked before each step and when each
 blocking phase returns, and ``bounded`` stops waiting for a blocking phase at
 the deadline in real time. Reaching it ends the run ``failed``/``RUN_TIMEOUT``
 with a failure comment, posted inside the 60 s reserve. The heartbeat wraps the
-GitHub fetches (``load_pr``, ``context``) and the Converse call (``review``),
+GitHub fetches (``load_pr``, ``context``) and the model call (``review``),
 never ``validate`` or ``post``.
 
 The pipeline cases drive ``main.invoke`` with the L2 harness (fakes only, no
@@ -20,12 +20,12 @@ import threading
 import time
 
 import pytest
-from botocore.exceptions import ReadTimeoutError
 
-from bedrock_adapter import MAX_READ_TIMEOUT_SECONDS, call_timeouts
 from config import DEADLINE_RESERVE_SECONDS
 from heartbeat import HeartbeatResult, is_heartbeat_chunk, run_with_heartbeat
+from model_adapter import MAX_READ_TIMEOUT_SECONDS, call_timeouts
 from pipeline import RunTimeout, bounded, run_deadline
+from tests.fixtures.anthropic_fake import timeout_error
 from tests.helpers.pipeline_run import (
     COMPARE_PATH,
     RUN_URL,
@@ -166,12 +166,12 @@ def _failed_with_run_timeout(h: Harness, result: dict) -> None:
     assert posts[0] == f"Code review failed (`RUN_TIMEOUT`). [run]({RUN_URL})\n"
 
 
-def test_deadline_hit_during_converse_ends_run_timeout(h):
+def test_deadline_hit_during_the_model_call_ends_run_timeout(h):
     deadline = START + 900 - 60
 
     def slow_call(_request):
         h.clock.now = deadline + 5  # the call outlives the deadline
-        raise ReadTimeoutError(endpoint_url="https://bedrock-runtime.us-east-1.amazonaws.com")
+        return timeout_error()
 
     h.fake.push(slow_call)
     result = h.drive()
@@ -180,7 +180,7 @@ def test_deadline_hit_during_converse_ends_run_timeout(h):
     assert h.fake.calls == 1
     # The call was sized from the time left, and never past min(600, remaining).
     remaining = deadline - START
-    kwargs = h.bedrock_factory_calls[0]
+    kwargs = h.model_factory_calls[0]
     expected = call_timeouts(remaining)
     assert expected is not None
     assert kwargs["read_timeout_seconds"] == expected.read
@@ -188,7 +188,7 @@ def test_deadline_hit_during_converse_ends_run_timeout(h):
     assert h.reporter.step_keys() == ["load_pr", "context", "review"]
 
 
-def test_converse_returning_after_the_deadline_is_run_timeout(h):
+def test_model_call_returning_after_the_deadline_is_run_timeout(h):
     def late(_request):
         h.clock.now = START + 900 - 60 + 5  # past the deadline, inside the reserve
         return review()
@@ -266,7 +266,7 @@ def _with_transport(deps, transport):
 # ---------------------------------------------------------------------------
 
 
-def test_heartbeat_wraps_the_fetch_and_converse_steps_only(h):
+def test_heartbeat_wraps_the_fetch_and_model_steps_only(h):
     h.fake.push(review())
     result = h.drive()
     assert result["status"] == "succeeded"

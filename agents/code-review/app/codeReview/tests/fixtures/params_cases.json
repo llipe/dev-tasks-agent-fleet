@@ -1,5 +1,5 @@
 {
-  "description": "CT-01 shared params cases (test plan v1.1 \u00a76). Evaluated by the Python runtime validator (tests/unit/test_payload.py) and by the panel's Ajv validateParams (panel/tests/unit/code-review-params-parity.test.ts) against the params_schema parsed from supabase/seed.sql. A case with \"absent\": true omits params entirely. Integral floats such as 7.0 are deliberately not here: JSON.parse turns 7.0 into 7, so the two sides cannot see the same value; TC-204-06 covers 7.0 on the Python side only.",
+  "description": "CT-01 shared params cases (test plan v1.1 \u00a76; v1.8 bounds per CT-20, test plan \u00a714.5: max_diff_lines maximum 20,000, max_context_tokens default and maximum 900,000). Evaluated by the Python runtime validator (tests/unit/test_payload.py) and by the panel's Ajv validateParams (panel/tests/unit/code-review-params-parity.test.ts) against the params_schema parsed from supabase/seed.sql. A case with \"absent\": true omits params entirely. Integral floats such as 7.0 are deliberately not here: JSON.parse turns 7.0 into 7, so the two sides cannot see the same value; TC-204-06 covers 7.0 on the Python side only.",
   "cases": [
     {
       "id": "pr_number-only",
@@ -28,7 +28,23 @@
       "valid": true,
       "params": {
         "pr_number": 1,
-        "max_diff_lines": 10000
+        "max_diff_lines": 20000
+      }
+    },
+    {
+      "id": "max_diff_lines-max-minus-one",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 19999
+      }
+    },
+    {
+      "id": "max_diff_lines-v1.0-max-plus-one-now-accepted",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_diff_lines": 10001
       }
     },
     {
@@ -52,7 +68,23 @@
       "valid": true,
       "params": {
         "pr_number": 1,
-        "max_context_tokens": 400000
+        "max_context_tokens": 900000
+      }
+    },
+    {
+      "id": "max_context_tokens-max-minus-one",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 899999
+      }
+    },
+    {
+      "id": "max_context_tokens-v1.0-max-plus-one-now-accepted",
+      "valid": true,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": 400001
       }
     },
     {
@@ -60,7 +92,7 @@
       "valid": true,
       "params": {
         "pr_number": 1,
-        "max_context_tokens": 150000
+        "max_context_tokens": 900000
       }
     },
     {
@@ -141,7 +173,7 @@
       "params": {
         "pr_number": 42,
         "max_diff_lines": 2000,
-        "max_context_tokens": 150000,
+        "max_context_tokens": 900000,
         "max_suggestions": 5,
         "run_timeout_seconds": 900,
         "reasoning_effort": "high"
@@ -244,7 +276,7 @@
       "valid": false,
       "params": {
         "pr_number": 1,
-        "max_diff_lines": 10001
+        "max_diff_lines": 20001
       }
     },
     {
@@ -260,7 +292,15 @@
       "valid": false,
       "params": {
         "pr_number": 1,
-        "max_context_tokens": 400001
+        "max_context_tokens": 900001
+      }
+    },
+    {
+      "id": "max_context_tokens-string",
+      "valid": false,
+      "params": {
+        "pr_number": 1,
+        "max_context_tokens": "900000"
       }
     },
     {

@@ -12,16 +12,16 @@ from __future__ import annotations
 
 import pytest
 
-from bedrock_adapter import WARN_CONTEXT_NO_FILES, WARN_CONTEXT_RETRY, BedrockError
 from budget import BLOCK_FILE
+from model_adapter import WARN_CONTEXT_NO_FILES, WARN_CONTEXT_RETRY, ModelApiError
 from prompt import LABEL_FILE, Prompt, build_prompt
-from tests.fixtures.bedrock import (
-    FakeConverse,
-    context_length_rejected,
-    tool_use_response,
+from tests.fixtures.anthropic_fake import (
+    FakeAnthropic,
+    prompt_too_long,
+    review_message,
     valid_review,
 )
-from tests.helpers.bedrock_run import Recorder, first_prompt, review_inputs, run
+from tests.helpers.model_run import Recorder, first_prompt, review_inputs, run
 from tests.helpers.prompt_inputs import (
     NONCE,
     candidate,
@@ -124,8 +124,8 @@ def test_a_docs_only_pr_has_no_full_file_and_no_full_file_note():
 def test_a_docs_only_pr_is_not_retried_on_context_length():
     # R4 removes full files; a docs-only PR has none, so there is no retry.
     rec = Recorder()
-    fake = FakeConverse([context_length_rejected()])
-    with pytest.raises(BedrockError):
+    fake = FakeAnthropic([prompt_too_long()])
+    with pytest.raises(ModelApiError):
         run(fake, review_inputs(DOCS), recorder=rec)
     assert fake.calls == 1
     assert rec.messages == [WARN_CONTEXT_NO_FILES]
@@ -137,7 +137,7 @@ def test_the_context_length_retry_counts_and_notes_code_files_only():
     assert p.context.full_files_included == ("src/a.py",)
     rec = Recorder()
     run(
-        FakeConverse([context_length_rejected(), tool_use_response(valid_review())]),
+        FakeAnthropic([prompt_too_long(), review_message(valid_review())]),
         ins,
         prompt=p,
         recorder=rec,

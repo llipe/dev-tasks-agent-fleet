@@ -7,8 +7,8 @@ story owned:
 
 context readers -> budget -> prompt -> adapter -> validate -> render -> pipeline
 
-1. Every Converse request is at most B (``max_context_tokens``), recounted here
-   independently of ``bedrock_adapter.request_tokens``, on the worst 5-call
+1. Every model request is at most B (``max_context_tokens``), recounted here
+   independently of ``model_adapter.request_tokens``, on the worst 3-call
    sequence and on a repair after a huge invalid output.
 2. The ``ContextData`` of the accepted call (a context-length retry or a repair
    rebuild, both without full files) is the one validate, render, the artifact
@@ -36,13 +36,7 @@ import pytest
 
 from pipeline import context_tokens
 from render import MAX_COMMENT_CHARS, comment_size
-from tests.fixtures.bedrock import (
-    context_length_rejected,
-    reasoning_rejected,
-    text_response,
-    tool_choice_rejected,
-    tool_use_response,
-)
+from tests.fixtures.anthropic_fake import message, prompt_too_long, review_message
 from tests.helpers.pipeline_run import (
     HEAD,
     SUPABASE_KEY,
@@ -68,7 +62,7 @@ def _independent_tokens(request: dict[str, Any]) -> int:
     """``ceil(len / 3.5)`` over every model-input string of a request, recounted here.
 
     Not ``request_tokens``: this walks every string under ``system`` and
-    ``messages`` (any key, not just ``text``) and charges ``toolConfig`` as
+    ``messages`` (any key, not just ``text``) and charges ``output_config`` as
     its JSON, so a block the adapter forgot to count is still charged.
     """
 
@@ -84,11 +78,12 @@ def _independent_tokens(request: dict[str, Any]) -> int:
     total = 0
     for key in ("system", "messages"):
         for s in strings(request.get(key, [])):
-            if s in ("user", "assistant"):  # role names, not model text
+            if s in ("user", "assistant", "text"):  # roles and block types, not model text
                 continue
             total += math.ceil(len(s) * 2 / 7)
-    if "toolConfig" in request:
-        total += math.ceil(len(json.dumps(request["toolConfig"])) * 2 / 7)
+    if "output_config" in request:
+        compact = json.dumps(request["output_config"], separators=(",", ":"))
+        total += math.ceil(len(compact) * 2 / 7)
     return total
 
 
@@ -129,8 +124,8 @@ def _artifact(h: Harness) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def test_worst_five_call_sequence_fits_b_and_the_repair_context_flows_downstream(h):
-    """Forced -> reasoning retry -> fallback -> context-length retry -> repair (spec §6.3).
+def test_worst_three_call_sequence_fits_b_and_the_repair_context_flows_downstream(h):
+    """First -> context-length retry -> repair (spec v1.8 §6.3, TC-216-38).
 
     Every request is recounted <= B. The repair rebuild has no full files, so
     the run's metrics, artifact and comment must describe that build, and
@@ -139,18 +134,16 @@ def test_worst_five_call_sequence_fits_b_and_the_repair_context_flows_downstream
     h.use_long_app()  # a full file, so the context-length retry applies (D-69)
     _with_big_file(h, 40_000)
     h.fake.push(
-        reasoning_rejected(),
-        tool_choice_rejected(),
-        context_length_rejected(),
-        text_response("not json at all " * 50),
-        text_response(_fallback_json([], [V1_CONFIRMED])),
+        prompt_too_long(),
+        message("not json at all " * 50),
+        message(_fallback_json([], [V1_CONFIRMED])),
     )
     result = h.drive({"pr_number": 42, "max_context_tokens": B_MIN})
 
-    assert h.fake.calls == 5
+    assert h.fake.calls == 3 and h.fake.counts_made == 3
     first = h.prompts[0]
     assert first.context.full_files_included, "the first build must include a full file"
-    for i, request in enumerate(h.fake.requests, 1):
+    for i, request in enumerate(h.fake.stream_requests, 1):
         assert _independent_tokens(request) <= B_MIN, f"call {i} is over B"
 
     accepted = h.prompts[-1]
@@ -159,7 +152,7 @@ def test_worst_five_call_sequence_fits_b_and_the_repair_context_flows_downstream
     assert result["verdict"] == "blocking"
 
     metrics = h.reporter.terminal["metrics"]
-    assert metrics["bedrock_calls"] == 5
+    assert metrics["model_calls"] == 3
     assert metrics["repair_calls"] == 1
     assert metrics["context_tokens"] == context_tokens(accepted.context)
     assert metrics["context_tokens"]["full_files"] == 0
@@ -179,13 +172,13 @@ def test_a_huge_invalid_output_is_cut_so_the_repair_request_fits_b(h):
     _with_big_file(h, 30_000)
     huge = "x" * 900_000
     h.fake.push(
-        tool_use_response({"findings": huge, "verifier_checks": []}),
+        review_message({"findings": huge, "verifier_checks": []}),
         review([blocking()]),
     )
     result = h.drive({"pr_number": 42, "max_context_tokens": B_MIN})
 
     assert h.fake.calls == 2
-    for i, request in enumerate(h.fake.requests, 1):
+    for i, request in enumerate(h.fake.stream_requests, 1):
         assert _independent_tokens(request) <= B_MIN, f"call {i} is over B"
     assert result["verdict"] == "blocking"
     _only_post(h)
@@ -196,7 +189,7 @@ def test_a_context_length_retry_context_is_what_validate_and_render_see(h):
     # A full file, so the context-length retry applies (D-69); the scripted
     # blocking finding is on line 2.
     h.use_long_app(changed=2)
-    h.fake.push(context_length_rejected(), review([blocking()]))
+    h.fake.push(prompt_too_long(), review([blocking()]))
     result = h.drive()
 
     assert h.fake.calls == 2
@@ -266,14 +259,14 @@ def _over_budget_run(h: Harness, path: str) -> tuple[dict[str, Any], str, dict[s
 
 @pytest.mark.parametrize("path", ["lines", "tokens"])
 def test_both_over_budget_paths_end_alike_and_agree_with_the_metrics(h, path):
-    """Same terminal state, no Converse, no artifact; the comment's counts are the run's."""
+    """Same terminal state, no model call, no artifact; the comment's counts are the run's."""
     result, body, metrics = _over_budget_run(h, path)
 
     assert (result["status"], result["outcome"]) == ("succeeded", "not_applicable")
     assert result["error_code"] is None and result["verdict"] is None
     assert h.fake.calls == 0 and h.prompts == []
     assert h.reporter.artifacts() == []
-    assert metrics["bedrock_calls"] == 0
+    assert metrics["model_calls"] == 0
     assert metrics["comment_chars"] == comment_size(body)
     assert metrics["comment_truncated"] is False
     lines = metrics["changed_lines"]

@@ -1,9 +1,9 @@
 """
-Drive ``bedrock_adapter.review`` against the fake Converse (S-210).
+Drive ``model_adapter.review`` against the fake Anthropic client (S-216).
 
-Builds a first prompt from the S-209 input factories, injects a deterministic
-nonce factory, a recording ``warn`` and sink, and a fake clock, so the adapter
-tests and the RT-11 property tactic share one harness.
+Builds a first prompt from the S-209 input factories and injects a
+deterministic nonce factory, a recording ``warn`` and sink, and a fake clock,
+so the adapter tests and the RT-14 property tactic share one harness.
 """
 
 from __future__ import annotations
@@ -16,26 +16,19 @@ from typing import Any
 from budget import ContextInputs
 from config import Settings
 from prompt import Prompt, build_prompt
+from tests.fixtures.anthropic_fake import MODEL
 from tests.helpers.prompt_inputs import NONCE, diff_ctx, file_diff, inputs
 
-OPENAI_ID = "us.openai.gpt-5-6-sol-v1:0"
-DEEPSEEK_ID = "us.deepseek.v4-pro-v1:0"
 BUDGET = 30_000
 FILES = ("src/app.py", "src/util.py")
 
 
-def settings(
-    model_id: str = OPENAI_ID,
-    price_in: float | None = None,
-    price_out: float | None = None,
-) -> Settings:
+def settings(model_id: str = MODEL) -> Settings:
     return Settings(
         supabase_url="https://supabase.example",
         supabase_key_secret_id="secret-id",
         model_id=model_id,
         panel_base_url="https://panel.example",
-        price_input_per_mtok=price_in,
-        price_output_per_mtok=price_out,
     )
 
 
@@ -95,10 +88,8 @@ def run(
     ins: ContextInputs | None = None,
     *,
     prompt: Prompt | None = None,
-    model_id: str = OPENAI_ID,
+    model_id: str = MODEL,
     effort: str = "high",
-    price_in: float | None = None,
-    price_out: float | None = None,
     recorder: Recorder | None = None,
     budget: int = BUDGET,
     clock: Callable[[], float] | None = None,
@@ -106,17 +97,17 @@ def run(
     nonce_factory: Callable[[], str] | None = None,
     client_factory: Any = None,
 ) -> Any:
-    import bedrock_adapter
+    import model_adapter
 
     ins = ins if ins is not None else review_inputs()
     p = prompt if prompt is not None else first_prompt(ins, budget)
     rec = recorder if recorder is not None else Recorder()
-    return bedrock_adapter.review(
+    return model_adapter.review(
         p,
         ins,
         client=fake if client_factory is None else None,
         client_factory=client_factory,
-        settings=settings(model_id, price_in, price_out),
+        settings=settings(model_id),
         reasoning_effort=effort,
         max_diff_lines=2000,
         warn=rec.warn,

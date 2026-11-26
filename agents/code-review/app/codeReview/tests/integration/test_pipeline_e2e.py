@@ -31,12 +31,17 @@ import pytest
 
 import pipeline
 import signal_backstop
-from tests.fixtures.bedrock import (
-    access_denied,
-    service_unavailable,
-    text_response,
-    throttled,
-    tool_use_response,
+from tests.fixtures.anthropic_fake import (
+    auth_error,
+    bad_request,
+    connection_error,
+    message,
+    overloaded,
+    permission_denied,
+    rate_limited,
+    review_message,
+    server_error,
+    timeout_error,
 )
 from tests.helpers.github_stub import StubResponse, json_response
 from tests.helpers.pipeline_run import (
@@ -206,7 +211,7 @@ def test_sha_pinned(h):
     assert f"`{HEAD[:7]}`" in body
     meta = h.reporter.artifacts()[0]["metadata"]
     assert meta["head_sha"] == HEAD
-    assert h.prompts[0].context.max_context_tokens == 150_000
+    assert h.prompts[0].context.max_context_tokens == 900_000  # D-90 default
     assert HEAD in h.prompts[0].user
 
 
@@ -289,7 +294,9 @@ SPEC_5_3_KEYS = {
     "output_tokens",
     "estimated_input_tokens",
     "cost_usd",
-    "bedrock_ms",
+    "model_ms",
+    "model_calls",
+    "answered_by_model",
     "wall_clock_ms",
     "output_mode",
     "repair_calls",
@@ -333,8 +340,8 @@ def test_artifact_metrics(h):
     assert meta["head_sha"] == HEAD
     assert meta["base_sha"] == "3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c"
     assert meta["verdict"] == "blocking"
-    assert meta["model_id"] == "us.openai.gpt-5-6-sol-v1:0"
-    assert meta["output_mode"] == "forced_schema"
+    assert meta["model_id"] == "claude-sonnet-5-5"
+    assert meta["output_mode"] == "structured_output"
     assert meta["reasoning_effort"] == "high"
     assert meta["reasoning_effort_applied"] is True
     assert meta["rubric_version"] == "1"
@@ -377,8 +384,8 @@ def test_artifact_metrics(h):
     metrics = h.reporter.terminal["metrics"]
     assert set(metrics) >= SPEC_5_3_KEYS
     assert metrics["input_tokens"] == 1000 and metrics["output_tokens"] == 200
-    assert metrics["cost_usd"] is None  # price env vars unset
-    assert metrics["output_mode"] == "forced_schema"
+    assert metrics["cost_usd"] == 0.004  # D-87 price table: 1000 in, 200 out
+    assert metrics["output_mode"] == "structured_output"
     assert metrics["repair_calls"] == 0
     assert metrics["reasoning_effort_applied"] is True
     assert set(metrics["context_tokens"]) >= CONTEXT_TOKEN_BLOCKS
@@ -396,18 +403,18 @@ def test_artifact_metrics(h):
     assert metrics["estimated_input_tokens"] >= first.tokens - 2_212
     assert metrics["estimated_input_tokens"] > 0
     assert metrics["estimated_first_call_tokens"] == first.tokens
-    assert metrics["bedrock_calls"] == 1
+    assert metrics["model_calls"] == 1
 
 
 def test_estimated_input_tokens_sums_every_call(h):
     """DR-11: a repair run counts both requests, like input_tokens."""
     h.fake.push(
-        tool_use_response({"findings": "not a list", "verifier_checks": []}, usage=(900, 50)),
+        review_message({"findings": "not a list", "verifier_checks": []}, usage=(900, 50)),
         review(),
     )
     h.drive()
     metrics = h.reporter.terminal["metrics"]
-    assert metrics["bedrock_calls"] == 2
+    assert metrics["model_calls"] == 2
     assert metrics["repair_calls"] == 1
     assert metrics["input_tokens"] == 1900
     assert metrics["estimated_input_tokens"] >= metrics["estimated_first_call_tokens"]
@@ -448,7 +455,7 @@ def test_secrets_scrubbed(h):
     meta = h.reporter.artifacts()[0]["metadata"]
     assert "***" in meta["findings"][0]["title"]
     assert "***" in meta["verifier"][0]["row"]
-    # The secrets did reach Bedrock (accepted residual risk, PRD §17), not the outputs.
+    # The secrets did reach the model (accepted residual risk, PRD §17), not the outputs.
     assert TOKEN in h.prompts[0].user
 
 
@@ -480,8 +487,9 @@ def test_context_step_logs_block_token_counts(h):
 
 
 def test_failed_run_records_partial_metrics(h):
-    """TC-213-31: a failed run after Converse keeps tokens and bedrock_ms, writes no artifact."""
-    bad = tool_use_response({"findings": "nope", "verifier_checks": []}, usage=(700, 30))
+    """TC-213-31, TC-216-44: a failed run after a model call keeps tokens, model_ms and
+    answered_by_model, and writes no artifact."""
+    bad = review_message({"findings": "nope", "verifier_checks": []}, usage=(700, 30))
     h.fake.push(bad, bad)
     result = h.drive()
 
@@ -489,8 +497,9 @@ def test_failed_run_records_partial_metrics(h):
     metrics = h.reporter.terminal["metrics"]
     assert metrics["input_tokens"] == 1400
     assert metrics["output_tokens"] == 60
-    assert metrics["bedrock_calls"] == 2
-    assert "bedrock_ms" in metrics and "wall_clock_ms" in metrics
+    assert metrics["model_calls"] == 2
+    assert "model_ms" in metrics and "wall_clock_ms" in metrics
+    assert metrics["answered_by_model"] == "claude-sonnet-5-5"
     assert h.reporter.artifacts() == []
 
 
@@ -568,18 +577,35 @@ def test_ac9_downgrade_and_drop(h):
 
 
 @pytest.mark.parametrize(
-    ("script", "code"),
+    ("script", "code", "cls", "status"),
     [
-        (throttled(), "BEDROCK_ERROR"),
-        (service_unavailable(), "BEDROCK_ERROR"),
-        (access_denied(), "BEDROCK_ACCESS_DENIED"),
+        (rate_limited(), "MODEL_RATE_LIMITED", "RateLimitError", 429),
+        (server_error(), "MODEL_API_ERROR", "InternalServerError", 500),
+        (overloaded(), "MODEL_API_ERROR", "OverloadedError", 529),
+        (bad_request(), "MODEL_API_ERROR", "BadRequestError", 400),
+        (connection_error(), "MODEL_API_ERROR", "APIConnectionError", None),
+        (timeout_error(), "MODEL_API_ERROR", "APITimeoutError", None),
+        (permission_denied(), "MODEL_ACCESS_DENIED", "PermissionDeniedError", 403),
+        (auth_error(), "MODEL_ACCESS_DENIED", "AuthenticationError", 401),
+        (message("", stop_reason="refusal"), "MODEL_REFUSED", None, None),
     ],
-    ids=["throttled", "5xx", "access-denied"],
+    ids=["429", "500", "529", "400", "conn", "timeout", "403", "401", "refusal"],
 )
-def test_errors_bedrock(h, script, code):
-    """TC-213-13 (AC-11): a Bedrock error ends failed with one failure comment."""
+def test_errors_model(h, script, code, cls, status):
+    """TC-213-13, TC-216-29, TC-216-33 (AC-11, AC-16): a model API error or a refusal
+    ends failed with one failure comment, no review comment and no artifact."""
     h.fake.push(script)
     result = h.drive()
+
+    terminal = h.reporter.terminal
+    message_text = terminal["error_message"]
+    assert message_text.startswith(f"{code} in step review: ")
+    assert len(message_text) <= 300
+    if cls is not None:
+        assert cls in message_text
+    if status is not None:
+        assert f"(HTTP {status})" in message_text or f"http {status}" in message_text
+    assert terminal["outcome"] == "not_applicable"
 
     assert result["status"] == "failed"
     assert result["error_code"] == code
@@ -613,13 +639,14 @@ def _github_500() -> StubResponse:
         (lambda h: h.stub.add(("GET", COMPARE_PATH), _github_500()), "GITHUB_API_ERROR", True),
         (lambda h: h.stub.add(("GET", PULL_PATH), _github_500()), "GITHUB_API_ERROR", True),
         (
-            lambda h: h.fake.push(text_response("no tool"), text_response("still none")),
+            lambda h: h.fake.push(message("no tool"), message("still none")),
             "MODEL_OUTPUT_INVALID",
             True,
         ),
-        (lambda h: h.fake.push(throttled()), "BEDROCK_ERROR", True),
+        (lambda h: h.fake.push(rate_limited()), "MODEL_RATE_LIMITED", True),
+        (lambda h: h.fake.push(server_error()), "MODEL_API_ERROR", True),
     ],
-    ids=["403-files", "500-compare", "500-pull", "model-invalid", "bedrock"],
+    ids=["403-files", "500-compare", "500-pull", "model-invalid", "429", "500"],
 )
 def test_errors_table(h, setup, code, failure_comment):
     """TC-213-14: each §13 code ends failed with that code; the comment follows the table."""
@@ -710,11 +737,11 @@ def test_errors_comment_post_rate_limited_403_posts_failure_comment(h):
 def test_errors_failure_comment_failure_is_logged(h):
     """TC-213-16: the failure comment POST fails -> error event, original code kept."""
     h.stub.add(("POST", COMMENTS_PATH), _github_500())
-    h.fake.push(throttled())
+    h.fake.push(rate_limited())
     result = h.drive()
 
-    assert result["error_code"] == "BEDROCK_ERROR"
-    assert h.reporter.terminal["error_code"] == "BEDROCK_ERROR"
+    assert result["error_code"] == "MODEL_RATE_LIMITED"
+    assert h.reporter.terminal["error_code"] == "MODEL_RATE_LIMITED"
     assert len(h.posts()) == 1
     assert any("failure comment not posted" in m for m in h.reporter.messages("error"))
 
@@ -845,4 +872,120 @@ def _created() -> StubResponse:
             "body": "x",
         },
         status=201,
+    )
+
+
+# ---------------------------------------------------------------------------
+# S-216: answering model, metrics, and the API key (TC-216-34, 35, 43, 47, 50)
+# ---------------------------------------------------------------------------
+
+
+def test_answered_by_model_in_footer_artifact_and_metrics(h):
+    """TC-216-34, CT-18: message.model is the footer, the artifact model_id and the metric."""
+    h.fake.push(review())
+    h.drive()
+    body = h.posts()[0]
+    assert "Model `claude-sonnet-5-5`" in body
+    meta = h.reporter.artifacts()[0]["metadata"]
+    metrics = h.reporter.terminal["metrics"]
+    assert meta["model_id"] == metrics["answered_by_model"] == "claude-sonnet-5-5"
+    assert meta["output_mode"] == "structured_output"
+    assert metrics["output_mode"] == "structured_output"
+    assert metrics["reasoning_effort_applied"] is True
+    assert isinstance(metrics["model_calls"], int) and metrics["model_calls"] == 1
+    assert "bedrock_ms" not in metrics and "bedrock_calls" not in metrics
+    assert metrics["cost_usd"] == round((1000 * 2 + 200 * 10) / 1e6, 6)
+
+
+def test_fallback_model_answer_posts_normally_and_is_named(h):
+    """TC-216-35 (AC-16): a fallback answer posts; footer and artifact name that model."""
+    h.fake.push(
+        review_message(
+            {"findings": [], "verifier_checks": [V1_NOT_REPRODUCED]}, model="claude-opus-5-1"
+        )
+    )
+    result = h.drive()
+    assert result["status"] == "succeeded"
+    body = h.posts()[0]
+    assert "Model `claude-opus-5-1`" in body and "claude-sonnet-5-5" not in body
+    meta = h.reporter.artifacts()[0]["metadata"]
+    metrics = h.reporter.terminal["metrics"]
+    assert meta["model_id"] == metrics["answered_by_model"] == "claude-opus-5-1"
+    assert metrics["cost_usd"] is None
+    assert "answering model has no price; cost not recorded" in h.reporter.messages("warn")
+
+
+def test_refusal_posts_the_failure_comment_only(h):
+    """TC-216-29 L2: run failed/MODEL_REFUSED, one one-line failure comment, no artifact."""
+    h.fake.push(message("I will not do this. MODEL-SENTINEL-55", stop_reason="refusal"))
+    result = h.drive()
+    assert result["error_code"] == "MODEL_REFUSED"
+    assert h.posts() == [_failure("MODEL_REFUSED")]
+    assert h.reporter.artifacts() == []
+    assert h.fake.calls == 1
+    assert "MODEL-SENTINEL-55" not in h.reporter.dump()
+
+
+def test_api_key_is_resolved_once_after_the_token_and_scrubbed_before_the_call(h):
+    """TC-216-46, TC-216-47: one key read per run, after the token, before the first call."""
+    order: list[str] = []
+    original_token, original_key = h.resolve_token, h.resolve_model_key
+
+    def token(org):
+        order.append("token")
+        return original_token(org)
+
+    def key():
+        order.append("key")
+        return original_key()
+
+    h.resolve_token = token  # type: ignore[method-assign]
+    h.resolve_model_key = key  # type: ignore[method-assign]
+    seen_secrets: list[bool] = []
+    original_factory = h.model_factory
+
+    def factory(**kw):
+        order.append("client")
+        seen_secrets.append(kw["api_key"] == h.api_key)
+        return original_factory(**kw)
+
+    h.model_factory = factory  # type: ignore[method-assign]
+    h.fake.push(pipeline_prompt_too_long(), message("nope"), review())
+    h.use_long_app()
+    h.drive()
+    assert order[:2] == ["token", "key"]
+    assert order.count("key") == 1
+    assert order.count("client") == 3
+    assert all(seen_secrets)
+    assert h.fake.calls == 3
+
+
+def pipeline_prompt_too_long():
+    from tests.fixtures.anthropic_fake import prompt_too_long
+
+    return prompt_too_long()
+
+
+@pytest.mark.parametrize(
+    "error",
+    ["ResourceNotFoundException", "AccessDeniedException", "empty"],
+)
+def test_api_key_unavailable_fails_with_internal_error_and_no_model_call(h, error):
+    """TC-216-50, DF-34 pinned: INTERNAL_ERROR, a failure comment, no model call."""
+    from credentials import CredentialError
+
+    def key():
+        raise CredentialError(
+            "ANTHROPIC_KEY_UNAVAILABLE",
+            f"Could not read the Anthropic API key (secret 'agent-fleet/test/ANTHROPIC_API_KEY'): {error}",
+        )
+
+    h.resolve_model_key = key  # type: ignore[method-assign]
+    h.fake.push(review())
+    result = h.drive()
+    assert result["error_code"] == "INTERNAL_ERROR"
+    assert h.fake.calls == 0 and h.fake.counts_made == 0
+    assert h.posts() == [_failure("INTERNAL_ERROR")]
+    assert h.reporter.terminal["error_message"].startswith(
+        "INTERNAL_ERROR in step review: CredentialError"
     )
