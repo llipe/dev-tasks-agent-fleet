@@ -8,6 +8,7 @@
 | 1.1     | 2026-11-25 | Approved by @llipe. No requirement changed. The glossary append for the 13 proposed Vocabulary terms was refused: the bounded context `panel` does not resolve because the technical guidelines have no package map (D-17). The rows stay `proposed` until it exists. | @llipe / product-engineer |
 | 1.2     | 2026-11-25 | Factual corrections from `workstream/research-control-tower.md`; no requirement changed. FR-2, §12 and §17 no longer cite a hashed-at-rest or constant-time token precedent in the webhook code: webhook secrets are in Vault and the URL token is plain text, so token hashing and verification are new. §12 states what Realtime covers today. §17 counts logout as a public surface. | product-engineer |
 | 1.3     | 2026-11-25 | FR-8 rewritten, confirmed by @llipe in the HOW phase (D-21): the newest observed result per item wins, a snapshot never erases, and each push names its branch. Two lanes pushing from different worktrees no longer overwrite each other. OQ-3 resolved. | @llipe / product-engineer |
+| 1.4     | 2026-11-26 | HOW phase write-back, confirmed by @llipe: OQ-1 and OQ-2 resolved (D-29, D-28); seven terms proposed by the specification added to the Vocabulary (D-31). No requirement changed. | @llipe / product-engineer |
 
 ## 1. Executive Summary
 
@@ -267,8 +268,8 @@ Titles, scope lines and digest text come from the reporting repository, which ma
 
 ## 18. Open Questions
 
-- **OQ-1.** Is the staleness threshold one setting for the panel or one per repository? FR-31 fixes only the 24-hour default.
-- **OQ-2.** Is rate limiting per token needed on the ingest endpoint in v1, or is the body-size cap enough at this volume? For the specification.
+- **OQ-1.** Resolved in the HOW phase: a panel-wide default with an optional override per repository (D-29).
+- **OQ-2.** Resolved in the HOW phase: no rate limit in v1; a size cap, per-repository push counters and revocation (D-28).
 - **OQ-3.** Resolved in v1.3 by FR-8: the newest observed result per item wins and a snapshot never erases (D-21).
 - **OQ-4.** Should a rollup also be shown per repository (total open issues waiting on the owner across PRDs)? Not requested; cheap once the read contract exists.
 
@@ -296,6 +297,9 @@ All IDs refer to `workstream/decisions-control-tower.md`.
 | D-16 | Two PRDs; this one owns the contract and ships three waves; a companion PRD in `llipe/dev-tasks` owns the sending side  |
 | D-17 | Thirteen domain terms; "workflow agent" for the dev-tasks side; "agent" and "run" keep their panel meaning              |
 | D-21 | Newest observed result per item wins; a snapshot never erases; each push names its branch                            |
+| D-28 | No rate limit on ingest in v1; size cap, push counters, revocation                                                    |
+| D-29 | Panel-wide stale threshold with an optional per-repository override                                                  |
+| D-31 | Seven specification terms added to the Vocabulary; "result", not "status"                                            |
 
 ## Vocabulary
 
@@ -314,3 +318,10 @@ All IDs refer to `workstream/decisions-control-tower.md`.
 | Lane             | proposed           | panel           | A unit of scope held by one crew member, as parallel-lanes defines it.                                                         | track, stream, session                  |
 | Workflow agent   | proposed           | panel           | A dev-tasks role or crew member that reports on work, such as developer, verifier, danny or linus.                             | agent, bot, worker                      |
 | Stale            | proposed           | panel           | The state of a tower repository with open work and no push inside the staleness threshold.                                     | offline, dead, disconnected             |
+| Ingestion contract | proposed           | panel           | The versioned definition of what a push may contain and how the panel answers it.                                    | push API, tower schema              |
+| Read contract      | proposed           | panel           | The versioned shape the panel serves for repository → PRD → wave → issue.                                            | tower API, view model               |
+| Result             | proposed           | panel           | The state of one issue step or wave stage: `passed`, `failed`, `skipped`, `in_progress` or `pending`.                | status, state, outcome              |
+| Evidence           | proposed           | panel           | What a result rests on: a file path, a pull request number or a recorded gate value.                                 | proof, source                       |
+| Observed time      | proposed           | panel           | When the sender saw a result, by the sender's clock; it decides which result is newest.                              | event time, timestamp               |
+| Received time      | proposed           | panel           | When the panel accepted a push, by the panel's clock; it drives the stale flag.                                      | ingested at, timestamp              |
+| Summary            | proposed           | panel           | The permanent record kept per issue, wave and PRD after its raw tower events are pruned.                             | rollup, aggregate, snapshot         |
