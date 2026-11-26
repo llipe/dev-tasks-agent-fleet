@@ -75,7 +75,7 @@
       "Resource": [
         "arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY-wS5xrJ",
         "arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2",
-        "arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/ANTHROPIC_API_KEY-??????"
+        "arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY-K0guwA"
       ]
     }
   ]

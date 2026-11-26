@@ -27,11 +27,13 @@ const ACCOUNT = '755641879575';
 const ROLE_ARN = `arn:aws:iam::${ACCOUNT}:role/agent-fleet-code-review-runtime`;
 // D-71, D-80: Claude Sonnet 5.5 on the Anthropic API (an Anthropic model ID).
 const MODEL_ID = 'claude-sonnet-5-5';
-// D-88: the key's secret, read by name. It is created in S-218, so its random
-// six-character suffix is unknown here: the grant names it with the `-??????`
-// wildcard, which matches exactly one suffix and never another secret name.
-const ANTHROPIC_KEY_SECRET_ID = 'agent-fleet/prod/ANTHROPIC_API_KEY';
-const ANTHROPIC_KEY_SECRET_ARN = `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:${ANTHROPIC_KEY_SECRET_ID}-??????`;
+// D-88: the key's secret, read by name. Created in S-218 (ChangeId
+// 20261125-code-review-anthropic-v18) as a dedicated secret: the planned name
+// agent-fleet/prod/ANTHROPIC_API_KEY is the bug-fix agent's key (D-50). The
+// grant names its full ARN, suffix included, like the other two secrets.
+const ANTHROPIC_KEY_SECRET_ID = 'agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY';
+const ANTHROPIC_KEY_SECRET_ARN = `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:${ANTHROPIC_KEY_SECRET_ID}-K0guwA`;
+const BUG_FIX_KEY_SECRET_ID = 'agent-fleet/prod/ANTHROPIC_API_KEY';
 const SECRET_ARNS = [
   `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY-wS5xrJ`,
   `arn:aws:secretsmanager:us-east-1:${ACCOUNT}:secret:agent-fleet/prod/GITHUB_APP_PRIVATE_KEY-t4sXT2`,
@@ -189,14 +191,18 @@ describe('runtime-role-policy.json (AC-2, spec §7.2 v1.8, AC-17 IAM half)', () 
     expect([...asList(sm[0].Resource)].sort()).toEqual([...SECRET_ARNS].sort());
   });
 
-  test("the only wildcard in a secret ARN is the Anthropic key's -?????? suffix", () => {
+  test('no secret ARN has a wildcard: every grant names its full suffix', () => {
     const sm = statements.find(s => asList(s.Action).includes('secretsmanager:GetSecretValue'))!;
     for (const arn of asList(sm.Resource)) {
-      expect(arn).not.toContain('*');
-      expect(arn).not.toMatch(/secret:agent-fleet\/\*|secret:\*/);
-      if (arn.includes('?')) expect(arn).toBe(ANTHROPIC_KEY_SECRET_ARN);
+      expect(arn).not.toMatch(/[*?]/);
+      expect(arn).toMatch(/-[A-Za-z0-9]{6}$/);
     }
-    expect(ANTHROPIC_KEY_SECRET_ARN.endsWith(`${ANTHROPIC_KEY_SECRET_ID}-??????`)).toBe(true);
+  });
+
+  test("the code-review key is not the bug-fix agent's key (D-50, D-88)", () => {
+    const sm = statements.find(s => asList(s.Action).includes('secretsmanager:GetSecretValue'))!;
+    expect(ANTHROPIC_KEY_SECRET_ID).not.toBe(BUG_FIX_KEY_SECRET_ID);
+    for (const arn of asList(sm.Resource)) expect(arn).not.toContain(`:secret:${BUG_FIX_KEY_SECRET_ID}-`);
   });
 
   test('the Anthropic key secret is the one the runtime reads (env ANTHROPIC_API_KEY_SECRET_ID)', () => {

@@ -1,0 +1,9 @@
+# Result — 20261125-code-review-anthropic-v18
+
+| Step | Status | Backup id | Restore command | Verified at | Evidence |
+| ---- | ------ | --------- | --------------- | ----------- | -------- |
+| 1 — backup (read) | verified | `backup/runtime.before.json`, `role-policy.before.json`, `agents-code-review.before.json`, `schema_migrations.before.json`, `webhook-rule-review.before.json` | n/a | 2026-11-26T16:05Z | READY **v5**, `MODEL_ID=deepseek.v3.2`, image `e7559840…`, role `agent-fleet-code-review-runtime`; the policy has 9 statements incl. `InvokeDeepSeekV32` (`bedrock:InvokeModel`) and `ReadTwoSecrets`; the row is enabled on the live ARN, `max_context_tokens` max 400000 / default 150000, `max_diff_lines` max 10000; history head `20261103120000`. **No `/review` rule exists**: the only code-review rule is "Auto Code Review" (`15a63a22…`, Riel endpoint `41c2da15…`, `pull_request` opened/ready_for_review → `main`, static `max_diff_lines` 10000, `max_context_tokens` 150000), live: 5 riel runs today |
+| 2 — set secret | applied (placeholder value; real key pending from the operator) | n/a (new resource) | `rollback.sh --from 2` | 2026-11-26T15:44Z | `arn:aws:secretsmanager:us-east-1:755641879575:secret:agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY-K0guwA`; `KmsKeyId` null (default key). The planned name `agent-fleet/prod/ANTHROPIC_API_KEY` is the bug-fix agent's key (`-Oo8jsf`, D-50); the operator chose a dedicated secret |
+| 3 — rename + pin (repo) | verified | git | `git revert` | 2026-11-26T16:15Z | test first: 5 failed → 23/23 pass. `agentcore.json` `ANTHROPIC_API_KEY_SECRET_ID=agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY`; the policy grants `…CODE_REVIEW_ANTHROPIC_API_KEY-K0guwA`; no wildcard in any secret ARN; a new test keeps the bug-fix key out. Follow-up (app code, `developer`): `config.py` `DEFAULT_ANTHROPIC_API_KEY_SECRET_ID` still names the bug-fix secret (env overrides it; IAM denies it) |
+
+status: in progress
