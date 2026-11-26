@@ -77,7 +77,7 @@ SPEC_5_3_KEYS = frozenset(
         "output_tokens",
         "estimated_input_tokens",
         "cost_usd",
-        "bedrock_ms",
+        "model_ms",
         "wall_clock_ms",
         "output_mode",
         "repair_calls",
@@ -240,8 +240,9 @@ POINTS: dict[str, tuple[Inject, str, bool]] = {
     "conventions": (_on_pipeline("repo_conventions"), "context", True),
     "build_prompt": (_on_pipeline("build_prompt"), "context", True),
     "step-open-review": (_on_step_open("review"), "review", True),
-    "bedrock-client": (_on_harness("bedrock_factory"), "review", True),
-    "review": (_on_pipeline("converse_review"), "review", True),
+    "model-key": (_on_harness("resolve_model_key"), "review", True),
+    "model-client": (_on_harness("model_factory"), "review", True),
+    "review": (_on_pipeline("model_review"), "review", True),
     "validate": (_on_pipeline("validate_result"), "validate", True),
     "step-open-post": (_on_step_open("post"), "post", True),
     "scrub-validation": (_on_pipeline("_scrub_validation"), "post", True),
@@ -690,7 +691,7 @@ DEADLINE_POINTS: dict[str, tuple[Callable[[Harness, pytest.MonkeyPatch], None], 
     "issues": (_deadline_on_pipeline("linked_issues"), "context", True),
     "conventions": (_deadline_on_pipeline("repo_conventions"), "context", True),
     "build_prompt": (_deadline_on_pipeline("build_prompt"), "context", True),
-    "review": (_deadline_on_pipeline("converse_review"), "review", True),
+    "review": (_deadline_on_pipeline("model_review"), "review", True),
     "validate": (_deadline_on_pipeline("validate_result"), "post", True),
     # Inside post, past the pre-POST check: §13 RUN_TIMEOUT is "before post".
     "render": (_deadline_on_pipeline("render_review"), "post", False),
@@ -769,7 +770,7 @@ def test_an_abandoned_review_worker_neither_posts_nor_writes(h):
     assert h.posts() == [_failure("RUN_TIMEOUT")]
     assert _writes_after_terminal(h) == []
     assert h.reporter.artifacts() == []
-    assert h.fake.calls == 1, "the abandoned worker made no further Converse call"
+    assert h.fake.calls == 1, "the abandoned worker made no further model call"
     _assert_invariants(h, result)
 
 
@@ -1156,3 +1157,151 @@ def _check_paths(
     if scenario in ("budget", "lockfile"):
         assert h.calls("GET", COMPARE_PATH) == [] or point is not None
     assert all(c.path != FILES_PATH or c.method == "GET" for c in h.stub.calls)
+
+
+# ---------------------------------------------------------------------------
+# S-216 AC9: the Anthropic API key (SN-15; TC-216-48, TC-216-49, RT-20)
+# ---------------------------------------------------------------------------
+
+
+def _key_absent_from_outputs(h: Harness, key: str) -> None:
+    blob = "\n".join(h.posts()) + h.reporter.dump()
+    assert key not in blob
+    core = key.replace("-", "").replace("_", "")[6:30]
+    assert core not in blob.replace("\\", "").replace("-", "").replace("_", "")
+
+
+def _key_absent_from_requests(h: Harness, key: str) -> None:
+    import json as _json
+
+    sent = _json.dumps([h.fake.stream_requests, h.fake.count_requests], default=str)
+    assert key not in sent
+    for p in h.prompts:
+        assert key not in p.system and key not in p.user
+
+
+def test_api_key_is_never_placed_in_the_environment(h, monkeypatch):
+    """TC-216-48: no ``ANTHROPIC_API_KEY`` before or after a run; the SDK's env fallback
+    is never used."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert "ANTHROPIC_API_KEY" not in os.environ
+    h.fake.push(review([blocking()]))
+    h.drive()
+    assert "ANTHROPIC_API_KEY" not in os.environ
+    assert h.api_key not in os.environ.values()
+    assert h.model_factory_calls and all(c["api_key"] == h.api_key for c in h.model_factory_calls)
+
+
+def test_api_key_echoed_by_the_model_never_leaves(h, caplog, capsys):
+    """TC-216-49: a model that echoes the key; it reaches no comment, event, artifact,
+    log line or request."""
+    key = h.api_key
+    h.fake.push(
+        review(
+            [
+                blocking(
+                    title=f"key {key}",
+                    failure_scenario=f"_{key}_ leaks",
+                    consequence=f"`{key}` is exposed",
+                )
+            ]
+        )
+    )
+    with caplog.at_level("DEBUG"):
+        result = h.drive()
+    assert result["status"] == "succeeded"
+    _key_absent_from_outputs(h, key)
+    _key_absent_from_requests(h, key)
+    out = capsys.readouterr()
+    assert key not in out.out + out.err + caplog.text
+
+
+def test_api_key_in_an_authentication_error_message_never_leaves(h, caplog, capsys):
+    """TC-216-49: an ``AuthenticationError`` whose API message carries the key."""
+    from tests.fixtures.anthropic_fake import auth_error
+
+    key = h.api_key
+    h.fake.push(auth_error(f"invalid x-api-key: {key}"))
+    with caplog.at_level("DEBUG"):
+        result = h.drive()
+    assert result["error_code"] == "MODEL_ACCESS_DENIED"
+    _key_absent_from_outputs(h, key)
+    assert "invalid x-api-key" not in h.reporter.dump()
+    out = capsys.readouterr()
+    assert key not in out.out + out.err + caplog.text
+
+
+def test_api_key_is_never_in_the_prompt_the_wrapper_builds(h):
+    """TC-216-49: the wrapper itself never writes the key into ``system`` or ``messages``."""
+    h.fake.push(prompt_too_long_error(), message_error("nope"), review())
+    h.use_long_app()
+    h.drive()
+    assert h.fake.calls == 3
+    _key_absent_from_requests(h, h.api_key)
+
+
+def prompt_too_long_error() -> Any:
+    from tests.fixtures.anthropic_fake import prompt_too_long
+
+    return prompt_too_long()
+
+
+def message_error(text: str) -> Any:
+    from tests.fixtures.anthropic_fake import message
+
+    return message(text)
+
+
+def test_random_key_shaped_strings_never_leave_property():
+    """RT-20 (seed 480007): a key planted in model output, an SDK error message, the PR
+    body, an issue body or a reviewed file, whole or split by a ``render._DROPPED``
+    character, never reaches the comment, the artifact, run_events or ``error_message``.
+
+    Requests are checked only when the key was not planted in repository or PR
+    content: that content is the author's and is sent as data, the same accepted
+    residual as the installation token (PRD §17); the wrapper never adds the key.
+    """
+    import string
+
+    import render
+    from tests.fixtures.anthropic_fake import auth_error
+
+    tactic = Tactic.from_env(tactic_seed(480, 7), 500)
+    rng = tactic.rng()
+    dropped = sorted(render._DROPPED)
+    alphabet = string.ascii_letters + string.digits
+    for i in range(tactic.iterations):
+        key = "sk-ant-api03-" + "".join(rng.choice(alphabet) for _ in range(rng.randint(24, 48)))
+        places = {p for p in ("model", "error", "pr", "issue", "file") if rng.random() < 0.4}
+        split = rng.random() < 0.3
+        if split:
+            cut = rng.randint(1, len(key) - 1)
+            planted = key[:cut] + chr(rng.choice(dropped)) + key[cut:]
+        else:
+            planted = key
+        if not tactic.selected(i):
+            continue
+        with pytest.MonkeyPatch.context() as mp:
+            h = Harness(mp)
+            h.api_key = key
+            if "pr" in places:
+                h.set_pull(body=f"Closes #41\n\n{planted}")
+            if "issue" in places:
+                h.set_issue(41, body=f"Story body {planted}\n", title="Story S-001: sizes")
+            if "file" in places:
+                h.set_content("src/app.py", HEAD, f'import sys\nKEY = "{planted}"\n')
+            if "error" in places:
+                h.fake.push(auth_error(f"bad key {planted}"))
+            elif "model" in places:
+                h.fake.push(review([blocking(title=f"t {planted}", consequence=f"c {planted}")]))
+            else:
+                h.fake.push(review())
+            h.drive()
+            ctx = tactic.context(i, (key, sorted(places), split))
+            blob = "\n".join(h.posts()) + h.reporter.dump()
+            assert key not in blob, ctx
+            if not places & {"pr", "issue", "file"}:
+                import json as _json
+
+                sent = _json.dumps([h.fake.stream_requests, h.fake.count_requests], default=str)
+                assert key not in sent, ctx

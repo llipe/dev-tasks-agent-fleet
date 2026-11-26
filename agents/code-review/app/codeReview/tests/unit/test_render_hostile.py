@@ -983,8 +983,8 @@ def test_accepted_panel_urls_build_an_inert_link(base, expected):
     url = run_link(base, RUN_ID)
     assert url == f"{expected}/runs/{RUN_ID}"
     assert re.fullmatch(r"https?://[A-Za-z0-9.-]+(?::\d{1,5})?(?:/[A-Za-z0-9._~-]+)*", url)
-    body = render_failure("BEDROCK_ERROR", run_id=RUN_ID, panel_base_url=base)
-    assert body == f"Code review failed (`BEDROCK_ERROR`). [run]({url})\n"
+    body = render_failure("MODEL_API_ERROR", run_id=RUN_ID, panel_base_url=base)
+    assert body == f"Code review failed (`MODEL_API_ERROR`). [run]({url})\n"
 
 
 def test_budget_and_failure_bodies_never_start_or_break_a_line_with_review():

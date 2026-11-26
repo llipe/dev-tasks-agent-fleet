@@ -90,7 +90,7 @@ from budget import (
 from context.diff import OVER_TOKENS, TIER_DOC, DiffContext, OverBudget, escape_path, file_tier
 from context.tokens import estimate, estimate_len, truncate
 from context.verifier import REPORT_NONE, REPORT_NOT_PARSEABLE, REPORT_PARSED, Candidate
-from findings_schema import CATEGORIES, MAX_FINDINGS, SUBMIT_REVIEW_SCHEMA, SUBMIT_REVIEW_TOOL
+from findings_schema import CATEGORIES, MAX_FINDINGS, SUBMIT_REVIEW_SCHEMA
 from validate import MAX_BLOCKING_SPAN
 
 __all__ = [
@@ -226,8 +226,8 @@ def rubric_text() -> str:
 
 _SYSTEM_TEMPLATE = """\
 You are the code reviewer for one GitHub pull request. You read an expanded \
-diff and its context and report findings by calling the `{tool}` tool once. \
-Nothing you write is executed: the wrapper validates your output, decides the \
+diff and its context and report findings as one JSON object matching the \
+output schema. Nothing you write is executed: the wrapper validates your output, decides the \
 verdict, and posts the comment.
 
 # Rubric (version {version})
@@ -301,7 +301,8 @@ listed by name only), `file` (a full head version; its first line is \
 
 # Output
 
-Call `{tool}` once with `findings` and `verifier_checks`. `line_start` and \
+Reply with one JSON object matching the output schema, with `findings` and \
+`verifier_checks`, and nothing before or after it. `line_start` and \
 `line_end` refer to the head version of `file`; `file` is the path as it \
 appears in the diff.
 """
@@ -320,7 +321,6 @@ this JSON Schema:
 def system_prompt() -> str:
     """The system prompt: role, rubric v1, contract, rules (spec §8.5). Static."""
     return _SYSTEM_TEMPLATE.format(
-        tool=SUBMIT_REVIEW_TOOL,
         version=RUBRIC_VERSION,
         rubric=rubric_text(),
         max_findings=MAX_FINDINGS,

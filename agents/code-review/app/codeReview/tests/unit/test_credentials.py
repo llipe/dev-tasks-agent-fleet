@@ -469,3 +469,77 @@ class TestResolveGithubCredentials:
         mock_mint.assert_called_once_with(10, 20, "-----BEGIN RSA PRIVATE KEY-----\n...")
         assert ctx.token == "ghs_resolved"
         assert ctx.installation_id == 20
+
+
+# ---------------------------------------------------------------------------
+# Anthropic API key (S-216 AC9; D-88; TC-216-46, TC-216-50)
+# ---------------------------------------------------------------------------
+
+ANTHROPIC_KEY_SENTINEL = "sk-ant-api03-KEYSENTINEL-0123456789"
+
+
+class TestFetchAnthropicKey:
+    @patch("credentials.boto3")
+    def test_reads_the_named_secret_once(self, mock_boto3):
+        sm = mock_boto3.client.return_value
+        sm.get_secret_value.return_value = {"SecretString": ANTHROPIC_KEY_SENTINEL}
+        from credentials import fetch_anthropic_key
+
+        assert fetch_anthropic_key("agent-fleet/test/ANTHROPIC_API_KEY") == ANTHROPIC_KEY_SENTINEL
+        mock_boto3.client.assert_called_once_with("secretsmanager")
+        sm.get_secret_value.assert_called_once_with(SecretId="agent-fleet/test/ANTHROPIC_API_KEY")
+
+    @patch("credentials.boto3")
+    def test_default_secret_id(self, mock_boto3):
+        sm = mock_boto3.client.return_value
+        sm.get_secret_value.return_value = {"SecretString": ANTHROPIC_KEY_SENTINEL}
+        from credentials import fetch_anthropic_key
+
+        fetch_anthropic_key()
+        sm.get_secret_value.assert_called_once_with(SecretId="agent-fleet/prod/ANTHROPIC_API_KEY")
+
+    @pytest.mark.parametrize(
+        "code", ["ResourceNotFoundException", "AccessDeniedException", "ThrottlingException"]
+    )
+    @patch("credentials.boto3")
+    def test_client_error_is_a_credential_error_naming_the_secret_only(self, mock_boto3, code):
+        sm = mock_boto3.client.return_value
+        sm.get_secret_value.side_effect = ClientError(
+            {"Error": {"Code": code, "Message": f"denied {ANTHROPIC_KEY_SENTINEL}"}},
+            "GetSecretValue",
+        )
+        from credentials import fetch_anthropic_key
+
+        with pytest.raises(CredentialError) as exc:
+            fetch_anthropic_key("agent-fleet/test/ANTHROPIC_API_KEY")
+        assert exc.value.code == "ANTHROPIC_KEY_UNAVAILABLE"
+        text = str(exc.value)
+        assert "agent-fleet/test/ANTHROPIC_API_KEY" in text and code in text
+        assert ANTHROPIC_KEY_SENTINEL not in text
+        assert exc.value.__cause__ is None
+
+    @pytest.mark.parametrize(
+        "value", [None, "", "   ", 42, b"bytes"], ids=["none", "empty", "blank", "int", "bytes"]
+    )
+    @patch("credentials.boto3")
+    def test_empty_or_non_string_secret_is_a_credential_error(self, mock_boto3, value):
+        sm = mock_boto3.client.return_value
+        sm.get_secret_value.return_value = {"SecretString": value}
+        from credentials import fetch_anthropic_key
+
+        with pytest.raises(CredentialError) as exc:
+            fetch_anthropic_key("sid")
+        assert exc.value.code == "ANTHROPIC_KEY_UNAVAILABLE"
+
+    @patch("credentials.boto3")
+    def test_key_is_never_placed_in_the_environment(self, mock_boto3, monkeypatch):
+        import os
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        sm = mock_boto3.client.return_value
+        sm.get_secret_value.return_value = {"SecretString": ANTHROPIC_KEY_SENTINEL}
+        from credentials import fetch_anthropic_key
+
+        fetch_anthropic_key("sid")
+        assert "ANTHROPIC_API_KEY" not in os.environ
+        assert ANTHROPIC_KEY_SENTINEL not in os.environ.values()

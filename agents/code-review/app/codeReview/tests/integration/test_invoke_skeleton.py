@@ -289,6 +289,34 @@ def test_pipeline_deps_resolve_the_installation_token(monkeypatch):
     assert seen == [("acme", "http://sb.local", "svc-key")]
 
 
+def test_pipeline_deps_read_the_anthropic_key_from_its_secret_id(monkeypatch):
+    """TC-216-46 (D-88): the production deps read the key from
+    ``settings.anthropic_api_key_secret_id``, never the Supabase secret ID, and hand
+    the pipeline the SDK factory that takes the key as a constructor argument."""
+    import model_adapter
+    from config import Settings
+
+    seen: list[str] = []
+
+    def _fetch(secret_id):
+        seen.append(secret_id)
+        return "sk-ant-api03-WIRING-SENTINEL"
+
+    monkeypatch.setattr(main, "fetch_anthropic_key", _fetch)
+    settings = Settings(
+        "http://sb.local",
+        "sid",
+        "model",
+        "https://panel.local",
+        anthropic_api_key_secret_id="agent-fleet/dev/ANTHROPIC_API_KEY",
+    )
+    deps = main.pipeline_deps(settings, "svc-key")
+    assert seen == []  # nothing is read until the pipeline asks, after the token
+    assert deps.resolve_model_key() == "sk-ant-api03-WIRING-SENTINEL"
+    assert seen == ["agent-fleet/dev/ANTHROPIC_API_KEY"]
+    assert deps.model_factory is model_adapter.make_client
+
+
 def test_valid_wrapped_payload_reaches_load_pr(sink):
     raw = {"prompt": json.dumps({"prompt": json.dumps(_payload())})}
     _drive(raw)

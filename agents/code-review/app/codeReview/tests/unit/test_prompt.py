@@ -214,8 +214,34 @@ def test_system_prompt_states_the_blocking_span_bound():
     assert sentence in system_prompt().replace("\n", " ")
 
 
-def test_system_prompt_names_the_output_tool():
-    assert f"`{findings_schema.SUBMIT_REVIEW_TOOL}`" in system_prompt()
+def test_system_prompt_asks_for_one_json_object_matching_the_output_schema():
+    """S-216 (D-81): structured output, no tool; consistent with the repair footer."""
+    flat = " ".join(system_prompt().split())
+    assert "report findings as one JSON object matching the output schema" in flat
+    assert (
+        "Reply with one JSON object matching the output schema, with `findings` and "
+        "`verifier_checks`, and nothing before or after it." in flat
+    )
+
+
+def test_no_prompt_text_asks_for_a_tool_call():
+    """S-216: the request carries no tool, so no instruction may ask for one."""
+    import re
+
+    import model_adapter
+
+    texts = {
+        "system": system_prompt(),
+        "fallback": prompt.fallback_system_prompt(),
+        "rubric": rubric_text(),
+        "repair": model_adapter._REPAIR_HEAD + model_adapter._REPAIR_FOOTER,
+    }
+    tool = findings_schema.SUBMIT_REVIEW_TOOL
+    for name, text in texts.items():
+        flat = " ".join(text.split())
+        assert f"`{tool}`" not in flat and tool not in flat, name
+        assert not re.search(r"(?i)\b(call|calling|invoke|use)\b[^.]{0,40}\btool\b", flat), name
+        assert "JSON object" in flat or name == "rubric", name
 
 
 def test_system_prompt_carries_no_untrusted_content():

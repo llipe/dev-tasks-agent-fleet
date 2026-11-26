@@ -5,10 +5,18 @@ The model returns its review as the input of a forced ``submit_review`` tool
 call. Nothing executes: the "tool" is only an output contract the wrapper
 validates. This module holds the schema as data, verbatim from spec §6.3.
 
-S-209 adds it because two things need it before the Bedrock adapter exists:
+S-209 adds it because two things need it before the model adapter exists:
 the rubric's categories must equal the schema's ``category`` enum (TC-209-10),
 and the budget counts the schema as part of the fixed instructions
 (spec §8.4 step 1). S-210 sends it as ``toolConfig`` and adds validation here.
+
+**Sent schema (v1.8, S-216; D-81).** The Anthropic API's structured outputs
+reject some JSON Schema keywords, so the copy sent in
+``output_config.format`` is ``sent_schema(SUBMIT_REVIEW_SCHEMA)``: the same
+schema with every ``minimum``, ``maxLength`` and ``pattern`` removed at any
+depth (``maxItems`` is kept until the live probe, spec §17 Q9).
+``validate_review`` still checks the full schema, so a reply that breaks a
+removed keyword is invalid output and goes to the repair call.
 
 **Validation (S-210).** ``validate_review`` checks a value against
 ``SUBMIT_REVIEW_SCHEMA`` by walking the schema data, so the constant stays the
@@ -62,6 +70,7 @@ __all__ = [
     "SchemaError",
     "SchemaViolation",
     "parse_review_json",
+    "sent_schema",
     "validate_review",
 ]
 
@@ -252,6 +261,37 @@ def _check_array(value: list[Any], schema: dict[str, Any], path: str) -> None:
     if items is not None:
         for k, item in enumerate(value):
             _check(item, items, f"{path}[{k}]")
+
+
+# Keywords structured outputs reject (D-81); removed from the sent copy only.
+SENT_SCHEMA_STRIPPED = frozenset({"minimum", "maxLength", "pattern"})
+
+
+def sent_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """A new copy of ``schema`` without ``SENT_SCHEMA_STRIPPED`` at any depth (D-81).
+
+    Only schema positions are walked: the values of ``properties`` are
+    property names mapped to subschemas, so a property called ``pattern`` is
+    kept. ``enum`` and ``required`` lists are copied as data. Pure: ``schema``
+    is not mutated, and the result is idempotent.
+    """
+    return _strip(schema)
+
+
+def _strip(schema: Any) -> Any:
+    if not isinstance(schema, dict):
+        return json.loads(json.dumps(schema))
+    out: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in SENT_SCHEMA_STRIPPED:
+            continue
+        if key == "properties" and isinstance(value, dict):
+            out[key] = {name: _strip(sub) for name, sub in value.items()}
+        elif key == "items":
+            out[key] = _strip(value)
+        else:
+            out[key] = json.loads(json.dumps(value))
+    return out
 
 
 def validate_review(value: Any) -> dict[str, Any]:

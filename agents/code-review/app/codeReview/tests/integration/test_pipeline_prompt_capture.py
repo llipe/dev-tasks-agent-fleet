@@ -13,8 +13,12 @@ the builder-independent ``parse_blocks``:
 - PRD AC-8: excluded workstream files never reach the model, and the PR's own
   comments and reviews are never read (FR-10);
 - PRD AC-13 (static): injected instructions sit inside nonce blocks only, a
-  forged end marker closes nothing, the only tool is ``submit_review``, and a
-  model-supplied ``verdict`` key is a schema failure, not a verdict.
+  forged end marker closes nothing, the request carries no tool (structured
+  output only, S-216), and a model-supplied ``verdict`` key is a schema
+  failure, not a verdict.
+
+The prompt sink receives exactly the ``system`` and ``messages`` sent on each
+``beta.messages.stream`` call (TC-216-55, port of TC-209-17).
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ import json
 import pytest
 
 from prompt import Prompt
-from tests.fixtures.bedrock import FakeConverse
+from tests.fixtures.anthropic_fake import FakeAnthropic, prompt_too_long, review_message
 from tests.helpers.github_stub import json_response, load_fixture, text_response
 from tests.helpers.pipeline_run import (
     HEAD,
@@ -286,41 +290,146 @@ def test_prompt_capture_injection_stays_inside_nonce_blocks(h):
     assert [t for t, _c in cands] == ["V1"]
     assert "Ignore previous instructions" in cands[0][1]
 
-    tools = h.fake.requests[0]["toolConfig"]["tools"]
-    assert [t["toolSpec"]["name"] for t in tools] == ["submit_review"]
-    assert h.fake.requests[0]["toolConfig"]["toolChoice"] == {"tool": {"name": "submit_review"}}
+    first_request = h.fake.stream_requests[0]
+    assert "tools" not in first_request and "tool_choice" not in first_request
+    assert first_request["output_config"]["format"]["type"] == "json_schema"
     # The wrapper's verdict comes from the findings, not from the model's key.
     assert result["verdict"] == "blocking"
     assert h.reporter.terminal["metrics"]["repair_calls"] == 1
 
 
-def review_with_verdict() -> dict:
-    from tests.fixtures.bedrock import tool_use_response
-
-    return tool_use_response({"findings": [], "verifier_checks": [], "verdict": "clear"})
+def review_with_verdict() -> object:
+    return review_message({"findings": [], "verifier_checks": [], "verdict": "clear"})
 
 
 def test_prompt_capture_sink_sees_at_most_three_prompts(h):
     """S-210 (7): first build, R4 rebuild and repair rebuild."""
-    from tests.fixtures.bedrock import context_length_rejected, tool_use_response
-
     h.use_long_app()  # a full file, so the context-length retry applies (D-69)
     h.fake.push(
-        context_length_rejected(),
-        tool_use_response({"findings": "bad", "verifier_checks": []}),
+        prompt_too_long(),
+        review_message({"findings": "bad", "verifier_checks": []}),
         review(),
     )
     h.drive()
     assert len(h.prompts) == 3
     assert h.prompts[0].context.full_files_included
     assert not h.prompts[1].context.full_files_included
-    assert json.dumps(h.reporter.terminal["metrics"]["output_mode"]) == '"forced_schema"'
+    assert json.dumps(h.reporter.terminal["metrics"]["output_mode"]) == '"structured_output"'
+    # TC-216-55: the sink saw exactly what each stream call sent.
+    for captured, sent in zip(h.prompts, h.fake.stream_requests, strict=True):
+        assert sent["system"] == captured.system
+        assert sent["messages"][0]["content"][0] == {"type": "text", "text": captured.user}
 
 
-def test_fake_converse_is_the_production_client_factory_path(h):
-    """S-210 (8): the factory is called once per Converse call with that call's timeouts."""
+def test_fake_anthropic_is_the_production_client_factory_path(h):
+    """S-210 (8): the factory is called once per review call with that call's timeouts."""
     h.fake.push(review())
     h.drive()
-    assert isinstance(h.fake, FakeConverse)
-    assert len(h.bedrock_factory_calls) == 1
-    assert set(h.bedrock_factory_calls[0]) == {"read_timeout_seconds", "connect_timeout_seconds"}
+    assert isinstance(h.fake, FakeAnthropic)
+    assert len(h.model_factory_calls) == 1
+    assert set(h.model_factory_calls[0]) == {
+        "api_key",
+        "read_timeout_seconds",
+        "connect_timeout_seconds",
+        "max_retries",
+    }
+    assert h.model_factory_calls[0]["max_retries"] == 2
+    assert h.selection_factory_calls == []
+
+
+# ---------------------------------------------------------------------------
+# PRD AC-14 (S-217, TC-217-18…20, EC-45): a ~393k-token PR at default params
+# ---------------------------------------------------------------------------
+#
+# DF-37: "default params" means max_diff_lines = 2,000 here, so the PR stays
+# under 2,000 changed lines and its size comes from the ±50 context lines.
+# Each generated file holds single-line edits every ``spacing`` lines; at 101
+# the hunks' context meets, so the diff shows each file whole and no full copy
+# is sent (D-69): the prompt is the expanded diff plus the fixed sections.
+
+LARGE_FILES = 10
+LARGE_EDITS = 95  # per file: 10 x 95 edits = 1,900 changed lines (<= 2,000)
+
+
+def _gen_line(i: int, width: int, edited: bool = False) -> str:
+    """Line ``i`` of a generated file, ``width`` characters with its newline."""
+    head = f"v{i:06d}={'1' if edited else '0'}"
+    assert len(head) < width
+    return head + " " * (width - len(head) - 1) + "\n"
+
+
+def _large_pr(h: Harness, *, width: int, spacing: int = 101) -> list[str]:
+    """``LARGE_FILES`` modified code files, each with ``LARGE_EDITS`` one-line edits."""
+    paths = [f"src/gen_{f:02d}.py" for f in range(LARGE_FILES)]
+    lines = LARGE_EDITS * spacing
+    edits_at = {51 + k * spacing for k in range(LARGE_EDITS)}
+    for path in paths:
+        base = "".join(_gen_line(i, width) for i in range(1, lines + 1))
+        head = "".join(_gen_line(i, width, i in edits_at) for i in range(1, lines + 1))
+        h.set_content(path, MERGE_BASE, base)
+        h.set_content(path, HEAD, head)
+    h.set_files([file_entry(p, LARGE_EDITS, LARGE_EDITS) for p in paths])
+    return paths
+
+
+def _exact_count(kwargs: dict) -> int:
+    """A ``count_tokens`` answer equal to the D-47 estimate of what is counted."""
+    from model_adapter import request_tokens
+
+    return request_tokens(kwargs)
+
+
+def test_large_pr_is_reviewed_at_the_default_params(h):
+    """TC-217-18 (AC-14): ~393k estimated tokens, default params, one review call."""
+    paths = _large_pr(h, width=13)
+    h.fake = FakeAnthropic([review()], default_count=_exact_count)
+    result = h.drive()
+    assert result["status"] == "succeeded"
+    assert result["outcome"] != "not_applicable"
+    assert h.fake.calls == 1
+    m = h.reporter.terminal["metrics"]
+    assert m["changed_lines"] == 2 * LARGE_FILES * LARGE_EDITS <= 2000
+    assert 380_000 <= m["estimated_first_call_tokens"] <= 400_000, m["estimated_first_call_tokens"]
+    (p,) = h.prompts
+    assert p.context.max_context_tokens == 900_000  # D-90 default
+    diff = "".join(_contents(p, "diff"))
+    assert [f"+++ b/{path}" in diff for path in paths] == [True] * LARGE_FILES
+    assert diff.count("\n+v") == LARGE_FILES * LARGE_EDITS  # every edit, in its context
+    assert p.context.full_files_included == ()
+    (body,) = h.posts()
+    assert "over the context budget" not in body
+    assert len(h.reporter.artifacts()) == 1
+
+
+def test_large_pr_over_900k_tokens_gets_the_budget_comment(h):
+    """TC-217-19 (EC-45): just over B = 900,000 by the estimate -> budget comment, no call."""
+    _large_pr(h, width=34)
+    result = h.drive()
+    assert (result["status"], result["outcome"]) == ("succeeded", "not_applicable")
+    assert h.fake.calls == 0
+    assert "over the context budget of 900000 tokens" in h.posts()[0]
+    assert h.prompts == []
+
+
+def test_large_pr_counted_over_b_drops_full_files_then_is_reviewed(h):
+    """TC-217-19 (D-84): estimate under B, exact count 900,001 with full files -> rebuild."""
+    # Spacing 102 leaves one head line out of every hunk, so each file also goes in full.
+    _large_pr(h, width=13, spacing=102)
+    h.fake = FakeAnthropic([review()], counts=[900_001], default_count=_exact_count)
+    result = h.drive()
+    assert result["status"] == "succeeded"
+    assert h.fake.calls == 1 and h.fake.counts_made == 2
+    assert len(h.prompts) == 2
+    assert h.prompts[0].context.full_files_included
+    assert h.prompts[1].context.full_files_included == ()
+    sent = h.fake.stream_requests[0]
+    assert sent["messages"][0]["content"][0]["text"] == h.prompts[1].user
+
+
+def test_large_pr_with_the_pre_v17_budget_is_skipped(h):
+    """TC-217-20: the same PR at max_context_tokens 150,000 (the old default) is not reviewed."""
+    _large_pr(h, width=13)
+    result = h.drive({"pr_number": 42, "max_context_tokens": 150_000})
+    assert (result["status"], result["outcome"]) == ("succeeded", "not_applicable")
+    assert h.fake.calls == 0
+    assert "over the context budget of 150000 tokens" in h.posts()[0]
