@@ -19,3 +19,7 @@ supabase db query --linked "select r.* from webhook_rules r join agents a on a.i
 # Step 3 (2026-11-26): repo only, test first. CDK test pinned to CODE_REVIEW_ANTHROPIC_API_KEY-K0guwA (5 failed), then
 # agentcore.json ANTHROPIC_API_KEY_SECRET_ID and iam/runtime-role-policy.json updated (23/23 pass).
 (cd agents/code-review/agentcore/cdk && npm test)
+# Step 4 (2026-11-26T23:17Z): live probe, scratchpad script (not in repo); key read via get_secret_value into the client, never printed.
+# First attempt failed before any API call: botocore needs the [crt] extra for `aws login` credentials (installed into the scratchpad venv).
+(cd agents/code-review/app/codeReview && "$SCRATCH/probe-venv/bin/python" -I "$SCRATCH/probe_v18.py")
+# -> G-A pass (ITPM 5000000); G-B Q9 FAIL: "output_config.format.schema: For 'array' type, property 'maxItems' is not supported"; Q12 not reached.
