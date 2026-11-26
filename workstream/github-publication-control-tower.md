@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                        | Author           |
 | ------- | ---------- | ---------------------------------------------- | ---------------- |
 | 1.0     | 2026-11-26 | 16 stories published (#487–#502), Waves A and B. | product-engineer |
+| 1.1     | 2026-11-26 | Task checklists posted as one comment on each Wave A issue (#487–#496), from `tasks-control-tower-plan.md` v1.0. | product-engineer |
 
 ## Target Repository
 
@@ -45,6 +46,7 @@
 - **Tracking issues:** no PRD or wave tracking issue was created. This repository's installed `github-ops` conventions do not define them (they arrived in a later dev-tasks release). Wave membership is carried by the `**Wave:**` line in each issue body and by the table above.
 - **Issue order:** issue numbers follow story order, S-216 → #487 through S-231 → #502.
 - **Verification:** after publishing, the 16 issues were listed by label; all are open with the expected titles and labels.
+- **Task checklists:** each Wave A issue carries its checklist as a comment, not in the issue body. Rewriting a body through the MCP tool means resending it whole; a comment leaves the published story text untouched. `developer` ticks the boxes by editing that comment. Wave B issues have no checklist yet.
 - **Assisted-by:** not applicable; no PR was created and no issue was closed.
 
 GitHub is now the source of truth for execution status of these stories.
