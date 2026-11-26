@@ -4,7 +4,8 @@
 
 | Version | Date       | Summary                                                                                   | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-11-26 | Initial stories for Waves A and B from spec v1.1 / PRD v1.4. S-216–S-231. Awaiting review. | product-engineer |
+| 1.0     | 2026-11-26 | Initial stories for Waves A and B from spec v1.1 / PRD v1.4. S-216–S-231. | product-engineer |
+| 1.1     | 2026-11-26 | Approved by @llipe and published as GitHub issues #487–#502 (see `github-publication-control-tower.md`). No story changed. | @llipe / product-engineer |
 
 Source: `docs/requirements/prd-control-tower.md` (v1.4), `workstream/specification-control-tower.md` (v1.1), `workstream/decisions-control-tower.md` (D-01…D-31), `workstream/research-control-tower.md`.
 
