@@ -276,7 +276,7 @@ The core of the feature: one `security definer` function applying a validated pu
 
 #### Technical Notes
 
-- Row-lock `tower_repositories` first. Put the SQL in its own migration. This placement of the merge logic is open question SQ-1 in the spec; if the owner rejects it, this story is re-planned.
+- Row-lock `tower_repositories` first. Put the SQL in its own migration. This placement of the merge logic was flagged as SQ-1 in the spec and approved by the owner with spec v1.1.
 
 #### Testing Requirements
 
