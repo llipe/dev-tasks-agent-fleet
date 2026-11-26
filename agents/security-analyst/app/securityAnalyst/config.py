@@ -36,7 +36,7 @@ MODEL_ID: str = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 # The container-side values (IDLE_SESSION_TIMEOUT, MAX_LIFETIME) MUST match
 # `agentcore/agentcore.json` `lifecycleConfiguration`, and REAPER_THRESHOLD_SECONDS
 # MUST match the Supabase run snapshot (`max_runtime_seconds` + `grace_seconds`,
-# set in S-141's `supabase/seed.sql` entry). See docs/technical-guidelines.md
+# set in S-141's `supabase/seed.sql` entry). See docs/tech.md
 # S7/S8 and ADR-006 for the single source of truth.
 
 # Bounds each of the five scanner subprocess calls independently (spec S8.5) —

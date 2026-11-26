@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`docs/technical-guidelines.md` §8 (Integration Methods) describes the
+`docs/tech.md` §8 (Integration Methods) describes the
 `dependency-update` agent's invocation payload contract, and §18 registered
 issue #97 as an **open** defect discovered during the issue #94 reaper
 verification: `unwrap_payload()` stripped exactly one `prompt` wrapper, but the
@@ -42,13 +42,13 @@ invocations"), implemented on branch `issue/97-unwrap-payload-double-wrap`
 Leaving §8 silent on the repeated-unwrap behavior and §18 marking #97 as still
 open would misrepresent the current implemented invocation contract. This ADR
 exists to satisfy the repository rule that **every modification to
-`docs/technical-guidelines.md` is accompanied by an ADR** — even when the
+`docs/tech.md` is accompanied by an ADR** — even when the
 modification is a factual current-state correction rather than a new
 architectural decision (same reasoning as ADR-002 and ADR-003).
 
 ## Decision
 
-Record the implemented behavior as current state in `technical-guidelines.md`:
+Record the implemented behavior as current state in `tech.md`:
 
 1. §8 — add an "Invocation payload contract" subsection documenting the repeated
    lone-`prompt` unwrap (`_MAX_UNWRAP_DEPTH = 16`, `_is_lone_prompt_wrapper`
@@ -70,7 +70,7 @@ opaque failure.
 
 - **Update the guideline without an ADR** because this is a bug-fix status
   correction, not a new architectural decision. Rejected: the repository rule is
-  literal — any change to `technical-guidelines.md` requires an ADR. This ADR is
+  literal — any change to `tech.md` requires an ADR. This ADR is
   deliberately scoped as a current-state correction record.
 - **Introduce a dedicated error code (e.g. `DOUBLE_WRAPPED_PAYLOAD`).** Rejected
   by the implementation and endorsed here: a new terminal error code is a
@@ -105,7 +105,7 @@ opaque failure.
   - Origin: `docs/runbooks/issue-94-reaper-verification.md` §4.1 (where the
     double-wrap was first observed)
 - Docs updated:
-  - `docs/technical-guidelines.md` (§8 new subsection, §18 #97 row, changelog 1.7)
+  - `docs/tech.md` (§8 new subsection, §18 #97 row, changelog 1.7)
   - `agents/dependency-update/README.md` (§Invocation — updated in PR #102)
   - `docs/runbooks/issue-77-deployment-e2e.md` (preamble — updated in PR #102)
 - Implementation:

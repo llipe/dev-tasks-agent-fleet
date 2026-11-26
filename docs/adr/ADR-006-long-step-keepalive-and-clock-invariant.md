@@ -45,7 +45,7 @@ Three properties of the system made this more than a one-line timeout bump:
    interceptable stop (SIGTERM) still fell through to the reaper.
 
 This ADR exists both because the repository rule requires an ADR for every change
-to `technical-guidelines.md`, and — unlike ADR-002/003/005, which recorded
+to `tech.md`, and — unlike ADR-002/003/005, which recorded
 bug-fix status corrections — because #98 **introduces a new enforceable rule**
 (the fail-fast clock-consistency invariant) and two new architectural mechanisms
 (the heartbeat keep-alive and the SIGTERM backstop). It is a decision record, not
@@ -187,7 +187,7 @@ only a current-state correction.
   - `workstream/pending-manual-config-dependency-update-agent.md` (§1 env vars,
     Step 7 redeploy)
 - Docs updated:
-  - `docs/technical-guidelines.md` (§8 keep-alive + backstop subsections, §11
+  - `docs/tech.md` (§8 keep-alive + backstop subsections, §11
     test surface, §18 #98 row, changelog 1.8)
   - `docs/runbooks/issue-94-reaper-verification.md` (#98 defect rows annotated
     resolved-in-code)

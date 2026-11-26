@@ -303,7 +303,7 @@ constants MUST mirror `agentcore.json` `lifecycleConfiguration`, and `REAPER_THR
 values that drive the panel's reaper. `start_timeout_seconds` (300) is the independent
 `queued → failed_to_start` clock and is **not** tied to `idleRuntimeSessionTimeout`. If the
 container and database clocks drift, the panel may show a run as "running" after AgentCore has
-already killed it, or vice versa. See `docs/technical-guidelines.md` §7/§8 and
+already killed it, or vice versa. See `docs/tech.md` §7/§8 and
 [ADR-006](../../docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md).
 
 ### Environment Variables (set by AgentCore / Secrets Manager)

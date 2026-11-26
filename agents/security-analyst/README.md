@@ -594,7 +594,7 @@ contains no `agent_id`/`slug` branch or any hardcoded threshold. A security-anal
 past `5400 + 150 = 5550` seconds is reaped by the exact same code path, with the exact same
 `timed_out` status and `RUNTIME_TIMEOUT` `run_events` row, that already covers `dependency-update`
 — confirmed by reading the function; no synthetic-row or live-hang exercise is required to
-establish this (S-141 task 17.9). See `docs/technical-guidelines.md` §7/§8 and
+establish this (S-141 task 17.9). See `docs/tech.md` §7/§8 and
 [ADR-006](../../docs/adr/ADR-006-long-step-keepalive-and-clock-invariant.md).
 
 ### Environment Variables (set by AgentCore / Secrets Manager)

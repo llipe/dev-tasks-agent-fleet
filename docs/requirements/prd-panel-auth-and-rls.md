@@ -73,7 +73,7 @@ Before generating a specification from this PRD:
 
 ---
 
-The panel currently has no user authentication (D16), and its only security boundary is that the Fly app is not publicly reachable — a boundary that a single future deploy could silently remove. This feature adds Supabase Auth with a GitHub OAuth provider and an explicit allowlist, then replaces the deny-all RLS posture with identity-based policies, retiring risk R1 and unlocking the secondary persona (small-team members) described in `product-context.md` §3.
+The panel currently has no user authentication (D16), and its only security boundary is that the Fly app is not publicly reachable — a boundary that a single future deploy could silently remove. This feature adds Supabase Auth with a GitHub OAuth provider and an explicit allowlist, then replaces the deny-all RLS posture with identity-based policies, retiring risk R1 and unlocking the secondary persona (small-team members) described in `product.md` §3.
 
 The strategic payoff is larger than "add a login screen." Deny-all forced every database read server-side and forced the live log tail through an SSE relay. Authenticated RLS makes a direct browser subscription safe, which removes a whole relay component rather than adding one.
 
@@ -118,7 +118,7 @@ sequenceDiagram
 
 1. **Retire R1.** Remove "anyone with the URL can invoke agents that write to organization repositories" as an accepted risk.
 2. **Make the security boundary a property of the application, not of a deploy setting.** Today the boundary is `fly.toml`. After this feature it is enforced in the database.
-3. **Unlock the secondary persona.** `product-context.md` §3 gates small-team access on authentication existing. This is that gate.
+3. **Unlock the secondary persona.** `product.md` §3 gates small-team access on authentication existing. This is that gate.
 4. **Turn the execution registry into an audit trail** by attributing every run to a real identity.
 5. **Remove the SSE relay** by making direct browser Realtime subscriptions safe — a net reduction in moving parts.
 6. **Eliminate the single-control weakness** in the current posture (no `REVOKE`, `v_runs` bypassing RLS).
@@ -127,7 +127,7 @@ sequenceDiagram
 
 | Repo | Role / Impact |
 |---|---|
-| `llipe/dev-tasks-agent-fleet` | **Panel:** sign-in route, session handling, middleware, role-gated invoke UI, replace SSE relay with direct subscription. **Migrations:** `app_users` table, RLS policies, `REVOKE` statements, `v_runs` recreated with `security_invoker`. **Tests:** Layer 2.5 policy tests per role. **Docs:** `technical-guidelines.md` §5/§6, `TESTING.md` |
+| `llipe/dev-tasks-agent-fleet` | **Panel:** sign-in route, session handling, middleware, role-gated invoke UI, replace SSE relay with direct subscription. **Migrations:** `app_users` table, RLS policies, `REVOKE` statements, `v_runs` recreated with `security_invoker`. **Tests:** Layer 2.5 policy tests per role. **Docs:** `tech.md` §5/§6, `TESTING.md` |
 | Supabase project (infrastructure) | GitHub OAuth provider configured; redirect URLs registered; migrations applied |
 | GitHub (infrastructure) | New **OAuth App** (distinct from the existing GitHub *App* used by the agent — different mechanism, different credentials) |
 | Fly.io app (infrastructure) | New secrets for the Supabase anon key and auth redirect URL. **Privacy setting unchanged by this feature** |
@@ -137,7 +137,7 @@ sequenceDiagram
 
 **Primary:** the operator (project author). Gains attribution on their own runs and loses the "don't ever make this app public" constraint.
 
-**Secondary — now reachable:** other members of the GitHub organization who need to trigger or audit runs. `product-context.md` §3 describes this persona as blocked on authentication. A `viewer` role exists specifically so someone can be given audit access without invoke capability.
+**Secondary — now reachable:** other members of the GitHub organization who need to trigger or audit runs. `product.md` §3 describes this persona as blocked on authentication. A `viewer` role exists specifically so someone can be given audit access without invoke capability.
 
 **Explicitly not a target:** external users, customers, or anyone outside the GitHub organization. This is not multi-tenancy — see §10.
 
@@ -321,7 +321,7 @@ flowchart TB
 
 **Two clients, two credentials.** After this feature the panel holds both a user-scoped client (anon key + user JWT, policies apply) and a `service_role` client (bypasses RLS, used only for `runs` writes and recovery). Keeping them in separate modules with names that cannot be confused is a hard requirement — an accidental `service_role` read in a user-facing path silently defeats every policy in §9.
 
-**Alignment with `technical-guidelines.md`.** §5 and §6 both currently document the no-auth posture and deny-all; both need updating. D11's original rationale ("enabling RLS later is an ugly migration") is finally cashed in here: RLS is already on, so this feature adds policies rather than performing the risky enable-on-populated-tables migration. That was the decision's intended payoff.
+**Alignment with `tech.md`.** §5 and §6 both currently document the no-auth posture and deny-all; both need updating. D11's original rationale ("enabling RLS later is an ugly migration") is finally cashed in here: RLS is already on, so this feature adds policies rather than performing the risky enable-on-populated-tables migration. That was the decision's intended payoff.
 
 **Migration ordering matters and is not reversible cheaply.** Applying policies before the panel sends a user JWT would break every read. The safe sequence: ship auth with the panel still reading via `service_role`, verify sessions work, *then* apply policies and switch reads to the user-scoped client. Each step is independently verifiable.
 

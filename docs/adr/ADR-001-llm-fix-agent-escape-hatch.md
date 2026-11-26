@@ -26,7 +26,7 @@ previously cover:
    dependency updates. A model told to "make the checks pass" can trivially do
    so by rolling back the update, widening a semver range, deleting a test, or
    removing a dependency — silently defeating the security intent.
-3. **Doc drift.** `technical-guidelines.md` §11 still claimed "no formalized
+3. **Doc drift.** `tech.md` §11 still claimed "no formalized
    test suite exists," and §16 declared the agent's LLM client "outside the
    scope of this document." Both are now false: a `pytest` suite exists and
    `strands-agents` is a committed runtime dependency.
@@ -123,7 +123,7 @@ on what the model may change.
 - Workstream:
   - `workstream/fidelity-report-75.md` (audit-mode fidelity report for #75)
 - Docs updated:
-  - `docs/technical-guidelines.md` (§6, §11, §16, changelog 1.2)
+  - `docs/tech.md` (§6, §11, §16, changelog 1.2)
   - `agents/dependency-update/README.md` (Pipeline / LLM fix loop, env vars)
 - Implementation:
   - `agents/dependency-update/app/dependencyUpdate/fix_agent.py`

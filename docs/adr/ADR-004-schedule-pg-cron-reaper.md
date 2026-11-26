@@ -8,7 +8,7 @@ Accepted
 
 `reap_stale_runs()` and the `v_runs.effective_status` view were written into
 `docs/reference/001_schema.sql` from the first migration, implementing the
-two-layer stale-run design described in `docs/technical-guidelines.md` §3
+two-layer stale-run design described in `docs/tech.md` §3
 (layer 1 materializes state via `pg_cron`; layer 2 computes `effective_status` at
 read time). The `cron.schedule` call at the tail of that file was left
 **commented out**, pending manual enablement of the `pg_cron` extension in the
@@ -28,7 +28,7 @@ database is wrong while the interface looks right:
 
 - the explanatory `run_events` row that `reap_stale_runs()` writes is never
   written, so a run would show a terminal status with no reason — contradicting
-  `product-context.md` success metric 3;
+  `product.md` success metric 3;
 - `runs.status` stays `queued`/`running` indefinitely, so the parent PRD's
   "absence of executions stuck indefinitely" metric is unmet while appearing met;
 - anything not reading through `v_runs` (manual SQL, future retention logic,
@@ -53,7 +53,7 @@ Issue #94 activates the schedule and verifies the behaviour end to end.
    verification tasks plus a troubleshooting index) and has a different lifecycle
    from the one-time deployment steps; the #77 runbook cross-links to it.
 
-3. **Record the verified reaper properties in `technical-guidelines.md` §18**, so
+3. **Record the verified reaper properties in `tech.md` §18**, so
    the confirmed behaviour and the accepted tradeoff are discoverable from the
    foundation doc and not only from a runbook.
 
@@ -122,7 +122,7 @@ terminal status — the exact failure class the reaper exists to cover:
   decision context (a small behavioural correction, not a new decision): the reaper now closes open
   `run_steps` as `failed` (`finished_at=now()`, attributing `error_message`) on both the `timed_out`
   and `failed_to_start` branches, reusing the existing `step_status` enum value (no migration). See
-  `technical-guidelines.md` §7/§8.
+  `tech.md` §7/§8.
 - **This ADR is recorded on partial verification: 5 of 7 acceptance criteria.**
   AC5 (healthy long-running `llm_fix` not reaped early, plus the cold-start gap
   measurement) is blocked by #98, since no long run can currently complete; the
@@ -152,7 +152,7 @@ terminal status — the exact failure class the reaper exists to cover:
 - PR [#96](https://github.com/llipe/dev-tasks-agent-fleet/pull/96)
 - `docs/runbooks/issue-94-reaper-verification.md` — operator runbook and results
 - `docs/reference/001_schema.sql` — `reap_stale_runs()`, `v_runs`, the schedule block
-- `docs/technical-guidelines.md` §3 (two-layer design), §7 (thresholds and current
+- `docs/tech.md` §3 (two-layer design), §7 (thresholds and current
   scheduling state), §14 (reaper observability), §18 (open defects)
 - `TESTING.md` — Database / reaper layer structural gap analysis
 - Parent PRD `prd-agent-fleet-panel-v2.md` — FR3, FR8, FR11a, D8, D9, D10

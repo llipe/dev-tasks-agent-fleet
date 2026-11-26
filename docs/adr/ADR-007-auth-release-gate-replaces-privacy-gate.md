@@ -13,7 +13,7 @@ Story S-115 mechanized that boundary as a **release gate** — `scripts/verify-f
 (+ the pure parser `panel/scripts/fly-privacy-check.mjs`) ran after every deploy
 and **failed the release if the app had any public IP or public service** (SR2 /
 AC6). "Privacy is a release gate, not a preference" was an enforceable rule in
-`technical-guidelines.md` §6.
+`tech.md` §6.
 
 The Phase 2 auth wave (S-116…S-122) **reverses D16**: the panel now requires a
 Supabase password login. `middleware.ts` is a fail-closed authorization
@@ -67,7 +67,7 @@ the suite can observe the gate failing on a violation), and keeping the same
      account somehow created is deleted.
 - CI runs the parser unit tests by name and `shellcheck`s the new wrapper.
 
-**The enforceable rule in `technical-guidelines.md` §6 changes** from "panel
+**The enforceable rule in `tech.md` §6 changes** from "panel
 privacy is a release gate" to **"the auth boundary is a release gate, asserted by
 observation."** Risk R1 (no authentication) is **resolved**; a new risk R8
 (public login endpoint invites brute force) is accepted for v1 (Supabase built-in

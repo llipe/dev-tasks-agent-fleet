@@ -6,7 +6,7 @@
 > **Why this exists:** AC-108.4 (PRD **AC10**) asserts that the run-history screen shows a run's
 > **derived** status, so that a run past its timeout threshold reads `timed_out` **even when the
 > `pg_cron` reaper has not yet materialized it**. This is the two-layer design from
-> `technical-guidelines.md` §3 observed from the UI: `v_runs.effective_status` (layer 2) tells the
+> `tech.md` §3 observed from the UI: `v_runs.effective_status` (layer 2) tells the
 > immediate truth while the reaper (layer 1) is behind. Proving it requires pausing the reaper and
 > observing a stale row — a manipulation that cannot be automated end-to-end from a unit/component
 > test, so it is a manual procedure backed by a Layer 2.5 test (see the closing note).

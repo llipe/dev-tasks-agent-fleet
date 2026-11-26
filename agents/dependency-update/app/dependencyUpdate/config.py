@@ -33,7 +33,7 @@ MODEL_ID: str = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 # The container-side values (IDLE_SESSION_TIMEOUT, MAX_LIFETIME) MUST match
 # `agentcore/agentcore.json` `lifecycleConfiguration`, and REAPER_THRESHOLD_SECONDS
 # MUST match the Supabase run snapshot (`max_runtime_seconds` + `grace_seconds`).
-# See docs/technical-guidelines.md §7/§8 for the single source of truth.
+# See docs/tech.md §7/§8 for the single source of truth.
 
 TOOL_COMMAND_TIMEOUT: int = int(os.environ.get("TOOL_COMMAND_TIMEOUT", "180"))
 TEST_TIMEOUT: int = int(os.environ.get("TEST_TIMEOUT", "600"))

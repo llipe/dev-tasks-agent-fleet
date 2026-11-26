@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`docs/technical-guidelines.md` §9 (Code Organization & Structure) and §11
+`docs/tech.md` §9 (Code Organization & Structure) and §11
 (Testing Strategy) described the `dependency-update` agent as having its
 **PR-creation and artifact emission deferred to issues #76/#77**. Issue #76
 ("Pull Request Creation and PR Body Builder") has since been implemented on
@@ -26,13 +26,13 @@ branch `issue/76-pr-creation-body-builder` (Draft PR #86):
 
 Leaving the guideline text saying these were "deferred" would misrepresent the
 current implemented state. This ADR exists to satisfy the repository rule that
-**every modification to `docs/technical-guidelines.md` is accompanied by an
+**every modification to `docs/tech.md` is accompanied by an
 ADR** — even when the modification is a factual current-state correction rather
 than a new decision.
 
 ## Decision
 
-Update the current-state descriptions in `technical-guidelines.md` to reflect
+Update the current-state descriptions in `tech.md` to reflect
 the implemented `open_pr` step and `pull_request` artifact:
 
 1. §9 status line — the deterministic pipeline now includes the idempotent
@@ -59,7 +59,7 @@ this change only records that the implementation now honors it.
   once Accepted except for status transitions.
 - **Update the guideline without an ADR** because this is a status correction,
   not a new decision. Rejected: the repository rule is literal — any change to
-  `technical-guidelines.md` requires an ADR. This ADR is deliberately scoped as
+  `tech.md` requires an ADR. This ADR is deliberately scoped as
   a documentation/status-correction record.
 
 ## Consequences
@@ -82,7 +82,7 @@ this change only records that the implementation now honors it.
   - `workstream/fidelity-report-issue-76.md` (AC coverage + drift log)
   - `workstream/user-stories-prd-dependency-update-agent.md` (PR-creation story)
 - Docs updated:
-  - `docs/technical-guidelines.md` (§9, §11, changelog 1.3)
+  - `docs/tech.md` (§9, §11, changelog 1.3)
   - `TESTING.md` (layer taxonomy, coverage baseline, structural gap table)
   - `agents/dependency-update/README.md` (Pipeline / Open PR step)
 - Implementation:

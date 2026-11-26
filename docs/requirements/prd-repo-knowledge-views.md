@@ -214,7 +214,7 @@ flowchart LR
 - **Known riel incompatibility.** riel's `api.html` fetches `../api/openapi.yaml`, outside `docs/field-guide/`; under FR-11 that request is refused, so its API page will show its own fallback. Accepted, not fixed here.
 - **Graph library.** Pinned, chosen in the spec for size and performance at the aggregation threshold.
 - **Left for the HOW phase:** graph library; size caps for `graph.json` and individual field-guide files; cache TTL; aggregation node threshold; exact CSP; supported `schema_version` range; graphify version pin.
-- Foundation docs in this repository still use the pre-rename names (`docs/product-context.md`, `docs/technical-guidelines.md`); `dev-tasks migrate docs` is recommended.
+- Foundation docs in this repository still use the pre-rename names (`docs/product.md`, `docs/tech.md`); `dev-tasks migrate docs` is recommended.
 
 ## 13. Acceptance Criteria
 

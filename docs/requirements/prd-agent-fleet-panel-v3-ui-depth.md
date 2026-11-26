@@ -38,7 +38,7 @@ Four capability groups, each independently shippable:
 
 ## 5. Target Users
 
-Same as the rest of the panel — see `product-context.md` §3. Primary user: the project author, as operator of the agent fleet. No new persona.
+Same as the rest of the panel — see `product.md` §3. Primary user: the project author, as operator of the agent fleet. No new persona.
 
 ## 6. User Stories
 
@@ -113,7 +113,7 @@ Same as the rest of the panel — see `product-context.md` §3. Primary user: th
 - **Settings (C19).** Nothing is currently user-configurable (per-agent `max_runtime_seconds`, log level, retention policy); needs a real configuration surface designed before it is a screen.
 - **System health (C20).** `last_heartbeat_at` exists in the schema but is unused for detection (v2.1 §9); needs the heartbeat backlog item first.
 - **GitHub App repository sync.** FR16 is a manual reference add, not sync — verifying a repo actually exists on GitHub, importing its metadata, or reacting to GitHub App installation changes are all out of scope.
-- **Repository edit/rename, or per-agent repository enablement (`agent_repository_settings`).** Both remain backlog items per `product-context.md` §6; FR15–FR18 touch only the `repositories` table, not a per-agent join.
+- **Repository edit/rename, or per-agent repository enablement (`agent_repository_settings`).** Both remain backlog items per `product.md` §6; FR15–FR18 touch only the `repositories` table, not a per-agent join.
 - **Restoring an archived repository from the UI.** See Open Questions §18.
 - **Responsive/mobile layout below 1024px (C23) — declined permanently, not deferred.** `/DESIGN.md` §9 already leans this way for a single-operator tool; this PRD makes it an explicit decision so it stops recurring as an open question in future refinements.
 - **User authentication changes.** Out of scope; already shipped and stable (S-116–S-123).
@@ -157,8 +157,8 @@ Same as the rest of the panel — see `product-context.md` §3. Primary user: th
 
 ## 15. Assumptions
 
-- The single seeded `github_installations` row (per `product-context.md` §11 — "a single GitHub organization... is sufficient for v1") is assumed for FR16; the Add-repository form does not need an installation picker.
-- Run and repository volume stays low enough (per `product-context.md` §11) that FR4/FR13's server-side paginated queries do not need a new index beyond what `v_runs` already provides — flagged as a technical consideration (§12), not assumed away entirely.
+- The single seeded `github_installations` row (per `product.md` §11 — "a single GitHub organization... is sufficient for v1") is assumed for FR16; the Add-repository form does not need an installation picker.
+- Run and repository volume stays low enough (per `product.md` §11) that FR4/FR13's server-side paginated queries do not need a new index beyond what `v_runs` already provides — flagged as a technical consideration (§12), not assumed away entirely.
 - The steps panel (FR9) and log-level filter (FR11) are read-only presentational work over existing `run_steps`/`run_events` rows; no agent-side (`agent_reporter.py`) change is required.
 
 ## 16. Constraints & Dependencies
@@ -175,7 +175,7 @@ Same as the rest of the panel — see `product-context.md` §3. Primary user: th
 
 ## 18. Open Questions
 
-- **FR8 connection indicator scope** — **RESOLVED in spec v1.0/v1.1** (§17 OQ1): presentational reuse only, no new Realtime/list-level subscription; the indicator renders a static "connected" state in v1 (a server-fetch failure hits the Next.js error boundary before it could ever render "disconnected" — the honest ceiling of this resolution, not a gap). Shipped as documented in Story S-143 / `docs/technical-guidelines.md` row 1.36 and `DESIGN.md` v1.6. ~~is it a new list-level Realtime subscription (inserting new runs live into a filtered list), or a presentational reuse of the existing per-run SSE connection state? This determines whether FR8 inherits the v2.1 FR11a "filtered list + live insert" risk class. Needs a decision in spec before FR8 is estimated.~~
-- **Repository restore** — **RESOLVED, decided against for v1** (Story S-148 / issue #208): no restore affordance was built; reversal requires a direct DB action, an explicit confirmed v1 limitation, not an oversight (`DESIGN.md` §5.6, `docs/technical-guidelines.md` row 1.41). ~~FR17 ships archive with no restore UI. Is that acceptable for v1, or does archiving need to be reversible from `/repositories` itself rather than requiring a direct DB action?~~
-- **All-runs pagination at scale:** FR13 is unfiltered by default across every agent. At what run count does an unfiltered `/runs` load become slow enough to warrant a default filter (e.g., "last 7 days") rather than "all, newest-first, paginated"? Not blocking for v1 given current volume (`product-context.md` §11), but worth a note in spec. **Still open** — flagged, not fixed, in the shipped code (spec §11/§17, `docs/technical-guidelines.md` row 1.39).
+- **FR8 connection indicator scope** — **RESOLVED in spec v1.0/v1.1** (§17 OQ1): presentational reuse only, no new Realtime/list-level subscription; the indicator renders a static "connected" state in v1 (a server-fetch failure hits the Next.js error boundary before it could ever render "disconnected" — the honest ceiling of this resolution, not a gap). Shipped as documented in Story S-143 / `docs/tech.md` row 1.36 and `DESIGN.md` v1.6. ~~is it a new list-level Realtime subscription (inserting new runs live into a filtered list), or a presentational reuse of the existing per-run SSE connection state? This determines whether FR8 inherits the v2.1 FR11a "filtered list + live insert" risk class. Needs a decision in spec before FR8 is estimated.~~
+- **Repository restore** — **RESOLVED, decided against for v1** (Story S-148 / issue #208): no restore affordance was built; reversal requires a direct DB action, an explicit confirmed v1 limitation, not an oversight (`DESIGN.md` §5.6, `docs/tech.md` row 1.41). ~~FR17 ships archive with no restore UI. Is that acceptable for v1, or does archiving need to be reversible from `/repositories` itself rather than requiring a direct DB action?~~
+- **All-runs pagination at scale:** FR13 is unfiltered by default across every agent. At what run count does an unfiltered `/runs` load become slow enough to warrant a default filter (e.g., "last 7 days") rather than "all, newest-first, paginated"? Not blocking for v1 given current volume (`product.md` §11), but worth a note in spec. **Still open** — flagged, not fixed, in the shipped code (spec §11/§17, `docs/tech.md` row 1.39).
 - **Priority order within this PRD** — **MOOT: all 7 stories (S-142–S-148) have since shipped**, so no further sequencing decision is needed. All four FR groups (Run History, Run Detail, All runs, Repositories) were independently shippable. ~~The natural first cut is Run History depth (FR1–FR8) plus the FR12 one-line animation fix, since Repositories (FR15–FR18) is the largest single addition (new screen + new write path) — but this is a sequencing suggestion for the plan phase, not a decision made here.~~

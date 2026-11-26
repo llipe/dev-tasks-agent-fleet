@@ -10,7 +10,7 @@ process is killed abruptly. This module adds a best-effort layer for the
     the active run `failed / SIGNAL_TERMINATION` so it does not sit `running`
     until the pg_cron reaper.
   - A true SIGKILL / OOM cannot be intercepted by any process — that path is
-    documented (docs/technical-guidelines.md) as reaper-only, which is the
+    documented (docs/tech.md) as reaper-only, which is the
     designed backstop.
 
 The handler must never raise (it runs inside a signal context), and any detail

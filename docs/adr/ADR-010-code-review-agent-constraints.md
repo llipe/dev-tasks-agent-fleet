@@ -15,7 +15,7 @@ The `code-review` agent is the fleet's fourth agent. Its Wave A base (stories S-
 
 Wave B (S-214 deploy and enable, S-215 live verification) is not done. The `agents` row is seeded disabled with the placeholder `runtime_arn` `pending-deploy:code-review`. The agent is not deployed and reviews no PR.
 
-Sibling agents recorded their status changes in `docs/technical-guidelines.md`'s changelog without an ADR. This ADR is written because the guidelines' change rule requires one for any change to that file, and because this change adds enforceable constraints rather than only status.
+Sibling agents recorded their status changes in `docs/tech.md`'s changelog without an ADR. This ADR is written because the guidelines' change rule requires one for any change to that file, and because this change adds enforceable constraints rather than only status.
 
 ## Decision
 
@@ -50,7 +50,7 @@ Sibling agents recorded their status changes in `docs/technical-guidelines.md`'s
 
 **Follow-up actions**
 
-- Wave B (S-214, S-215, issues #416–#417): deploy the runtime, add `agents/code-review/agentcore/agentcore.json` (its `maxLifetime` must equal the seed's `max_runtime_seconds`, 1800), write the runbook required by FR-49a, add the `/review` webhook rule, run the 5-PR smoke, and confirm or change the default `MODEL_ID`. Then update `docs/technical-guidelines.md` §9 and the status lines in `docs/product-context.md`, `README.md`, and `docs/roadmap.md` (planner-owned).
+- Wave B (S-214, S-215, issues #416–#417): deploy the runtime, add `agents/code-review/agentcore/agentcore.json` (its `maxLifetime` must equal the seed's `max_runtime_seconds`, 1800), write the runbook required by FR-49a, add the `/review` webhook rule, run the 5-PR smoke, and confirm or change the default `MODEL_ID`. Then update `docs/tech.md` §9 and the status lines in `docs/product.md`, `README.md`, and `docs/roadmap.md` (planner-owned).
 - Re-check this ADR's Decision 2 after the Layer 3 evaluation or the smoke, if the default model changes.
 
 ## Addendum (2026-11-02): context selection call
@@ -69,4 +69,4 @@ PRD v1.4, D-59–D-64. Decisions 1 and 4 above change as follows; everything els
 - Requirements: [`docs/requirements/prd-code-review-agent.md`](../requirements/prd-code-review-agent.md) (v1.2), [`docs/requirements/prd-webhook-triggers.md`](../requirements/prd-webhook-triggers.md) (trigger mechanism)
 - Workstream: [`workstream/specification-prd-code-review-agent.md`](../../workstream/specification-prd-code-review-agent.md) (v1.3), [`workstream/decisions-code-review-agent.md`](../../workstream/decisions-code-review-agent.md) (D-01–D-55), [`workstream/planner-state-code-review-agent-wave-a.md`](../../workstream/planner-state-code-review-agent-wave-a.md), [`workstream/fidelity-report-S-204.md`](../../workstream/fidelity-report-S-204.md) to [`workstream/fidelity-report-S-213.md`](../../workstream/fidelity-report-S-213.md)
 - Related ADRs: [ADR-006](ADR-006-long-step-keepalive-and-clock-invariant.md), [ADR-009](ADR-009-allowlisted-aws-error-logging.md)
-- Docs updated: [`docs/technical-guidelines.md`](../technical-guidelines.md) (§6, §9, §11, §16, changelog 1.55), [`docs/product-context.md`](../product-context.md) (§5, §6, changelog 1.4), [`README.md`](../../README.md) (agent layout, active-codebase paragraph, ADR index)
+- Docs updated: [`docs/tech.md`](../tech.md) (§6, §9, §11, §16, changelog 1.55), [`docs/product.md`](../product.md) (§5, §6, changelog 1.4), [`README.md`](../../README.md) (agent layout, active-codebase paragraph, ADR index)

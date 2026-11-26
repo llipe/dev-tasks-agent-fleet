@@ -181,7 +181,7 @@ Direction A — **corrected the comment, kept the value at 300**. `start_timeout
 is the queue clock (`queued_at`-based, D9); `idleRuntimeSessionTimeout` (raised to
 900 in issue #98) is an output-idle clock. They measure different failures and were
 never meant to be equal. Recorded in `supabase/seed.sql` block 3 and
-`docs/technical-guidelines.md` §8.
+`docs/tech.md` §8.
 
 
 ## Applied-state evidence (task 2.14 / 2.15 / 2.19)

@@ -164,7 +164,7 @@ shape the transport delivered:
 - [ ] **double-wrapped** — `{"prompt": "{\"prompt\": \"{...}\"}"}` (agentcore CLI ≥ 0.28.0)
 
 The agent tolerates all three (`_MAX_UNWRAP_DEPTH = 16`); Check A reaching `running` **is** the proof
-that unwrapping succeeded. Check C only **records which shape is real** so `technical-guidelines.md`
+that unwrapping succeeded. Check C only **records which shape is real** so `tech.md`
 §8 can state it as fact rather than an open question.
 
 ---
@@ -191,7 +191,7 @@ Paste the results table back and the developer agent will:
 
 1. Flip tasks **1.17** and **1.27** and the **OQ2 exit criterion** from `[~]` to `[x]` in
    `workstream/tasks-prd-agent-fleet-panel-v2-wave4-plan.md`.
-2. Record the OQ2 wrapper-shape finding in `docs/technical-guidelines.md` §8 (replacing the open
+2. Record the OQ2 wrapper-shape finding in `docs/tech.md` §8 (replacing the open
    question with the observed fact).
 3. Post the evidence to **#89** and reference it from the S-115 tracking issue (#128).
 

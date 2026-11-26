@@ -270,7 +270,7 @@ If precision is below target, change the rubric before adding phases.
 - Webhook mechanism live (done, #398).
 - GitHub App Issues read (§12).
 - Bedrock model access for the chosen model.
-- Foundation documents in this repo use the old names (`docs/product-context.md`, `docs/technical-guidelines.md`); `dev-tasks migrate docs` is proposed.
+- Foundation documents in this repo use the old names (`docs/product.md`, `docs/tech.md`); `dev-tasks migrate docs` is proposed.
 
 ## 17. Security & Compliance
 

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`docs/technical-guidelines.md` §5 ("Front-end authentication against AWS")
+`docs/tech.md` §5 ("Front-end authentication against AWS")
 documents the panel's AWS credential + invocation path and its security
 contract: on a credential/OIDC/STS failure (`CREDENTIALS_UNAVAILABLE`, 500) or a
 downstream `InvokeAgentRuntime` failure (`INVOCATION_FAILED`, 502), the panel
@@ -67,7 +67,7 @@ sentinels) assert that no captured log line leaks any of them.
   a user or an API consumer sees.
 - The security contract in §5 is now accurate about what a failure log line
   contains. This ADR exists to satisfy the repository rule that **every
-  modification to `docs/technical-guidelines.md` is accompanied by an ADR**
+  modification to `docs/tech.md` is accompanied by an ADR**
   (precedent: ADR-003), and to pin the allowlist as the enforceable control so a
   future change cannot quietly widen the logged surface to the message or the
   payload.

@@ -17,7 +17,7 @@
 Today every agent run is triggered **manually** from the panel's invoke form. The
 data model has always anticipated scheduled execution — `runs.trigger_type` is an
 enum of `('manual', 'schedule', 'webhook')` and `schedule` is unused — and
-`product-context.md` §4 names "schedules" as an explicit extensibility goal of the
+`product.md` §4 names "schedules" as an explicit extensibility goal of the
 foundation. This PRD delivers the `schedule` branch: operators define a schedule
 (agent + repository + validated params + cadence), and the system invokes the agent
 unattended on that cadence, with guardrails that keep an unattended loop from
@@ -26,11 +26,11 @@ surfaces notable outcomes without the operator watching the panel.
 
 The feature is delivered **entirely within the existing stack** — no new AWS
 orchestration infrastructure (the project deliberately tore out EventBridge/Lambda
-in the reset; `product-context.md` §2/§5). Scheduling runs on the **`pg_cron`
+in the reset; `product.md` §2/§5). Scheduling runs on the **`pg_cron`
 extension already deployed for the reaper**, and execution reuses the **existing
 panel invoke path** (`POST /api/agents/[slug]/invoke` → `InvokeAgentRuntime` over
 Fly OIDC). This honors the "minimal cost and operational surface" constraint
-(`product-context.md` §9).
+(`product.md` §9).
 
 This is Phase 4, following Phase 1 (backend + `dependency-update` agent), Phase 2
 (panel UI, deployed public behind login), and Phase 3 (`security-analyst` agent).
@@ -68,7 +68,7 @@ Two secondary problems compound this once execution becomes unattended:
 3. **Safe unattended execution.** Guardrails prevent run stacking (overlap + open-PR
    backoff), prevent infinite failure loops (auto-pause circuit breaker), and bound
    concurrent fan-out (global in-flight cap). Every skip/block/pause is **recorded with
-   a visible reason**, never silent (upholds `technical-guidelines.md` §10
+   a visible reason**, never silent (upholds `tech.md` §10
    "explicitness over inference").
 4. **Notifications the operator actually sees.** Notable scheduled-run events are
    recorded in a durable, channel-agnostic `notifications` table (the system of
@@ -77,7 +77,7 @@ Two secondary problems compound this once execution becomes unattended:
 5. **Zero per-agent scheduler code.** A new agent is schedulable the moment its row
    exists in `agents` (its `params_schema` drives the schedule's param form), the same
    way manual invocation needs no per-agent front-end work (v1 acceptance criterion #5,
-   `product-context.md` §7).
+   `product.md` §7).
 6. **No new orchestration infrastructure and no static credentials.** Scheduling runs
    on the deployed `pg_cron`; execution and email reuse the Fly OIDC → STS credential
    path (no static AWS keys, D12); the login boundary (ADR-007) is preserved for all
@@ -94,21 +94,21 @@ Two secondary problems compound this once execution becomes unattended:
   by design, but v1 ships only two consumers: the panel feed and the daily SES digest.
   Slack is an explicitly planned fast-follow (§11).
 - **Webhook triggers.** The `trigger_type` enum includes `webhook`; event-driven
-  triggering is a separate backlog item (`product-context.md` §6) and is out of scope.
+  triggering is a separate backlog item (`product.md` §6) and is out of scope.
 - **Per-repository agent enablement.** Enabling/disabling an agent per repository is a
   separate backlog item; a schedule simply references an existing enabled agent + repo.
 - **Per-successful-run notifications or an all-runs activity report.** The digest
   summarizes **notable events only**; the system does not write a notification row per
   successful run.
 - **Multiple recipients / per-schedule recipient lists.** v1 has a single configured
-  sender and recipient (single-tenant, `product-context.md` §3).
+  sender and recipient (single-tenant, `product.md` §3).
 - **Run cancellation of a scheduled run.** The panel still cannot kill a running
-  AgentCore container (`product-context.md` §9); schedules can be paused/deleted, which
+  AgentCore container (`product.md` §9); schedules can be paused/deleted, which
   stops *future* firings, not an in-flight run.
 
 ## 5. Target Users
 
-The project author / operator (single-tenant, `product-context.md` §3/§10). The
+The project author / operator (single-tenant, `product.md` §3/§10). The
 scheduler is operated through the authenticated panel; its notifications are addressed
 to the single configured operator email.
 

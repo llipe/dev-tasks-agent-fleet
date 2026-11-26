@@ -720,7 +720,7 @@ export class RepositoryAlreadyExistsError extends Error {
 }
 
 /**
- * 13. Resolves the single GitHub App installation row (`product-context.md`
+ * 13. Resolves the single GitHub App installation row (`product.md`
  * §11 — there is exactly one). Used to scope the Add-repository form's write
  * without an installation picker (PRD §15 Assumption). Throws `DatabaseError`
  * on a PostgREST failure; a genuinely empty table (mis-seeded environment) is

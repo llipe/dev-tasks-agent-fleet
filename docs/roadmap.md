@@ -49,4 +49,4 @@ One row per PRD phase or wave, newest PRD first. Issue batches without a PRD are
 ## Not yet on a PRD
 
 - Open issues without a PRD: #244 (refresh run detail when a run reaches a terminal state), #245 (run detail can't scroll when the summary is tall), #217 (Next.js 16 + Node LTS upgrade).
-- Product backlog with no PRD yet (see [`product-context.md`](product-context.md) §6): per-repository agent enablement, GitHub App repo sync, `findings` with stable fingerprints, run cancellation, `run_events` retention. (Scheduled and webhook triggers now have PRDs — see [prd-agent-scheduler](requirements/prd-agent-scheduler.md) and [prd-webhook-triggers](requirements/prd-webhook-triggers.md) above.)
+- Product backlog with no PRD yet (see [`product.md`](product.md) §6): per-repository agent enablement, GitHub App repo sync, `findings` with stable fingerprints, run cancellation, `run_events` retention. (Scheduled and webhook triggers now have PRDs — see [prd-agent-scheduler](requirements/prd-agent-scheduler.md) and [prd-webhook-triggers](requirements/prd-webhook-triggers.md) above.)

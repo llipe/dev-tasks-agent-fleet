@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`docs/technical-guidelines.md` §9 (Code Organization & Structure) and §11
+`docs/tech.md` §9 (Code Organization & Structure) and §11
 (Testing Strategy) described the `dependency-update` agent's current state after
 issue #76. Issue #90 ("Fix run-metric under-reporting of changed packages and
 fixed advisories"), implemented on branch `issue/90-run-metrics-under-report`
@@ -40,13 +40,13 @@ fixed advisories"), implemented on branch `issue/90-run-metrics-under-report`
 Leaving the §9 status line and §11 test surface unchanged would misrepresent the
 current implemented state (which metrics are trustworthy, and how they are
 computed) and would keep a stale test count. This ADR exists to satisfy the
-repository rule that **every modification to `docs/technical-guidelines.md` is
+repository rule that **every modification to `docs/tech.md` is
 accompanied by an ADR** — even when the modification is a factual current-state
 correction rather than a new decision.
 
 ## Decision
 
-Update the current-state descriptions in `technical-guidelines.md` to reflect
+Update the current-state descriptions in `tech.md` to reflect
 the issue #90 fix:
 
 1. §9 status line — record that `advisories_fixed` is an audit ID-set diff and
@@ -71,7 +71,7 @@ advisory IDs rather than an inference from bucket classification.
 
 - **Update the guideline without an ADR** because this is a bug-fix status
   correction, not a new architectural decision. Rejected: the repository rule is
-  literal — any change to `technical-guidelines.md` requires an ADR (same
+  literal — any change to `tech.md` requires an ADR (same
   reasoning as ADR-002). This ADR is deliberately scoped as a current-state
   correction record.
 - **Amend ADR-002 instead of a new ADR.** Rejected: ADR-002 records the issue #76
@@ -108,7 +108,7 @@ advisory IDs rather than an inference from bucket classification.
   - `workstream/tasks-issue-90-run-metrics-under-report.md`
   - `workstream/fidelity-report-issue-90.md` (AC coverage)
 - Docs updated:
-  - `docs/technical-guidelines.md` (§9, §11, changelog 1.4)
+  - `docs/tech.md` (§9, §11, changelog 1.4)
   - `agents/dependency-update/README.md` (Pipeline / run-metrics note)
 - Implementation:
   - `agents/dependency-update/app/dependencyUpdate/audit.py`

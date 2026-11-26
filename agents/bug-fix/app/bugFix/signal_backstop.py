@@ -30,7 +30,7 @@ process is killed abruptly. This module adds a best-effort layer for the
     ``/bug-fix`` are the recovery (D-94). Without confirmed ownership, nothing
     is posted (D-81).
   - A true SIGKILL / OOM cannot be intercepted by any process — that path is
-    documented (docs/technical-guidelines.md) as reaper-only, which is the
+    documented (docs/tech.md) as reaper-only, which is the
     designed backstop.
 
 The handler must never raise (it runs inside a signal context), and any detail

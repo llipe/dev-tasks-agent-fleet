@@ -219,7 +219,7 @@ flowchart TD
 
 ## 17. Security & Compliance
 
-- **Reverses D16 / SR2, resolves R1:** login becomes the security boundary; keeping the app private is downgraded from "only boundary" to optional defense-in-depth. The spec §17 (OQ1/R1) and `technical-guidelines.md` §5/§6/§18 must be updated to record this reversal (routed via changelog on those docs during spec/handoff).
+- **Reverses D16 / SR2, resolves R1:** login becomes the security boundary; keeping the app private is downgraded from "only boundary" to optional defense-in-depth. The spec §17 (OQ1/R1) and `tech.md` §5/§6/§18 must be updated to record this reversal (routed via changelog on those docs during spec/handoff).
 - **Cookies:** session cookies are HttpOnly, Secure (in production), SameSite=Lax; never logged.
 - **No secret exposure:** publishable/anon key is safe for the browser; the service-role key stays server-only (SD2 guards intact).
 - **CSRF:** logout is POST-only; login is a form POST/server action. No state-changing GET auth endpoints.

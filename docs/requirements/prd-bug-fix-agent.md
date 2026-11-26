@@ -295,7 +295,7 @@ Initial targets, calibrated after the first 5–10 real runs:
 - The webhook trigger, merged in PR #398: rules, conditions, payload-to-param mapping, dedup, circuit breaker, notifications.
 - GitHub App permissions (Section 12) and the panel `invoke-runtime` IAM entry (issue #280).
 - A dedicated Anthropic API key with a spend cap (D-50, D-58), and the Projects PAT (D-99).
-- `docs/product-context.md` and `docs/technical-guidelines.md` are the foundation documents in this repository (old names; `dev-tasks migrate docs` is proposed).
+- `docs/product.md` and `docs/tech.md` are the foundation documents in this repository (old names; `dev-tasks migrate docs` is proposed).
 
 ## 17. Security & Compliance
 
