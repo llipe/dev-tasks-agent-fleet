@@ -158,7 +158,7 @@ Indexes: `tower_issues (repository_id, shipped_at)`, `tower_issues (wave_id)`, `
 
 ```json
 { "result": "passed", "observed_at": "2026-11-26T14:03:11Z", "received_at": "2026-11-26T14:03:12Z",
-  "reason": null, "evidence": { "kind": "file", "ref": "workstream/tasks-…-plan.md" }, "branch": "story/S-216-…" }
+  "reason": null, "evidence": { "kind": "file", "ref": "workstream/tasks-…-plan.md" }, "branch": "story/S-219-…" }
 ```
 
 `result` is one of `passed`, `failed`, `skipped`, `in_progress`, `pending` (D-08, D-31). `reason` is required when `result` is `skipped`. `evidence.kind` is `file`, `pull_request`, `gate` or `issue`. A wave stage uses the same cell: `passed` means the stage has evidence, `pending` means it has none, and `in_progress` is used by Build (FR-17). A check constraint rejects a key outside the eight names. A missing key means "not reported" (FR-27), which is distinct from `pending`.

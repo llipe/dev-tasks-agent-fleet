@@ -4,8 +4,9 @@
 
 | Version | Date       | Summary                                                                                   | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-11-26 | Initial stories for Waves A and B from spec v1.1 / PRD v1.4. S-216–S-231. | product-engineer |
+| 1.0     | 2026-11-26 | Initial stories for Waves A and B from spec v1.1 / PRD v1.4. S-219–S-234. | product-engineer |
 | 1.1     | 2026-11-26 | Approved by @llipe and published as GitHub issues #487–#502 (see `github-publication-control-tower.md`). No story changed. | @llipe / product-engineer |
+| 1.2     | 2026-11-26 | Stories renumbered S-216–S-231 → S-219–S-234. `main` had already used S-216–S-218 for the code-review v1.7 stories (#480–#482); the first numbering came from a stale checkout. Issue numbers #487–#502 are unchanged. No story content changed. | product-engineer |
 
 Source: `docs/requirements/prd-control-tower.md` (v1.4), `workstream/specification-control-tower.md` (v1.1), `workstream/decisions-control-tower.md` (D-01…D-31), `workstream/research-control-tower.md`.
 
@@ -13,10 +14,10 @@ Source: `docs/requirements/prd-control-tower.md` (v1.4), `workstream/specificati
 
 ## Legend
 
-- **ID range:** S-216–S-231 (next free after the code-review agent's S-215).
+- **ID range:** S-219–S-234 (next free after the code-review agent's S-218).
 - **Size:** XS (<½ day), S (½–1 day), M (1–2 days), L (2–3 days). Each story fits one PR.
 - **Discipline:** test-first. Per-story DoD = `pnpm --filter panel run validate` plus the integration suite where a table, function or route is touched. One PR per story into the wave's integration branch (`integration/control-tower-wave-a`, `integration/control-tower-wave-b`); only the owner merges integration → `main`.
-- **Waves:** A — Ingest (S-216–S-225), B — Tower (S-226–S-231). Wave C is not specified yet (D-18).
+- **Waves:** A — Ingest (S-219–S-228), B — Tower (S-229–S-234). Wave C is not specified yet (D-18).
 - **Spec references** are to `specification-control-tower.md` sections (§). **AC-n** are the PRD's acceptance criteria.
 - **Vocabulary:** result, evidence, observed time, received time, summary, workflow agent — as the PRD defines them. "Agent" and "run" are never used for dev-tasks work (BR-5).
 
@@ -24,37 +25,37 @@ Source: `docs/requirements/prd-control-tower.md` (v1.4), `workstream/specificati
 
 ```mermaid
 graph LR
-  S216[S-216 schema] --> S217[S-217 tokens + repo lifecycle]
-  S216 --> S219[S-219 apply_push]
-  S218[S-218 contract v1] --> S219
-  S217 --> S220[S-220 ingest route]
-  S219 --> S220
-  S216 --> S221[S-221 prune]
-  S219 --> S222[S-222 read contract]
-  S217 --> S223[S-223 minimal /tower]
+  S219[S-219 schema] --> S220[S-220 tokens + repo lifecycle]
+  S219 --> S222[S-222 apply_push]
+  S221[S-221 contract v1] --> S222
+  S220 --> S223[S-223 ingest route]
   S222 --> S223
-  S220 --> S224[S-224 gate + runbook]
-  S222 --> S224
-  S223 --> S225[S-225 live proof]
-  S224 --> S225
-  S221 --> S225
-  S225 --> S226[S-226 track components]
-  S226 --> S227[S-227 hierarchy]
-  S227 --> S228[S-228 issue metrics]
-  S227 --> S229[S-229 live updates]
-  S227 --> S230[S-230 stale + scope]
-  S228 --> S231[S-231 E2E + docs]
-  S229 --> S231
-  S230 --> S231
+  S219 --> S224[S-224 prune]
+  S222 --> S225[S-225 read contract]
+  S220 --> S226[S-226 minimal /tower]
+  S225 --> S226
+  S223 --> S227[S-227 gate + runbook]
+  S225 --> S227
+  S226 --> S228[S-228 live proof]
+  S227 --> S228
+  S224 --> S228
+  S228 --> S229[S-229 track components]
+  S229 --> S230[S-230 hierarchy]
+  S230 --> S231[S-231 issue metrics]
+  S230 --> S232[S-232 live updates]
+  S230 --> S233[S-233 stale + scope]
+  S231 --> S234[S-234 E2E + docs]
+  S232 --> S234
+  S233 --> S234
 ```
 
-Recommended order: S-216 → S-218 → S-217 → S-219 → S-220 → S-221 → S-222 → S-223 → S-224 → S-225, then S-226 → S-227 → S-228 → S-229 → S-230 → S-231.
+Recommended order: S-219 → S-221 → S-220 → S-222 → S-223 → S-224 → S-225 → S-226 → S-227 → S-228, then S-229 → S-230 → S-231 → S-232 → S-233 → S-234.
 
 ---
 
 ## Wave A — Ingest
 
-### S-216 — Tower schema: `tower_*` tables, `tower.config`, deny-all RLS
+### S-219 — Tower schema: `tower_*` tables, `tower.config`, deny-all RLS
 
 **Priority:** Critical **Estimated Size:** M **Dependencies:** none
 
@@ -89,7 +90,7 @@ Schema only; nothing reads or writes it yet. Spec §5.1, §5.2, §5.4. Independe
 - **Unit Tests:** none (schema).
 - **Integration Tests:** schema applies on `supabase db reset`; each constraint above has a rejecting and an accepting case; anon is denied on every table.
 - **Manual/UI Testing:** none.
-- **Edge-Case Matrix:** uppercase and malformed `full_name`; unknown step key; `skipped` with no reason is accepted by the schema (the contract enforces it, S-218); cascade on repository delete.
+- **Edge-Case Matrix:** uppercase and malformed `full_name`; unknown step key; `skipped` with no reason is accepted by the schema (the contract enforces it, S-221); cascade on repository delete.
 - **Acceptance-Criteria Mapping:** each AC → one integration case in `tower-schema.test.ts`.
 - **Execution Commands:** `supabase db reset`, `pnpm --filter panel run test:integration`.
 
@@ -97,7 +98,7 @@ Schema only; nothing reads or writes it yet. Spec §5.1, §5.2, §5.4. Independe
 
 - Migration artifact: required (new timestamped SQL files, one per concern).
 - Rollback/impact notes: additive; rollback is dropping the new objects. No existing data touched.
-- Apply step: local only in this story. The live push is S-225, with explicit owner confirmation.
+- Apply step: local only in this story. The live push is S-228, with explicit owner confirmation.
 - Verification after apply: integration suite green on a fresh reset.
 
 #### Implementation Steps
@@ -118,9 +119,9 @@ Schema only; nothing reads or writes it yet. Spec §5.1, §5.2, §5.4. Independe
 
 ---
 
-### S-217 — Tower token and repository lifecycle (register, rotate, revoke, remove, threshold)
+### S-220 — Tower token and repository lifecycle (register, rotate, revoke, remove, threshold)
 
-**Priority:** Critical **Estimated Size:** M **Dependencies:** S-216
+**Priority:** Critical **Estimated Size:** M **Dependencies:** S-219
 
 #### User Story
 
@@ -128,7 +129,7 @@ As the owner, I want to register a repository and manage its token and stale thr
 
 #### Context
 
-Server side only: the token module, the domain save module and the Server Actions. The UI is S-223. Spec §6.3, §7. Covers FR-1 to FR-4 and D-29.
+Server side only: the token module, the domain save module and the Server Actions. The UI is S-226. Spec §6.3, §7. Covers FR-1 to FR-4 and D-29.
 
 #### Acceptance Criteria
 
@@ -153,14 +154,14 @@ Server side only: the token module, the domain save module and the Server Action
 
 - **Unit Tests:** token format, parse, hash, every negative variant, the dummy-compare path (spy on `timingSafeEqual`).
 - **Integration Tests:** register, duplicate, rotate, revoke, remove with cascade, threshold bounds, against real Postgres.
-- **Manual/UI Testing:** none (UI is S-223).
+- **Manual/UI Testing:** none (UI is S-226).
 - **Edge-Case Matrix:** header with extra whitespace, wrong prefix, two dots, 10 KB header; rotate twice; revoke with no active token.
 - **Acceptance-Criteria Mapping:** AC-5 → rotation integration case; each story AC → a named case.
 - **Execution Commands:** `pnpm --filter panel run test:unit`, `pnpm --filter panel run test:integration`.
 
 #### Migration Requirements
 
-- Migration artifact: none. Opt-out rationale: uses S-216's tables unchanged.
+- Migration artifact: none. Opt-out rationale: uses S-219's tables unchanged.
 
 #### Implementation Steps
 
@@ -181,7 +182,7 @@ Server side only: the token module, the domain save module and the Server Action
 
 ---
 
-### S-218 — Ingestion contract version 1: validator, names, fixtures, contract document
+### S-221 — Ingestion contract version 1: validator, names, fixtures, contract document
 
 **Priority:** Critical **Estimated Size:** M **Dependencies:** none
 
@@ -216,7 +217,7 @@ Pure code and documentation; no database. Spec §6.1, §5.2. This is the artifac
 - **Unit Tests:** one case per fixture; table-driven negative cases.
 - **Integration Tests:** none.
 - **Manual/UI Testing:** read the contract document end to end against the fixtures.
-- **Edge-Case Matrix:** empty snapshot (no PRDs, no issues); issue with null `prd_slug` and `wave_key`; cell with no evidence; 1,000-issue snapshot under 1 MiB; non-GitHub pull-request `url` is accepted here and neutralized at render (S-227).
+- **Edge-Case Matrix:** empty snapshot (no PRDs, no issues); issue with null `prd_slug` and `wave_key`; cell with no evidence; 1,000-issue snapshot under 1 MiB; non-GitHub pull-request `url` is accepted here and neutralized at render (S-230).
 - **Acceptance-Criteria Mapping:** AC-7 → version case; story ACs → fixture cases.
 - **Execution Commands:** `pnpm --filter panel run test:unit`.
 
@@ -243,9 +244,9 @@ Pure code and documentation; no database. Spec §6.1, §5.2. This is the artifac
 
 ---
 
-### S-219 — `tower_apply_push`: merge, deduplicate, place events, summarize
+### S-222 — `tower_apply_push`: merge, deduplicate, place events, summarize
 
-**Priority:** Critical **Estimated Size:** L **Dependencies:** S-216, S-218
+**Priority:** Critical **Estimated Size:** L **Dependencies:** S-219, S-221
 
 #### User Story
 
@@ -280,7 +281,7 @@ The core of the feature: one `security definer` function applying a validated pu
 #### Testing Requirements
 
 - **Unit Tests:** none (SQL).
-- **Integration Tests:** every AC above, against real Postgres, using the S-218 fixtures.
+- **Integration Tests:** every AC above, against real Postgres, using the S-221 fixtures.
 - **Manual/UI Testing:** none.
 - **Edge-Case Matrix:** tie on `observed_at`; event before snapshot; snapshot with zero items; issue moved from one wave to another; issue with no PRD; block raised twice; cleared with none open; `passed` then newer `failed`; concurrent pushes.
 - **Acceptance-Criteria Mapping:** AC-6, AC-8, AC-13 → named cases; story ACs → one case each in `tower-apply-push.test.ts`.
@@ -290,7 +291,7 @@ The core of the feature: one `security definer` function applying a validated pu
 
 - Migration artifact: required (function).
 - Rollback/impact notes: additive; drop the function.
-- Apply step: local only; live push in S-225 with owner confirmation.
+- Apply step: local only; live push in S-228 with owner confirmation.
 - Verification after apply: integration suite green.
 
 #### Implementation Steps
@@ -312,9 +313,9 @@ The core of the feature: one `security definer` function applying a validated pu
 
 ---
 
-### S-220 — `POST /api/tower/ingest`: authenticate, cap, validate, apply
+### S-223 — `POST /api/tower/ingest`: authenticate, cap, validate, apply
 
-**Priority:** Critical **Estimated Size:** M **Dependencies:** S-217, S-219
+**Priority:** Critical **Estimated Size:** M **Dependencies:** S-220, S-222
 
 #### User Story
 
@@ -322,7 +323,7 @@ As the dev-tasks CLI, I want one endpoint that accepts my pushes and tells me pr
 
 #### Context
 
-Wires S-217, S-218 and S-219 into the public route. Spec §6.1 responses, §7, §12, §13. Covers FR-5 to FR-7 and FR-11.
+Wires S-220, S-221 and S-222 into the public route. Spec §6.1 responses, §7, §12, §13. Covers FR-5 to FR-7 and FR-11.
 
 #### Acceptance Criteria
 
@@ -374,9 +375,9 @@ Wires S-217, S-218 and S-219 into the public route. Spec §6.1 responses, §7, �
 
 ---
 
-### S-221 — Retention: `tower.prune()` and its daily job
+### S-224 — Retention: `tower.prune()` and its daily job
 
-**Priority:** Medium **Estimated Size:** S **Dependencies:** S-216
+**Priority:** Medium **Estimated Size:** S **Dependencies:** S-219
 
 #### User Story
 
@@ -416,7 +417,7 @@ Spec §5.3. Covers FR-13 and D-15. A new function, not a copy of the webhook pru
 
 - Migration artifact: required (function and cron schedule).
 - Rollback/impact notes: unschedule the job and drop the function; no data is restored by rollback.
-- Apply step: live in S-225 with owner confirmation.
+- Apply step: live in S-228 with owner confirmation.
 - Verification after apply: the job is listed in `cron.job`.
 
 #### Implementation Steps
@@ -434,9 +435,9 @@ Spec §5.3. Covers FR-13 and D-15. A new function, not a copy of the webhook pru
 
 ---
 
-### S-222 — Read contract version 1: module, endpoints, document
+### S-225 — Read contract version 1: module, endpoints, document
 
-**Priority:** Critical **Estimated Size:** L **Dependencies:** S-219
+**Priority:** Critical **Estimated Size:** L **Dependencies:** S-222
 
 #### User Story
 
@@ -497,9 +498,9 @@ Spec §6.2 and the read-time rules of §8.3. Covers FR-14 and the computations b
 
 ---
 
-### S-223 — Minimal `/tower`: repositories, registration, show-once token, settings
+### S-226 — Minimal `/tower`: repositories, registration, show-once token, settings
 
-**Priority:** High **Estimated Size:** M **Dependencies:** S-217, S-222
+**Priority:** High **Estimated Size:** M **Dependencies:** S-220, S-225
 
 #### User Story
 
@@ -531,7 +532,7 @@ The visible part of Wave A (D-30). Spec §10.1, §10.2. Covers FR-1 to FR-3, FR-
 #### Testing Requirements
 
 - **Unit Tests:** name validation; threshold field logic.
-- **Integration Tests:** covered by S-217.
+- **Integration Tests:** covered by S-220.
 - **Manual/UI Testing:** the full register → reveal → reload flow at `/tower`.
 - **Edge-Case Matrix:** name with uppercase or spaces; double submit; rotate while the reveal dialog is open; narrow viewport.
 - **Acceptance-Criteria Mapping:** AC-1, AC-23 → `tower-repositories.spec.ts`.
@@ -558,9 +559,9 @@ The visible part of Wave A (D-30). Spec §10.1, §10.2. Covers FR-1 to FR-3, FR-
 
 ---
 
-### S-224 — Release-gate probes and the Control Tower runbook
+### S-227 — Release-gate probes and the Control Tower runbook
 
-**Priority:** High **Estimated Size:** S **Dependencies:** S-220, S-222
+**Priority:** High **Estimated Size:** S **Dependencies:** S-223, S-225
 
 #### User Story
 
@@ -615,9 +616,9 @@ Spec §12 release gate, §15 runbook. Covers AC-3 and AC-23 at the gate (D-26). 
 
 ---
 
-### S-225 — Wave A live: migrations pushed, panel deployed, one real push accepted
+### S-228 — Wave A live: migrations pushed, panel deployed, one real push accepted
 
-**Priority:** High **Estimated Size:** S **Dependencies:** S-221, S-223, S-224
+**Priority:** High **Estimated Size:** S **Dependencies:** S-224, S-226, S-227
 
 #### User Story
 
@@ -677,9 +678,9 @@ An `infra-engineer` pass, approval-gated per step (D-30, spec §15). No applicat
 
 ## Wave B — Tower
 
-### S-226 — DESIGN.md contract and components for the stage/step track
+### S-229 — DESIGN.md contract and components for the stage/step track
 
-**Priority:** High **Estimated Size:** M **Dependencies:** S-225 (and the `ux-engineer` sketch, recommended)
+**Priority:** High **Estimated Size:** M **Dependencies:** S-228 (and the `ux-engineer` sketch, recommended)
 
 #### User Story
 
@@ -735,9 +736,9 @@ Design contract first, then the presentational components, with no data wiring. 
 
 ---
 
-### S-227 — The hierarchy: repository → PRD → wave → issue with rollups
+### S-230 — The hierarchy: repository → PRD → wave → issue with rollups
 
-**Priority:** Critical **Estimated Size:** L **Dependencies:** S-226
+**Priority:** Critical **Estimated Size:** L **Dependencies:** S-229
 
 #### User Story
 
@@ -796,9 +797,9 @@ The page of Wave B, server-rendered from the read contract. Spec §10.3. Covers 
 
 ---
 
-### S-228 — Times and counts on issue and wave rows
+### S-231 — Times and counts on issue and wave rows
 
-**Priority:** High **Estimated Size:** M **Dependencies:** S-227
+**Priority:** High **Estimated Size:** M **Dependencies:** S-230
 
 #### User Story
 
@@ -854,9 +855,9 @@ Spec §10.3 right-hand column and §8.3. Covers FR-18, FR-23 to FR-26 and FR-30.
 
 ---
 
-### S-229 — Live updates: change-marker stream, refetch, polling fallback
+### S-232 — Live updates: change-marker stream, refetch, polling fallback
 
-**Priority:** High **Estimated Size:** M **Dependencies:** S-227
+**Priority:** High **Estimated Size:** M **Dependencies:** S-230
 
 #### User Story
 
@@ -887,7 +888,7 @@ Spec §6.2 stream, §9, §10.3 live. Covers FR-29 (D-24).
 #### Testing Requirements
 
 - **Unit Tests:** signal grouping; fallback state machine with a fake `EventSource`.
-- **Integration Tests:** an accepted push bumps the marker (already in S-219); stream 401.
+- **Integration Tests:** an accepted push bumps the marker (already in S-222); stream 401.
 - **Manual/UI Testing:** two browser tabs and `curl` pushes.
 - **Edge-Case Matrix:** stream drops mid-refetch; push for a collapsed repository; push for a repository registered after page load; 50 pushes in one second.
 - **Acceptance-Criteria Mapping:** AC-15 → `tower-live.spec.ts`.
@@ -916,9 +917,9 @@ Spec §6.2 stream, §9, §10.3 live. Covers FR-29 (D-24).
 
 ---
 
-### S-230 — Stale repositories and the Recent / Everything scope
+### S-233 — Stale repositories and the Recent / Everything scope
 
-**Priority:** Medium **Estimated Size:** S **Dependencies:** S-227
+**Priority:** Medium **Estimated Size:** S **Dependencies:** S-230
 
 #### User Story
 
@@ -947,7 +948,7 @@ Spec §10.3, §8.3. Covers FR-28 and FR-31.
 #### Testing Requirements
 
 - **Unit Tests:** stale rendering; scope in URL.
-- **Integration Tests:** covered by S-222.
+- **Integration Tests:** covered by S-225.
 - **Manual/UI Testing:** date a fixture's last push 25 hours back.
 - **Edge-Case Matrix:** stale and never pushed (empty state wins); stale with Everything; override threshold of 1 hour.
 - **Acceptance-Criteria Mapping:** AC-16, AC-17, AC-18 → `tower-stale-scope.spec.ts`.
@@ -972,9 +973,9 @@ Spec §10.3, §8.3. Covers FR-28 and FR-31.
 
 ---
 
-### S-231 — Wave B close: full E2E pass, documentation, live deploy
+### S-234 — Wave B close: full E2E pass, documentation, live deploy
 
-**Priority:** High **Estimated Size:** M **Dependencies:** S-228, S-229, S-230
+**Priority:** High **Estimated Size:** M **Dependencies:** S-231, S-232, S-233
 
 #### User Story
 
@@ -1012,7 +1013,7 @@ The closing story of the wave: cross-story E2E, documents, and the `infra-engine
 
 #### Migration Requirements
 
-- Migration artifact: S-229's publication migration.
+- Migration artifact: S-232's publication migration.
 - Rollback/impact notes: revert the deploy; the page of Wave A returns.
 - Apply step: requires explicit owner confirmation.
 - Verification after apply: live proof.
@@ -1047,57 +1048,57 @@ The closing story of the wave: cross-story E2E, documents, and the `infra-engine
 
 | PRD Requirement | Story ID(s) | Status |
 | --- | --- | --- |
-| FR-1 register a tower repository | S-216, S-217, S-223 | ✅ Covered |
-| FR-2 token shown once, hash stored | S-217, S-223 | ✅ Covered |
-| FR-3 rotate, revoke, remove | S-217, S-223 | ✅ Covered |
-| FR-4 token grants one capability | S-217, S-220 | ✅ Covered |
-| FR-5 ingest endpoint rejects bad tokens and wrong repository | S-220 | ✅ Covered |
-| FR-6 snapshot and tower event | S-218, S-219 | ✅ Covered |
-| FR-7 versioned contract | S-218, S-220 | ✅ Covered |
-| FR-8 newest observed result wins | S-219 | ✅ Covered |
-| FR-9 idempotent, never backward | S-219, S-220 | ✅ Covered |
-| FR-10 event for an unknown item is held | S-219 | ✅ Covered |
-| FR-11 last push time and outcome | S-219, S-220, S-223 | ✅ Covered |
-| FR-12 permanent summary | S-216, S-219 | ✅ Covered |
-| FR-13 90-day event prune | S-221 | ✅ Covered |
-| FR-14 one read contract | S-222 | ✅ Covered |
-| FR-15 repository list and expansion | S-223, S-227 | ✅ Covered |
-| FR-16 PRD row | S-222, S-227 | ✅ Covered |
-| FR-17 wave stages | S-226, S-227 | ✅ Covered |
-| FR-18 wave metrics | S-222, S-228 | ✅ Covered |
-| FR-19 issue steps and results | S-226, S-227 | ✅ Covered |
-| FR-20 Build, audit and coverage detail | S-227 | ✅ Covered |
-| FR-21 Merged and Shipped as one | S-222, S-226, S-227 | ✅ Covered |
-| FR-22 "No PRD" group | S-222, S-227 | ✅ Covered |
-| FR-23 time between steps | S-222, S-228 | ✅ Covered |
-| FR-24 issue metrics | S-228 | ✅ Covered |
-| FR-25 rework | S-219, S-228 | ✅ Covered |
-| FR-26 waiting on the owner | S-219, S-222, S-228 | ✅ Covered |
-| FR-27 "not reported", never zero | S-222, S-226, S-227, S-228 | ✅ Covered |
-| FR-28 default window and filter | S-222, S-230 | ✅ Covered |
-| FR-29 live without reload | S-229 | ✅ Covered |
-| FR-30 ticking elapsed time | S-228 | ✅ Covered |
-| FR-31 stale flag | S-217, S-222, S-230 | ✅ Covered |
-| FR-32 never-pushed empty state | S-223 | ✅ Covered |
-| FR-33 to FR-39 Lanes strip, cost | — | ⏸ Wave C, not specified (D-18). Version 1 accepts and stores the data: S-218, S-219 |
-| BR-1 CLI is the only source | S-219, S-220 (no outbound call anywhere) | ✅ Covered |
-| BR-2 no manual status | S-227 | ✅ Covered |
-| BR-3 stages recorded per stage | S-219, S-226 | ✅ Covered |
-| BR-4 GitHub and artifacts are the truth | S-219 (merge corrects on next snapshot) | ✅ Covered |
-| BR-5 "workflow agent" naming | S-227, S-228 | ✅ Covered |
-| BR-6 panel never calls back | S-220 | ✅ Covered |
-| AC-1 | S-223 | ✅ Covered |
-| AC-2 to AC-4, AC-7 | S-220 | ✅ Covered |
-| AC-5 | S-217 | ✅ Covered |
-| AC-6, AC-8, AC-13 | S-219 (AC-6 also S-220, AC-13 also S-228) | ✅ Covered |
-| AC-9 to AC-12 | S-222, S-226, S-227 | ✅ Covered |
-| AC-14 | S-222, S-227, S-228 | ✅ Covered |
-| AC-15 | S-229 | ✅ Covered |
-| AC-16 to AC-18 | S-222, S-230 | ✅ Covered |
-| AC-19 | S-221 | ✅ Covered |
+| FR-1 register a tower repository | S-219, S-220, S-226 | ✅ Covered |
+| FR-2 token shown once, hash stored | S-220, S-226 | ✅ Covered |
+| FR-3 rotate, revoke, remove | S-220, S-226 | ✅ Covered |
+| FR-4 token grants one capability | S-220, S-223 | ✅ Covered |
+| FR-5 ingest endpoint rejects bad tokens and wrong repository | S-223 | ✅ Covered |
+| FR-6 snapshot and tower event | S-221, S-222 | ✅ Covered |
+| FR-7 versioned contract | S-221, S-223 | ✅ Covered |
+| FR-8 newest observed result wins | S-222 | ✅ Covered |
+| FR-9 idempotent, never backward | S-222, S-223 | ✅ Covered |
+| FR-10 event for an unknown item is held | S-222 | ✅ Covered |
+| FR-11 last push time and outcome | S-222, S-223, S-226 | ✅ Covered |
+| FR-12 permanent summary | S-219, S-222 | ✅ Covered |
+| FR-13 90-day event prune | S-224 | ✅ Covered |
+| FR-14 one read contract | S-225 | ✅ Covered |
+| FR-15 repository list and expansion | S-226, S-230 | ✅ Covered |
+| FR-16 PRD row | S-225, S-230 | ✅ Covered |
+| FR-17 wave stages | S-229, S-230 | ✅ Covered |
+| FR-18 wave metrics | S-225, S-231 | ✅ Covered |
+| FR-19 issue steps and results | S-229, S-230 | ✅ Covered |
+| FR-20 Build, audit and coverage detail | S-230 | ✅ Covered |
+| FR-21 Merged and Shipped as one | S-225, S-229, S-230 | ✅ Covered |
+| FR-22 "No PRD" group | S-225, S-230 | ✅ Covered |
+| FR-23 time between steps | S-225, S-231 | ✅ Covered |
+| FR-24 issue metrics | S-231 | ✅ Covered |
+| FR-25 rework | S-222, S-231 | ✅ Covered |
+| FR-26 waiting on the owner | S-222, S-225, S-231 | ✅ Covered |
+| FR-27 "not reported", never zero | S-225, S-229, S-230, S-231 | ✅ Covered |
+| FR-28 default window and filter | S-225, S-233 | ✅ Covered |
+| FR-29 live without reload | S-232 | ✅ Covered |
+| FR-30 ticking elapsed time | S-231 | ✅ Covered |
+| FR-31 stale flag | S-220, S-225, S-233 | ✅ Covered |
+| FR-32 never-pushed empty state | S-226 | ✅ Covered |
+| FR-33 to FR-39 Lanes strip, cost | — | ⏸ Wave C, not specified (D-18). Version 1 accepts and stores the data: S-221, S-222 |
+| BR-1 CLI is the only source | S-222, S-223 (no outbound call anywhere) | ✅ Covered |
+| BR-2 no manual status | S-230 | ✅ Covered |
+| BR-3 stages recorded per stage | S-222, S-229 | ✅ Covered |
+| BR-4 GitHub and artifacts are the truth | S-222 (merge corrects on next snapshot) | ✅ Covered |
+| BR-5 "workflow agent" naming | S-230, S-231 | ✅ Covered |
+| BR-6 panel never calls back | S-223 | ✅ Covered |
+| AC-1 | S-226 | ✅ Covered |
+| AC-2 to AC-4, AC-7 | S-223 | ✅ Covered |
+| AC-5 | S-220 | ✅ Covered |
+| AC-6, AC-8, AC-13 | S-222 (AC-6 also S-223, AC-13 also S-231) | ✅ Covered |
+| AC-9 to AC-12 | S-225, S-229, S-230 | ✅ Covered |
+| AC-14 | S-225, S-230, S-231 | ✅ Covered |
+| AC-15 | S-232 | ✅ Covered |
+| AC-16 to AC-18 | S-225, S-233 | ✅ Covered |
+| AC-19 | S-224 | ✅ Covered |
 | AC-20 to AC-22 | — | ⏸ Wave C |
-| AC-23 | S-222, S-223, S-224 | ✅ Covered |
-| Security (§17): fail closed, no token in logs, text-only rendering, release gate | S-217, S-220, S-224, S-227 | ✅ Covered |
+| AC-23 | S-225, S-226, S-227 | ✅ Covered |
+| Security (§17): fail closed, no token in logs, text-only rendering, release gate | S-220, S-223, S-227, S-230 | ✅ Covered |
 
 ### Gaps
 

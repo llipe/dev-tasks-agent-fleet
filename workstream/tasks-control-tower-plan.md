@@ -4,12 +4,13 @@
 
 | Version | Date       | Summary                                                                 | Author           |
 | ------- | ---------- | ----------------------------------------------------------------------- | ---------------- |
-| 1.0     | 2026-11-26 | Initial plan for Wave A: stories S-216–S-225, issues #487–#496. Wave B is planned separately. | product-engineer |
+| 1.0     | 2026-11-26 | Initial plan for Wave A: stories S-219–S-228, issues #487–#496. Wave B is planned separately. | product-engineer |
+| 1.1     | 2026-11-26 | Story IDs renumbered to S-219–S-228 (collision with code-review S-216–S-218 on `main`). Task numbers and content unchanged. | product-engineer |
 
 Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specification-control-tower.md` v1.1, `docs/requirements/prd-control-tower.md` v1.4.
 
 - **Scope:** Wave A only, selected by the owner. Existing codebase, so there is no Task 0.
-- **Order:** tasks run in the order listed; it follows the dependency graph in the stories document. Task 2.0 (S-218) has no dependency and may run first or in parallel.
+- **Order:** tasks run in the order listed; it follows the dependency graph in the stories document. Task 2.0 (S-221) has no dependency and may run first or in parallel.
 - **Integration branch:** `integration/control-tower-wave-a`. One PR per story into it; the owner merges the consolidated PR to `main`.
 - **Test-first:** in every task, the tests named by a step are written before that step's implementation.
 - **Package tags:** the technical guidelines carry no package map, so the bracket names the top-level directory a sub-task changes (`panel`, `supabase`) or `repo root` for documents and scripts.
@@ -53,7 +54,7 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
 
 ## Tasks
 
-- [ ] 1.0 Implement Story S-216: Tower schema: `tower_*` tables, `tower.config`, deny-all RLS — [#487](https://github.com/llipe/dev-tasks-agent-fleet/issues/487)
+- [ ] 1.0 Implement Story S-219: Tower schema: `tower_*` tables, `tower.config`, deny-all RLS — [#487](https://github.com/llipe/dev-tasks-agent-fleet/issues/487)
 
   > Note: As the owner, I want the Control Tower's data model in place, so that repositories, tokens, pushes, PRDs, waves, issues and raw tower events have a durable, access-controlled home.
 
@@ -70,12 +71,12 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 1.11 [supabase, panel] Verify Acceptance Criterion: Every new public table has RLS enabled with no policy and is picked up by `rls-deny-all` without editing that test.
   - [ ] 1.12 [supabase, panel] Verify Acceptance Criterion: No existing table is altered.
   - [ ] 1.13 [supabase, panel] Integration Tests: schema applies on `supabase db reset`; each constraint above has a rejecting and an accepting case; anon is denied on every table
-  - [ ] 1.14 [supabase, panel] Edge-Case Matrix: uppercase and malformed `full_name`; unknown step key; `skipped` with no reason is accepted by the schema (the contract enforces it, S-218); cascade on repository delete
+  - [ ] 1.14 [supabase, panel] Edge-Case Matrix: uppercase and malformed `full_name`; unknown step key; `skipped` with no reason is accepted by the schema (the contract enforces it, S-221); cascade on repository delete
   - [ ] 1.15 [supabase, panel] Map each acceptance criterion to its test evidence in the PR (each AC → one integration case in `tower-schema.test.ts`)
   - [ ] 1.16 [supabase, panel] Run Tests: `supabase db reset`, `pnpm --filter panel run test:integration`
   - [ ] 1.17 [supabase, panel] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 2.0 Implement Story S-218: Ingestion contract version 1: validator, names, fixtures, contract document — [#489](https://github.com/llipe/dev-tasks-agent-fleet/issues/489)
+- [ ] 2.0 Implement Story S-221: Ingestion contract version 1: validator, names, fixtures, contract document — [#489](https://github.com/llipe/dev-tasks-agent-fleet/issues/489)
 
   > Note: As the maintainer of the dev-tasks CLI, I want a versioned, documented definition of a push with example payloads, so that I can build a sender against it without reading the panel's code.
 
@@ -92,19 +93,19 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 2.11 [panel, repo root] Verify Acceptance Criterion: At most 20 errors are returned.
   - [ ] 2.12 [panel, repo root] Unit Tests: one case per fixture; table-driven negative cases
   - [ ] 2.13 [panel, repo root] Manual/UI Testing: read the contract document end to end against the fixtures
-  - [ ] 2.14 [panel, repo root] Edge-Case Matrix: empty snapshot (no PRDs, no issues); issue with null `prd_slug` and `wave_key`; cell with no evidence; 1,000-issue snapshot under 1 MiB; non-GitHub pull-request `url` is accepted here and neutralized at render (S-227)
+  - [ ] 2.14 [panel, repo root] Edge-Case Matrix: empty snapshot (no PRDs, no issues); issue with null `prd_slug` and `wave_key`; cell with no evidence; 1,000-issue snapshot under 1 MiB; non-GitHub pull-request `url` is accepted here and neutralized at render (S-230)
   - [ ] 2.15 [panel, repo root] Map each acceptance criterion to its test evidence in the PR (AC-7 → version case; story ACs → fixture cases)
   - [ ] 2.16 [panel, repo root] Run Tests: `pnpm --filter panel run test:unit`
   - [ ] 2.17 [panel, repo root] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 3.0 Implement Story S-217: Tower token and repository lifecycle (register, rotate, revoke, remove, threshold) — [#488](https://github.com/llipe/dev-tasks-agent-fleet/issues/488)
+- [ ] 3.0 Implement Story S-220: Tower token and repository lifecycle (register, rotate, revoke, remove, threshold) — [#488](https://github.com/llipe/dev-tasks-agent-fleet/issues/488)
 
   > Note: As the owner, I want to register a repository and manage its token and stale threshold, so that its CLI can report and a leaked token can be stopped without touching other repositories.
 
   - [ ] 3.1 [panel] Unit tests for `token.ts`, then the module (D-11, D-23, D-29)
   - [ ] 3.2 [panel] Integration tests for the lifecycle, then `tower-repository-save.ts` and the queries
   - [ ] 3.3 [panel] Server Actions returning typed results
-  - [ ] 3.4 [panel] Migration: none — uses S-216's tables unchanged
+  - [ ] 3.4 [panel] Migration: none — uses S-219's tables unchanged
   - [ ] 3.5 [panel] Verify Acceptance Criterion: `generateTowerToken()` returns `twr_<12 base32>.<43 base64url>` and the SHA-256 hash of the secret; the plain token is returned to the caller once and is not stored.
   - [ ] 3.6 [panel] Verify Acceptance Criterion: `verifyTowerToken(header)` returns the repository id for a valid active token, and the same negative result for a missing header, a malformed header, an unknown id, a wrong secret and a revoked token.
   - [ ] 3.7 [panel] Verify Acceptance Criterion: The comparison uses `timingSafeEqual`, and an unknown id still performs one comparison against a dummy hash.
@@ -120,7 +121,7 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 3.17 [panel] Run Tests: `pnpm --filter panel run test:unit`, `pnpm --filter panel run test:integration`
   - [ ] 3.18 [panel] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 4.0 Implement Story S-219: `tower_apply_push`: merge, deduplicate, place events, summarize — [#490](https://github.com/llipe/dev-tasks-agent-fleet/issues/490)
+- [ ] 4.0 Implement Story S-222: `tower_apply_push`: merge, deduplicate, place events, summarize — [#490](https://github.com/llipe/dev-tasks-agent-fleet/issues/490)
 
   > Note: As the owner, I want every accepted push merged into one consistent picture, so that two lanes reporting from different branches never overwrite each other and nothing moves backward.
 
@@ -141,13 +142,13 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 4.15 [supabase, panel] Verify Acceptance Criterion: Each applied push sets the repository's `last_push_received_at` and `last_push_outcome` and increments its change marker by one.
   - [ ] 4.16 [supabase, panel] Verify Acceptance Criterion: The function is executable by `service_role` only, and receives the repository id as an argument, never from the payload.
   - [ ] 4.17 [supabase, panel] Verify Acceptance Criterion: Two pushes for one repository applied concurrently both succeed and leave the same result as applying them in sequence.
-  - [ ] 4.18 [supabase, panel] Integration Tests: every AC above, against real Postgres, using the S-218 fixtures
+  - [ ] 4.18 [supabase, panel] Integration Tests: every AC above, against real Postgres, using the S-221 fixtures
   - [ ] 4.19 [supabase, panel] Edge-Case Matrix: tie on `observed_at`; event before snapshot; snapshot with zero items; issue moved from one wave to another; issue with no PRD; block raised twice; cleared with none open; `passed` then newer `failed`; concurrent pushes
   - [ ] 4.20 [supabase, panel] Map each acceptance criterion to its test evidence in the PR (AC-6, AC-8, AC-13 → named cases; story ACs → one case each in `tower-apply-push.test.ts`)
   - [ ] 4.21 [supabase, panel] Run Tests: `supabase db reset`, `pnpm --filter panel run test:integration`
   - [ ] 4.22 [supabase, panel] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 5.0 Implement Story S-220: `POST /api/tower/ingest`: authenticate, cap, validate, apply — [#491](https://github.com/llipe/dev-tasks-agent-fleet/issues/491)
+- [ ] 5.0 Implement Story S-223: `POST /api/tower/ingest`: authenticate, cap, validate, apply — [#491](https://github.com/llipe/dev-tasks-agent-fleet/issues/491)
 
   > Note: As the dev-tasks CLI, I want one endpoint that accepts my pushes and tells me precisely why one was refused, so that I can retry what is retryable and report what is not.
 
@@ -171,7 +172,7 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 5.18 [panel] Run Tests: `pnpm --filter panel run test:unit`, `pnpm --filter panel run test:integration`
   - [ ] 5.19 [panel] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 6.0 Implement Story S-221: Retention: `tower.prune()` and its daily job — [#492](https://github.com/llipe/dev-tasks-agent-fleet/issues/492)
+- [ ] 6.0 Implement Story S-224: Retention: `tower.prune()` and its daily job — [#492](https://github.com/llipe/dev-tasks-agent-fleet/issues/492)
 
   > Note: As the owner, I want raw tower events removed 90 days after an issue ships while its summary stays, so that the events table does not grow without limit and old waves remain comparable.
 
@@ -192,7 +193,7 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 6.15 [supabase, panel] Run Tests: `pnpm --filter panel run test:integration`
   - [ ] 6.16 [supabase, panel] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 7.0 Implement Story S-222: Read contract version 1: module, endpoints, document — [#493](https://github.com/llipe/dev-tasks-agent-fleet/issues/493)
+- [ ] 7.0 Implement Story S-225: Read contract version 1: module, endpoints, document — [#493](https://github.com/llipe/dev-tasks-agent-fleet/issues/493)
 
   > Note: As the owner, I want all Control Tower data served through one documented shape, so that the page and any later plugin read the same thing.
 
@@ -219,7 +220,7 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 7.21 [panel, repo root] Run Tests: `pnpm --filter panel run test:unit`, `pnpm --filter panel run test:integration`
   - [ ] 7.22 [panel, repo root] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 8.0 Implement Story S-223: Minimal `/tower`: repositories, registration, show-once token, settings — [#494](https://github.com/llipe/dev-tasks-agent-fleet/issues/494)
+- [ ] 8.0 Implement Story S-226: Minimal `/tower`: repositories, registration, show-once token, settings — [#494](https://github.com/llipe/dev-tasks-agent-fleet/issues/494)
 
   > Note: As the owner, I want a Control Tower page where I register a repository, copy its token once and manage it, so that I can connect a repository without a script.
 
@@ -237,14 +238,14 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 8.12 [panel] Verify Acceptance Criterion: With no repository, and for a repository with no push yet, the page shows the empty state with the next CLI step, and says the hierarchy arrives with the next wave.
   - [ ] 8.13 [panel] Verify Acceptance Criterion: A logged-out visit to `/tower` redirects to `/login` (AC-23).
   - [ ] 8.14 [panel] Unit Tests: name validation; threshold field logic
-  - [ ] 8.15 [panel] Integration Tests: covered by S-217
+  - [ ] 8.15 [panel] Integration Tests: covered by S-220
   - [ ] 8.16 [panel] Manual/UI Testing: the full register → reveal → reload flow at `/tower`
   - [ ] 8.17 [panel] Edge-Case Matrix: name with uppercase or spaces; double submit; rotate while the reveal dialog is open; narrow viewport
   - [ ] 8.18 [panel] Map each acceptance criterion to its test evidence in the PR (AC-1, AC-23 → `tower-repositories.spec.ts`)
   - [ ] 8.19 [panel] Run Tests: `pnpm --filter panel run test:unit`, `pnpm --filter panel run test:e2e`
   - [ ] 8.20 [panel] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 9.0 Implement Story S-224: Release-gate probes and the Control Tower runbook — [#495](https://github.com/llipe/dev-tasks-agent-fleet/issues/495)
+- [ ] 9.0 Implement Story S-227: Release-gate probes and the Control Tower runbook — [#495](https://github.com/llipe/dev-tasks-agent-fleet/issues/495)
 
   > Note: As the owner, I want every release to prove that an unauthenticated push and an unauthenticated read are refused, and a runbook for operating the tower, so that the new public surface cannot regress silently.
 
@@ -265,7 +266,7 @@ Source: `workstream/user-stories-control-tower.md` v1.1, `workstream/specificati
   - [ ] 9.15 [panel, repo root] Run Tests: `pnpm --filter panel run test:unit`, `scripts/verify-panel-auth.sh`
   - [ ] 9.16 [panel, repo root] Quality gates: `pnpm --filter panel run validate` (lint, format:check, typecheck, test, audit)
 
-- [ ] 10.0 Implement Story S-225: Wave A live: migrations pushed, panel deployed, one real push accepted — [#496](https://github.com/llipe/dev-tasks-agent-fleet/issues/496)
+- [ ] 10.0 Implement Story S-228: Wave A live: migrations pushed, panel deployed, one real push accepted — [#496](https://github.com/llipe/dev-tasks-agent-fleet/issues/496)
 
   > Note: As the owner, I want Wave A running on the live panel with one repository registered and one push accepted, so that the dev-tasks CLI has a real endpoint to build against.
 
