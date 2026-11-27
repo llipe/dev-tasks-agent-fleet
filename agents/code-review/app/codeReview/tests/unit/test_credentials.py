@@ -496,7 +496,9 @@ class TestFetchAnthropicKey:
         from credentials import fetch_anthropic_key
 
         fetch_anthropic_key()
-        sm.get_secret_value.assert_called_once_with(SecretId="agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY")
+        sm.get_secret_value.assert_called_once_with(
+            SecretId="agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY"
+        )
 
     @pytest.mark.parametrize(
         "code", ["ResourceNotFoundException", "AccessDeniedException", "ThrottlingException"]
