@@ -73,7 +73,8 @@ NONCE = "0123456789abcdef"
 SELECTION_PY = Path(__file__).resolve().parents[2] / "context" / "selection.py"
 
 # TC-217-02: the selection schema as sent (D-81): ``minimum`` and ``maxLength``
-# dropped, ``maxItems`` kept pending Q9. The wrapper still enforces them.
+# and ``maxItems`` dropped (the live API rejects ``maxItems``, Q9). The wrapper
+# still enforces them.
 SENT_SELECTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -81,7 +82,6 @@ SENT_SELECTION_SCHEMA = {
     "properties": {
         "documents": {
             "type": "array",
-            "maxItems": 6,
             "items": {
                 "type": "object",
                 "additionalProperties": False,
@@ -353,9 +353,10 @@ def test_request_shape():
 
 
 def test_sent_selection_schema_is_pinned():
-    """TC-217-02: the §6.3 schema minus ``minimum``/``maxLength``; the full one is unchanged."""
+    """TC-217-02: the §6.3 schema minus ``minimum``/``maxLength``/``maxItems``; the full one is unchanged."""
     req = build_request(_inputs(), model_id="m", nonce_factory=lambda: NONCE)
     assert req["output_config"]["format"]["schema"] == SENT_SELECTION_SCHEMA
+    assert "maxItems" not in json.dumps(req["output_config"])  # Q9: the API rejects it
     docs = SELECTION_SCHEMA["properties"]["documents"]
     assert docs["maxItems"] == MAX_PICKS
     assert docs["items"]["properties"]["index"]["minimum"] == 1

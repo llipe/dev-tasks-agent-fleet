@@ -362,7 +362,7 @@ def test_ct08_line_end_before_line_start_passes_the_schema():
 # CT-16 (S-216) — the sent schema vs the full schema (D-81)
 # ---------------------------------------------------------------------------
 
-_STRIPPED = {"minimum", "maxLength", "pattern"}
+_STRIPPED = {"minimum", "maxLength", "pattern", "maxItems"}
 
 
 def _schema_nodes(schema: dict, path: str = "$"):
