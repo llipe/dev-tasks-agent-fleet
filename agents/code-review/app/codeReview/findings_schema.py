@@ -13,8 +13,8 @@ and the budget counts the schema as part of the fixed instructions
 **Sent schema (v1.8, S-216; D-81).** The Anthropic API's structured outputs
 reject some JSON Schema keywords, so the copy sent in
 ``output_config.format`` is ``sent_schema(SUBMIT_REVIEW_SCHEMA)``: the same
-schema with every ``minimum``, ``maxLength`` and ``pattern`` removed at any
-depth (``maxItems`` is kept until the live probe, spec §17 Q9).
+schema with every ``minimum``, ``maxLength``, ``pattern`` and ``maxItems``
+removed at any depth (the live API rejects ``maxItems``, spec §17 Q9).
 ``validate_review`` still checks the full schema, so a reply that breaks a
 removed keyword is invalid output and goes to the repair call.
 
@@ -264,7 +264,7 @@ def _check_array(value: list[Any], schema: dict[str, Any], path: str) -> None:
 
 
 # Keywords structured outputs reject (D-81); removed from the sent copy only.
-SENT_SCHEMA_STRIPPED = frozenset({"minimum", "maxLength", "pattern"})
+SENT_SCHEMA_STRIPPED = frozenset({"minimum", "maxLength", "pattern", "maxItems"})
 
 
 def sent_schema(schema: dict[str, Any]) -> dict[str, Any]:
