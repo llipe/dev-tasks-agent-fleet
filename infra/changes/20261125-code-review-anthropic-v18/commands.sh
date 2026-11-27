@@ -45,3 +45,10 @@ aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-nam
 # -> READY v6, image ed141e26…, MODEL_ID=claude-sonnet-5-5, +ANTHROPIC_API_KEY_SECRET_ID, role unchanged
 # Step 8 (2026-11-27T14:52Z): record the deploy state (repo only).
 git add agents/code-review/agentcore/.cli/deployed-state.json  # deployHash fd057488… -> ca7c8c67…; same runtime and role
+# Step 10 (2026-11-27): fixture run, operator via the panel. Attempt 1 fc91c203… not_applicable (PR #5 closed);
+# operator reopened llipe/security-analyst-fixture PR #5 (draft); attempt 2 0bdd9bcc… needs_review / blocking.
+supabase db query --linked "select status, outcome, result, metrics from runs where id='0bdd9bcc-4182-42b6-a904-cc834c828c97';" -o json
+gh api repos/llipe/security-analyst-fixture/issues/comments/7225594866 -q .body
+# Key check: scratchpad keycheck_v18.py (key in memory only; events fetched and matched locally; prints counts).
+"$SCRATCH/kc-venv/bin/python" -I "$SCRATCH/keycheck_v18.py" 2026-11-27T14:46:00Z 2026-11-27T18:35:11Z
+# -> 4 events, 0 matches (full key, 16-char fragment, last 12)
