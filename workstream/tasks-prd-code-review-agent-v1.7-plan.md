@@ -17,7 +17,7 @@
 - `pkg/model_adapter.py` (new) - Anthropic client factory, `review()`: `count_tokens` check, streaming structured-output call, context-length retry, repair, refusal, fallback model, error mapping, cost (S-216)
 - `pkg/bedrock_adapter.py` (deleted) - replaced by `model_adapter.py` (S-216)
 - `pkg/legacy_bedrock.py` (deleted in S-217) - the selection call's temporary Bedrock client factory and response helpers (S-216); `tests/fixtures/bedrock.py` deleted with it
-- `pkg/findings_schema.py` - `sent_schema()` strips `minimum`, `maxLength`, `pattern` (S-216)
+- `pkg/findings_schema.py` - `sent_schema()` strips `minimum`, `maxLength`, `pattern` (S-216) and `maxItems` (S-218, the live API rejects it, Q9)
 - `pkg/credentials.py`, `pkg/config.py` - Anthropic key fetch from Secrets Manager, scrubber registration (S-216); `PARAMS_SCHEMA` bounds (S-217)
 - `pkg/pipeline.py`, `pkg/render.py`, `pkg/main.py`, `pkg/pyproject.toml` - imports, renamed metrics, footer `answered_by_model`, `anthropic` pin (S-216)
 - `pkg/context/selection.py` - selection call on the Anthropic client: `beta.messages.stream`, structured output, `max_retries=0`, fail-open kinds incl. `api_error` (S-217)
@@ -90,10 +90,11 @@
   - [ ] 3.3 Record the tier check: the account's input-tokens-per-minute limit for `claude-sonnet-5-5`; if it is under 900,000, lower the default `max_context_tokens` through a follow-up migration (D-78; Q10)
   - [ ] 3.4 Run the live structured-output probe: record whether `maxItems` is accepted and adjust `sent_schema` if not (Q9); confirm the `prompt is too long` message (Q12)
     - [x] 3.4.1 Probe result (2026-11-26, ChangeId `20261125-code-review-anthropic-v18` step 4): ITPM 5,000,000 (G-A pass); the API rejects `maxItems` ("output_config.format.schema: For 'array' type, property 'maxItems' is not supported"), so Q12 was not reached
-    - [ ] 3.4.2 [code-review] Test first: pin both sent schemas (review and selection) without `maxItems`, assert no `maxItems` anywhere in either request, keep the local `maxItems` checks (41 findings → repair; picks capped at `MAX_PICKS`) (D-81)
-    - [ ] 3.4.3 [code-review] Add `maxItems` to `SENT_SCHEMA_STRIPPED`; update the `findings_schema` and `context/selection` docstrings (D-81)
-    - [ ] 3.4.4 [code-review] `config.DEFAULT_ANTHROPIC_API_KEY_SECRET_ID` → `agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY` (the old default named the bug-fix agent's key; D-88), tests first
-    - [ ] 3.4.5 Run Tests: `make -C agents/code-review/app/codeReview validate`; after merge, `/infra-engineer` re-runs step 4 (Q9, Q12)
+    - [x] 3.4.2 [code-review] Test first: pin both sent schemas (review and selection) without `maxItems`, assert no `maxItems` anywhere in either request, keep the local `maxItems` checks (41 findings → repair; picks capped at `MAX_PICKS`) (D-81)
+    - [x] 3.4.3 [code-review] Add `maxItems` to `SENT_SCHEMA_STRIPPED`; update the `findings_schema` and `context/selection` docstrings (D-81)
+    - [x] 3.4.4 [code-review] `config.DEFAULT_ANTHROPIC_API_KEY_SECRET_ID` → `agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY` (the old default named the bug-fix agent's key; D-88), tests first
+    - [x] 3.4.5 Run Tests: `make -C agents/code-review/app/codeReview validate` (3,529 passed, coverage 99.48%, lint/format/mypy/pip-audit clean)
+    - [ ] 3.4.6 After PR #504 merges, `/infra-engineer` re-runs the step 4 probe: Q9 accepted, Q12 message contains `prompt is too long` and `is_context_length` is true
   - [ ] 3.5 Deploy runtime v6 (it includes the v1.6 change from #478) and verify; then, **with explicit user confirmation**, apply the seed migration and verify the `agents` row and the panel form (900,000 accepted, 900,001 rejected); then set the riel `/review` rule's `max_diff_lines` to 20,000 (D-89)
   - [ ] 3.6 Verify Acceptance Criterion AC-12: seeded-bug fixture PR → blocking finding; clean PR → clear; 5-PR smoke recorded with `answered_by_model`
   - [ ] 3.7 Verify Acceptance Criterion AC-14: a live riel PR of 200k+ tokens is reviewed
