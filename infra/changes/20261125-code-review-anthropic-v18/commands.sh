@@ -23,3 +23,6 @@ supabase db query --linked "select r.* from webhook_rules r join agents a on a.i
 # First attempt failed before any API call: botocore needs the [crt] extra for `aws login` credentials (installed into the scratchpad venv).
 (cd agents/code-review/app/codeReview && "$SCRATCH/probe-venv/bin/python" -I "$SCRATCH/probe_v18.py")
 # -> G-A pass (ITPM 5000000); G-B Q9 FAIL: "output_config.format.schema: For 'array' type, property 'maxItems' is not supported"; Q12 not reached.
+# Step 4 attempt 2 (2026-11-27T13:15Z), after PR #504 merged (main 256e9ef, merged into this branch at a3ac432). AWS re-login (`aws login --remote`).
+(cd agents/code-review/app/codeReview && "$SCRATCH/probe-venv/bin/python" -I "$SCRATCH/probe_v18.py")
+# -> G-A pass (ITPM 5000000); Q9 pass (accepted, valid full schema); Q12 pass ("prompt is too long: 3300772 tokens > 1000000 maximum", is_context_length=true).
