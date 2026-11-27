@@ -20,8 +20,8 @@ fill (FR-5).
   ``model_id`` (``SELECTION_MODEL_ID``, default ``MODEL_ID``, D-71) with
   ``max_tokens`` = ``MAX_OUTPUT_TOKENS`` (8,000, D-83), effort ``low``
   whatever the run's ``reasoning_effort`` (D-82), structured output with the
-  sent selection schema (``findings_schema.sent_schema``: ``minimum`` and
-  ``maxLength`` dropped, D-81) and the review's server-side fallback (D-72).
+  sent selection schema (``findings_schema.sent_schema``: ``minimum``,
+  ``maxLength`` and ``maxItems`` dropped, D-81) and the review's server-side fallback (D-72).
   No tools, no ``tool_choice``, no ``thinking`` field, no ``count_tokens``
   call (the input is bounded by its block caps). Its input is the PR title,
   head branch and body, the linked

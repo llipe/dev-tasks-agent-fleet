@@ -39,8 +39,10 @@ SUPABASE_KEY_SECRET_ID: str = os.environ.get(
 TOKEN_STALE_THRESHOLD_MINUTES: float = 45.0
 
 # The Anthropic API key's secret (D-88). Read once per run by
-# ``credentials.fetch_anthropic_key``; never placed in the environment.
-DEFAULT_ANTHROPIC_API_KEY_SECRET_ID = "agent-fleet/prod/ANTHROPIC_API_KEY"
+# ``credentials.fetch_anthropic_key``; never placed in the environment. The
+# code-review agent has its own key: ``agent-fleet/prod/ANTHROPIC_API_KEY`` is
+# the bug-fix agent's.
+DEFAULT_ANTHROPIC_API_KEY_SECRET_ID = "agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY"
 
 # D-87: USD per million (input, output) tokens, keyed on the exact
 # ``message.model`` the API returns. Any other answering model records no cost.
