@@ -43,3 +43,5 @@ aws ecr describe-images --region us-east-1 --repository-name codereview/code_rev
 aws bedrock-agentcore-control get-agent-runtime --region us-east-1 --agent-runtime-id codereview_code_review-g73KtjA3MT --output json > $D/runtime.after.json
 aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --query PolicyDocument --output json  # == role-policy.after-step5.json
 # -> READY v6, image ed141e26…, MODEL_ID=claude-sonnet-5-5, +ANTHROPIC_API_KEY_SECRET_ID, role unchanged
+# Step 8 (2026-11-27T14:52Z): record the deploy state (repo only).
+git add agents/code-review/agentcore/.cli/deployed-state.json  # deployHash fd057488… -> ca7c8c67…; same runtime and role
