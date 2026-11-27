@@ -26,3 +26,9 @@ supabase db query --linked "select r.* from webhook_rules r join agents a on a.i
 # Step 4 attempt 2 (2026-11-27T13:15Z), after PR #504 merged (main 256e9ef, merged into this branch at a3ac432). AWS re-login (`aws login --remote`).
 (cd agents/code-review/app/codeReview && "$SCRATCH/probe-venv/bin/python" -I "$SCRATCH/probe_v18.py")
 # -> G-A pass (ITPM 5000000); Q9 pass (accepted, valid full schema); Q12 pass ("prompt is too long: 3300772 tokens > 1000000 maximum", is_context_length=true).
+# Step 5 (2026-11-27T13:29Z): interim role policy, pass 1 (pinned v1.8 policy + the backup's InvokeDeepSeekV32).
+jq --slurpfile b $D/role-policy.before.json '.Statement += [$b[0].Statement[] | select(.Sid=="InvokeDeepSeekV32")]' \
+  agents/code-review/agentcore/iam/runtime-role-policy.json > $D/role-policy.interim.json
+aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --policy-document file://$D/role-policy.interim.json
+aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --query PolicyDocument --output json > $D/role-policy.after-step5.json
+# simulate-principal-policy: GetSecretValue on the 3 runtime secrets -> allowed; on ANTHROPIC_API_KEY-Oo8jsf -> implicitDeny; bedrock:InvokeModel deepseek.v3.2 -> allowed
