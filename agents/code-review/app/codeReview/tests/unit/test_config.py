@@ -141,11 +141,15 @@ class TestLoadSettings:
     def test_anthropic_key_secret_id_defaults(self):
         """TC-216-46 (D-88): the key's secret ID, default when unset or blank."""
         assert load_settings(_env()).anthropic_api_key_secret_id == (
-            "agent-fleet/prod/ANTHROPIC_API_KEY"
+            "agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY"
         )
         assert load_settings(
             _env(ANTHROPIC_API_KEY_SECRET_ID="  ")
-        ).anthropic_api_key_secret_id == ("agent-fleet/prod/ANTHROPIC_API_KEY")
+        ).anthropic_api_key_secret_id == ("agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY")
+
+    def test_anthropic_key_secret_id_default_is_not_the_bug_fix_key(self):
+        """D-88: the code-review agent has its own key; the bug-fix agent's secret is never the default."""
+        assert load_settings(_env()).anthropic_api_key_secret_id != "agent-fleet/prod/ANTHROPIC_API_KEY"
 
     def test_anthropic_key_secret_id_is_read(self):
         s = load_settings(_env(ANTHROPIC_API_KEY_SECRET_ID="agent-fleet/dev/ANTHROPIC_API_KEY"))
