@@ -608,6 +608,11 @@ def test_repair_41_findings_goes_to_repair():
     """``maxItems`` is enforced by the validator whether or not it is sent."""
     fake = FakeAnthropic([review_message(valid_review(41)), _ok()])
     assert run(fake).repair_calls == 1
+    # Q9 (D-81): the repair request is built the same way, so it carries no
+    # ``maxItems`` either; only the local validator enforces the 40 cap.
+    assert len(fake.stream_requests) == 2
+    for req in fake.stream_requests:
+        assert "maxItems" not in json.dumps(req["output_config"])
 
 
 def test_repair_huge_previous_output_is_cut_to_fit_b():
