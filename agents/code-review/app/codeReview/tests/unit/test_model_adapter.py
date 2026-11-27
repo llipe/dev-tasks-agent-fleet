@@ -391,7 +391,6 @@ SENT_SCHEMA_PINNED = {
     "properties": {
         "findings": {
             "type": "array",
-            "maxItems": 40,
             "items": {
                 "type": "object",
                 "additionalProperties": False,
@@ -453,7 +452,16 @@ def test_sent_schema_keeps_structure_does_not_mutate_and_is_idempotent():
     assert items["additionalProperties"] is False
     assert items["required"] == SUBMIT_REVIEW_SCHEMA["properties"]["findings"]["items"]["required"]
     keys = set(_walk(again))
-    assert keys.isdisjoint({"minimum", "maxLength", "pattern"})
+    assert keys.isdisjoint({"minimum", "maxLength", "pattern", "maxItems"})
+
+
+def test_sent_schema_request_carries_no_max_items():
+    """Q9 (D-81): the live API rejects ``maxItems`` in ``output_config.format.schema``."""
+    fake = FakeAnthropic([_ok()])
+    run(fake)
+    (req,) = fake.stream_requests
+    assert "maxItems" not in json.dumps(req["output_config"])
+    assert SUBMIT_REVIEW_SCHEMA["properties"]["findings"]["maxItems"] == 40  # still validated
 
 
 def test_sent_schema_request_tokens_count_the_copy_sent():
