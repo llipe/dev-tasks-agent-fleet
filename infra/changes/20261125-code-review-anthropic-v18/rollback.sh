@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # 20261125-code-review-anthropic-v18 — reverse order. Usage: rollback.sh --from N
-# Regenerated after each applied step. Applied: steps 2, 5, 7.
+# Regenerated after each applied step. Applied: steps 2, 5, 7, 11.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 ROOT="$PWD"
 D=infra/changes/20261125-code-review-anthropic-v18/backup
-FROM="${2:-7}"
+FROM="${2:-11}"
+if [ "$FROM" -ge 11 ]; then
+  # Step 11: restore the interim policy (pinned v1.8 + InvokeDeepSeekV32); step 7's v5 redeploy needs it.
+  aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime \
+    --policy-document "file://$D/role-policy.interim.json"
+fi
 if [ "$FROM" -ge 7 ]; then
   # Step 7: redeploy runtime version 5's sources (plan "Rollback source"): app code f4443bd,
   # agents/code-review/agentcore from f4c66c2 (MODEL_ID=deepseek.v3.2, no ANTHROPIC_API_KEY_SECRET_ID).

@@ -52,3 +52,8 @@ gh api repos/llipe/security-analyst-fixture/issues/comments/7225594866 -q .body
 # Key check: scratchpad keycheck_v18.py (key in memory only; events fetched and matched locally; prints counts).
 "$SCRATCH/kc-venv/bin/python" -I "$SCRATCH/keycheck_v18.py" 2026-11-27T14:46:00Z 2026-11-27T18:35:11Z
 # -> 4 events, 0 matches (full key, 16-char fragment, last 12)
+# Step 11 (2026-11-27T18:45:50Z): final policy, pass 2. Pre-apply: live == role-policy.interim.json.
+aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --query PolicyDocument --output json > $D/role-policy.pre-step11.json
+aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --policy-document file://agents/code-review/agentcore/iam/runtime-role-policy.json
+aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --query PolicyDocument --output json > $D/role-policy.after-step11.json
+# simulate-principal-policy, one ARN per call: 3 runtime secrets allowed, ANTHROPIC_API_KEY-Oo8jsf implicitDeny; bedrock:InvokeModel(+Stream) deepseek.v3.2 implicitDeny
