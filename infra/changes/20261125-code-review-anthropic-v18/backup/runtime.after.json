@@ -1,0 +1,38 @@
+{
+    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:runtime/codereview_code_review-g73KtjA3MT",
+    "agentRuntimeName": "codereview_code_review",
+    "agentRuntimeId": "codereview_code_review-g73KtjA3MT",
+    "agentRuntimeVersion": "6",
+    "createdAt": "2026-10-24T15:57:05.635299+00:00",
+    "lastUpdatedAt": "2026-11-27T14:47:31.140879+00:00",
+    "roleArn": "arn:aws:iam::755641879575:role/agent-fleet-code-review-runtime",
+    "networkConfiguration": {
+        "networkMode": "PUBLIC"
+    },
+    "status": "READY",
+    "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 1800
+    },
+    "description": "AgentCore Runtime: codereview_code_review",
+    "workloadIdentityDetails": {
+        "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:755641879575:workload-identity-directory/default/workload-identity/codereview_code_review-g73KtjA3MT"
+    },
+    "agentRuntimeArtifact": {
+        "containerConfiguration": {
+            "containerUri": "755641879575.dkr.ecr.us-east-1.amazonaws.com/codereview/code_review:ed141e268787305898b03dc4beb18727cfb4608351e3e89592b15a5ec7d6a134"
+        }
+    },
+    "environmentVariables": {
+        "ANTHROPIC_API_KEY_SECRET_ID": "agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY",
+        "AWS_REGION": "us-east-1",
+        "MODEL_ID": "claude-sonnet-5-5",
+        "PANEL_BASE_URL": "https://dt-agent-fleet-panel.fly.dev",
+        "SUPABASE_KEY_SECRET_ID": "agent-fleet/prod/SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL": "https://hegxeycmbmjfgzqpdiik.supabase.co"
+    },
+    "metadataConfiguration": {
+        "requireMMDSV2": true
+    },
+    "platformVersion": "V1"
+}

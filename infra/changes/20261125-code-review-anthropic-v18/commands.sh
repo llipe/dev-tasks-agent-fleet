@@ -37,3 +37,9 @@ aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-nam
 # -> 23/23 pass
 (cd agents/code-review && agentcore deploy --diff --json) > $D/deploy-diff.json
 # -> 1 stack, 2 resources: Runtime env (+ANTHROPIC_API_KEY_SECRET_ID, MODEL_ID -> claude-sonnet-5-5) and the image build trigger (hash e7559840 -> ed141e26); no IAM, no bedrock:
+# Step 7 (2026-11-27T14:46Z): deploy runtime v6. Pre-apply: live runtime == runtime.before.json (v5 READY); v5 image present in ECR.
+aws ecr describe-images --region us-east-1 --repository-name codereview/code_review --image-ids imageTag=e755984086375244cd38fc0376879b5be4d3bfe65c549b9552552c26e3712c07
+(cd agents/code-review && agentcore deploy -y --json)
+aws bedrock-agentcore-control get-agent-runtime --region us-east-1 --agent-runtime-id codereview_code_review-g73KtjA3MT --output json > $D/runtime.after.json
+aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --query PolicyDocument --output json  # == role-policy.after-step5.json
+# -> READY v6, image ed141e26…, MODEL_ID=claude-sonnet-5-5, +ANTHROPIC_API_KEY_SECRET_ID, role unchanged
