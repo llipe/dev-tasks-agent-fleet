@@ -86,9 +86,14 @@
 - [ ] 3.0 Implement Story S-218 - https://github.com/llipe/dev-tasks-agent-fleet/issues/482: Infra pass and live verification on Claude Sonnet 5.5
   > Note: runs through `/infra-engineer` after the integration PR is merged to `main`. One approval per step; every step has a rollback.
   - [ ] 3.1 [repo root] Plan the change and create `infra/changes/<ChangeId>/` with `plan.md`, `commands.sh`, `rollback.sh`
-  - [ ] 3.2 Create the secret `agent-fleet/prod/ANTHROPIC_API_KEY` from the key the user enters (`! aws secretsmanager create-secret …` or the console); its value never appears in the record or the session (D-88)
+  - [ ] 3.2 Create the secret `agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY` (dedicated; `agent-fleet/prod/ANTHROPIC_API_KEY` is the bug-fix agent's key) from the key the user enters (`! aws secretsmanager create-secret …` or the console); its value never appears in the record or the session (D-88)
   - [ ] 3.3 Record the tier check: the account's input-tokens-per-minute limit for `claude-sonnet-5-5`; if it is under 900,000, lower the default `max_context_tokens` through a follow-up migration (D-78; Q10)
   - [ ] 3.4 Run the live structured-output probe: record whether `maxItems` is accepted and adjust `sent_schema` if not (Q9); confirm the `prompt is too long` message (Q12)
+    - [ ] 3.4.1 Probe result (2026-11-26, ChangeId `20261125-code-review-anthropic-v18` step 4): ITPM 5,000,000 (G-A pass); the API rejects `maxItems` ("output_config.format.schema: For 'array' type, property 'maxItems' is not supported"), so Q12 was not reached
+    - [ ] 3.4.2 [code-review] Test first: pin both sent schemas (review and selection) without `maxItems`, assert no `maxItems` anywhere in either request, keep the local `maxItems` checks (41 findings → repair; picks capped at `MAX_PICKS`) (D-81)
+    - [ ] 3.4.3 [code-review] Add `maxItems` to `SENT_SCHEMA_STRIPPED`; update the `findings_schema` and `context/selection` docstrings (D-81)
+    - [ ] 3.4.4 [code-review] `config.DEFAULT_ANTHROPIC_API_KEY_SECRET_ID` → `agent-fleet/prod/CODE_REVIEW_ANTHROPIC_API_KEY` (the old default named the bug-fix agent's key; D-88), tests first
+    - [ ] 3.4.5 Run Tests: `make -C agents/code-review/app/codeReview validate`; after merge, `/infra-engineer` re-runs step 4 (Q9, Q12)
   - [ ] 3.5 Deploy runtime v6 (it includes the v1.6 change from #478) and verify; then, **with explicit user confirmation**, apply the seed migration and verify the `agents` row and the panel form (900,000 accepted, 900,001 rejected); then set the riel `/review` rule's `max_diff_lines` to 20,000 (D-89)
   - [ ] 3.6 Verify Acceptance Criterion AC-12: seeded-bug fixture PR → blocking finding; clean PR → clear; 5-PR smoke recorded with `answered_by_model`
   - [ ] 3.7 Verify Acceptance Criterion AC-14: a live riel PR of 200k+ tokens is reviewed
