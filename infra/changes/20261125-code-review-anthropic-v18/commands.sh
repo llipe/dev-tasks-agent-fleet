@@ -32,3 +32,8 @@ jq --slurpfile b $D/role-policy.before.json '.Statement += [$b[0].Statement[] | 
 aws iam put-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --policy-document file://$D/role-policy.interim.json
 aws iam get-role-policy --role-name agent-fleet-code-review-runtime --policy-name code-review-runtime --query PolicyDocument --output json > $D/role-policy.after-step5.json
 # simulate-principal-policy: GetSecretValue on the 3 runtime secrets -> allowed; on ANTHROPIC_API_KEY-Oo8jsf -> implicitDeny; bedrock:InvokeModel deepseek.v3.2 -> allowed
+# Step 6 (2026-11-27T14:42Z): deploy check (read-only). agentcore 0.28.0.
+(cd agents/code-review/agentcore/cdk && npm ci && npm test)
+# -> 23/23 pass
+(cd agents/code-review && agentcore deploy --diff --json) > $D/deploy-diff.json
+# -> 1 stack, 2 resources: Runtime env (+ANTHROPIC_API_KEY_SECRET_ID, MODEL_ID -> claude-sonnet-5-5) and the image build trigger (hash e7559840 -> ed141e26); no IAM, no bedrock:

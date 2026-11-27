@@ -1,0 +1,27 @@
+Stack AgentCore-codereview-default
+Resources
+[~] AWS::CloudFormation::CustomResource Application/AgentCodeReview/ContainerImageBuilder/ContainerBuildTrigger ApplicationAgentCodeReviewContainerImageBuilderContainerBuildTrigger6DE1DE2E may be replaced
+ ├─ [~] ImageUri (may cause replacement)
+ │   └─ [~] .Fn::Join:
+ │       └─ @@ -42,6 +42,6 @@
+ │          [ ]     {
+ │          [ ]       "Ref": "ApplicationAgentCodeReviewAgentEcrRepository14AB9A5A"
+ │          [ ]     },
+ │          [-]     ":e755984086375244cd38fc0376879b5be4d3bfe65c549b9552552c26e3712c07"
+ │          [+]     ":ed141e268787305898b03dc4beb18727cfb4608351e3e89592b15a5ec7d6a134"
+ │          [ ]   ]
+ │          [ ] ]
+ ├─ [~] SourceHash (may cause replacement)
+ │   ├─ [-] e755984086375244cd38fc0376879b5be4d3bfe65c549b9552552c26e3712c07
+ │   └─ [+] ed141e268787305898b03dc4beb18727cfb4608351e3e89592b15a5ec7d6a134
+ └─ [~] SourceKey (may cause replacement)
+     ├─ [-] e755984086375244cd38fc0376879b5be4d3bfe65c549b9552552c26e3712c07.zip
+     └─ [+] ed141e268787305898b03dc4beb18727cfb4608351e3e89592b15a5ec7d6a134.zip
+[~] AWS::BedrockAgentCore::Runtime Application/AgentCodeReview/Runtime ApplicationAgentCodeReviewRuntimeEAE560CE
+ └─ [~] EnvironmentVariables
+     ├─ [+] Added: .ANTHROPIC_API_KEY_SECRET_ID
+     └─ [~] .MODEL_ID:
+         ├─ [-] deepseek.v3.2
+         └─ [+] claude-sonnet-5-5
+✨ Number of stacks with differences: 1
+{"success":true,"targetName":"default","stackName":"AgentCore-codereview-default","logPath":"agentcore/.cli/logs/deploy/deploy-20261127-114203.log","dependencySyncResult":{"outcome":"check-only","optedOut":false,"checkOnly":true,"migratedFromCaret":false,"reinstalled":false,"skewWarning":false,"changes":[],"restored":[],"skipped":[],"warnings":[],"notice":null}}
