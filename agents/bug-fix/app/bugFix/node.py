@@ -46,9 +46,9 @@ from typing import Protocol
 
 NODE_ROOT = "/opt/node"
 # One per major, ascending. Must equal the Dockerfile's ``ARG NODE_VERSIONS``.
-NODE_VERSIONS: tuple[str, ...] = ("22.23.4", "24.22.2", "26.12.1")
+NODE_VERSIONS: tuple[str, ...] = ("22.23.5", "24.22.3", "26.13.1")
 # The Node of a repo that doesn't pin one; the image's /usr/bin/node.
-DEFAULT_NODE = "26.12.1"
+DEFAULT_NODE = "26.13.1"
 VERSION_FILES: tuple[str, ...] = (".nvmrc", ".node-version")
 PACKAGE_JSON = "package.json"
 

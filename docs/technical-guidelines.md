@@ -79,6 +79,7 @@
 
 
 | 1.61    | 2026-11-25 | **Code-review selection call moved to the Anthropic API (PRD v1.7, spec v1.8, S-217 / issue #481).** §9 `code-review` row: the context-selection call is an Anthropic Messages call through `model_adapter.make_client` with `max_retries=0` (`context/selection.py`); `legacy_bedrock.py` is removed, so the code-review package has no Bedrock client. §11 code-review test surface: `tests/fixtures/bedrock.py` is removed and the selection tests use the Anthropic fake. §16 pyproject: `boto3` is kept for Secrets Manager only. Current-state correction only: the deployed runtime (v5) still runs the Bedrock build until S-218 (#482). Sources: `agents/code-review/app/codeReview/context/selection.py`, `agents/code-review/app/codeReview/model_adapter.py`, `agents/code-review/app/codeReview/pyproject.toml`, `agents/code-review/agentcore/iam/runtime-role-policy.json`, [ADR-011](adr/ADR-011-code-review-selection-on-anthropic-api.md), [ADR-010](adr/ADR-010-code-review-agent-constraints.md) addendum 2026-11-25. | technical-writer |
+| 1.62    | 2026-11-27 | **Bug-fix agent: Node patch bump.** The image's Node versions move to the latest patch on each shipped major: 22.23.5 (Jod), 24.22.3 (Krypton, LTS) and 26.13.1 (Lithium, LTS; still the default). The linux-arm64 SHA-256 pins come from each release's `SHASUMS256.txt`. The majors are unchanged, so `ALLOWED_PATHS`, the `supported Node.js version` phrase and the pnpm/CLI/srt engine checks are unaffected (runbook "Add or bump a Node.js version"). | developer |
 
 ## 1. Overview
 

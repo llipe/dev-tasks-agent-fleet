@@ -29,6 +29,7 @@ import pytest
 
 import fixer_exec
 import sandbox
+from node import NODE_VERSIONS
 from sandbox import (
     EXIT_CODE_TABLE,
     Mode,
@@ -314,11 +315,14 @@ class TestFixerExecEnv:
         assert set(fixer_exec.ALLOWED) == EXPECTED_NAMES == set(sandbox.ALLOWED_ENV)
 
 
+NODE_22, NODE_24, _ = NODE_VERSIONS
+
+
 class TestNodePath:
     """The repo's Node major goes first on PATH, from a closed set only."""
 
     def test_node_path_puts_the_major_bin_first(self):
-        assert sandbox.node_path("24.22.2") == "/opt/node/24/bin:" + sandbox.FIXER_PATH
+        assert sandbox.node_path(NODE_24) == "/opt/node/24/bin:" + sandbox.FIXER_PATH
 
     def test_node_path_refuses_an_unshipped_version(self):
         with pytest.raises(ValueError):
@@ -333,7 +337,7 @@ class TestNodePath:
         ) == sandbox.ALLOWED_PATHS
 
     def test_build_env_with_node(self):
-        env = build_env(None, node="22.23.4")
+        env = build_env(None, node=NODE_22)
         assert env["PATH"] == "/opt/node/22/bin:" + sandbox.FIXER_PATH
         assert set(env) == {"PATH", "HOME", "LANG", "CI"}
 
@@ -344,7 +348,7 @@ class TestNodePath:
     def test_run_passes_the_node_path(self, paths):
         clock = FakeClock()
         sb, rec = _sandbox(paths, FakeProc(clock, exits_at=0.0), clock, [])
-        sb.run(["true"], cwd="/work/repo", timeout=60, node="24.22.2")
+        sb.run(["true"], cwd="/work/repo", timeout=60, node=NODE_24)
         assert rec.calls[0][1]["env"]["PATH"] == "/opt/node/24/bin:" + sandbox.FIXER_PATH
 
     def test_run_without_node_keeps_the_base_path(self, paths):

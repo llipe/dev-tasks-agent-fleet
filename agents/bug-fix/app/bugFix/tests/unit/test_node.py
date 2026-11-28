@@ -65,7 +65,7 @@ class TestShippedVersions:
 
     def test_bin_dir_is_under_the_root_by_major(self):
         assert NODE_ROOT == "/opt/node"
-        assert bin_dir("24.22.2") == "/opt/node/24/bin"
+        assert bin_dir(NODE_VERSIONS[1]) == "/opt/node/24/bin"
 
     def test_bin_dir_refuses_an_unshipped_version(self):
         with pytest.raises(ValueError):
