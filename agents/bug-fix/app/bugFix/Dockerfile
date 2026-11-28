@@ -88,14 +88,14 @@ RUN sed -i -E 's/^hosts:.*/hosts:          files myhostname dns/' /etc/nsswitch.
 # SHA-256 below for each). Official linux-arm64 tarballs from nodejs.org, each
 # checked before it is unpacked. NODE_DEFAULT is /usr/bin/node: the wrapper's
 # own tools, and a repo that pins nothing.
-ARG NODE_VERSIONS="22.23.4 24.22.2 26.12.1"
-ARG NODE_DEFAULT=26.12.1
+ARG NODE_VERSIONS="22.23.5 24.22.3 26.13.1"
+ARG NODE_DEFAULT=26.13.1
 RUN set -eu; \
     cd /tmp; \
     printf '%s\n' \
-      'f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9  node-v22.23.4-linux-arm64.tar.gz' \
-      '95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2  node-v24.22.2-linux-arm64.tar.gz' \
-      'a6c01af459dd8972ab3fb08ee5da81244d26ba8c4944a62d5bbba8c597ae154f  node-v26.12.1-linux-arm64.tar.gz' \
+      '8bd3dc69eee8f3f226315a80d7d1d4faccf217a4c8fae500168ac2e38f3bdba3  node-v22.23.5-linux-arm64.tar.gz' \
+      '261af2af250dfd7e9f25cf151d1b2713a0adf8f10a9ad116c4947f68627affe8  node-v24.22.3-linux-arm64.tar.gz' \
+      '80a330b35415382878df18d41afbd106ea89bfb3be0087d6608e289a14c5cc7d  node-v26.13.1-linux-arm64.tar.gz' \
       > node-sha256.txt; \
     for v in ${NODE_VERSIONS}; do \
       curl -fsSLO "https://nodejs.org/dist/v${v}/node-v${v}-linux-arm64.tar.gz"; \
