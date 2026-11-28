@@ -2,7 +2,7 @@
 name: runbook-bug-fix-agent
 trigger: Deploying or redeploying the bug-fix AgentCore runtime, running its sandbox probe, rotating its Anthropic key or Projects token, checking its permissions, verifying a Wave A run, or adding or bumping a Node.js version in its image
 owner: operator
-last_verified: 2026-10-30
+last_verified: 2026-11-27
 related: ["agents/bug-fix/agentcore/agentcore.json", "infra/changes/20261023-bug-fix-runtime/", "infra/changes/20261024-bug-fix-spike-probe/", "infra/agentcore-invoke-policy.json", "infra/environments.yaml", "agents/bug-fix/app/bugFix/probe.py"]
 ---
 
