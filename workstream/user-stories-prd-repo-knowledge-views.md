@@ -761,7 +761,7 @@ So that the PRD is done on evidence, not on merge.
 
 - [ ] In the deployed panel, `dev-tasks-agent-fleet` shows its field guide, graph and runs. `llipe/riel` shows its field guide (and `not-present` for the graph unless it has adopted `graph.yml`) (FR-34, AC-12).
 - [ ] The release gate passes with the two D-30 assertions live.
-- [ ] A token minted by the deployed panel is used once, from a controlled shell, to attempt a file create on `dev-tasks-agent-fleet`; GitHub refuses it with 403, and the result is recorded (AC-9). The token is not printed.
+- [ ] A one-off operator script calls the same `tokenFor()` module locally (operator AWS credentials, not the deployed panel, so no token leaves the server) and attempts a file create on `dev-tasks-agent-fleet` with the minted token; GitHub refuses it with 403, and only the status is recorded (AC-9). The script is not committed.
 - [ ] riel's `api.html` behaves as accepted (its own fallback). It is noted, not fixed (PRD §12).
 - [ ] `docs/roadmap.md` rows for Waves B–D move to `Done` in the consolidated PR (`planner`).
 
