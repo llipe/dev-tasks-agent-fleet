@@ -10,6 +10,7 @@
 | ------- | ---- | ------- | ------ |
 | 1.0 | 2026-10-30 | Initial pre-PR-ready audit (Audit Mode). | verifier |
 | 1.1 | 2026-10-30 | Developer resolution of DF-471-02/03/05/07/09 (see §Resolution). | developer |
+| 1.2 | 2026-11-23 | Drift reconciliation of DF-471-01/04/06, confirmed by @llipe 2026-11-23 (see §Resolution). | product-engineer |
 
 ## 1. Human-readable summary
 
@@ -174,7 +175,9 @@ All items are **advisory and non-blocking**.
 | DF-471-05 | Fixed | `SandboxPaths.node = "/usr/bin/node"`; script mode runs `/usr/bin/node /usr/bin/srt …`, so srt and its proxy stay on the default Node regardless of PATH. `check_available(SCRIPT)` requires it. Checked in the built image: the srt process is `/usr/bin/node /usr/bin/srt`, the command inside reports `v24.22.2`. |
 | DF-471-07 | Fixed | `image-smoke.sh` also checks `/opt/node` is root-owned and that `fixer` (through setpriv) finds nothing `-writable`. |
 | DF-471-09 | Fixed | PR body refreshed; milestone set. |
-| DF-471-01, -04, -06 | Open | Spec/PRD/story write-back and Wave B tasks: route to `product-engineer` (`activity-drift-reconciliation`). |
+| DF-471-01 | Written back (v1.2) | Spec v2.9 §8.1/§8.7 (item, phrase, Node selection rules), D-112 amendment, new D-113; PRD v2.2 FR-6; stories v2.7 S-180 and S-189 ACs. |
+| DF-471-04 | Written back (v1.2) | Spec v2.9 §7, §8.1, §8.7 `fix`, §12 items 1 and 3 (`ALLOWED_PATHS`; `srt` on `/usr/bin/node`); D-110 amendment. |
+| DF-471-06 | Written back (v1.2) | Spec v2.9 §8.7 install, `fix` and red-to-green step 3; stories v2.7 appended ACs on S-191 and S-193, mirrored into the #373 and #375 checklists. |
 | DF-471-08 | Open | `dev-tasks migrate docs`, separate change. |
 
 ## Publication

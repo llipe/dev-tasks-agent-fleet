@@ -8,6 +8,7 @@
 
 | Version | Date       | Summary | Author |
 | ------- | ---------- | ------- | ------ |
+| 2.2 | 2026-11-23 | Drift reconciliation of #471 audit finding DF-471-01 (PR #472), confirmed by @llipe 2026-11-23. FR-6 gains an applicability condition: a JS/TS repository's `engines.node`, when set, must accept a Node the image ships (22, 24 or 26), and the run uses that Node; otherwise the repository gate names "supported Node.js version" (spec v2.9, D-113). FR-5(e) is unchanged. | product-engineer |
 | 2.1 | 2026-10-22 | Drift reconciliation of verifier DF-29 (Critical), accepted by @llipe. The webhook trigger's per-repo G1/G5 guardrails no longer apply to issue-scoped agents (`agents.guardrail_scope = 'issue'`, D-107). A `/bug-fix` that the trigger blocks gets a 👎 reaction from the panel (D-108). New FR-35–FR-36 and AC-25–AC-26; the panel is now an affected component. | product-engineer |
 | 2.0 | 2026-10-22 | **Issue-mode rewrite** from the WHAT session D-88–D-102, confirmed by @llipe on 2026-10-21. A run is now triggered by a `/bug-fix` comment through the webhook trigger (PR #398) and works on that one issue in a single shot (D-90). Removed: labels, selection queue, schedules, assignee, stale-claim sweep, `string-list` UI (D-90, D-93–D-96). Who may trigger is set by webhook configuration (D-91). Five refusal cases, each with a reply (D-92). The claim is now reactions plus marker comments (D-93). Projects v2 board updates are added, using a `project`-scoped PAT and auto-detecting the linked board, on a best-effort basis (D-97–D-102). The rules of engagement are unchanged. FR and AC numbers are kept: removed items are marked, and new ones are FR-28–FR-34 and AC-19–AC-24. | product-engineer |
 | 1.4 | 2026-10-20 | Supersedes the parallel design line merged in PR #350 (D-87, @llipe, 2026-10-20). Decision IDs from this line are renumbered D-25–D-67 → D-44–D-86 after main's D-43. The superseded line's changelog rows remain in git history (`875299a`, PR #350). | product-engineer |
@@ -90,7 +91,7 @@ flowchart TD
   - (c) an open PR is already linked to the issue, by closing reference or by an `issue/<N>-…` head branch (D-55);
   - (d) another bug-fix run is active on the issue, shown by a trusted claim marker whose run is not terminal;
   - (e) the repository gate (FR-6) fails, naming the missing item.
-- **FR-6.** A repository is applicable only if it contains `.claude/agents/developer.md` and exposes the four blocking gates `test`, `lint`, `format:check` (JS/TS) or `format-check` (Python), and `typecheck`, as `package.json` scripts (JS/TS, pnpm or npm) or `Makefile` targets (Python). There is no fallback definition (D-06, D-18, D-19).
+- **FR-6.** A repository is applicable only if it contains `.claude/agents/developer.md` and exposes the four blocking gates `test`, `lint`, `format:check` (JS/TS) or `format-check` (Python), and `typecheck`, as `package.json` scripts (JS/TS, pnpm or npm) or `Makefile` targets (Python). There is no fallback definition (D-06, D-18, D-19). A JS/TS repository whose `engines.node` is set must also accept one of the Node versions the image ships (22, 24 or 26); the run uses that Node (D-113, v2.2).
 
 ### 7.2 Claim
 
