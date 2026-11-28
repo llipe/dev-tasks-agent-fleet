@@ -5,6 +5,7 @@
 | Version | Date       | Summary                                                                                          | Author           |
 | ------- | ---------- | ------------------------------------------------------------------------------------------------ | ---------------- |
 | 1.0     | 2026-11-28 | Initial stories from spec v1.0 / PRD v1.2. S-216–S-232 across Waves A–D.                          | product-engineer |
+| 1.1     | 2026-11-28 | Published as `llipe/dev-tasks` #364–#366 and this repository #513–#526 (see `github-publication-prd-repo-knowledge-views.md`). S-232 gains "riel is registered in the panel" as AC1. | product-engineer |
 
 Source: `docs/requirements/prd-repo-knowledge-views.md` (v1.2), `workstream/specification-prd-repo-knowledge-views.md` (v1.0), `workstream/decisions-repo-knowledge-views.md` (D-01–D-30).
 
@@ -759,6 +760,7 @@ So that the PRD is done on evidence, not on merge.
 
 #### Acceptance Criteria
 
+- [ ] `llipe/riel` is registered in the panel's Repositories list (add it through the existing form if absent).
 - [ ] In the deployed panel, `dev-tasks-agent-fleet` shows its field guide, graph and runs. `llipe/riel` shows its field guide (and `not-present` for the graph unless it has adopted `graph.yml`) (FR-34, AC-12).
 - [ ] The release gate passes with the two D-30 assertions live.
 - [ ] A one-off operator script calls the same `tokenFor()` module locally (operator AWS credentials, not the deployed panel, so no token leaves the server) and attempts a file create on `dev-tasks-agent-fleet` with the minted token; GitHub refuses it with 403, and only the status is recorded (AC-9). The script is not committed.
